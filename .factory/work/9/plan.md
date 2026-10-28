@@ -28,6 +28,7 @@ Repositories contract, probe, api, status. The decisions below resolve the open 
 ## Risks
 - Contract is a Git dependency: each downstream repo pins the merged contract SHA (placeholder during development).
 - Existing DB files need a migration (see api).
+- The top-level meta README multi-probe example may be updated by maintainers; it is not a target.
 - A single reporting location still decides alone [7]. The acceptance test must wait until all three probes have reported.
 
 ## Acceptance evidence
@@ -68,6 +69,3 @@ Files: `src/render.ts`, `src/poller.ts` if types require, tests, `public/` if st
 - Render `N/M locations down` per check from `locations`, escaped, hidden when empty; tolerate a missing `locations` field from an older API.
 - Checks: render tests for 0/1, 1/3, 2/3, all stale, empty, escaping; typecheck, lint.
 - Completion: tests pass; contract SHA pinned.
-
-## Repository: meta (docs only, not a target)
-Top-level README multi-probe run example may be updated by the maintainers.
