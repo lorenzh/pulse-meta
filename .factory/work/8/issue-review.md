@@ -1,0 +1,46 @@
+# Issue review: #8 Maintenance windows
+
+Verdict: specifiable. No blocking questions; open points have proposed defaults.
+
+## Current state (inspected in .repos/*)
+- contract: types only (`Check`, `CheckState = "up"|"down"|"unknown"`, `CheckWithState`, `Incident`, response types). No window type.
+- api: `config.ts` `parseChecks` accepts `{ "checks": [...] }` only; `main.ts` loads it once at start. `service.ts` has NO clock (incident times come from result timestamps; comment says so). `ingest` stores the result, then `applyResult` (pure, `state.ts`, DOWNS_TO_OPEN=3) updates state/consecutive_down/incidents. Routes: POST /results, GET /checks, /checks/:id/results, /incidents.
+- probe: fetches GET /checks and posts results; needs no change (results must keep arriving during windows).
+- status: poller fetches `/api/checks` and `/api/incidents?status=open`; `render.ts` renders `state-${state}` CSS class; `index.html` styles only up/down/unknown; `server.ts` proxies `/api/*`, so a new `/api/maintenance` endpoint needs no proxy change. Browser modules are served from src via type stripping.
+- Conventions (AGENTS.md): injectable clock, node:test, no real timers, local servers only.
+
+## Open points (non-blocking, with proposed defaults)
+1. **Config shape**: "same file as the checks". Propose a top-level optional `maintenance` array next to `checks`: `{ "checks": [...], "maintenance": [{ "checkId", "start", "end", "note" }] }`. Missing key = no windows (existing files stay valid). Issue says "check id"; field name `checkId` (matches `Result.checkId`).
+2. **Time format** of start/end: unspecified. Propose ISO 8601 strings with explicit offset (e.g. `2026-11-01T02:00:00Z`) parsed to epoch ms; reject strings without offset/invalid dates. Epoch-ms numbers could also be accepted; pick one in the spec (recommend ISO only for human editing, epoch ms internally/in API).
+3. **Interval semantics**: propose half-open `[start, end)`; validation: end > start, `checkId` must reference a configured check, note a non-empty string (or optional? issue says window "has" a note; assume required), overlapping windows for the same check allowed (union) or rejected; propose allow.
+4. **Which time decides "in a window"**: the result's `timestamp` (set by probe) or the API clock at ingestion? Issue says "time comes from the injectable clock". Propose: the API clock (`now()`) decides for the *current* window query/state shown; but for ingest classification use the result timestamp so late/queued results are classified by when they were measured. Conflict to resolve in spec; default: result timestamp for ingest, clock for "current/upcoming" listings and the displayed state. Probe/API clock skew is a risk. Service gets a `now` option (default `Date.now`).
+5. **State during a window**: new `CheckState` value `"maintenance"` is displayed. Propose: do NOT persist it; `GET /checks` computes `state: "maintenance"` when the clock is inside a window, otherwise the stored state. Stored state/consecutiveDown are untouched by in-window down results. Requires a contract change (add `"maintenance"` to `CheckState`, add `note`-bearing field, e.g. `maintenance?: { start, end, note }` on `CheckWithState`) and bumping the contract SHA pin in api and status. Contract also needs a `MaintenanceWindow` type and `MaintenanceResponse`.
+6. **Up results inside a window**: issue only covers down results. Propose: up results behave normally (reset consecutiveDown, resolve an open incident?). Contradiction to settle: "an incident already open when a window starts stays open" — propose that an up result in a window does still resolve it (a real recovery), while down results change nothing. Alternative: freeze everything. Default: up results processed normally.
+7. **Down results in a window**: recorded in `results`, but state, `consecutive_down`, `last_reason` handling: propose they update `last_result_at` (and `last_reason`?) only; default: update `last_result_at` and `last_reason` so the data shows what the probe saw, but not `state`/`consecutive_down`. Decide in spec.
+8. **After the window ("check is up again without an incident")**: requires the pre-window consecutive_down not to carry over and not accumulate. In-window downs not counted means the first post-window down starts at 1. If the server comes back (up result) after the window the state flips to up. If the server is still down after the window ends, normal counting starts (3 downs to open). Edge: if state was "up" before and no up result arrived inside the window, then state stays "up" until real results say otherwise; acceptable. Edge: a check whose stored state was "down" with no incident (1–2 downs) before the window: keeps that stored state and count after the window (don't reset)? Propose: keep (stay the same as "no change").
+9. **Window hits a down check with open incident**: incident stays open (explicit), display shows maintenance state, but open incidents list unchanged. Status page keeps showing the open incident in the incident list.
+10. **API surface**: "lists current and upcoming windows" – propose `GET /maintenance` returning `MaintenanceWindow[]` (`checkId, start, end, note`) with windows whose `end > now`, sorted by start; optional `?checkId=`. Past windows excluded. Distinguishing current vs upcoming: client compares `start <= now`; or add a `status`/`active` field (propose field `active: boolean`... decide; simplest is let the response carry `start`/`end` only plus the server-computed `GET /checks` maintenance field).
+11. **Config reload**: checks file is read once at start; windows follow suit (restart needed). `upsertChecks` doesn't remove checks; windows are held in memory from config (not in SQLite) — assume so, no DB migration. Note: a restart is needed for "set a window" in the acceptance check; set it before starting the API.
+12. **Status page**: show state "maintenance" (CSS class `state-maintenance`, a new colour) and the note on the check row; add a "Upcoming maintenance" section listing future windows (check name, start, end, note). Poller needs a third fetch (`/api/maintenance`), `PollerState` gets `maintenance`. Should currently active windows also appear in the list? Propose: the list shows upcoming (start > now) only; active ones appear on the check row. Escape note via `escapeHtml`. Poller `now` is injectable already; "upcoming" filtering in render must take `now` rather than `Date.now()`. If `/api/maintenance` fails, whole refresh currently fails (Promise.all); keep the same behaviour.
+13. **Unknown state**: a check in `unknown` state (no results yet) inside a window shows maintenance too.
+14. **Display of the pre-window state**: not shown while in maintenance; stored state returns after the window.
+15. **Probe**: unchanged; keeps probing. Delivery: PRs to contract, api, status (3 repos), contract first, then SHA bumps; probe untouched. Contract `dist/` must be rebuilt/committed (build output is committed).
+16. **Timestamps skew / out-of-order results**: out of scope; classify per result timestamp.
+17. README of api (config doc, endpoint), status, and `checks.example.json` should be updated; meta README config example optional.
+
+## Assumptions
+- Windows are config-only, in memory, validated at startup (ConfigError on bad data, e.g. unknown checkId, end <= start, bad date).
+- `loadChecks` is kept and a sibling (`loadConfig` returning `{checks, maintenance}`) is added, or `loadChecks` is extended; spec to choose.
+- Clock is a `() => number` option on `createService`/`createApiServer`, defaulting to `Date.now` in `main.ts`.
+- Result classification by result `timestamp` (point 4), displayed state by the clock.
+- Up results in a window act normally (point 6).
+
+## Acceptance check
+End-to-end, using injected clock for tests and real run for the demo:
+1. api config contains a window for check `example` spanning the period the test server (port 9000) is off; API, probe and status are started.
+2. Before the window: server up → status page shows `example` as up.
+3. Inside the window, test server stopped: probe keeps posting down results; `GET /checks/example/results` contains them; `GET /checks` shows `state: "maintenance"` with the note; `GET /incidents` is empty; `GET /maintenance` lists the window; status page shows "maintenance" and the note.
+4. Before the window starts (clock before start) the window appears in "upcoming maintenance" on the status page and in the API list; after the end it disappears from both.
+5. After the window ends with the server back on: next up result gives state `up`, `GET /incidents` (all, not just open) has no entry for the check.
+6. Unit tests with a fake clock: (a) 3+ down results inside a window → no incident, consecutiveDown unchanged, results stored; (b) incident open before window stays open through a window with downs; (c) downs straddling the window edges count only outside it (half-open boundaries); (d) config parsing: valid, missing `maintenance`, bad dates, unknown checkId, end<=start, empty note; (e) `/maintenance` lists current+upcoming, excludes past; (f) render: `state-maintenance` row with escaped note, upcoming list, empty case; poller fetches maintenance.
+7. `npm run check` passes in contract, api and status; no real timers or sleeps in tests.
