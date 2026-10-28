@@ -9,13 +9,79 @@ Per repo: Biome and Lefthook devDependencies, identical `biome.json` and `leftho
 ## Non-goals
 Runtime changes, new runtime dependencies, bumping the pinned contract SHA, hooking typecheck/tests, unsafe autofixes, a shared config package, changing CI workflows (CI already runs `npm run check`), changes to the meta repo.
 
-## Shared decisions (apply identically in all four repos)
-- Biome 2.x, same exact version in all repos (caret per repo convention is acceptable only if lockfiles resolve the same version; prefer exact pin). Lefthook latest stable. Both in `devDependencies` only.
-- `biome.json`: byte-identical in all repos. `$schema` matches installed Biome version. Biome `recommended` rules; formatter style chosen from existing code to minimise churn (check indent, quotes, line width first). Rules that would force behaviour changes (e.g. `noNonNullAssertion`, `noExplicitAny`) are turned off rather than rewriting code. Import organising must keep `import type` for type-only imports (Node 24 type stripping). VCS integration enabled with ignore file use. `files.includes` excludes `dist`, `node_modules` (harmless where absent, keeps file identical). Config must not need per-repo overrides.
-- status `public/`: `public/client.js` is linted/formatted. `public/index.html` is excluded from Biome via a shared ignore only if Biome cannot format it cleanly; since the file must stay identical, decide by trying: if the chosen version formats HTML cleanly, include it; else add `!**/*.html` to the shared config (harmless in other repos).
-- Scripts: `lint` = `biome check .` (read-only); `format` = `biome check --write .` (safe fixes only); `prepare` = guarded Lefthook install that never fails and does nothing when there is no git checkout or in CI (e.g. `lefthook install || true`, or a guard on `.git`/`CI`), because contract is installed as a git dependency by api/probe/status and `npm ci` runs in CI; `check` runs lint first.
-- `lefthook.yml` byte-identical: pre-commit command runs `biome check --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}` (read-only, no restaging), failing the commit on errors. Invoke via `npx`/local binary so it works without a global install.
-- Lockfile: regenerated with `npm install`; must contain Linux optional deps for Biome and Lefthook so `npm ci` works on ubuntu CI.
+## Shared decisions (apply identically in all four repos; copy verbatim, do not re-decide)
+Decided from inspecting the clones: all code uses double quotes, semicolons, 2-space indent, lines up to 100 columns, `import type`, ESM, `tsconfig` with `verbatimModuleSyntax`. Only the contract has a `dist`; only status has HTML (`public/index.html`).
+
+- Versions (devDependencies only, exact pins, no caret): `@biomejs/biome` `2.6.3`, `lefthook` `2.2.2`. Install with `npm install --save-dev --save-exact @biomejs/biome@2.6.3 lefthook@2.2.2`. If the registry lacks either version, stop and report instead of picking another.
+- `biome.json` (exact content, byte-identical, 2-space indent, trailing newline):
+
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/package-lock.json", "!**/*.html"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
+    }
+  }
+}
+```
+
+  If Biome 2.6.3 rejects a key (check with `npx biome check biome.json`), fix the key spelling per Biome's error message and make the same fix in all four repos; the executor reports the final text in the PR. Do not add per-repo overrides. Any other recommended rule that fires and would need a behaviour change is fixed by a formatting/lint-only change where possible; otherwise it is set `"off"` in this same file in all four repos and the PR says so.
+- HTML decision (final): all `*.html` is excluded by `"!**/*.html"` above. `status/public/index.html` is neither formatted nor linted and stays unchanged. `public/client.js` is formatted and linted.
+- `lefthook.yml` (exact content, byte-identical, trailing newline):
+
+```yaml
+pre-commit:
+  commands:
+    biome:
+      glob: "*.{js,ts,json,jsonc}"
+      run: npx --no-install biome check --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+```
+
+- `package.json` scripts (exact strings):
+  - `"lint": "biome check ."`
+  - `"format": "biome check --write ."`
+  - `"prepare": "lefthook install || true"` (never fails: when lefthook is not installed, as in a git-dependency install of the contract, or there is no `.git`, the `|| true` swallows the error)
+  - `check` per repo section below, with `npm run lint` first.
+- Lockfile: regenerate with `npm install`; it must include the Linux x64 optional deps of Biome and Lefthook so `npm ci` works on ubuntu-24.04 CI (verify with `npm ci` in a clean copy).
 
 ## Required behavior
 1. `npm install` in a fresh clone creates `.git/hooks/pre-commit` managed by Lefthook; `npm ci` without git/with CI exits 0.
@@ -39,7 +105,7 @@ Per repo, in the PR: output of `npm run check`, `npm run lint` followed by clean
 Files: `package.json`, `package-lock.json`, `biome.json`, `lefthook.yml`, `src/**`, `test/**`, `README.md`, `AGENTS.md`.
 - `check` = `npm run lint && npm run build && npm run typecheck && npm run test`.
 - `dist/` is excluded from Biome; `npm run build` leaves `dist/index.js` and `dist/index.d.ts` byte-identical to committed (no dist diff in the PR).
-- This repo originates the canonical `biome.json`/`lefthook.yml` the others copy; other repos work in parallel from the spec above, and final byte equality is checked in review.
+- Uses the `biome.json`/`lefthook.yml` text embedded above; every repo copies the same text, so no repo depends on another.
 - Docs: README and AGENTS.md describe `npm run lint`, `npm run format`, and the pre-commit hook.
 - Evidence: acceptance list above, plus unchanged `dist`.
 
@@ -56,8 +122,8 @@ Files: `package.json`, `package-lock.json`, `biome.json`, `lefthook.yml`, `src/*
 - Docs as above. Evidence: acceptance list above.
 
 ## Repository: status
-Files: `package.json`, `package-lock.json`, `biome.json`, `lefthook.yml`, `src/**`, `public/client.js`, `public/index.html` (per HTML decision above), `README.md`, `AGENTS.md`.
+Files: `package.json`, `package-lock.json`, `biome.json`, `lefthook.yml`, `src/**`, `public/client.js`, `public/index.html` (excluded, unchanged), `README.md`, `AGENTS.md`.
 - `check` = `npm run lint && npm run typecheck && npm run test`.
 - Formatting of `public/client.js` and any HTML changes must not alter served behaviour; tests green.
 - Pinned contract SHA unchanged.
-- Docs as above. Evidence: acceptance list above, plus statement of how `index.html` was handled.
+- Docs as above. Evidence: acceptance list above, plus confirmation that `index.html` is untouched.
