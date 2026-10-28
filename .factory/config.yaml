@@ -57,7 +57,35 @@ workspaces:
           url: https://github.com/lorenzh/pulse-meta.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
           workflows: [ spec, merge ]
-          context: []
+          context: [ contract, probe, api, status ]
+        contract:
+          url: https://github.com/lorenzh/pulse-contract.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-contract } }
+          workflows: [ build, merge ]
+          context: [ meta ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
+        probe:
+          url: https://github.com/lorenzh/pulse-probe.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-probe } }
+          workflows: [ build, merge ]
+          context: [ meta, contract ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
+        api:
+          url: https://github.com/lorenzh/pulse-api.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-api } }
+          workflows: [ build, merge ]
+          context: [ meta, contract ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
+        status:
+          url: https://github.com/lorenzh/pulse-status.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-status } }
+          workflows: [ build, merge ]
+          context: [ meta, contract, api ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
 models:
   worker:
