@@ -57,7 +57,7 @@ workspaces:
           url: https://github.com/lorenzh/pulse-meta.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
           workflows: [ spec, merge ]
-          context: [ contract, probe, api, status ]
+          context: [ contract, probe, api, status, notify ]
         contract:
           url: https://github.com/lorenzh/pulse-contract.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-contract } }
@@ -82,6 +82,13 @@ workspaces:
         status:
           url: https://github.com/lorenzh/pulse-status.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-status } }
+          workflows: [ build, merge ]
+          context: [ meta, contract, api ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
+        notify:
+          url: https://github.com/lorenzh/pulse-notify.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-notify } }
           workflows: [ build, merge ]
           context: [ meta, contract, api ]
           exclude: [ /.factory/ ]
