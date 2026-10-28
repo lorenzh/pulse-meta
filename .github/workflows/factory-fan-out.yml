@@ -1,0 +1,94 @@
+name: Paragon Factory fan-out
+
+# A person merges the spec pull request of a feature. factory fan-out opens one issue per
+# repository that the plan lists, and this workflow starts each issue that waits for no other.
+# "Run workflow" with the branch of the feature repeats a failed fan-out.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch of the merged spec pull request
+        required: true
+        type: string
+
+concurrency:
+  group: factory-fan-out-${{ inputs.branch || github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  fan-out:
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      # A job image with exactly the pinned Node and its npm needs no download.
+      - name: Check the preinstalled Node
+        id: node
+        run: |
+          if [[ "$(node --version 2>/dev/null)" == v24.19.0 ]] && command -v npm > /dev/null; then echo "preinstalled=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v6
+        if: ${{ steps.node.outputs.preinstalled != 'true' }}
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Install factory packages
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
+        run: npm ci
+
+      - name: Check the CLI minor line
+        env:
+          FACTORY_CLI_MINOR: "0.8"
+        run: |
+          installed="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js --version)"
+          if [[ "${installed%.*}" != "$FACTORY_CLI_MINOR" || ! "${installed##*.}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected @paragondata/factory-cli $FACTORY_CLI_MINOR.x, installed ${installed:-nothing}. A new minor release needs an explicit upgrade; see factory docs runners." >&2
+            exit 1
+          fi
+          echo "Using @paragondata/factory-cli $installed."
+
+      - name: Fan out the feature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FACTORY_BRANCH: ${{ inputs.branch || github.event.pull_request.head.ref }}
+          FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ "$FACTORY_BRANCH" =~ ^[A-Za-z0-9._/-]{1,255}$ ]] || { echo "::error::The branch name is not supported: use at most 255 letters, digits, and . _ / -." >&2; exit 1; }
+          status=0
+          result="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js fan-out --branch "$FACTORY_BRANCH" --apply 2> "$RUNNER_TEMP/factory-fan-out.err")" || status=$?
+          errors="$(< "$RUNNER_TEMP/factory-fan-out.err")"
+          [[ -z "$errors" ]] || printf '%s\n' "$errors" >&2
+          if [[ "$status" != 0 ]]; then
+            # Match the whole code line of the error, never a part of another line.
+            case $'\n'"$errors"$'\n' in
+              *$'\n  code: FAN_OUT_BRANCH_UNKNOWN\n'*)
+                echo "::notice::$FACTORY_BRANCH is not the branch of a Factory issue. Nothing to fan out." ;;
+              *$'\n  code: FAN_OUT_PLAN_MISSING\n'*)
+                echo "::notice::The issue of $FACTORY_BRANCH has no fan-out plan. Nothing to fan out." ;;
+              *) exit "$status" ;;
+            esac
+            exit 0
+          fi
+          printf '%s\n' "$result"
+          start="$(node -e 'for (const id of JSON.parse(process.argv[1]).start) console.log(id)' "$result")"
+          for issue in $start; do
+            [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $issue" >&2; exit 1; }
+          done
+          # A second start of the same issue ends stale through its runner record.
+          for issue in $start; do
+            gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
+              -f issue="$issue" -f admission=label
+          done

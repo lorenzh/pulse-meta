@@ -1,0 +1,74 @@
+name: Paragon Factory unblock
+
+# Closing an issue starts nothing by itself. factory unblock reads the issues that the closed one
+# blocked and closes a feature whose repository issues are all closed. This workflow starts each
+# issue that may run now.
+on:
+  issues:
+    types: [closed]
+
+concurrency:
+  group: factory-unblock-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  unblock:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      # A job image with exactly the pinned Node and its npm needs no download.
+      - name: Check the preinstalled Node
+        id: node
+        run: |
+          if [[ "$(node --version 2>/dev/null)" == v24.19.0 ]] && command -v npm > /dev/null; then echo "preinstalled=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v6
+        if: ${{ steps.node.outputs.preinstalled != 'true' }}
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Install factory packages
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
+        run: npm ci
+
+      - name: Check the CLI minor line
+        env:
+          FACTORY_CLI_MINOR: "0.8"
+        run: |
+          installed="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js --version)"
+          if [[ "${installed%.*}" != "$FACTORY_CLI_MINOR" || ! "${installed##*.}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected @paragondata/factory-cli $FACTORY_CLI_MINOR.x, installed ${installed:-nothing}. A new minor release needs an explicit upgrade; see factory docs runners." >&2
+            exit 1
+          fi
+          echo "Using @paragondata/factory-cli $installed."
+
+      - name: Follow the closed issue
+        env:
+          # The bot's token: GitHub starts no workflow for an event of the job token, and a feature
+          # that this step closes must start the unblock of the issues that wait for it.
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          FACTORY_ISSUE: ${{ github.event.issue.number }}
+          FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
+          [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
+          result="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js unblock --issue "$FACTORY_ISSUE" --apply)"
+          printf '%s\n' "$result"
+          start="$(node -e 'for (const id of JSON.parse(process.argv[1]).start) console.log(id)' "$result")"
+          for issue in $start; do
+            [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $issue" >&2; exit 1; }
+          done
+          # A second start of the same issue ends stale through its runner record.
+          for issue in $start; do
+            gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
+              -f issue="$issue" -f admission=label
+          done

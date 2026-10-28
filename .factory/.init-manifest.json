@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "cliVersion": "0.8.0",
+  "template": "standard",
+  "choices": {
+    "projectName": "pulse-meta",
+    "provider": "github",
+    "repository": "lorenzh/pulse-meta",
+    "harness": "claude",
+    "permissionMode": "auto",
+    "workspace": "git",
+    "baseBranch": "main",
+    "runner": "github",
+    "merge": true,
+    "multiRepo": true,
+    "packageManager": "npm"
+  },
+  "files": {
+    ".factory/config.yaml": {
+      "generatedSha256": "a16e209488df531842afd85737b55e8eddc30b2af17867d80fffbd5cf6b9c907"
+    },
+    ".factory/prompts/preamble.md": {
+      "generatedSha256": "3100a35b1b03a1130ee7c6a38fe06884824ca2e971d015f013125428e535e1d6"
+    },
+    ".factory/prompts/issue-review.md": {
+      "generatedSha256": "0fe6ea2c3e0eba7af4772366cdcfffa320d0f64ef8e22c711fa94add07419a02"
+    },
+    ".factory/prompts/plan.md": {
+      "generatedSha256": "03627451e1d00a1667366d2f1247a0ca5b2f4f7c577019d6965b545b444bdd89"
+    },
+    ".factory/prompts/plan-review.md": {
+      "generatedSha256": "c694e5d5bfc65d2df2b95319ed690ff403da001e1c3e3c6ae09f3757a9f8df16"
+    },
+    ".factory/prompts/implement.md": {
+      "generatedSha256": "2b8a3f0c5504f38af58115122092c702444ce9bd30b3ade6ebda7dda8fb01ca9"
+    },
+    ".factory/prompts/review.md": {
+      "generatedSha256": "c16179815dab59ba6b4c8d0aed6ec78911d5c84a91ffda4fd510dee78c1384a3"
+    },
+    ".factory/prompts/merge-resolve.md": {
+      "generatedSha256": "8dde4366c310e00507af0af694083ba0006fcc85fae54f4fdebd396d81c92298"
+    },
+    ".factory/prompts/merge-review.md": {
+      "generatedSha256": "4227e71d9d3497a5ca0f78f6bd6d3440afa54bd5170d8f36f16842d34a0c1d6a"
+    },
+    ".factory/.gitignore": {
+      "generatedSha256": "127672b43b817aa8f10c44cdb48d4eeef8c0201da894e8a2430cce505ab49933"
+    },
+    ".github/workflows/factory.yml": {
+      "generatedSha256": "d80a9e14708560f73cdd721092ae4cec1522745cb1f1bd7a2138e3da818160a2"
+    },
+    ".github/workflows/factory-run.yml": {
+      "generatedSha256": "21ed4fd625a021848eae2615cfe22753859e10c3c894d5575065ee6858680e26"
+    },
+    ".github/workflows/factory-check.yml": {
+      "generatedSha256": "91d653c3e77935f38761c64930bd3f042a7e38bfc754ff590375a5ba092a2f6c"
+    },
+    ".github/workflows/factory-fan-out.yml": {
+      "generatedSha256": "6c51c2e006f12a6183ad0aefc50f7233688a3152c4e883e689463ab39c1d9425"
+    },
+    ".github/workflows/factory-unblock.yml": {
+      "generatedSha256": "51858e05ff4ada0114930d1e4ad5915232de68a2bc152d10ab6245d15a6320a8"
+    }
+  }
+}

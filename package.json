@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "@paragondata/factory-cli": "~0.8.0",
+    "@paragondata/factory-harness-claude": "~0.8.0",
+    "@paragondata/factory-provider-github": "~0.8.0",
+    "@paragondata/factory-state-labels": "~0.8.0",
+    "@paragondata/factory-workspace-multigit": "~0.8.0"
+  }
+}

@@ -1,0 +1,206 @@
+name: Paragon Factory run
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number
+        required: true
+        type: string
+      admission:
+        description: restart continues the issue now; cancel ends its interruption; label and continuation are sent by the runner
+        required: true
+        default: restart
+        type: choice
+        options: [restart, label, continuation, cancel]
+      generation:
+        description: Record generation, for continuation only
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: factory-issue-${{ inputs.issue }}
+  cancel-in-progress: false
+  queue: max
+
+permissions: {}
+
+jobs:
+  run-state:
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      FACTORY_ISSUE: ${{ inputs.issue }}
+      FACTORY_ADMISSION: ${{ inputs.admission }}
+      FACTORY_GENERATION: ${{ inputs.generation }}
+      FACTORY_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
+    outputs:
+      continue: ${{ steps.run.outputs.continue }}
+      generation: ${{ steps.run.outputs.generation }}
+    steps:
+      - name: Check the dispatch inputs
+        run: |
+          [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
+          [[ -z "$FACTORY_GENERATION" || "$FACTORY_GENERATION" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "Not a canonical generation: $FACTORY_GENERATION" >&2; exit 1; }
+
+      # The native harnesses codex and claude run the agent inside bubblewrap. A hosted runner has
+      # no bubblewrap, and Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
+      # These steps install the package where it is missing and load a profile that lets only
+      # /usr/bin/bwrap create such namespaces; the restriction stays on for every other program. The
+      # profile is loaded only where bwrap fails without it. The last command is the containment
+      # command of Factory, so a runner that cannot supply it fails here, before any project code or
+      # agent runs.
+      - name: Install bubblewrap
+        run: |
+          command -v bwrap > /dev/null && exit 0
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+
+      - name: Allow user namespaces for bwrap
+        run: |
+          if ! bwrap --die-with-parent --unshare-pid --bind / / --proc /proc --dev-bind /dev /dev -- true 2>/dev/null; then
+            sudo tee /etc/apparmor.d/factory-bwrap > /dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile factory-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+            sudo apparmor_parser -r /etc/apparmor.d/factory-bwrap
+          fi
+          bwrap --die-with-parent --unshare-pid --bind / / --proc /proc --dev-bind /dev /dev -- true
+
+      - name: Check the bot account
+        env:
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          [[ -n "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::Set the repository variable FACTORY_GITHUB_ACTOR to the login of the Factory bot account." >&2; exit 1; }
+          [[ -n "$FACTORY_GITHUB_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
+          login="$(GH_TOKEN="$FACTORY_GITHUB_TOKEN" gh api user --jq .login)" || { echo "::error::Cannot read the account of the secret FACTORY_GITHUB_TOKEN." >&2; exit 1; }
+          # The runner record compares authors exactly, so the logins must match, case included.
+          [[ "$login" == "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::The secret FACTORY_GITHUB_TOKEN belongs to $login, but the repository variable FACTORY_GITHUB_ACTOR is $FACTORY_GITHUB_ACTOR." >&2; exit 1; }
+
+      - name: Log in to the target hosts
+        env:
+          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          FACTORY_TARGET_LOGINS: ${{ secrets.FACTORY_TARGET_LOGINS }}
+        run: |
+          # Each line is "<host> <token>". Mask every token before any command can print one.
+          # A secret pasted with CRLF line ends keeps no CR in a field.
+          while read -r host token extra; do
+            host="${host%$'\r'}" token="${token%$'\r'}" extra="${extra%$'\r'}"
+            [[ -n "$host" ]] || continue
+            [[ -n "$token" && -z "$extra" ]] || { echo "::error::Each line of FACTORY_TARGET_LOGINS must be <host> <token>." >&2; exit 1; }
+            echo "::add-mask::$token"
+          done <<< "$FACTORY_TARGET_LOGINS"
+          while read -r host token extra; do
+            host="${host%$'\r'}" token="${token%$'\r'}"
+            [[ -n "$host" ]] || continue
+            gh auth login --hostname "$host" --with-token <<< "$token"
+          done <<< "$FACTORY_TARGET_LOGINS"
+          # Git reaches the repositories on github.com and on these hosts through gh.
+          GH_TOKEN="$FACTORY_GITHUB_TOKEN" gh auth setup-git
+
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      # A job image with exactly the pinned Node and its npm needs no download.
+      - name: Check the preinstalled Node
+        id: node
+        run: |
+          if [[ "$(node --version 2>/dev/null)" == v24.19.0 ]] && command -v npm > /dev/null; then echo "preinstalled=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v6
+        if: ${{ steps.node.outputs.preinstalled != 'true' }}
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Install factory packages
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
+        run: npm ci
+
+      - name: Install agent CLIs
+        env:
+          FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION }}
+          FACTORY_CLAUDE_VERSION: ${{ vars.FACTORY_CLAUDE_VERSION }}
+        run: |
+          FACTORY_CODEX_VERSION="${FACTORY_CODEX_VERSION:-latest}"
+          if [ "$FACTORY_CODEX_VERSION" != skip ]; then
+            npm install --global --no-audit --no-fund "@openai/codex@$FACTORY_CODEX_VERSION"
+          fi
+          FACTORY_CLAUDE_VERSION="${FACTORY_CLAUDE_VERSION:-latest}"
+          if [ "$FACTORY_CLAUDE_VERSION" != skip ]; then
+            npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@$FACTORY_CLAUDE_VERSION"
+          fi
+
+      - name: Check the CLI minor line
+        env:
+          FACTORY_CLI_MINOR: "0.8"
+        run: |
+          installed="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js --version)"
+          if [[ "${installed%.*}" != "$FACTORY_CLI_MINOR" || ! "${installed##*.}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected @paragondata/factory-cli $FACTORY_CLI_MINOR.x, installed ${installed:-nothing}. A new minor release needs an explicit upgrade; see factory docs runners." >&2
+            exit 1
+          fi
+          echo "Using @paragondata/factory-cli $installed."
+
+      - name: Configure Git author
+        run: |
+          git config --global user.name "paragon-factory[bot]"
+          git config --global user.email "paragon-factory[bot]@users.noreply.github.com"
+
+      # A cancel ends the active interruption through resume. It writes the runner record as the
+      # same author as every run, and it continues nothing: the run step and its outputs stay empty.
+      - name: Cancel the interruption
+        if: ${{ inputs.admission == 'cancel' }}
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: >-
+          node ./node_modules/@paragondata/factory-cli/dist/bin.js resume
+          --issue "$FACTORY_ISSUE" --cancel-interruption --apply
+          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR"
+
+      - name: Run one factory state
+        if: ${{ inputs.admission != 'cancel' }}
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
+        run: >-
+          node ./node_modules/@paragondata/factory-cli/dist/bin.js run
+          --issue "$FACTORY_ISSUE" --detect-workflow --workspace multigit --apply
+          --runner-admission "$FACTORY_ADMISSION"
+          ${FACTORY_GENERATION:+--generation "$FACTORY_GENERATION"}
+          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR" --chain-limit 10
+          --continue-output "$GITHUB_OUTPUT"
+
+  continue:
+    needs: run-state
+    if: ${{ needs.run-state.outputs.continue == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    env:
+      FACTORY_ISSUE: ${{ inputs.issue }}
+      FACTORY_GENERATION: ${{ needs.run-state.outputs.generation }}
+      FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Start the next run
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+        run: |
+          [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
+          [[ "$FACTORY_GENERATION" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "Not a canonical generation: $FACTORY_GENERATION" >&2; exit 1; }
+          gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
+            -f issue="$FACTORY_ISSUE" -f admission=continuation -f generation="$FACTORY_GENERATION"

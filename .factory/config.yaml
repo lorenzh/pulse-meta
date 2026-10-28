@@ -1,0 +1,128 @@
+version: 2
+
+# A meta repository: its issues, labels, and specs live here. The multi-Git workspace clones the
+# repository of each issue into .target/, and the agent works there. An issue without a target
+# label is a feature for the meta repository itself; factory target add attaches the others.
+project:
+  name: pulse-meta
+  root: ../.target
+
+runtime:
+  provider: github
+  stateBackend: labels
+  workflow: build
+  workspace: multigit
+  onHold: skip
+  onNoState: skip
+  recordAuthor: github-actions
+
+prompts:
+  preamble: ../.factory/prompts/preamble.md
+  variables:
+    work_directory: .factory/work
+
+providers:
+  github:
+    package: "@paragondata/factory-provider-github"
+    options:
+      repository: lorenzh/pulse-meta
+
+stateBackends:
+  labels:
+    package: "@paragondata/factory-state-labels"
+
+harnesses:
+  claude:
+    package: "@paragondata/factory-harness-claude"
+    structuredOutput: required
+    options:
+      permissionMode: auto
+
+workspaces:
+  multigit:
+    package: "@paragondata/factory-workspace-multigit"
+    options:
+      defaultTarget: meta
+      git:
+        branch: factory/{issue.id}-{issue.slug}
+        pullRequest:
+          title: "{issue.title}"
+          body: Refs lorenzh/pulse-meta#{issue.id}
+          draft: true
+        baseMerge:
+          workflows:
+            merge: agent
+      targets:
+        meta:
+          url: https://github.com/lorenzh/pulse-meta.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
+          workflows: [ spec, merge ]
+          context: []
+
+models:
+  worker:
+    harness: claude
+  reviewer:
+    harness: claude
+
+statuses:
+  needs-input:
+    source: agent
+    description: The agent needs a decision from a person.
+
+workflows:
+  spec:
+    initial: issue-review
+    states:
+      issue-review:
+        prompt: ../.factory/prompts/issue-review.md
+        model: reviewer
+        transitions:
+          - to: plan
+        description: Check the feature request for gaps before specifying it.
+      plan:
+        prompt: ../.factory/prompts/plan.md
+        model: worker
+        transitions:
+          - to: plan-review
+        description: Write the cross-repository spec with one section per repository.
+      plan-review:
+        prompt: ../.factory/prompts/plan-review.md
+        model: reviewer
+        transitions:
+          - to: plan
+        terminal: true
+        description: Review the spec; merging its pull request approves it.
+  build:
+    initial: implement
+    states:
+      implement:
+        prompt: ../.factory/prompts/implement.md
+        model: worker
+        transitions:
+          - to: review
+        description: Implement this repository's section of the approved spec.
+      review:
+        prompt: ../.factory/prompts/review.md
+        model: reviewer
+        transitions:
+          - to: implement
+        terminal: true
+        description: Review the change in a fresh agent session.
+  merge:
+    interrupt: true
+    initial: resolve
+    states:
+      resolve:
+        prompt: ../.factory/prompts/merge-resolve.md
+        model: worker
+        transitions:
+          - to: review
+        description: Merge the captured base commit and resolve conflicts on the issue branch.
+      review:
+        prompt: ../.factory/prompts/merge-review.md
+        model: reviewer
+        transitions:
+          - to: resolve
+        terminal: true
+        description: Verify the resolution and return to the interrupted workflow.

@@ -1,0 +1,37 @@
+name: Paragon Factory
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  admit:
+    if: ${{ startsWith(github.event.label.name, 'factory/') && github.event.sender.login != vars.FACTORY_GITHUB_ACTOR }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Start a factory run
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
+          FACTORY_SENDER: ${{ github.event.sender.login }}
+          FACTORY_ACTION: ${{ github.event.action }}
+          FACTORY_LABEL: ${{ github.event.label.name }}
+          FACTORY_ISSUE: ${{ github.event.issue.number }}
+          FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ -n "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::Set the repository variable FACTORY_GITHUB_ACTOR to the login of the Factory bot account." >&2; exit 1; }
+          if [[ "$FACTORY_SENDER" == "$FACTORY_GITHUB_ACTOR" ]]; then echo "Ignoring an event of the Factory bot."; exit 0; fi
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
+          state='^factory/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$'
+          status='^factory/[a-z0-9][a-z0-9-]*/status/[a-z0-9][a-z0-9-]*$'
+          admit=false
+          if [[ "$FACTORY_ACTION" == labeled && "$FACTORY_LABEL" =~ $state ]]; then admit=true; fi
+          if [[ "$FACTORY_ACTION" == unlabeled && "$FACTORY_LABEL" =~ $status ]]; then admit=true; fi
+          [[ "$admit" == true ]] || { echo "Not a factory state label added or status label removed: $FACTORY_LABEL"; exit 0; }
+          [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
+          gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
+            -f issue="$FACTORY_ISSUE" -f admission=label
