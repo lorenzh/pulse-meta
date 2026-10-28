@@ -30,7 +30,7 @@ Common to all five READMEs:
 - Grep of every README for env-style names finds only names present in the code.
 - Following only the meta README, a person starts api, probe and status locally and sees the check on http://localhost:8080.
 
-## Repository: meta (already done in this spec run)
+## Meta README (written in this spec run, not a child task)
 Not a child task. `README.md` was written in this repository with: product overview, repository table with links and roles, local run steps (clone, `npm ci`, inline example `checks.json` identical to `api/checks.example.json`, start api, probe, status, a `node -e` listener on port 9000, open :8080, expected states), settings table, the Factory statement, and the issue-to-PR flow derived from `.factory/config.yaml`. Reviewers verify it against the code.
 
 ## Repository: contract
