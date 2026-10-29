@@ -1,9 +1,1 @@
-[
-  {"name":"kit","dependsOn":[]},
-  {"name":"probe","dependsOn":["kit"]},
-  {"name":"status","dependsOn":["kit"]},
-  {"name":"notify","dependsOn":["kit"]},
-  {"name":"api","dependsOn":["kit","probe","status","notify"]},
-  {"name":"contract","dependsOn":[]},
-  {"name":"config","dependsOn":[]}
-]
+[{"name":"kit","dependsOn":[]},{"name":"contract","dependsOn":[]},{"name":"config","dependsOn":[]},{"name":"probe","dependsOn":["kit"]},{"name":"status","dependsOn":["kit"]},{"name":"notify","dependsOn":["kit"]},{"name":"api","dependsOn":["kit","probe","status","notify"]}]

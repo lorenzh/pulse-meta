@@ -176,6 +176,13 @@ Checks: `npm run check` (80 % coverage gate holds).
 
 Done when: the kit PR is merged on `main` with current `dist`; its merge commit SHA is what the children pin.
 
+## Repository: contract
+
+No dependency. Only `AGENTS.md`: add the rule "use pulse-kit, pulse-contract or an approved package before writing infrastructure code; propose an addition to pulse-kit instead of a local helper". No code change; `npm run check` passes.
+
+## Repository: config
+
+No dependency. Only `AGENTS.md`: the same rule. No code change; `npm run check` passes.
 ## Repository: probe
 
 Depends on kit. Files: `package.json`/`package-lock.json` (pin kit SHA), `Dockerfile` (only if the install needs a change), `src/settings.ts` (use `readPort`/`readString`, `StartupError`; keep `PULSE_HEALTH_PORT`/`PULSE_HEALTH_HOST`, default host `127.0.0.1`, same message texts via `describe`), `src/health.ts` (delete; use `startOpsServer` with `methodNotAllowed: "404"`, `live` always ready, `ready` from today's readiness), `src/metrics.ts` (build on `createRegistry`: same names, help, labels, bucket list, order; `setChecks` uses `remove`; `collect` where needed; delete local `escapeLabel`), `src/log.ts` (use kit logger and `readLogLevel`; same routing of lines), `src/main.ts` (use `runService`; `timeoutMs` as today; keep today's timeout log text and exit codes), `AGENTS.md` (rule), README/docs (accepted differences). Update `settings.test.ts`, `health.test.ts`, `metrics.test.ts`, `log.test.ts`, `main.test.ts` only for moved code; the behavior assertions stay.
@@ -200,10 +207,3 @@ Depends on kit, probe, status and notify (last; its `compose-e2e` builds the oth
 
 Done when: `npm run check` passes and `compose-e2e` is green: the services start, `/healthz`, `/readyz`, `/metrics` answer, a bad env value exits 2 with `pulse-<service>: <message>`, SIGTERM stops each service within its timeout.
 
-## Repository: contract
-
-No dependency. Only `AGENTS.md`: add the rule "use pulse-kit, pulse-contract or an approved package before writing infrastructure code; propose an addition to pulse-kit instead of a local helper". No code change; `npm run check` passes.
-
-## Repository: config
-
-No dependency. Only `AGENTS.md`: the same rule. No code change; `npm run check` passes.
