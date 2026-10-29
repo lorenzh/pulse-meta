@@ -17,7 +17,7 @@ No pulse-kit (S4), no shared API client (S2), no zod parsers for notify/status c
 | `retries` | integer 0..10 |
 | `retryDelayMs` | integer 0..60000 |
 | tls `port` | integer 1..65535 |
-| tls `warnDays` | integer >= 0 (the api default is 14; the plan caps at 3650) |
+| tls `warnDays` | integer >= 0, no upper bound (none is documented; the api default is 14). Contract and api enforce the same rule |
 | heartbeat `period` | integer 1000..86400000 (already) |
 | heartbeat `grace` | integer 0..86400000 (already) |
 | `uptime` (day and total) | null or number 0..100 |
@@ -65,7 +65,7 @@ As in the issue review: out-of-range check/uptime/date/window rejected by contra
 - Bump the contract pin only (it uses `validate*` through `api.ts`); `npm ci`; fix any tests matching validator messages or using out-of-range fixtures. Docs mention the bounds only if it documents contract validation. Evidence: all tests green; a test that a response with an out-of-range check is rejected where notify validates responses.
 
 ## Repository: api
-- Bump the contract pin (after contract merge; compose-e2e builds the others from `main`).
+- Bump the contract pin (after contract merge). Dependency order: api runs after contract, status, probe and notify, so it may assume `main` of status, probe and notify is already on the new contract; its `compose-e2e` (which builds those three from `main`) therefore tests the whole stack, including the new skew rule against the probe at the new contract.
 - `config.ts`: checks-file `intervalMs`, `timeoutMs` capped at 2147483647 (messages name the cap), `period`/`grace` keep 1000..86400000 and `grace` its range; also enforce the bounds table where the file sets `retries`, `retryDelayMs`, `port`, `warnDays`. Date parsing: `parseInstant` and any date-only parse reject rollover (validate the Y-M-D-h-m-s components against the parsed UTC/offset result by recomputing, e.g. day <= days in month, hour 0..23, minute/second 0..59, leap years); `2030-02-30T00:00:00Z` throws a `ConfigError` naming the field. Maintenance: `end` must be after `start` (already check; keep and test).
 - `server.ts`: replace the fixed `MAX_FUTURE_SKEW_MS` for POST /results by a function `maxFutureSkewMs(check) = min(check.intervalMs, 60000)`, with 60000 for heartbeat checks and unknown ids; the error message states the limit used. `validateResult` takes the check lookup. A 10 s check rejects a timestamp 30 s ahead; a 60 s+ check still allows up to 60 s.
 - Tests (fail on old code): each cap +1, `2030-02-30`, `2028-02-29` ok, skew per interval, unknown id fallback. Docs name the bounds and skew rule; mention that existing checks files outside the bounds fail to load.
