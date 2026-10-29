@@ -118,7 +118,7 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract and
 
    ```sh
    cd pulse-api && npm start                                  # port 3000
-   cd pulse-probe && PULSE_PROBE_TOKEN=<token> npm start
+   cd pulse-probe && PULSE_PROBE_TOKEN='<token>' npm start   # replace <token> with your token
    cd pulse-status && npm start                               # port 8080
    ```
 
