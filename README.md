@@ -40,11 +40,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open <http://localhost:8080>. The example check (`compose/checks.json`) probes the status page itself. Its state leaves `unknown` after the first 10 s interval.
+Open <http://localhost:8080>. The example check (`compose/checks.json`) probes the status page itself. The probe runs it right away and then every 10 s, so its state leaves `unknown` within seconds.
 
 - The token in `.env.example` is public. Replace `PULSE_PROBE_TOKEN` with `openssl rand -hex 32` before you expose the stack. Without a `.env` the API stops at start.
 - Change the host ports in `.env` with `PULSE_STATUS_PORT` (default 8080) and `PULSE_API_PORT` (default 3000, bound to 127.0.0.1).
-- Add checks in `compose/checks.json`, then run `docker compose up -d` and `docker compose restart probe`.
+- Add checks in `compose/checks.json`, then run `docker compose restart api` and then `docker compose restart probe`. Both read the checks once at startup, and `up -d` does not recreate the API for a changed checks file.
 - notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
 - Stop with `docker compose down`. The volumes keep the database and the notify ledger. `docker compose down -v` deletes them.
 
@@ -59,7 +59,7 @@ cd pulse-api
 docker compose --profile demo up demo-status
 ```
 
-Open <http://localhost:8081>. The demo has its own volumes and ports, so it does not clash with the regular stack. Clean up with `docker compose --profile demo down -v`. The demo tokens are public example values: never use them for a real deployment. The [pulse-api README](https://github.com/lorenzh/pulse-api#demo) lists each demo check, when it appears, and how to try a white-label theme.
+Open <http://localhost:8081>. The demo has its own volumes and ports, so it does not clash with the regular stack. Stop it with `docker compose --profile demo down`. Do not add `-v`: the demo and the regular stack share the Compose project `pulse`, so `-v` also deletes the `api-data` and `notify-data` volumes of the regular stack. To reset only the demo, remove its volumes after `down`: `docker volume rm pulse_demo-api-data pulse_demo-config`. The demo tokens are public example values: never use them for a real deployment. The [pulse-api README](https://github.com/lorenzh/pulse-api#demo) lists each demo check, when it appears, and how to try a white-label theme.
 
 ## Run all of pulse with npm
 
