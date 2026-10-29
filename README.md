@@ -56,7 +56,25 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract is 
 
    (This is `checks.example.json` of pulse-api. `timeoutMs` is optional and defaults to 5000.)
 
-4. Terminal 1, the API (port 3000). Start it first, because it loads the checks file:
+4. Create the tokens file. pulse-api refuses to start without a valid one, and the probe needs a token to post results. Generate a token:
+
+   ```sh
+   openssl rand -hex 32
+   ```
+
+   Save this as `pulse-api/tokens.json`, with your token in place of `<token>`. Keep the file out of git:
+
+   ```json
+   {
+     "tokens": [
+       { "location": "default", "token": "<token>" }
+     ]
+   }
+   ```
+
+   The location must equal the probe's `PULSE_LOCATION` (`default` when unset), otherwise the API rejects every result with 403.
+
+5. Terminal 1, the API (port 3000). Start it first, because it loads the checks file and the tokens file:
 
    ```sh
    cd pulse-api && npm start
@@ -64,37 +82,42 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract is 
 
    Node prints an experimental warning for `node:sqlite`. It is harmless.
 
-5. Terminal 2, the probe. It fetches the checks from the API and runs them:
+6. Terminal 2, the probe. It fetches the checks from the API and runs them. Use the token from step 4; `PULSE_LOCATION` is unset, so the location is `default`, which matches the token:
 
    ```sh
-   cd pulse-probe && npm start
+   cd pulse-probe && PULSE_PROBE_TOKEN=<token> npm start
    ```
 
-6. Terminal 3, the status page (port 8080):
+7. Terminal 3, the status page (port 8080):
 
    ```sh
    cd pulse-status && npm start
    ```
 
-7. Terminal 4, something for the check to find on port 9000:
+8. Terminal 4, something for the check to find on port 9000:
 
    ```sh
    node -e "require('node:http').createServer((q, r) => r.end('ok')).listen(9000)"
    ```
 
-8. Open <http://localhost:8080>. The check "Example endpoint" is listed. Its state is `unknown` until the first result arrives, then `up` within about a second. Stop the terminal 4 process and the state turns `down`; the third consecutive down result opens an incident, which the page shows. Start it again and the first up result resolves the incident. Without terminal 4 the check is `down` from the start.
+9. Open <http://localhost:8080>. The check "Example endpoint" is listed. Its state is `unknown` until the first result arrives, then `up` within about a second. Stop the terminal 4 process and the state turns `down`; the third consecutive down result opens an incident, which the page shows. Start it again and the first up result resolves the incident. Without terminal 4 the check is `down` from the start.
 
-Settings (all optional; see each repository's README for details):
+Settings (optional unless the default says required; see each repository's README for details):
 
 | Repository | Setting | Default |
 | --- | --- | --- |
 | pulse-api | `PORT` | `3000` |
 | pulse-api | `PULSE_DB` | `./pulse.db` |
 | pulse-api | `PULSE_CHECKS_FILE` | `./checks.json` |
+| pulse-api | `PULSE_TOKENS_FILE` | `./tokens.json` (file required) |
 | pulse-probe | `PULSE_API_URL` | `http://localhost:3000` |
+| pulse-probe | `PULSE_LOCATION` | `default` |
+| pulse-probe | `PULSE_PROBE_TOKEN` | none (required) |
 | pulse-status | `PORT` | `8080` |
 | pulse-status | `PULSE_API_URL` | `http://localhost:3000` |
 | pulse-status | `POLL_MS` | `5000` |
+
+When you enable tokens on a running deployment, give the probes their tokens first (an older API ignores the header), then enable tokens on the API. Otherwise ingestion stops.
 
 ## How a feature moves from an issue to merged pull requests
 
