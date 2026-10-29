@@ -1,0 +1,37 @@
+# Issue review: #163 API: bound and order probe results
+
+Verdict: specifiable. No blocking question. Only target `api` changes (docs included); `contract` only if the `timestamp` comment is updated.
+
+## Verified against `.repos/api`
+- `validateResult` (`server.ts`): `timestamp` only finite; `statusCode` integer or null (no 100–599); `latencyMs` finite >= 0 (no max); `reason` string/null (no length cap, only the 1 MB body cap `MAX_BODY`); `attempts` integer >= 1 (no max). Confirmed.
+- `service.ts` ingest: the window is evaluated at the result's own `timestamp`; `updateState`, `openIncident` and `resolveIncident` use it. Nothing compares against stored results. Confirmed. `resolve` using an old timestamp gives `resolvedAt < openedAt`.
+- `quorumStatus`: one reporting location decides alone, so a future-timestamp result isolates its location. Confirmed.
+- `tokens.ts`: only the `replace-with-` prefix is rejected; whitespace is not checked. `authenticate` matches `\S+`, so a token with whitespace never matches. Confirmed.
+- `.env.example` has `PULSE_PROBE_TOKEN=example-token-change-me-0000`; `docs/rest-api.md:60` uses `example-token-0123456789abcdef`.
+- No security headers exist in `server.ts`.
+
+## Open points and assumptions
+1. Timestamp bounds (the plan must choose and name them as constants). The probe sets `timestamp` to the start of the first attempt, and retries can span up to one interval. The max age must therefore be well above the largest check interval. Assumption: future skew about 60 s; max age to be derived (for example >= max check interval + retries, with a fixed floor such as 24 h), documented in `rest-api.md` and `concepts.md`. Retention (`PULSE_RETENTION_DAYS`, >= UPTIME_DAYS) must not be undercut: a result older than max age is rejected, not stored.
+2. Check the "far-future never pruned" claim against `retention.ts`. Rejecting future timestamps fixes it. Rows already stored with future timestamps are out of scope; the plan states whether a migration or cleanup is wanted (assumption: no).
+3. Late results: "older than the newest stored result of the same location for that check". Define ties (equal timestamp): assumption is that an equal timestamp is not late (processed as today), and only strictly older results are late. A late result is stored and does not touch `checks` state, incidents or `consecutiveDown`. Also decide that the `down` shortcut `inWindow`/`updateLast` (updates last timestamp/reason) is skipped for late results.
+4. Late results are stored, so they may enter later windows for other results. Window queries select by timestamp, so a late row could show up as a location's "latest" in a later quorum window only if it is the newest in that window. The plan must check that this cannot reintroduce stale state, and pin the behaviour with a test. Quorum rules must not change.
+5. "No incident can get `resolvedAt` before `openedAt`": the ordering rule covers same-location results. A different location's result with an older timestamp than `openedAt` can still resolve. The plan decides a guard (assumption: clamp or skip the resolve if `result.timestamp < openedAt`), and keeps it consistent with the non-goal on quorum.
+6. Which existing test locks in the old behaviour must be found and changed (`service.test.ts`); name it in the plan.
+7. `reason`: reject or truncate. Assumption: reject with 400 naming `reason`, with a constant (for example 1000 characters; check the probe's longest reason, e.g. fetch errors or keyword text, so honest probes are not rejected). Truncation would be safer for probes; the plan decides after reading `.repos/probe`.
+8. `attempts` maximum (assumption: a constant such as 100; compare with the probe's retry cap) and `latencyMs` maximum (the issue asks only finite >= 0; an upper bound is optional). `statusCode` 100–599. `certDaysLeft` has no bound; out of scope, mention only.
+9. Token validation: "every token appearing in `.env.example` and the docs" must be rejected. Known: `example-token-change-me-0000`, `example-token-0123456789abcdef`. The compose demo tokens (`demo-public-token-eu-0001`, `demo-public-token-us-0002`, in `compose.yaml` for a public demo stack) are not in `.env.example` or the docs. Assumption: they stay accepted, because the demo stack must start. The plan states this and checks the docs for further tokens (`grep` all docs). Docs examples must use an accepted token (not on the denylist, >= 16 chars), e.g. a clearly non-placeholder value. A test should assert that every token string found in `.env.example` and the docs is rejected or accepted as intended.
+10. Whitespace: reject any token containing whitespace (any `\s`), including leading/trailing. Clean startup error that never prints the token (existing convention).
+11. Compose consequence: `.env.example` is copied to `.env` and the example token is then rejected at startup. That is intended ("replace the example token"), but `docs/install.md`, `troubleshooting.md` and `configuration.md:96,113` must say so, and the troubleshooting entry for the error must be added. Consider whether `.env.example` should hold an empty/placeholder value; the issue requires the example token rejected, so `.env.example` may keep the value.
+12. Headers: apply to all API responses, including errors, 401, 404 and 413, and static/other routes. Check the `OPTIONS`/CORS handling in `server.ts` so nothing overwrites them. Exact values: `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`. Check that the status page proxy (target `status`) is unaffected; it consumes JSON only (assumption, plan verifies in `.repos/status`).
+13. Contract: `contract/src/*.ts` documents `Result.timestamp` (line ~60) without bounds; update the comment only if the plan names the bounds there. This is optional per the issue and has no runtime effect.
+14. Probe clock skew: a probe with a clock ahead of the API by more than the skew gets 400 forever. Document it in `troubleshooting.md`. Check how the probe handles a 400 on POST (drop and log, versus retry loop).
+
+## Derived acceptance check
+Against the API, each of these fails on the old code and passes on the new:
+- POST /results with a timestamp far in the future, a non-integer timestamp (1.5), and one older than the max age gives 400 with a message naming `timestamp`; a timestamp within skew is accepted.
+- With check state down/incident open by two locations, a strictly older `up` from the same location is stored (appears in results history) but the incident stays open, `consecutiveDown` and state are unchanged; `resolvedAt >= openedAt` always.
+- A result from another location with a normal timestamp still takes part in quorum as before.
+- Out-of-bounds `reason`, `attempts` (0, 1.5, above max), `latencyMs` (-1, NaN-like, not finite), `statusCode` (99, 600, 200.5) each give 400 naming the field; `statusCode: null` and valid edges are accepted.
+- `parseTokens` throws `TokensError` for `example-token-change-me-0000`, `example-token-0123456789abcdef`, and tokens with a space, tab or newline; error text contains no token; the docs example token is accepted.
+- Every response (200, 400, 401, 404) carries the three security headers.
+- `docs/concepts.md` (late results), `docs/rest-api.md` (validation rules and constants) and the token docs are updated; `npm test` (and lint/typecheck as the api `AGENTS.md` requires) passes.
