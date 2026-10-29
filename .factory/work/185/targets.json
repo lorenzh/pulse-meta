@@ -1,0 +1,1 @@
+[{"name":"contract","dependsOn":[]},{"name":"notify","dependsOn":[]},{"name":"api","dependsOn":[]},{"name":"probe","dependsOn":[]},{"name":"status","dependsOn":[]},{"name":"config","dependsOn":[]}]
