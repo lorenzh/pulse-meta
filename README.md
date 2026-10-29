@@ -57,7 +57,7 @@ Open <http://localhost:8080>. The example check (`compose/checks.json`) probes t
 
 - `.env.example` has a placeholder token (`replace-with-...`) that the API rejects at start, so the `sed` line above writes a random one. Without a `.env` the API stops at start too.
 - Change the host ports in `.env` with `PULSE_STATUS_PORT` (default 8080) and `PULSE_API_PORT` (default 3000, bound to 127.0.0.1).
-- Add checks in `compose/checks.json`, then run `docker compose restart api` and then `docker compose restart probe`. Both read the checks once at startup, and `up -d` does not recreate the API for a changed checks file.
+- Add or remove checks in `compose/checks.json`, then run `docker compose restart api`. The API reads the file once at startup, and `up -d` does not recreate it for a changed checks file. The probe reloads the checks from the API on its own within `PULSE_CHECKS_RELOAD_MS` (default 60 s). A removed check becomes inactive: it leaves `GET /checks`, its open incident is resolved, and its history stays.
 - notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
 - Stop with `docker compose down`. The volumes keep the database and the notify ledger. `docker compose down -v` deletes them.
 
