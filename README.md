@@ -48,12 +48,14 @@ The Compose file lives in pulse-api. It starts `api`, one `probe`, `status` and 
 git clone https://github.com/lorenzh/pulse-api.git
 cd pulse-api
 cp .env.example .env
+# Put a random token into .env. The placeholder in .env.example is rejected at start.
+sed -i.bak "s/^PULSE_PROBE_TOKEN=.*/PULSE_PROBE_TOKEN=$(openssl rand -hex 32)/" .env && rm .env.bak
 docker compose up -d --build
 ```
 
 Open <http://localhost:8080>. The example check (`compose/checks.json`) probes the status page itself. The probe runs it right away and then every 10 s, so its state leaves `unknown` within seconds.
 
-- The token in `.env.example` is public. Replace `PULSE_PROBE_TOKEN` with `openssl rand -hex 32` before you expose the stack. Without a `.env` the API stops at start.
+- `.env.example` has a placeholder token (`replace-with-...`) that the API rejects at start, so the `sed` line above writes a random one. Without a `.env` the API stops at start too.
 - Change the host ports in `.env` with `PULSE_STATUS_PORT` (default 8080) and `PULSE_API_PORT` (default 3000, bound to 127.0.0.1).
 - Add checks in `compose/checks.json`, then run `docker compose restart api` and then `docker compose restart probe`. Both read the checks once at startup, and `up -d` does not recreate the API for a changed checks file.
 - notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
