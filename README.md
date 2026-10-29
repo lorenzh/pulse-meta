@@ -29,6 +29,17 @@ In short:
 - The status page uses the losoft design by default. An operator can white-label it (name, logo, colours, fonts) with settings and a theme file. See the [pulse-status README](https://github.com/lorenzh/pulse-status#white-label).
 - All repositories are licensed under the MIT license. See [LICENSE](LICENSE).
 
+## Documentation
+
+Operator and developer documentation lives in each repository's `docs/` folder. Start at the index of the repository you need:
+
+- [pulse-api docs](https://github.com/lorenzh/pulse-api/blob/main/docs/index.md): install, Compose quick start, `checks.json` and `tokens.json`, the [REST API](https://github.com/lorenzh/pulse-api/blob/main/docs/rest-api.md) (results, incidents, checks), operation and troubleshooting.
+- [pulse-probe docs](https://github.com/lorenzh/pulse-probe/blob/main/docs/index.md)
+- [pulse-status docs](https://github.com/lorenzh/pulse-status/blob/main/docs/index.md): includes [theming and white label](https://github.com/lorenzh/pulse-status/blob/main/docs/theming.md).
+- [pulse-notify docs](https://github.com/lorenzh/pulse-notify/blob/main/docs/index.md): includes the [notification channels](https://github.com/lorenzh/pulse-notify/blob/main/docs/channels.md).
+- [pulse-contract docs](https://github.com/lorenzh/pulse-contract/blob/main/docs/index.md)
+- Cross-repository developer docs, in this repository: [docs/index.md](docs/index.md) (architecture, data flow, how a change runs through the Factory).
+
 ## Run all of pulse with Docker Compose
 
 The Compose file lives in pulse-api. It starts `api`, one `probe`, `status` and `notify`. You need Docker Compose 2.23 or newer and access to github.com: the probe, status and notify images are built from `main` of their repositories.
@@ -123,7 +134,7 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract and
    node -e "require('node:http').createServer((q, r) => r.end('ok')).listen(9000)"
    ```
 
-6. Open <http://localhost:8080>. The check "Example endpoint" is `unknown` until the first result arrives, then `up` within about a second. Stop the port 9000 process and the state turns `down`; the third consecutive down result opens an incident, which the page shows. Start it again and the first up result resolves the incident. With one probe, its location decides alone; with two or more locations, a check is down only when at least two of them report it down.
+6. Open <http://localhost:8080>. The check "Example endpoint" is `unknown` until the first result arrives, then `up` within about a second. Stop the port 9000 process and the state turns `down`; the third consecutive down result opens an incident, which the page shows. Start it again and the first up result resolves the incident. With one probe, its location decides alone. When more than one location reports in, a check is down only when at least two of them report it down.
 
 Settings (optional unless the default says required; each repository's README has the details):
 
