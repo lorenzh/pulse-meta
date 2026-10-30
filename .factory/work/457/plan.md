@@ -87,13 +87,23 @@ Only `api` (`lorenzh/pulse-api`): `src/` code and tests, the docs and the quick-
 
 ### 3. `certDaysLeft` range (`src/server.ts` `checkMeasurements`)
 
-- New constant `MAX_CERT_DAYS = 36_500`, exported next to the other limits. Accepted values are
-  absent, `null`, or an integer `n` with `-36500 <= n <= 36500`. Use the existing
+- New constant `MAX_CERT_DAYS = 3_000_000`, exported next to the other limits. Accepted values are
+  absent, `null`, or an integer `n` with `-3000000 <= n <= 3000000`. Use the existing
   `isIntegerIn(v, -MAX_CERT_DAYS, MAX_CERT_DAYS)`.
-- Anything else answers `400` `certDaysLeft must be null or an integer from -36500 to 36500`. The
-  message is built from the constant. If the contract validator rejects a non-integer first, its
-  message wins, as today.
-- A value in range (`30`, `-5`, `36500`, `-36500`) and `null` are stored and served as today.
+- Why this bound and not ±36500 (the issue's example): the probe does not verify the chain
+  (`probe/src/check.ts:38-47`, `rejectUnauthorized: false`) and posts
+  `floor((valid_to - now) / day)` for any leaf certificate (`check.ts:446`). RFC 5280 4.1.2.5 makes
+  `notAfter = 99991231235959Z` the standard value for a certificate with no expiry, which
+  self-signed appliance and BMC certificates use. From 2026 that is about 2 912 000 days; even with
+  a probe clock at the epoch it is about 2 932 900. X.509 and RDAP dates cannot go past year 9999,
+  so 3 000 000 covers every real value and still rejects absurd input (`1e9`, `2^53 - 1`). The
+  lower bound is symmetric: a real expired certificate is at most a few tens of thousands of days
+  in the past, and a symmetric range keeps the rule and its message simple.
+- Anything else answers `400` `certDaysLeft must be null or an integer from -3000000 to 3000000`.
+  The message is built from the constant. If the contract validator rejects a non-integer first,
+  its message wins, as today.
+- A value in range (`30`, `-5`, `2912000`, `3000000`, `-3000000`) and `null` are stored and served
+  as today.
 
 ### 4. Admin audit logging
 
@@ -193,8 +203,9 @@ export function createAdminAuthFailures(deps: {
   - Replace "the secret cannot post to `/results`" with both directions: a probe token cannot ping,
     and `POST /results` for a heartbeat check answers `403` for every probe token, so only a ping
     changes a heartbeat check.
-  - Next to `certDaysLeft` (TLS, line ~110, and domain, line ~172): the range −36500..36500 and
-    the `400` outside it.
+  - Next to `certDaysLeft` (TLS, line ~110, and domain, line ~172): the range
+    −3000000..3000000 days, that it covers certificates and registrations that expire in year 9999
+    ("no expiry"), and the `400` outside it.
 - `docs/operation.md`:
   - `## Logs`: add `admin auth failed` (warn, fields, rate limit, `suppressed`),
     `manual incident write` (info) and `manual incident write failed` (warn). Change "The log never
@@ -215,7 +226,9 @@ export function createAdminAuthFailures(deps: {
 - `docs/troubleshooting.md` `#400-on-post-results`: add the `certDaysLeft` message, plus a short
   entry for `403 heartbeat checks accept only pings` if the file has a status list for
   `POST /results`.
-- Quick start (`README.md:23`, `docs/install.md:11`, `docs/development.md:11`): say that the
+- Quick start (`README.md:23`, `docs/install.md:11`, `docs/development.md:11`, and the
+  `bun start` line in `AGENTS.md:103`, which also says to copy `checks.example.json` to
+  `checks.json`): say that the
   example's heartbeat `secret` (`nightly-backup`) must be replaced (or the check removed) before
   `bun start`, like the tokens.
 
@@ -225,9 +238,14 @@ export function createAdminAuthFailures(deps: {
   This is intended (the secret is public), but it is a breaking start. The upgrade note in
   `docs/operation.md` and the start message naming `checks[<i>].secret` make the fix obvious. An
   API that is already running only rejects the reload and keeps working.
-- **Domain check with an absurd RDAP expiry** (> 100 years) now gets `400` on every post. The probe
-  logs `dropping result for <id>: API answered HTTP 400` and the check goes silent instead of `up`.
-  This is very unlikely at ±36500 days and is documented.
+- **TLS or domain check with a far expiry**: a certificate with `notAfter = 9999-12-31` (RFC 5280
+  "no expiry", common on self-signed appliance and BMC certificates) gives about 2 912 000 days,
+  and an RDAP registry may answer a far date too. With a ±36500 bound every post of such a check
+  would get `400`, the probe would drop it (`dropping result for <id>: API answered HTTP 400`) and
+  a check that is `up` today would go silent. The bound ±3 000 000 covers every date up to year
+  9999 (the X.509 and RDAP maximum), even with a probe clock at the epoch, so no real value is
+  rejected. Only values that no real date can produce (such as `1e9`) get `400`; that case is
+  documented.
 - **Silent heartbeat-result writers**: none known. The probe skips `type: "heartbeat"`
   (`probe/src/client.ts:263`), and compose-e2e and bench never post heartbeat results. The one test
   that does (`service.idempotent.test.ts`) is rewritten.
@@ -296,8 +314,9 @@ One repository (`api`). No contract, kit or config change.
 
 Consumers that keep running:
 
-- **Probes on any pin**: they never post heartbeat results, and real certificate and domain values
-  are far inside ±36500 days.
+- **Probes on any pin**: they never post heartbeat results. Every `certDaysLeft` they can compute
+  from a real certificate or RDAP date (years up to 9999, about 2 912 000 days from 2026) is inside
+  ±3 000 000 days, so no probe result that is accepted today is rejected.
 - **status**: it proxies manual-incident writes. Its statuses do not change (`401`, `201`, …), so
   it keeps working, and its writes now also log the admin token's name.
 - **notify**: it does not use these routes.
@@ -328,9 +347,11 @@ The setup:
 | 10 | `"secret":"my-replace-with-secret-x"` (prefix not at start) | accepted | reject with `includes` instead of `startsWith` |
 | 11 | a 15-character secret | the existing length message (`is required: 16 to 128 …`) | — (the minimum is `MIN_TOKEN_LENGTH`) |
 | 12 | `POST /admin/checks` with `A`, a valid `If-Match` and a heartbeat check whose secret is `replace-with-xxxxxxxxxxxxxxxx` | `422`, message names `secret`, no value | `201` |
-| 13 | `certDaysLeft: 1e9` | `400` `certDaysLeft must be null or an integer from -36500 to 36500` | `204` (today) |
-| 14 | `certDaysLeft: 36501` / `-36501` | `400` | off-by-one with `<` |
-| 15 | `certDaysLeft: 36500` / `-36500` / `0` / `null` / absent | `204`, stored as sent (absent stays absent) | reject the bounds or `null` |
+| 13 | `certDaysLeft: 1e9` | `400` `certDaysLeft must be null or an integer from -3000000 to 3000000` | `204` (today) |
+| 14 | `certDaysLeft: 3000001` / `-3000001` / `9007199254740991` | `400` | off-by-one with `<`, or no upper bound |
+| 15 | `certDaysLeft: 3000000` / `-3000000` / `0` / `null` / absent | `204`, stored as sent (absent stays absent) | reject the bounds or `null` |
+| 15a | `certDaysLeft: 2912000` (a TLS certificate with `notAfter` 9999-12-31, posted in 2026) | `204`, stored and served by `GET /checks` | `400` with a ±36500 bound, so the check goes silent |
+| 15b | `certDaysLeft: 40000` (expiry about 110 years ahead) | `204` | `400` with a ±36500 bound |
 | 16 | `certDaysLeft: 30.5` | `400` (contract or api message) | store it |
 | 17 | `POST /manual-incidents` with `A` and a valid body, answering `201` with `id: 1` | exactly one info line `manual incident write` `{token:"ops", action:"create", id:"1"}` | log `token: <value>`, log the title, or log twice |
 | 18 | `POST /manual-incidents/1/updates`, `/1/resolve`, `DELETE /manual-incidents/1` with `A` | one info line each, action `update`, `resolve`, `delete`, id `"1"` | skip `delete` |
@@ -370,7 +391,7 @@ $ for n in pulse_api_admin_auth_failures_total recordAdminAuthFailure 'admin aut
   and `id` are reused with the meanings they already have in the `config write` lines. The new
   value set of `token` is kind `missing|unknown|probe` on `admin auth failed`.
 - Error text `heartbeat checks accept only pings`: new.
-- Error text `certDaysLeft must be null or an integer from -36500 to 36500`: replaces
+- Error text `certDaysLeft must be null or an integer from -3000000 to 3000000`: replaces
   `certDaysLeft must be an integer or null` (api only; the contract has no such text).
 - Config message `still has the example placeholder secret`: new.
 - Constants `MAX_CERT_DAYS`, `ADMIN_AUTH_LOG_WINDOW_MS`, module `src/admin-auth-failures.ts`: new.
@@ -399,7 +420,7 @@ Files:
   unchanged by the repeat), keeping its intent.
 - `src/server.heartbeat.test.ts`: counterexamples 1–7 (the `403` for `up` and `down`, unchanged
   state, results, incidents, and the `/metrics` `code="403"` count of 2).
-- `src/server.validation.test.ts` (or `server.test.ts`): counterexamples 13–16, and a spy showing
+- `src/server.validation.test.ts` (or `server.test.ts`): counterexamples 13–16 (with 15a and 15b), and a spy showing
   `findActiveCheck` runs once per `POST /results`.
 - `src/config.heartbeat.test.ts`: counterexamples 8–11.
 - `src/config.examples.test.ts`: `checks.example.json` now throws
@@ -417,7 +438,7 @@ Files:
 - Any other test that passes `adminTokens: [<string>]` or builds `AdminRoutesDeps` (found by
   `bun run typecheck`).
 - `docs/configuration.md`, `docs/operation.md`, `docs/rest-api.md`, `docs/troubleshooting.md`,
-  `README.md`, `docs/install.md`, `docs/development.md`: as in "5. Docs".
+  `README.md`, `docs/install.md`, `docs/development.md`, `AGENTS.md`: as in "5. Docs".
 
 Not changed: `checks.example.json` (keeps the placeholder), `scripts/compose-e2e.sh` (its
 assertions still hold: a probe-token manual write answers `401`, and its heartbeat secret
