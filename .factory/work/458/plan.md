@@ -91,7 +91,13 @@ Order of the reads and failure handling (fail closed):
    | `/api/components/uptime`, `/api/manual-incidents`, `/api/latency` | no | no |
 
    The route's own upstream read and the snapshot reads may run in parallel.
-3. If the route's own upstream read fails, the answer is the same error answer as today.
+3. If the route's own upstream read fails, the answer is the same error answer as today
+   (`fetchUpstream` in `src/server.ts`): an upstream HTTP error is forwarded with the upstream
+   status and `{"error":"API error"}` (for example `500`), invalid JSON or a wire mismatch is
+   `502 {"error":"invalid API response"}`, and an unreachable api is `502`. This rule wins over
+   step 4: for `/api/components` the components read *is* its own read, so a `/components`
+   upstream `500` gives `500 {"error":"API error"}` there, exactly as today, and never data.
+   Likewise a failed `/checks` read gives today's error answer on `/api/checks`.
 4. If the route's own read succeeds but a snapshot read the route needs (per the table) fails,
    the answer is `502` with the generic body today's proxy uses for that failure kind. That
    covers a non-200 status, a timeout, a network error, invalid JSON, a wire mismatch, or a body
@@ -178,7 +184,7 @@ in `dnsCheckSchema`.
     mode answers above (`/api/checks` and `/api/uptime` empty; incident, maintenance and component
     check ids replaced by keys made from component ids, or `service`; fail closed with `502`
     while components cannot be read, and for incidents and maintenance also while checks cannot
-    be read; the open-incident count leaves out incidents of removed checks).
+    be read; `/api/components` itself keeps the upstream error answer, as today; the open-incident count leaves out incidents of removed checks).
   - Feed bullet: fix "instead of the check, An incident" → "instead of the check. An incident".
   - DNS sentence (~49): replace "`expected` and `resolver` of a DNS check are passed on but not
     drawn" with "`expected` and `resolver` of a DNS check are never served".
@@ -197,8 +203,10 @@ in `dnsCheckSchema`.
   missing or wrong for at most one cache period. Today's per-path caching already has this skew.
   Mitigation: all keys come from one function of (component order, membership, active ids), so
   equal upstream data always gives equal keys.
-- **Fail closed costs availability.** If `/components` upstream fails, the hidden-mode routes of
-  the table answer `502`; if only `/checks` fails, only `/api/checks`, `/api/incidents?…` and
+- **Fail closed costs availability.** If `/components` upstream fails, `/api/checks`,
+  `/api/uptime`, `/api/incidents?…` and `/api/maintenance` answer `502` (a failed snapshot read,
+  step 4), and `/api/components` keeps today's error answer for its own read (step 3: the upstream
+  status with `API error`, for example `500`; `502` for invalid JSON or an unreachable api); if only `/checks` fails, only `/api/checks`, `/api/incidents?…` and
   `/api/maintenance` fail, and `/api/components` and component badges keep working. The page treats incidents, maintenance and components as required,
   so it shows the existing error banner and keeps the last data. That is the same as today when
   `/components` fails, because the page needs it anyway. The feed and component badges answer
@@ -224,10 +232,15 @@ in `dnsCheckSchema`.
 Status only. The api's `bench/budgets.json` metrics (`startup_cpu_ms`, `load_cpu_s`,
 `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, build CPU, wall-clock startup, p95 latency, rps,
 image size) measure pulse-api, and this change does not touch the api's code. None of them moves:
-none expected. On the status server, every upstream path is read through one shared raw cache,
-so hidden mode adds no upstream call: `/components` and `/checks` are already read once per
-period by any visiting page, and the snapshot reuses those reads. Total: at most one upstream
-call per upstream path per cache period, in every mode. Hidden mode adds a linear pass over
+none expected. On the status server, every upstream path is read through one shared raw cache.
+With caching on (the default, `DEFAULT_CACHE_MS = 2000`), hidden mode adds no upstream call:
+`/components` and `/checks` are already read once per period by any visiting page, and the
+snapshot reuses those reads. Total: at most one upstream call per upstream path per cache period,
+in every mode. With `PULSE_STATUS_CACHE_MS=0` nothing is cached across answers, so hidden mode
+adds upstream reads per answer: up to two (`/components` and `/checks`) per
+`/api/incidents?…` or `/api/maintenance` answer, one (`/components`) per `/api/checks` or
+`/api/uptime` answer, and none for `/api/components` (it reuses its own read). Shown mode adds
+none in either setting. Hidden mode adds a linear pass over
 already parsed arrays. The implementer confirms with the existing `server.cache.test.ts` style:
 count the fake-api calls per cache period with two concurrent page loads in hidden mode and in
 shown mode; each upstream path gets at most one call.
@@ -283,6 +296,8 @@ Each case below is a hard rule that a wrong implementation would get wrong.
    mode. A wrong implementation that keeps orphans (for example keyed `service`) gives 2.
 7. **Components read fails** (`/components` answers 500 upstream) while `hasChecks` is false:
    `/api/incidents?status=open` answers `502`, never the incident list with real `checkId`s.
+   `/api/components` answers `500 {"error":"API error"}` as today (its own read, step 3); a wrong
+   implementation that rewrites it to `502`, or serves `checkIds` from another source, fails.
 7a. **Only the checks read fails** (`/checks` answers 500, `/components` fine) while `hasChecks`
    is false: `/api/components` answers `200` with hidden keys and `/badge/component/shop.svg` is
    `200`; `/api/incidents?status=open` and `/api/maintenance` answer `502`. A wrong
@@ -336,7 +351,8 @@ Files:
   hidden" changes: `ns-answer.internal` and `RESOLVER` are expected absent in both outputs)
 - `src/server.ts` (single-flight raw cache keyed by upstream path, shared by served answers and
   snapshots; hidden mode rewrite after `filterApiBody`; per-route snapshot needs; fail closed
-  with `502`)
+  with `502` on a failed snapshot read, today's error answer on a failed own read; hidden-mode
+  upstream reads with `PULSE_STATUS_CACHE_MS=0` as in "Performance impact")
 - `src/server.cache.test.ts` (one call per upstream path per period, in hidden and shown mode)
 - `src/components-view.ts` (`HIDDEN_CHECK_KEY`; `checkLabels` hidden branch)
 - `src/components-view.test.ts`
@@ -392,8 +408,10 @@ Checks (TDD, written first and seen failing on `main`):
    - the browser poller (`createPoller` against the proxy answers) refreshes with `error: null`,
      which proves the contract validation passes.
 4. **Fail closed**: the fake `/components` answers 500 (and, in a second case, malformed JSON).
-   `/api/incidents?status=open`, `/api/maintenance`, `/api/components`, `/api/checks` and
-   `/api/uptime` answer `502` and contain no sentinel. `/api/components/uptime` and
+   `/api/incidents?status=open`, `/api/maintenance`, `/api/checks` and `/api/uptime` answer
+   `502` and contain no sentinel. `/api/components` keeps today's error answer for its own read
+   (step 3): `500 {"error":"API error"}` when the fake answers 500, and
+   `502 {"error":"invalid API response"}` for malformed JSON; neither contains a sentinel. `/api/components/uptime` and
    `/api/manual-incidents` are unaffected. Second part: only the fake `/checks` answers 500.
    `/api/components` answers `200` with hidden keys, `/badge/component/shop.svg` is `200`,
    `/api/incidents?status=open` and `/api/maintenance` answer `502` without sentinel
