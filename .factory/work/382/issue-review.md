@@ -1,0 +1,39 @@
+# Issue review: #382 TCP, DNS and domain-expiry checks
+
+Verdict: specifiable. No blocking question; the open points below get assumptions.
+
+## Observed on main
+- api `src/db.ts`: `checks` already has `host`, `port`, `warn_days` (TLS) but `url TEXT NOT NULL`. Schema is `CREATE TABLE IF NOT EXISTS`; `docs/operation.md` says "no upgrade path". No `user_version` yet.
+- contract: check union is http/tls/heartbeat (`schema.ts`, `validate.ts` has a per-type switch with the message `must be "http", "tls" or "heartbeat"`; heartbeat has an extra unknown-key guard). `WIRE_VERSION` = 1.
+- `certDaysLeft` exists on results and on the check state (schema.ts ~329, 346, 401).
+
+## Open points (assumptions for the plan)
+1. **`checks.url` NOT NULL.** tcp/dns/domain have no URL. Migration 1 must make it nullable or the api must store a placeholder. SQLite cannot drop NOT NULL by `ALTER`; it needs a table rebuild (create new, copy, drop, rename), which fits "plain SQL step, keep all rows" but must produce the same schema as a fresh file (fresh = today's schema + migration 1). Assumption: rebuild the table in migration 1; a test compares `sqlite_master` of fresh and upgraded files.
+2. **New columns.** `host`, `port`, `warn_days` are reused for tcp (`host`, `port`) and domain (`warn_days`). New: `name`-like DNS columns (`dns_name`, `record_type`, `expected_json`, `resolver`) and `domain`. The plan fixes the names. Also decide whether `checks.type` gets a CHECK constraint (assumption: no).
+3. **Days-left field.** Assumption: reuse `certDaysLeft` for `domain` (the issue allows it) and document it in contract, status and concepts docs; no new field, so no wire change. Plan must state it.
+4. **Domain input.** "Registrable name" is not validated against the public suffix list (would need a dependency). Assumption: validate as a hostname with at least two labels, lowercase, no scheme/port/path; RDAP lookup uses the TLD from the bootstrap. Public-suffix TLDs like `co.uk` fall back to the last label for the bootstrap lookup.
+5. **RDAP details.** Expiry = event with `eventAction: "expiration"`. Bootstrap `dns.json` cached 1 day in memory only; on fetch failure, use stale cache if present. Follow the RDAP service URL from the bootstrap, prefer https. A missing expiry event counts as "unknown" (down after retries). Redirects are bounded. Response size capped (memory budget).
+6. **State for `domain`.** "TLS rule" assumed: up if days left > `warnDays`, degraded if 0 < days <= `warnDays`, down if expired (<= 0) or unknown after retries. The plan copies exact boundaries from the probe's TLS code.
+7. **Minimum interval 1 h** for `domain`: enforced in the contract schema (superRefine on that type) and mirrored in the api checks-file parse via the contract. The probe's default interval for `domain` must also be >= 1 h (assumption: default 24 h if the field is optional elsewhere; otherwise required).
+8. **`timeoutMs` upper bound vs. `intervalMs`** follow the existing rules; no new constraint.
+9. **DNS `expected` semantics.** Normalize names (lowercase, trailing dot stripped) for CNAME/MX/NS; MX values compared as `priority exchange` or exchange only? Assumption: expected MX entries are `"<priority> <exchange>"` strings as in the answer; TXT chunks joined. A/AAAA compared in canonical form (IPv6 compressed/lowercased). Empty `expected` array is rejected (omit it instead). Resolver must be an IP (v4/v6); no port, no hostname.
+10. **DNS timeout.** `node:dns` `Resolver` has `timeout`/`tries`; the probe must enforce `timeoutMs` and the shutdown signal itself (`resolver.cancel()`). NXDOMAIN (`ENOTFOUND`) vs. no data (`ENODATA`) give distinct reasons.
+11. **Older probe + new api.** The issue states an older probe skips unknown types and logs it. Assumption verified in the plan by reading the probe's check loading: if the old probe instead rejects the whole `/probe/checks` response, the api would have to filter by a probe-declared capability, which would break "WIRE_VERSION stays 1". The plan must check this against probe `main` and, if the old behavior is "reject all", report it back as a blocking conflict. Also the old probe's contract validator (`validate.ts`) rejects an unknown `type` with an error; the plan must confirm the probe catches this per check, not for the whole list.
+12. **Privacy/redaction.** `host`, `dns name`, `resolver`, `domain`, `expected` values are private by default like `url`; the plan lists each against the existing redaction rules in api and status (public status page, `GET /checks`). `port` of a tcp check is treated as part of the target.
+13. **Status.** Renders `tcp`/`dns`/`domain` generically; `domain` shows days left like TLS. The status contract dependency means status needs the new contract version only for type recognition; its display of unknown types in the meantime is out of scope.
+14. **compose.** TCP check targets a service in the stack (e.g. the api itself on its port). DNS check offline: resolver set to a stub/compose DNS service or Docker's embedded DNS resolving a service name (`A` record of a compose service name). The plan picks one and keeps it free of internet. `domain` only in `checks.example.json`.
+15. **Mutation evidence** ("each new test fails on the old code"): the plan lists the tests per repo and how the PR shows the mutation output; this is a PR-description duty, not a code feature.
+16. **Performance impact section** (#377) is required in the spec: per-interval work (one socket / one DNS query / at most one RDAP request per hour per domain), DNS Resolver instances created per check vs. shared, RDAP bootstrap cache (a few hundred KB parsed; keep only the TLD to URL map), response size cap.
+17. **Migration mechanics.** The runtime is Bun (`bun:sqlite`). `PRAGMA user_version` is set via literal SQL (no parameters); migrations run in one transaction (`BEGIN IMMEDIATE`). Exit code 2 with a clear message for `user_version` > known. A fresh file: run today's `SCHEMA`, then migrate from 0. A version-0 file with a partial schema is out of scope. Downgrade not supported (documented). Replace the sentence in `docs/operation.md` line 23.
+18. **Dependency order.** contract first, then probe/api/status in parallel; `targets.json` `dependsOn` for all three on `contract`. The api compose demo and `compose-e2e` need the new probe; both live in api (assumption: where `compose-e2e` exists today; plan confirms).
+
+## Derived acceptance check
+Using the stub servers (no internet):
+- tcp: open local port up; closed port down with a reason naming the refusal (`ECONNREFUSED`); black-holed address down after `timeoutMs`; nothing is sent, the socket closes at once.
+- dns: stub resolver with expected values up; mismatch down with expected and actual values in the reason; NXDOMAIN down; timeout down.
+- domain: stub RDAP + stub bootstrap: days left reported (as `certDaysLeft`), degraded within `warnDays`, down when expired, down when unknown after retries; bootstrap fetched once per day; `intervalMs` < 1 h rejected in the contract and the checks file.
+- contract: schemas accept/reject per field range, timers capped at 2^31-1, `WIRE_VERSION` still 1.
+- api: checks file with the three types is stored and served via `GET /probe/checks` and `GET /checks` with redaction; unknown keys rejected. Version-0 file (made with the main schema, containing checks, results, incidents) upgrades in place to `user_version` 1 with all rows kept; fresh file ends at version 1 and `sqlite_master` equals the upgraded one; `user_version` 2 file exits 2 with a clear error.
+- status: new types render with state, uptime, incidents; `domain` shows days left; no target fields without the settings.
+- Old probe with new api: new checks stay `unknown`, skip logged, other checks unaffected.
+- CI green in contract, probe, api, status; `compose-e2e` runs a TCP and a DNS check.
