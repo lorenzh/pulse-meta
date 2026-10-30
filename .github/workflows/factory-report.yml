@@ -1,0 +1,56 @@
+name: Factory report
+
+# Builds the Factory report from the public issues, Actions runs and pull requests of the pulse
+# repositories and publishes it on GitHub Pages.
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'report/**'
+      - '.github/workflows/factory-report.yml'
+
+concurrency:
+  group: factory-report
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Build the report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node report/generate.mjs _site
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
