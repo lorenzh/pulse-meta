@@ -6,6 +6,7 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 - Feature issues, specs (`.factory/work/<issue>/plan.md`, `targets.json`), Paragon Factory config (`.factory/config.yaml`, `.factory/prompts/`) and runner workflows (`.github/workflows/factory*.yml`).
 - No product code. Never change a target repository by hand from here: write a feature issue and let Factory build it.
 - Targets: `contract`, `probe`, `api`, `status`, `notify`, `config`, `kit` (`lorenzh/pulse-<name>`). Their code conventions are in each target's `AGENTS.md`.
+- Runtime dependencies in a target come only from [docs/approved-packages.md](docs/approved-packages.md).
 
 ## How a feature flows
 1. A person opens a feature issue here.
