@@ -57,6 +57,15 @@ Colours (light, dark), type styles, spacing and radii come from `design/website/
 - Link rewriting (`src/docs/links.ts`, tested): relative `.md` link to a published file → site URL (+ anchor); `../../<other repo>/...`-style or `../` links to any other file → `https://github.com/<repo>/blob/<sha>/<path>`; `http(s)` stays, external links get `rel="noopener"`; image links resolve to GitHub raw only if images are published (none are: render as link). A `#anchor` is checked against the target's heading ids; a dangling anchor fails the build.
 - Renderer: `marked` with raw HTML escaped, headings with ids, tables wrapped in a focusable scroll region (`tabindex="0"`, `role="region"`, label), code blocks with `<pre>` + copy button island, language tokens for json/yaml/bash, task lists and blockquotes, "Warning/Note" blockquote styles as in the design.
 
+
+### Licensing (added by the approver, decided by the owner)
+- Code (build, components, scripts, styles): MIT; the existing `LICENSE` stays.
+- Generated docs: MIT, as in their source repos; each generated page names its source file and repo.
+- Hand-written content (home and hosted text, illustrations; keep it in one folder such as `src/content/`): CC BY 4.0, in a `LICENSE-content` file with the full licence name and link.
+- The names "pulse" and "losoft" and their logos are not licensed (all rights reserved); `LICENSE-content` and the README say so.
+- Fonts keep their OFL-1.1 licence from the `@fontsource-variable` packages.
+- README "License" section with these points; the footer reads "Code MIT · Content CC BY 4.0" with links.
+
 ### Pages
 - **Home** `/` from `Main.dc.html`: hero with the terminal block, status mock, architecture diagram, how it works, quick start teaser, link to hosted and docs, footer. All product facts are written against these sources (each is a constant in `src/content/facts.ts` with its source path in a comment, and a test that reads the pinned docs fixture or the repo list and checks the claims that can be machine-checked, such as env var names and ports in `install.md`):
   - check types, `checks.json` example: pulse-contract `src/` check schema and `checks.example.json` in pulse-api (the sample on the page must be a prefix-valid copy of the example or validated with the contract's parser in a script test; prefer copying the example from the pinned file).
