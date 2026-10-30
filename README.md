@@ -47,7 +47,7 @@ Operator and developer documentation lives in each repository's `docs/` folder. 
 
 ## Run all of pulse with Docker Compose
 
-The Compose file lives in pulse-api. It starts `api`, one `probe`, `status`, `notify` and `e2e-target`, a small test server for one of the example checks. You need Docker Compose 2.23 or newer and access to github.com: the probe, status and notify images are built from `main` of their repositories.
+The Compose file lives in pulse-api. It starts `api`, one `probe`, `status` and `notify`. You need Docker Compose 2.23 or newer and access to github.com: the probe, status and notify images are built from `main` of their repositories.
 
 ```sh
 git clone https://github.com/lorenzh/pulse-api.git
@@ -58,11 +58,7 @@ sed -i.bak "s/^PULSE_PROBE_TOKEN=.*/PULSE_PROBE_TOKEN=$(openssl rand -hex 32)/" 
 docker compose up -d --build
 ```
 
-Open <http://localhost:8080>. `compose/checks.json` holds three checks that the CI end-to-end test also uses:
-
-- `Status page` probes the status page itself every 10 s. It turns `up` within seconds.
-- `E2E POST` sends a `POST` with a JSON body and an `Authorization` header from the probe's environment to `e2e-target`. It turns `up`.
-- `Heartbeat e2e` is a heartbeat check that nothing pings. It turns `down` a few seconds after the start and opens an incident, so notify writes one line to its file. Remove it from `compose/checks.json` if you do not want that.
+Open <http://localhost:8080>. The example check `Status page` (`compose/checks.json`) probes the status page itself. The probe runs it right away and then every 10 s, so it turns `up` within seconds. A fresh start has no down check and no incident.
 
 Only the status page is public. It serves the page and five read-only API paths through its proxy. The API listens on `127.0.0.1` only.
 
@@ -71,6 +67,7 @@ Only the status page is public. It serves the page and five read-only API paths 
 - Add or remove checks in `compose/checks.json`, then run `docker compose restart api`. The API reads the file once at startup, and `up -d` does not recreate it for a changed checks file. The probe reloads the checks from the API on its own within `PULSE_CHECKS_RELOAD_MS` (default 60 s). A removed check becomes inactive: it leaves `GET /checks`, its open incident is resolved, and its history stays.
 - notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
 - Health: Docker checks `api` on `/readyz`, and `probe`, `status` and `notify` on `/healthz`. See [Health, readiness and metrics](#health-readiness-and-metrics).
+- The end-to-end test fixtures are not part of this stack. They live in pulse-api's `compose.e2e.yaml` and `compose/e2e/`, used only by `scripts/compose-e2e.sh`.
 - Stop with `docker compose down`. The volumes keep the database and the notify ledger. `docker compose down -v` deletes them.
 
 Details: [pulse-api install, With Docker Compose](https://github.com/lorenzh/pulse-api/blob/main/docs/install.md#with-docker-compose).
