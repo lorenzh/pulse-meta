@@ -14,7 +14,8 @@ labels.
 
 - **Hidden mode**: `PULSE_STATUS_SHOW_CHECKS` is off (`hasChecks` false) **and** the upstream
   `GET <api>/components` returns a non-empty list. Without components the page shows checks by
-  name by design ("has no effect without components"), so that case stays unchanged. With
+  name by design ("has no effect without components"), so the served bodies of that case stay
+  unchanged (the server still reads `/components` to find out, see Required behavior step 5). With
   `PULSE_STATUS_SHOW_CHECKS=true` nothing changes. In both cases the only exception is the DNS
   rule (`expected` and `resolver` are never served, in any mode).
 - **Snapshot**: what the server must know in order to filter in hidden mode. It is read from the
@@ -107,7 +108,15 @@ Order of the reads and failure handling (fail closed):
    `/api/incidents?…` and `/api/maintenance`; `/api/components`, component badges and the
    components part of the page stay available.
 5. Snapshot components `[]` means not hidden mode: the route is served as today (checks shown by
-   design), except for the DNS rule.
+   design), except for the DNS rule. The served *bodies* are then unchanged, but the read itself
+   is new: whether components exist is known only after reading `/components`, so with
+   `hasChecks` false (the default) every `/api/checks`, `/api/uptime`, `/api/incidents?…` and
+   `/api/maintenance` answer reads `/components` (and incidents and maintenance also `/checks`)
+   even when the deployment has no components. Step 4 applies there too: a `/components` body
+   that is not a valid components list (for example `[{"id":"a"}]` without `checkIds`) gives
+   `502` on those routes. This is intended (fail closed: an invalid components answer must not
+   be read as "no components"). Only `hasChecks` true adds no read at all. The existing tests
+   this affects are listed under "Existing tests that change".
 6. **One upstream call per path per cache period (required reuse).** Every upstream read of the
    proxy goes through one single-flight raw cache keyed by the upstream path (for example
    `raw:/components`, `raw:/checks`, `raw:/incidents?status=open`), with the same `cacheMs`. The
@@ -216,14 +225,19 @@ in `dnsCheckSchema`.
   `validateMaintenanceResponse` and `validateComponentsResponse` keep passing. `[]` passes
   `validServedChecks` and `validateUptimeResponse`.
 - **Regression in shown mode.** All hidden-mode code is behind `hasChecks === false`. Existing
-  tests with checks shown or without components must pass unchanged, except tests that assert
-  DNS `expected` or `resolver` in a served body. On `20ccc80` that is one test:
+  tests with `showChecks: true` must pass unchanged, except tests that assert DNS `expected` or
+  `resolver` in a served body. Existing tests with `showChecks` false (the default) change only
+  as listed under "Existing tests that change" (new `/components` read, hidden mode where the
+  fixture has components). The DNS test that changes on `20ccc80` is one test:
   `src/api-filter.test.ts` "tcp, dns and domain targets are served only when not hidden", whose
   `TARGET_STRINGS` includes `ns-answer.internal` and `RESOLVER` and expects them in the shown
   output. It changes to expect those two strings absent in both outputs, while `dns.internal`
   stays expected when shown. (`grep -rn 'resolver\|expected:' src e2e` finds no other.)
 - **Raw cache refactor.** Moving the cache below the filter (required reuse) touches every
-  proxied route. The existing `server.cache.test.ts` tests guard it and must pass unchanged.
+  proxied route. The existing `server.cache.test.ts` tests guard it. Four of them run with the
+  default `showChecks` false and count every upstream call, so they gain `showChecks: true`
+  (see "Existing tests that change") and then must pass with their assertions unchanged; the new
+  Check 6 covers the call counts with `showChecks` false.
 - **Cognitive complexity ≤ 15 (SonarJS).** Put the key logic in a new pure module instead of
   growing `fetchUpstream`.
 
@@ -239,8 +253,14 @@ snapshot reuses those reads. Total: at most one upstream call per upstream path 
 in every mode. With `PULSE_STATUS_CACHE_MS=0` nothing is cached across answers, so hidden mode
 adds upstream reads per answer: up to two (`/components` and `/checks`) per
 `/api/incidents?…` or `/api/maintenance` answer, one (`/components`) per `/api/checks` or
-`/api/uptime` answer, and none for `/api/components` (it reuses its own read). Shown mode adds
-none in either setting. Hidden mode adds a linear pass over
+`/api/uptime` answer, and none for `/api/components` (it reuses its own read). The same extra
+reads apply with `showChecks` off **without** components (the default deployment), because the
+server must read `/components` to learn that the list is empty: with caching on they are shared
+with the page's own `/components` and `/checks` reads (no extra call per period); with
+`PULSE_STATUS_CACHE_MS=0` they are the same per-answer counts as in hidden mode (one
+`/components` read per checks or uptime answer, `/components` plus `/checks` per incidents or
+maintenance answer). Only `showChecks: true` adds no read in either setting. Hidden mode adds a
+linear pass over
 already parsed arrays. The implementer confirms with the existing `server.cache.test.ts` style:
 count the fake-api calls per cache period with two concurrent page loads in hidden mode and in
 shown mode; each upstream path gets at most one call.
@@ -304,7 +324,9 @@ Each case below is a hard rule that a wrong implementation would get wrong.
    implementation that makes `/api/components` depend on `/checks` answers `502` there.
 8. **Components read returns `[]`**: not hidden mode. `/api/checks` lists checks with ids and
    names as today. The output must equal today's output byte for byte, except that DNS checks
-   lack `expected` and `resolver`.
+   lack `expected` and `resolver`. The `/components` read itself is new (step 5); a wrong
+   implementation that treats a malformed `/components` body as "no components" and serves ids
+   fails (it must answer `502`).
 9. **`PULSE_STATUS_SHOW_CHECKS=true` with components**: no extra upstream reads (fake-api call
    counts per path unchanged) and answers identical to today's, except the DNS rule.
 9a. **Double read**: in hidden mode, one load of `/api/components` with `PULSE_STATUS_CACHE_MS`
@@ -353,16 +375,19 @@ Files:
   snapshots; hidden mode rewrite after `filterApiBody`; per-route snapshot needs; fail closed
   with `502` on a failed snapshot read, today's error answer on a failed own read; hidden-mode
   upstream reads with `PULSE_STATUS_CACHE_MS=0` as in "Performance impact")
-- `src/server.cache.test.ts` (one call per upstream path per period, in hidden and shown mode)
+- `src/server.cache.test.ts` (one call per upstream path per period, in hidden and shown mode;
+  four existing tests gain `showChecks: true`, see "Existing tests that change")
 - `src/components-view.ts` (`HIDDEN_CHECK_KEY`; `checkLabels` hidden branch)
 - `src/components-view.test.ts`
 - `src/feed.ts` (`entries` keeps incidents labelled by components or `HIDDEN_CHECK_KEY` in hidden
   mode)
 - `src/feed.test.ts`
 - `src/poller.ts` (comment only, if it names DNS `expected`/`resolver`)
-- `src/server.privacy.test.ts` (or a new `src/server.hidden-checks.test.ts`): sentinel and DNS
-  tests
-- `src/server.components.test.ts` and `src/server.syndication.test.ts`: page, feed and badge
+- `src/server.privacy.test.ts` (fake `start` helper: `/components` answers `[]` unless set) and
+  the sentinel and DNS tests (there or in a new `src/server.hidden-checks.test.ts`)
+- `src/server.components.test.ts` (the ~104 end-to-end test changes, see "Existing tests that
+  change"), `src/server.ssr.test.ts` (only if needed, same section) and
+  `src/server.syndication.test.ts`: page, feed and badge
   behavior in hidden mode
 - `e2e/run.ts` (only if the components cell needs a hidden-check incident or maintenance window
   to show the labels)
@@ -416,11 +441,48 @@ Checks (TDD, written first and seen failing on `main`):
    `/api/components` answers `200` with hidden keys, `/badge/component/shop.svg` is `200`,
    `/api/incidents?status=open` and `/api/maintenance` answer `502` without sentinel
    (Counterexample 7a).
-5. **Unchanged modes**: with `showChecks: true` (with components), and with `showChecks: false`
-   without components, the existing tests pass unchanged, except the one DNS assertion in
-   `src/api-filter.test.ts` named above, which changes to expect `expected` and `resolver`
-   absent. One explicit test compares the bodies to the output of `filterApiBody` alone (with the
-   new DNS rule) and checks that the fake api gets no extra `/components` or `/checks` calls.
+5. **Unchanged modes**: existing tests pass with only the changes listed under "Existing tests
+   that change" below. Two explicit new tests:
+   - `showChecks: true` with components: the bodies equal the output of `filterApiBody` alone
+     (with the new DNS rule), and the fake api gets no extra `/components` or `/checks` calls
+     (call list per path equal to the route's own path only).
+   - `showChecks: false` without components (fake `/components` answers `[]`): the bodies equal
+     the output of `filterApiBody` alone (with the new DNS rule); the fake api gets exactly the
+     extra reads of "Required behavior" step 2 (`/components` for checks and uptime,
+     `/components` and `/checks` for incidents and maintenance), shared through the raw cache.
+
+Existing tests that change (checked on `20ccc80`; every other existing test must pass unchanged,
+and the PR lists any further change with its reason, which must be one of the three kinds below):
+- **Call-counting cache tests with the default `showChecks`** (`src/server.cache.test.ts`):
+  "20 parallel requests share one upstream call; a new one after the TTL", "each path and query
+  is one cache entry; a new call per path after the TTL", "cacheMs 0 turns the cache off" and
+  "an upstream error is cached for the period only, then retried". Their fake answers the same
+  body for every path (`[{ id: "a" }]` in the first), so `/components` is read too and, in the
+  first, is a non-empty list without `checkIds` (→ `502`). Change: add `showChecks: true` to
+  their `start` options; the assertions stay as they are. They then guard the raw cache in shown
+  mode, and Check 6 guards it with `showChecks` false.
+- **Privacy tests whose fake answers one `body` override for every path**
+  (`src/server.privacy.test.ts`): "an unparseable check url is omitted even when details are
+  shown" (~192), "a heartbeat check never shows secret, url or host, …" (~282), "checks: the
+  served keys equal the allow-list per type and hide mode" (~410), "non-object items are dropped
+  from the lists" (~455) and "incidents, maintenance and uptime serve only their allow-listed
+  keys" (~481). With the override, `/components` gets a non-components body and the answer is
+  `502`. Change: the fake's `body`/`status` override no longer applies to `/components`, which
+  answers `200 []` unless a test sets it (one change in the `start` helper, ~line 67-76); the
+  tests keep `showChecks` false and their assertions. ("upstream errors are generic …", ~141,
+  then also keeps today's answers, since a failed own read wins, step 3.)
+- **Tests that are hidden mode by fixture** (components and default `showChecks`):
+  `src/server.components.test.ts` "end to end: the page shows components over HTTP and no hidden
+  check data" (~104) asserts `served` and `state.components` equal the upstream component with
+  `checkIds: ["hidden-db"]`. It changes to expect `checkIds: ["components:shop"]`, and its
+  `showChecks: true` part ("Hidden DB" shown) uses a second server started with
+  `showChecks: true`, because the hidden server now serves `/api/checks` as `[]`. The test name
+  then holds literally: `hidden-db` must not occur in any served body.
+  `src/server.ssr.test.ts` "component entries are rendered on the server" and the component tests
+  of `src/server.syndication.test.ts` are hidden mode too; their assertions are expected to hold
+  (labels come from component names), and "syndication shares the proxy cache and adds no
+  upstream paths" keeps its path list, because feed and badges read `/components` and `/checks`
+  already. If one of them needs a change, it is of this kind and named in the PR.
 6. **Cache**: in hidden mode and in shown mode, two concurrent loads of `/` plus one request
    each of `/api/components` and `/api/checks` within one cache period cause at most one
    upstream call per upstream path (`/components`, `/checks`, and each other route), as required
