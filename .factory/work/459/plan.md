@@ -1,6 +1,6 @@
 # Spec: #459 website: fail the build on unsafe link schemes, add a CSP
 
-Source: issue #459 (security audit M6 and M7) and the issue review in `.factory/work/459/issue-review.md`. I checked the facts below on `main` of pulse-website (`af622ee`).
+Source: issue #459 (security audit M6 and M7) and the issue review in `.factory/work/459/issue-review.md`. I checked the facts below on `main` of pulse-website (`e9cf3ac`, after PR #5 for issue #438). This revision fixes the two defects of the first plan review: the CSP listener now sits in `newContext()` so every browser context gets it, and the control-character docs fixtures use the angle-bracket destination form.
 
 ## Goal
 
@@ -133,18 +133,22 @@ If the listener in section 8 reports any violation, fix the cause by moving an i
 
 ### 8. Playwright CSP listener (`scripts/check-a11y.ts`)
 
-New helper `watchCsp(context, where)`. Call it everywhere `watchNetwork` is called today: the main theme/width loop, `checkNoScript`, `checkCopyButtons` and `checkMotionPages`.
-- It runs before any page loads.
-- `await context.exposeBinding("__cspViolation", (_src, v: string) => fail(where, \`CSP violation: ${v}\`))`.
-- `await context.addInitScript(...)` registers `document.addEventListener("securitypolicyviolation", e => __cspViolation(\`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}\`), true)`. Init scripts run before page scripts.
-- `context.on("console", m => …)` fails on any message whose text contains `Content Security Policy` or `Content-Security-Policy`. This also catches warnings such as an ignored directive.
-- No context sets `bypassCSP`; grep the script to confirm.
-- In the no-JS context, init scripts do not run, but the console listener still applies.
+On `main` (`e9cf3ac`) the script opens browser contexts in six places, all through the helper `newContext()` (`scripts/check-a11y.ts` ~31): the main theme/width loop, `checkNoOverflow`, `checkNoScript`, `checkMotionPages`, `checkCopyClearance` and `checkCopyButtons`. `watchNetwork` is called in only three of them (main loop, `checkMotionPages`, `checkCopyButtons`). So the CSP listener must not follow `watchNetwork`. It goes into `newContext()` itself, which makes every context, present and future, get it.
 
-Positive control, `checkCspListener(browser)`: in its own context with `watchCsp` pointed at a local list, not at `fail`:
+New helper `watchCsp(context, report: (violation: string) => void)`, called by `newContext()` before it returns the context, so it runs before any page loads:
+- `newContext()` gains one option, `csp?: (violation: string) => void`. If it is not set, `report` is `(v) => fail("csp", v)`. The violation text holds the page URL (see below), so the failure names the page without a per-context label. `newContext()` is already `async`; it creates the context, awaits `watchCsp`, then returns it.
+- `await context.exposeBinding("__cspViolation", (src, v: string) => report(\`${src.page?.url() ?? "?"}: CSP violation: ${v}\`))`.
+- `await context.addInitScript(...)` registers `document.addEventListener("securitypolicyviolation", e => __cspViolation(\`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}\`), true)`. Init scripts run before page scripts, so the inline theme script and the island modules are covered.
+- `context.on("console", m => …)` reports any message whose text contains `Content Security Policy` or `Content-Security-Policy` (with `m.page()?.url()`). This also catches warnings such as an ignored directive, and it still works in the no-JS context of `checkNoScript`, where init scripts do not run.
+- The existing `addInitScript` calls in `checkMotionPages` and `checkCopyButtons` stay; Playwright runs all init scripts of a context, in order of registration.
+- No context sets `bypassCSP`; `grep -n bypassCSP scripts/check-a11y.ts` stays empty.
+- Any later `browser.newContext(` call outside `newContext()` would skip the listener. The completion evidence includes `grep -n "browser.newContext(" scripts/check-a11y.ts`, which must show only the one call inside `newContext()`.
+
+Positive control, `checkCspListener(browser)`: it opens its own context through `newContext(browser, { width: 1280, theme: "light", csp: (v) => seen.push(v) })`, with a local `seen: string[]` instead of `fail`:
 1. Load `/`.
 2. Run `page.evaluate(() => { const s = document.createElement("script"); s.textContent = "1"; document.head.append(s); })`. CDP evaluate itself is not blocked, but the inserted inline script is.
-3. Assert that at least one violation (`script-src-elem`) was recorded. If none was, call `fail("csp listener", "no violation seen for a blocked inline script")`.
+3. Wait until `seen` holds an entry (poll up to 2 s), then assert that at least one entry names `script-src` or `script-src-elem`. If none does, call `fail("csp listener", "no violation seen for a blocked inline script")`.
+4. Call it from the main block after the other checks, so it runs in every `check:a11y` run.
 
 This proves the listener works, so "zero violations" means something.
 
@@ -196,7 +200,7 @@ One repository: only `website` changes. It has no consumers, and nothing in cont
 
 ## Counterexamples
 
-URL rule (each must be rejected by `isSafeUrl`, by `resolveLink` with `UnsafeLinkError`, and by `checkLinks` as an unsafe link scheme):
+URL rule (each must be rejected by `isSafeUrl`, by `resolveLink` called directly with that string (`links.test.ts`) with `UnsafeLinkError`, and by `checkLinks` as an unsafe link scheme; how each form is written in Markdown is in Checks step 2):
 - `javascript:alert(1)`, `JaVaScRiPt:alert(1)`, ` javascript:alert(1)` (leading space), `\x01javascript:alert(1)`, `java\tscript:alert(1)`, `java\nscript:x`.
 - `data:text/html,<script>alert(1)</script>`, `DATA:text/html,x`.
 - `vbscript:msgbox(1)`, `file:///etc/passwd`, `tel:+41000`, `ftp://x`, `foo:bar`, `blob:https://x/y`.
@@ -248,7 +252,7 @@ Files:
 - `src/site.tsx`: `withCsp` in `renderPage`; the `unsafeRefs` check per page in `renderSite`.
 - `src/site.test.ts` (new) or an addition to `src/content/home.test.ts`: renders all pages with one fixture docs page.
 - `scripts/check-links.ts`: runs `cspProblems` over `dist/`.
-- `scripts/check-a11y.ts`: `watchCsp`, the positive control.
+- `scripts/check-a11y.ts`: `watchCsp` installed by `newContext()` (new `csp` option), the positive control `checkCspListener`.
 - `README.md`, `AGENTS.md`.
 
 ### Behavior
@@ -258,10 +262,12 @@ Sections 1–9 of Required behavior, as written.
 ### Checks (tests to add; red first, then green)
 
 1. `url-safety.test.ts`: every counterexample above, rejected and accepted, including the control-character and mixed-case forms. Also `urlScheme` for `HTTPS://x` (`https`) and `/a:b` (no scheme).
-2. `page.test.ts`, one `buildDocPages` call per fixture file `api:docs/index.md`:
-   - each of `[x](javascript:alert(1))`, `[y](JaVaScRiPt:alert(1))`, `[z](data:text/html,<script>alert(1)</script>)`, `[w]( javascript:alert(1))`, `![i](javascript:alert(1))` and a link with `\x01` before `javascript:` throws `UnsafeLinkError`;
-   - each message matches `lorenzh/pulse-api`, `docs/index.md` and the link text (`JSON.stringify` of the href that marked hands over);
-   - before relying on the throw, confirm each form is parsed as a link by marked 18.1.2: with the check removed, the rendered HTML holds an `<a href="…">` with that scheme;
+2. `page.test.ts`, one `buildDocPages` call per fixture file `api:docs/index.md`, one unsafe link per fixture:
+   - Bare destinations, each must throw `UnsafeLinkError`: `[x](javascript:alert(1))`, `[y](JaVaScRiPt:alert(1))`, `[z](data:text/html,<script>alert(1)</script>)`, `[w]( javascript:alert(1))` (the four acceptance fixtures), plus `![i](javascript:alert(1))` (image path), the reference form `[r][a]` with `[a]: javascript:alert(1)`, and the autolink `<javascript:alert(1)>`.
+   - Control characters and tabs: CommonMark and marked's bare-destination rule do not allow ASCII control characters or spaces inside a bare destination, so `[x](\x01javascript:alert(1))` is most likely plain text, not a link. Use the angle-bracket destination form, which allows them: `[c](<\x01javascript:alert(1)>)` and `[t](<java\tscript:alert(1)>)`. Each must throw `UnsafeLinkError`; the message shows the control character escaped (`\u0001`, `\t`) through `JSON.stringify`.
+   - Each message matches `lorenzh/pulse-api`, `docs/index.md` and `JSON.stringify` of the href that marked hands to `resolve` (marked strips the angle brackets and the surrounding spaces, so assert on the href the renderer receives, for example by asserting the message contains `javascript:alert(1)`).
+   - Parse check first: for every fixture, run the test once with the `isSafeUrl` check removed (this is also the mutation run of step 6) and record whether the output holds `<a href="…">` with that scheme.
+   - Fallback for any form that marked 18.1.2 does not turn into a link or image token: do not expect a throw. Assert instead that `buildDocPages` succeeds and that the rendered `html` holds no `<a` whose `href`, after `decode` and the section 1 normalisation, has an unsafe scheme (use `unsafeRefs(html)` and expect `[]`). Note in the PR which forms took this path and why. Never drop a fixture without one of the two assertions.
    - `https:`, `mailto:`, relative and `#fragment` links still build.
 3. `links-check.test.ts`:
    - `<a href="javascript:alert(1)">`, `<a href=" JAVASCRIPT:x">`, `<a href="&#106;avascript:x">`, `<a href="tel:+1">` and `<a href="data:text/html,x">` each give one `unsafe link scheme` problem, not a "does not resolve" problem;
@@ -286,7 +292,7 @@ Sections 1–9 of Required behavior, as written.
 
    Paste the red output of each into the PR, then restore.
 7. `bun run check:a11y` on the built `dist/` passes:
-   - zero CSP violations and zero CSP console messages across all pages, both themes, both widths, no-JS, motion pages and copy buttons;
+   - zero CSP violations and zero CSP console messages in every browser context: the main loop (all pages, both themes, both widths), `checkNoOverflow`, `checkNoScript`, `checkMotionPages`, `checkCopyClearance` and `checkCopyButtons`;
    - the positive control records at least one violation;
    - the theme toggle, menu, docs nav, copy buttons, network canvas, live preview, scroll reveal and heart burst checks pass unchanged.
 
@@ -295,13 +301,14 @@ Sections 1–9 of Required behavior, as written.
 - `bun run check:all` passes locally and in CI (jobs `check` and `site`), with line coverage at 80 % or more.
 - `bun run build` passes on the current `docs.config.json` pins, so no upstream doc holds an unsafe link.
 - `check:budget` passes; the PR states the largest HTML page size before and after.
-- `grep -n bypassCSP scripts/check-a11y.ts` is empty.
+- `grep -n bypassCSP scripts/check-a11y.ts` is empty, and `grep -n "browser.newContext(" scripts/check-a11y.ts` shows only the call inside `newContext()`.
 - The PR names issue #459 (via its child issue), lists the checks that ran, shows the mutation output from step 6, and states the known limits: no HTTP headers until a host exists; `img-src data:` is kept but unused.
 
 ## Risks
 
 - **React 19 head handling:** solved by string insertion after `<head>`. The render test guards the order.
-- **marked parsing of the fixture forms:** marked's bare-destination grammar allows `<` and trims surrounding whitespace, so all four are expected to reach `link`. Check step 2 verifies this before relying on the throw.
+- **marked parsing of the fixture forms:** marked's bare-destination grammar allows `<` in the destination and trims surrounding whitespace, so the four acceptance fixtures are expected to reach `link`. Control characters and tabs are not allowed in a bare destination, so those fixtures use the angle-bracket form. Check step 2 verifies each form and gives the fallback assertion for any form that is not parsed as a link.
+- **New browser contexts in `check-a11y.ts`:** a check that calls `browser.newContext` directly would skip the CSP listener. The listener lives in `newContext()`, and the completion evidence greps for other calls.
 - **Axe or Playwright helpers causing violations:** the positive control and the exact violation text locate the cause. The fix goes into the script, never into a filter.
 - **A future upstream docs link with another scheme** (for example `tel:`) will fail the build. This is intended. The fix is in the source repository, or a reasoned change to the allow-list here.
 - **Changing `THEME_SCRIPT` needs a pin update:** this is intended, and the README says so.
