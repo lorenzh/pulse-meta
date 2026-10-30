@@ -24,6 +24,24 @@ an impact that contradicts the described behavior (for example a new background 
 image without any metric named). If the section is missing or implausible, transition to `plan`
 with a concise defect report.
 
+Check the four required sections, and transition to `plan` with a defect report when one is
+missing, empty, or contradicts the described behavior:
+
+- `## Security impact`: the first line is exactly `Security impact: yes` or `Security impact: no`
+  with a reason. Flag `no` for a change that touches admin routes or authentication, parsers or
+  validators at a trust boundary, the probe HTTP client, headers or redirects, file writes, error or
+  log texts with external data, dependencies, Dockerfiles, or CI.
+- `## Rollout order`: for a change across repositories, the order and the older consumers (probes
+  and services on old pins) at each step. Flag an order in which an old consumer breaks.
+- `## Counterexamples`: at least one per hard rule. Flag a statistic without an exact definition
+  and any average of percentiles.
+- `## Contract fields`: each new name with the search that shows no collision. Repeat the search
+  for at least one name yourself.
+
+Check that every repository section starts with a `Files:` list and that the files exist in the
+clone or are marked as new. Check the spec against itself: flag two statements that cannot both
+hold (for example "never runs inside a request" and "runs on the first read").
+
 If either file is missing, transition to `plan` with a concise message.
 If the spec needs changes, transition to `plan` with a concise defect report.
 If a material decision needs a person, request a hold with status `needs-input`.

@@ -30,9 +30,13 @@ jobs:
           FACTORY_CUTOFF="$(date -u -d "-$FACTORY_STALL_MINUTES minutes" +%Y-%m-%dT%H:%M:%SZ)"
           export FACTORY_CUTOFF
           marker='<!-- pulse-factory-alert -->'
-          # factory-run.yml titles each run "Factory run #<issue> <admission>".
-          active="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-run.yml/runs?per_page=100" \
-            --jq '.workflow_runs[] | select(.status != "completed") | .display_title')"
+          # factory-run.yml titles each run "Factory run #<issue> <admission>". Ask for each active
+          # status, all pages: an old queued run is not among the newest 100 runs.
+          active=""
+          for status in in_progress queued waiting requested pending; do
+            active+="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/factory-run.yml/runs?status=$status&per_page=100" \
+              --jq '.workflow_runs[].display_title')"$'\n'
+          done
           # shortcut: one page of 100 open issues; paginate when the repository has more open issues.
           # A state label has three parts (factory/<workflow>/<state>); status labels have four.
           # An issue with an open blocker waits for unblock; an issue on hold waits for a person.
