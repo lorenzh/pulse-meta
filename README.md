@@ -158,7 +158,7 @@ You need Bun 1.4.0, git, and network access to GitHub (pulse-contract, pulse-kit
 
 ## Settings
 
-Every service reads environment variables once at start. An invalid value stops the start with exit code 2 and one line that names the variable. Exception for now: pulse-probe does not yet validate `PULSE_API_URL`; a wrong value makes it retry the fetch forever. An empty value counts as unset. The configuration page of each service is the source of truth:
+Every service reads environment variables once at start. An invalid value stops the start with exit code 2 and one line that names the variable. An empty value counts as unset. The configuration page of each service is the source of truth:
 [pulse-api](https://github.com/lorenzh/pulse-api/blob/main/docs/configuration.md),
 [pulse-probe](https://github.com/lorenzh/pulse-probe/blob/main/docs/configuration.md),
 [pulse-status](https://github.com/lorenzh/pulse-status/blob/main/docs/configuration.md),
