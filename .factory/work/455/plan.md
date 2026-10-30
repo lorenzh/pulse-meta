@@ -2,11 +2,11 @@
 
 ## Goal
 
-The Factory workflows of pulse-meta keep no credential in any git config or `gh` file that the agent session can read, run only actions pinned by commit SHA, install agent CLIs only at exact versions, and the report page loads d3 only when it passes a Subresource Integrity check. `docs/factory.md` states the remaining prompt-injection risk and the interim rule.
+The Factory workflows of pulse-meta keep no credential in any git config or `gh` file that the agent session can read, run only actions pinned by commit SHA, install agent CLIs only at an exact version or `latest` (no ranges or other strings), and the report page loads d3 only when it passes a Subresource Integrity check. `docs/factory.md` states the remaining prompt-injection risk and the interim rule.
 
 ## Scope
 
-Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `factory-unblock.yml`, `factory-report.yml`, `report/index.html`, `docs/factory.md`, `docs/approved-packages.md`, plus two repository settings (the variable `FACTORY_CLAUDE_VERSION`, and a temporary debug step for the check).
+Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `factory-unblock.yml`, `factory-report.yml`, `report/index.html`, `docs/factory.md`, `docs/approved-packages.md`, plus a temporary debug step for the check. The repository variable `FACTORY_CLAUDE_VERSION` stays `latest`.
 
 **No target repository changes, so there is no `## Repository:` section and `targets.json` is the empty array `[]`.** The meta target has no `build` workflow. A person applies the exact changes in "Changes in meta" after the spec merges, as in #352.
 
@@ -44,7 +44,7 @@ Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `fa
 6. **SRI, not vendoring** (the smaller diff; `generate.mjs` stays unchanged).
    - The value is `sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i`. It was computed from the bytes cdnjs serves (279706 bytes, header `// https://d3js.org v7.9.0`) and cross-checked against `dist/d3.min.js` of the npm tarball `d3-7.9.0.tgz`, which hashes the same. cdnjs publishes only a sha512 for this file (`sha512-vc58qvvBdrDR4etbxMdlTt4GBQk1qjvyORR2nrsPsFPyrs+/u5c3+1Ct6upOgdZoIl7eq6k3a1UPDSNAQi/32A==`); the issue asks for sha384.
    - cdnjs answers with `Access-Control-Allow-Origin: *`, which `crossorigin="anonymous"` needs.
-7. **The CLI version guard accepts only `skip` or an exact `MAJOR.MINOR.PATCH`.** The repository variable `FACTORY_CLAUDE_VERSION` is `latest` today. The person deletes it **before** merging the workflow change, so the default `2.1.314` applies (`latest` resolved to 2.1.314 in this run). `FACTORY_CODEX_VERSION` is unset, so it is `skip`.
+7. **The CLI version guard accepts `skip`, an exact `MAJOR.MINOR.PATCH`, or `latest`.** It rejects ranges and every other string (`2.1`, `^2.1.314`, `v2.1.314`). The repository variable `FACTORY_CLAUDE_VERSION` stays `latest`: the owner decided on 30 Oct to run the latest Claude Code. The default `2.1.314` applies only when the variable is unset. `FACTORY_CODEX_VERSION` is unset, so it is `skip`.
 8. **`docs/approved-packages.md`** lists the four GitHub actions next to `oven-sh/setup-bun`, by SHA, because target reviews read that list.
 
 ## Required behavior
@@ -53,7 +53,7 @@ Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `fa
 - No step runs `gh auth setup-git` or `gh auth login`. No git config at any scope (system, global, local of the outer checkout, local of the `.target` clone) contains a `credential.*` or `http.*.extraheader` key during the agent step. `~/.config/gh/hosts.yml` does not exist.
 - Factory still pushes the branch and opens or updates the PR, in a `spec` run on meta and in a `build` run on a target. The agent's own `git push` in `implement` still works.
 - Every `uses:` is `<owner>/<repo>@<40 hex> # vX.Y.Z`.
-- "Install agent CLIs" fails before any install when either version is not `skip` and not an exact `MAJOR.MINOR.PATCH`. The error names the variable and the bad value.
+- "Install agent CLIs" fails before any install when either version is not `skip`, not `latest` and not an exact `MAJOR.MINOR.PATCH`. The error names the variable and the bad value.
 - `report/index.html` loads d3 with the `integrity` value above and `crossorigin="anonymous"`.
 - `docs/factory.md` has the section "Prompt injection and credentials" and the corrected version-override text.
 
@@ -63,7 +63,7 @@ Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `fa
 - **The askpass script inside the agent sandbox.** git must be able to run `$RUNNER_TEMP/factory-git-askpass` inside the bubblewrap containment. Today git runs `/usr/bin/gh` there the same way, and the containment check binds `/`. If the agent's own push fails with "could not read Username", the acceptance run shows it. The fallback is to write the script under `$HOME` (for example `$HOME/.factory-git-askpass`, still no secret) and point `GIT_ASKPASS` there. No credential helper comes back.
 - **Pins go stale.** Security fixes in v5.x and v6.x are no longer picked up automatically. Follow-up: Dependabot for `github-actions` or a manual cadence.
 - **cdnjs changes the bytes of d3 7.9.0** (unlikely for a versioned path). The report then stops drawing charts and shows the integrity error in the console. That is the intended fail-closed behavior; the fix is a new hash after review, or vendoring.
-- **Order of the variable change.** If the workflow change merges while `FACTORY_CLAUDE_VERSION=latest`, every Factory run fails at the guard. See Rollout order.
+- **`latest` can pick up a broken Claude Code release.** The variable stays `latest` by owner decision, so a bad release reaches the next run. The run then fails, and the failure comment on the issue makes it visible; setting the variable to an exact version pins a known good release until a fix ships.
 - **Debug output.** GitHub masks the raw secret but not its base64 form inside an extraheader. So the debug step prints key names only (`--name-only`), never values.
 
 ## Acceptance evidence
@@ -84,9 +84,7 @@ Only pulse-meta: `.github/workflows/factory-run.yml`, `factory-fan-out.yml`, `fa
    - The run link goes into #455. The PR is closed without merge, and the child issue is closed.
    - A child of a real pending feature works just as well.
 5. **Version guard.**
-   - In a scratch shell, run the guard script with `FACTORY_CLAUDE_VERSION=latest`, `2.1`, `^2.1.314` and `v2.1.314`: each exits 1 with the error. With `2.1.314` and `skip` it exits 0.
-   - `gh variable list --repo lorenzh/pulse-meta` shows no `FACTORY_CLAUDE_VERSION`, or an exact version.
-   - The Actions log of the check runs shows "Install agent CLIs" installing `@anthropic-ai/claude-code@2.1.314`.
+   - In a scratch shell, run the guard script with `FACTORY_CLAUDE_VERSION=2.1`, `^2.1.314` and `v2.1.314`: each exits 1 with the error. With `2.1.314`, `latest` and `skip` it exits 0.
 6. **SRI regression check.**
    - Run `GH_TOKEN=<token> node report/generate.mjs _site`, then `python3 -m http.server -d _site 8099`. In Playwright or agent-browser, open `http://localhost:8099/`: the charts render. Take screenshot 1.
    - Copy `_site/index.html`. Change one character inside the base64 digest, for example the first `C` after `sha384-` to `D`. Do not touch the `sha384-` prefix. Reload: the console shows "Failed to find a valid digest in the 'integrity' attribute", `typeof d3 === 'undefined'`, and no chart SVG is drawn. Take screenshot 2.
@@ -111,9 +109,9 @@ Checklist items that apply:
   - The askpass script prints the token only to git on its stdout, never to the log.
 - **Dependency pins.**
   - Every action is pinned by a 40-character commit with an exact version comment.
-  - Claude Code and Codex only at an exact version or `skip`.
+  - Claude Code and Codex only at an exact version, `latest`, or `skip`.
   - d3 is pinned by version path plus SRI.
-- **Input validation.** The version guard validates the repository variables with an anchored regex before they reach `npm install` (no `latest`, no range, no dist-tag, no `v` prefix, no spec such as `file:` or `git+`).
+- **Input validation.** The version guard validates the repository variables with an anchored regex before they reach `npm install` (`latest` is the only dist-tag allowed; no range, no dist-tag, no `v` prefix, no spec such as `file:` or `git+`).
 
 The other items (auth order and status codes, body and size limits, accessor execution, SSRF and redirects, atomic writes) do not apply: no service code changes.
 
@@ -123,11 +121,10 @@ Because the meta target has no `build` workflow, the hostile-input checks of the
 
 One repository (pulse-meta). No target, and no consumer of contract, kit or config, is affected. The order of the steps inside it matters:
 
-1. **Before the workflow change:** `gh variable delete FACTORY_CLAUDE_VERSION --repo lorenzh/pulse-meta` (or `gh variable set FACTORY_CLAUDE_VERSION --body 2.1.314`). Runs on the old workflow keep working: the old step accepts any value and installs 2.1.314 either way.
-2. **Merge the spec PR**, after deleting `.factory/work/455/targets.json` from it (see Scope). Fan-out prints the meta-only notice.
-3. **Apply "Changes in meta"** in one commit on a branch, as a PR by the person, and merge it. Runs already in progress keep their old workflow file and their stored credentials until they end. Runs started after the merge use the new file. Fan-out and unblock need no git credentials (they use `gh` with `GH_TOKEN` only), so they keep working with `persist-credentials: false`. The report needs none either; the merge triggers a report publish through `push` on `report/**`, which checks SRI in production.
-4. **Temporarily add the debug step**, run acceptance items 3 and 4, then remove the step in a second commit.
-5. **Upstream:** link or open the paragondata/factory issue for env scoping (Decision 2).
+1. **Merge the spec PR**, after deleting `.factory/work/455/targets.json` from it (see Scope). Fan-out prints the meta-only notice.
+2. **Apply "Changes in meta"** in one commit on a branch, as a PR by the person, and merge it. Runs already in progress keep their old workflow file and their stored credentials until they end. Runs started after the merge use the new file. Fan-out and unblock need no git credentials (they use `gh` with `GH_TOKEN` only), so they keep working with `persist-credentials: false`. The report needs none either; the merge triggers a report publish through `push` on `report/**`, which checks SRI in production.
+3. **Temporarily add the debug step**, run acceptance items 3 and 4, then remove the step in a second commit.
+4. **Upstream:** link or open the paragondata/factory issue for env scoping (Decision 2).
 
 ## Counterexamples
 
@@ -143,7 +140,7 @@ One repository (pulse-meta). No target, and no consumer of contract, kit or conf
   - Setting the token through `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader` makes `git config --get-regexp extraheader` print a key, which also fails.
   - Writing the token into the askpass file (`printf 'echo ghp_…'`) leaves a stored copy. The script must reference `$GH_TOKEN` and only that; `grep -c 'GH_TOKEN' "$RUNNER_TEMP/factory-git-askpass"` is 1, and it contains no `gh[pousr]_` literal.
 - **Version guard.** These are rejected:
-  - `latest`, `next`, `stable`;
+  - `next`, `stable`, `Latest`;
   - `2`, `2.1`, `2.1.x`;
   - `^2.1.314`, `~2.1.314`, `>=2.1.314`;
   - `v2.1.314`;
@@ -154,7 +151,7 @@ One repository (pulse-meta). No target, and no consumer of contract, kit or conf
   - `file:../x`, `git+https://…`;
   - the empty string. It cannot occur, because `vars.X || 'default'` maps empty to the default, but the guard must still reject it.
 
-  These are accepted: `skip`, `2.1.314`, `0.0.0`, `10.20.30`. The regex is `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`.
+  These are accepted: `skip`, `latest`, `2.1.314`, `0.0.0`, `10.20.30`. The regex is `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`.
 - **SRI.**
   - Changing the prefix to `sha385-…` makes browsers *ignore* the unknown algorithm and load d3 unchecked. So the regression test changes a digest character, never the prefix, and the value must start with exactly `sha384-`.
   - Without `crossorigin="anonymous"`, the cross-origin script is fetched no-cors, and the integrity check always fails: the page never renders. Both attributes are required.
@@ -176,7 +173,7 @@ Files:
 - `report/index.html`
 - `docs/factory.md`
 - `docs/approved-packages.md`
-- repository variable `FACTORY_CLAUDE_VERSION` (deleted, Rollout step 1)
+- repository variable `FACTORY_CLAUDE_VERSION`: unchanged, stays `latest`
 
 ### `.github/workflows/factory-run.yml`
 
@@ -211,10 +208,10 @@ Line 132 stays the same: `oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c624218
 Replace lines 141-154 (comment and "Install agent CLIs") with:
 
 ```yaml
-      # Exact versions only: `latest` failed twice with a registry 404 and pins nothing. Claude Code
-      # defaults to the version of the green runs on 2026-10-30. Codex defaults to `skip`: no model
+      # Claude Code defaults to the version of the green runs on 2026-10-30 when the variable is
+      # unset; the variable is `latest` by owner decision. Codex defaults to `skip`: no model
       # in the loop uses it. A repository variable overrides either default with an exact
-      # MAJOR.MINOR.PATCH or `skip`; anything else (latest, a range, a tag) fails here.
+      # MAJOR.MINOR.PATCH, `latest` or `skip`; anything else (a range, another tag) fails here.
       - name: Install agent CLIs
         env:
           FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION || 'skip' }}
@@ -223,7 +220,7 @@ Replace lines 141-154 (comment and "Install agent CLIs") with:
           exact='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           for name in FACTORY_CODEX_VERSION FACTORY_CLAUDE_VERSION; do
             value="${!name}"
-            [[ "$value" == skip || "$value" =~ $exact ]] || { echo "::error::$name must be an exact MAJOR.MINOR.PATCH version or skip, not '$value'." >&2; exit 1; }
+            [[ "$value" == skip || "$value" == latest || "$value" =~ $exact ]] || { echo "::error::$name must be an exact MAJOR.MINOR.PATCH version, latest or skip, not '$value'." >&2; exit 1; }
           done
           if [ "$FACTORY_CODEX_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@openai/codex@$FACTORY_CODEX_VERSION"
@@ -307,7 +304,7 @@ Before applying, recompute it: `curl -s https://cdnjs.cloudflare.com/ajax/libs/d
 
 Replace line 27 with:
 
-> **Agent CLI versions.** `factory-run.yml` installs Claude Code at an exact version (default `2.1.314`) and skips the Codex CLI, which no model in the loop uses. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` override the defaults only with an exact `MAJOR.MINOR.PATCH` or `skip`. The step "Install agent CLIs" fails on anything else, `latest` included.
+> **Agent CLI versions.** `factory-run.yml` installs Claude Code at the version in `FACTORY_CLAUDE_VERSION` (`latest` by owner decision; `2.1.314` when unset) and skips the Codex CLI, which no model in the loop uses. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` accept only an exact `MAJOR.MINOR.PATCH`, `latest` or `skip`. The step "Install agent CLIs" fails on anything else, such as a range or a `v` prefix.
 
 Add after the "Workflow script tests" paragraph:
 
