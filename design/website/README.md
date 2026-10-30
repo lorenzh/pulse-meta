@@ -17,3 +17,36 @@ Content rules for the build:
 
 - Product facts on the site must match the current code and docs of the pulse repos; the docs pages are generated from the repos' `docs/*.md` at pinned commits.
 - The hosted offer does not exist yet. Prices, regions, availability promises, data location and the waitlist are placeholders until a person replaces them. So is every other commitment about the hosted offer (backups, upgrades, who runs the servers, staying up when the customer's network is down, included notifications, white-labelling): each is a marked placeholder, and a test checks the hosted table, plans and included cards.
+
+## Motion and background
+
+Home (`Main.dc.html`) and Hosted (`Hosted.dc.html`):
+
+- Section spacing is `--section-space: clamp(64px, 8vw, 128px)`, with no separator lines between sections.
+- Sections fade and rise in once when they scroll into view (IntersectionObserver).
+- Micro-animations: the arrow on the primary button nudges in a loop (900 ms) while the button is hovered or focused; outline buttons fill with an accent curtain on hover; buttons give press feedback; cards lift on hover; nav links get an underline; the live status preview on Home updates while it is on screen.
+- Hosted "Open source" card: on hover or focus-within the heart fills with accent (250 ms) and pops 1 → 1.2 → 1 (300 ms). Eight small hearts (6–10 px) burst up and sideways 30–70 px, then fall and fade over 1.1 s; one burst per hover. The design uses static markup for the particles; the site may create them by script with randomised paths.
+- Background: a canvas node network behind the page. Large receiver nodes and small sender nodes, joined by thin lines, with shooting-star pulses running along the links. Minimum distance 280 px between receivers and 60 px between senders on desktop; on phones they scale down, but never below 168 px and 36 px. Links at a node are at least 20° apart, 15° at a node with 12 or more links.
+
+Hosted offer: every price, plan limit, SLA, region, backup, retention and open-source offer is a marked placeholder. The design uses tokens such as `[PRICE]`, `[REGIONS]`, `[TRIAL]`, `[RETENTION]`, small "placeholder" or "planned" tags, and a "Planned offer, details not final" note above the plans.
+
+Layout details on Home and in the header:
+
+- The "Configuration" and "The status page" two-column rows are centred vertically.
+- The text links "Read the configuration guide" and "Theming and white label" are only as wide as their text.
+- Status preview: the state labels are right-aligned in every row, also during the crossfade.
+- Header on desktop: the GitHub button (Hosted: "Join the waitlist") comes before the theme toggle, which sits at the far right. The markup has the same order, so the tab order matches.
+
+Docs pages (`Docs.dc.html`, `DocsApi.dc.html`): every command code block gets a copy button; output and JSON blocks get none.
+
+- A 44 px icon button at the top right, labelled "Copy commands".
+- It copies only the command lines, without the `$ ` prompt and without output or comment lines.
+- On success the icon morphs into a check with a 200 ms pop and a "Copied" tooltip appears, announced to screen readers; after 1.5 s it returns to the copy icon. On a clipboard failure it shows "Copy blocked".
+- Press feedback scales the button to 0.92.
+
+Rules for the build:
+
+- Under `prefers-reduced-motion: reduce` all of this is off: no scroll-in, no micro-animations, no canvas animation. Content is visible from the start. The Open source heart only fills (no pop, no burst); the copy button only swaps the icon.
+- Docs pages stay calm: no background animation and no scroll-in. The copy button and the hover-only colour transition of the sidebar links are their only motion.
+- Every hover effect, on all pages, sits under `@media (hover: hover)`.
+- The canvas animation runs at most at 30 fps. It pauses while the tab is hidden (`document.hidden`) and while the canvas is off screen; the live preview pauses the same way.

@@ -22,7 +22,7 @@ body{margin:0}
 .pl .nav a{color:var(--text);text-decoration:none}
 .pl .nav a:hover{color:var(--accent-text)}
 .pl .side a{color:var(--lead);text-decoration:none;transition:background-color var(--dur) var(--ease)}
-.pl .side a:hover{color:var(--text);background:var(--surface)}
+@media (hover:hover){.pl .side a:hover{color:var(--text);background:var(--surface)}}
 .pl .side a[aria-current="page"]{color:var(--text);background:var(--tint)}
 .pl .toc a{color:var(--muted);text-decoration:none}
 .pl .toc a:hover{color:var(--accent-text)}
@@ -31,6 +31,11 @@ body{margin:0}
 .pl .m-panel a{color:var(--text);text-decoration:none}
 @media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}.pl .docs-toggle{display:flex!important}.pl .side{display:none!important;max-width:none!important;padding:8px 0 24px!important}.pl .side[data-open="true"]{display:flex!important}.pl .toc{display:none!important}.pl .doc-main{border-left:none!important;padding-left:0!important;padding-top:8px!important}.pl .doc-shell{gap:0!important}}
 @media (prefers-reduced-motion:reduce){.pl *{transition:none!important}}
+@media (hover:hover){.pl .copy:hover{background:rgba(223,215,212,.12)!important;color:#f2eeec!important}}
+.pl .tip{pointer-events:none;white-space:nowrap;transition:opacity 150ms var(--ease)}
+.pl .tip[data-show="false"]{opacity:0}
+@keyframes pl-ck{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:no-preference){.pl .copy .ck{animation:pl-ck 200ms var(--ease)}.pl .copy{transition:transform 120ms var(--ease)}.pl .copy:active{transform:scale(.92)}}
 </style>
 </helmet>
 <div class="pl" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
@@ -110,7 +115,7 @@ body{margin:0}
 <div style="max-width: 760px; display: flex; flex-direction: column; gap: 24px;">
 <nav aria-label="Breadcrumb" style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);"><a href="Docs.dc.html" style="color: var(--muted);">Docs</a> · Reference · <span aria-current="page">REST API</span></nav>
 <h1 style="margin: 0; font-size: var(--fs-h1); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em;">REST API</h1>
-<p style="margin: 0; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead);">pulse-api answers JSON on port 3000. Only probes write, with a bearer token; every read route is open, so keep the API itself private and publish the status page instead.</p>
+<p style="margin: 0; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead);">pulse-api answers JSON on port 3000. Writes need a bearer token, and so does the probes’ own read route <code style="font-family: var(--mono); font-size: 0.9em;">GET /probe/checks</code>; the other read routes are open, so keep the API itself private and publish the status page instead.</p>
 
 <div role="note" style="display: flex; gap: 12px; padding: 16px 18px; border: 1px solid var(--info); border-radius: 12px; background: var(--info-tint);">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 3px; color: var(--info);"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
@@ -133,13 +138,15 @@ body{margin:0}
 </thead>
 <tbody>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--tint); border: 1px solid var(--tint-line); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent-text);">POST</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/results</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Probe token</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">204</td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/probe/checks</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Probe token</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">Check[]</td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/components</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">ComponentWithState[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/checks</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">CheckWithState[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/checks/:id/results</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">Result[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/uptime</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">CheckUptime[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/incidents</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">Incident[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/maintenance</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">MaintenanceWindow[]</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">/heartbeat/:id</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Check secret</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">204</td></tr>
-<tr><td style="padding: 12px 16px;"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-label);">/healthz · /metrics</td><td style="padding: 12px 16px; color: var(--muted);">none</td><td style="padding: 12px 16px;">Plain text</td></tr>
+<tr><td style="padding: 12px 16px;"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 600; color: var(--accent2);">GET</span></td><td style="padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-label);">/healthz · /readyz · /metrics</td><td style="padding: 12px 16px; color: var(--muted);">none</td><td style="padding: 12px 16px;">Plain text</td></tr>
 </tbody>
 </table>
 </div>
@@ -158,7 +165,7 @@ body{margin:0}
 </thead>
 <tbody>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">checkId</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">string</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">A configured, active check.</td></tr>
-<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">timestamp</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">integer</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Epoch ms, at most 60 s ahead of the API clock and 7 days behind it.</td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">timestamp</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">integer</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Epoch ms, at most the check’s interval ahead of the API clock (never more than 60 s; 60 s for heartbeat checks) and 7 days behind it.</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">status</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">"up" · "degraded" · "down"</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Required.</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">statusCode</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">integer · null</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);"><span style="font-family: var(--mono); font-size: var(--fs-label);">null</span> when no response arrived, else 100 to 599.</td></tr>
 <tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label);">latencyMs</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">number</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">0 to 86,400,000.</td></tr>
@@ -166,11 +173,16 @@ body{margin:0}
 </tbody>
 </table>
 </div>
-<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="curl example">
+<div style="position: relative; background: var(--code); border-radius: 12px; padding: 18px 56px 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="curl example">
+<button type="button" class="copy" data-id="b1" onClick="{{copy}}" aria-label="{{cb.b1.label}}" style="position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #c9bfc4; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{cb.b1.done}}" hint-placeholder-val="{{false}}"><svg class="ck" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+<sc-if value="{{cb.b1.idle}}" hint-placeholder-val="{{true}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+</button>
+<span class="tip" role="status" data-show="{{cb.b1.show}}" style="position: absolute; top: 16px; right: 54px; padding: 2px 8px; border-radius: 6px; background: #dfd7d4; color: #271b32; font-family: var(--sans); font-size: 12px; font-weight: 500; line-height: 1.5;">{{cb.b1.tip}}</span>
 <div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>curl -X POST http://localhost:3000/results \</div>
 <div style="white-space: pre;">    -H "Authorization: Bearer $PULSE_PROBE_TOKEN" \</div>
 <div style="white-space: pre;">    -H "Content-Type: application/json" \</div>
-<div style="white-space: pre;">    -d '{"checkId":"example","timestamp":1793265326003,</div>
+<div style="white-space: pre;">    -d '{"checkId":"example","timestamp":'"$(($(date +%s) * 1000))"',</div>
 <div style="white-space: pre;">         "status":"up","statusCode":200,"latencyMs":42,"reason":null}'</div>
 <div style="white-space: pre; color: #a89b95;">HTTP/1.1 204 No Content</div>
 </div>
@@ -178,7 +190,7 @@ body{margin:0}
 
 <section id="get-checks" aria-labelledby="get-checks-title" style="display: flex; flex-direction: column; gap: 16px; padding-top: 24px; border-top: 1px solid var(--rule);">
 <h2 id="get-checks-title" style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;"><span style="padding: 2px 12px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-label); font-weight: 600; color: var(--accent2);">GET</span><span style="font-family: var(--mono);">/checks</span></h2>
-<p style="margin: 0;">Every active check with its state, the last result per location, and the maintenance window when one is running. Removed checks are left out.</p>
+<p style="margin: 0;">Every active check with its state, the last result per location, and the maintenance window when one is running. Removed checks are left out. Request headers, bodies and JSON assertions are never served here; probes read them from the authenticated <span style="font-family: var(--mono); font-size: 0.9em;">/probe/checks</span>.</p>
 <div style="background: var(--field); border: 1px solid var(--field-line); border-radius: 12px; overflow-x: auto;" role="region" aria-label="Example response">
 <div style="padding: 10px 18px; border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);"><span>200 · application/json</span><span>shortened</span></div>
 <pre style="margin: 0; padding: 18px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: var(--syn-string);"><span style="color: var(--syn-punct);">[{</span>
@@ -200,7 +212,12 @@ body{margin:0}
 <section id="heartbeat" aria-labelledby="heartbeat-title" style="display: flex; flex-direction: column; gap: 16px; padding-top: 24px; border-top: 1px solid var(--rule);">
 <h2 id="heartbeat-title" style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;"><span style="padding: 2px 12px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--mono); font-size: var(--fs-label); font-weight: 600; color: var(--accent2);">GET · POST</span><span style="font-family: var(--mono);">/heartbeat/:id</span></h2>
 <p style="margin: 0;">A cron job or worker pings its heartbeat check. Prefer the header; the path form puts the secret into logs of proxies and cron mail.</p>
-<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="curl example">
+<div style="position: relative; background: var(--code); border-radius: 12px; padding: 18px 56px 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="curl example">
+<button type="button" class="copy" data-id="b2" onClick="{{copy}}" aria-label="{{cb.b2.label}}" style="position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #c9bfc4; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{cb.b2.done}}" hint-placeholder-val="{{false}}"><svg class="ck" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+<sc-if value="{{cb.b2.idle}}" hint-placeholder-val="{{true}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+</button>
+<span class="tip" role="status" data-show="{{cb.b2.show}}" style="position: absolute; top: 16px; right: 54px; padding: 2px 8px; border-radius: 6px; background: #dfd7d4; color: #271b32; font-family: var(--sans); font-size: 12px; font-weight: 500; line-height: 1.5;">{{cb.b2.tip}}</span>
 <div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>curl -fsS -X POST http://localhost:3000/heartbeat/nightly-backup \</div>
 <div style="white-space: pre;">    -H "Authorization: Bearer $BACKUP_SECRET"</div>
 </div>
@@ -231,13 +248,36 @@ body{margin:0}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { theme: null, menuOpen: false, docsOpen: false };
+    this.state = { theme: null, menuOpen: false, docsOpen: false, copied: null, copyMsg: '' };
+  }
+  componentWillUnmount() { clearTimeout(this.copyT); }
+  // copies the block's command lines without the "$ " prompt; grey output and comment lines stay out
+  copyBlock(btn) {
+    const id = btn.getAttribute('data-id');
+    const text = Array.from(btn.parentElement.querySelectorAll('div[style*="white-space: pre"]'))
+      .filter((d) => !/#a89b95/.test(d.getAttribute('style') || ''))
+      .map((d) => d.textContent.replace(/^\$ /, ''))
+      .join('\n');
+    const show = (msg) => {
+      this.setState({ copied: id, copyMsg: msg });
+      clearTimeout(this.copyT);
+      this.copyT = setTimeout(() => this.setState({ copied: null, copyMsg: '' }), 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => show('Copied'), () => show('Copy blocked'));
+    else show('Copy blocked');
   }
   renderVals() {
     const theme = this.state.theme ?? this.props.defaultTheme ?? 'light';
     const isDark = theme === 'dark';
-    const { menuOpen, docsOpen } = this.state;
+    const { menuOpen, docsOpen, copied, copyMsg } = this.state;
+    const cb = {};
+    ['b1', 'b2'].forEach((id) => {
+      const done = copied === id;
+      cb[id] = { done: done && copyMsg === 'Copied', idle: !(done && copyMsg === 'Copied'), label: done ? copyMsg : 'Copy commands', show: done ? 'true' : 'false', tip: done ? copyMsg : '' };
+    });
     return {
+      cb,
+      copy: (e) => this.copyBlock(e.currentTarget),
       theme,
       isDark,
       isLight: !isDark,
