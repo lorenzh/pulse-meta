@@ -4,6 +4,7 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 
 ## What lives here
 - Feature issues, specs (`.factory/work/<issue>/plan.md`, `targets.json`), Paragon Factory config (`.factory/config.yaml`, `.factory/prompts/`) and runner workflows (`.github/workflows/factory*.yml`).
+- The Factory report (`report/`): `generate.mjs` builds `index.html` and `data.json` from the public issues, Actions runs and pull requests; `.github/workflows/factory-report.yml` publishes it on GitHub Pages daily, on push to `report/**` and on demand.
 - No product code. Never change a target repository by hand from here: write a feature issue and let Factory build it.
 - Targets: `contract`, `probe`, `api`, `status`, `notify`, `config`, `kit`, `website` (`lorenzh/pulse-<name>`). Their code conventions are in each target's `AGENTS.md`.
 - Runtime dependencies in a target come only from [docs/approved-packages.md](docs/approved-packages.md).
@@ -40,6 +41,7 @@ Lessons:
 |------|---------|
 | Install | `npm ci` (needs `GITHUB_PACKAGES_TOKEN` for `@paragondata` packages, see `.npmrc`) |
 | Validate config | `npx factory validate` |
+| Build the Factory report locally | `GH_TOKEN=<token> node report/generate.mjs _site` |
 
 ## Rules
 - Public repository: no secrets, tokens or private details in issues, specs or config.

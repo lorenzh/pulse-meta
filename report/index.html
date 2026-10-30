@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pulse Factory-Report</title>
+<meta name="description" content="Kosten, Dauer und Qualität der Paragon-Factory-Läufe, die pulse bauen.">
+<style>
+  :root {
+    color-scheme: light;
+    --color-bg: #f7f7f5; --color-panel: #ffffff; --color-fg: #1f1e1c; --color-fg-muted: #6b6862;
+    --color-border-line: #e3e1dc; --color-ok: #2f7a3e; --color-warn: #9a6200; --color-bad: #b42b2b;
+    --cds-chart-muted: #c9c5bc; --cds-chart-grid: #ecebe7; --cds-chart-axis: #b8b4ab; --cds-chart-reference: #9a958b;
+    --cds-surface-popover: #ffffff; --cds-border: #dcd9d2; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.10); --cds-text-secondary: #6b6862;
+    --dash-color-0: #c2562f;
+    --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-anthropic-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --cds-font-size-caption: 0.8125rem; --cds-font-size-body: 0.9375rem; --cds-font-size-heading: 1.0625rem; --cds-font-size-title: 1.875rem;
+    --cds-font-weight-medium: 560;
+    --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-lg: 24px; --cds-gap-xl: 40px;
+    --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 16px;
+    --cds-radius: 8px; --cds-dur-slow: 300ms;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --color-bg: #1a1918; --color-panel: #232220; --color-fg: #eceae5; --color-fg-muted: #a29e95;
+      --color-border-line: #383631; --color-ok: #74c286; --color-warn: #e0a84a; --color-bad: #f07a7a;
+      --cds-chart-muted: #57534b; --cds-chart-grid: #2f2d2a; --cds-chart-axis: #5d5950; --cds-chart-reference: #807b70;
+      --cds-surface-popover: #2b2a27; --cds-border: #45423c; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.45); --cds-text-secondary: #a29e95;
+      --dash-color-0: #e8825b;
+    }
+  }
+  body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); font-size: 14px; }
+  #dash-root { padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .fr-fail::before { content: ""; }
+  .fr-source { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .fr-source a { color: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+  // A small stand-in for the dashboard runtime the page was first written for:
+  // it serves data.json and redraws every data-draw element on load and resize.
+  window.dash = (() => {
+    let data = null, failed = false;
+    const fns = new Map();
+    const run = (name) => {
+      const fn = fns.get(name);
+      if (fn) document.querySelectorAll(`[data-draw="${name}"]`).forEach((el) => fn(el));
+    };
+    const runAll = () => fns.forEach((_, name) => run(name));
+    fetch('data.json').then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then((d) => { data = d; }, (err) => { failed = true; console.error('data.json', err); })
+      .then(runAll);
+    let last = window.innerWidth;
+    window.addEventListener('resize', () => { if (Math.abs(window.innerWidth - last) > 20) { last = window.innerWidth; runAll(); } });
+    return {
+      data(id) {
+        if (failed) return {status: 'error', data: []};
+        if (!data) return {status: 'loading', data: []};
+        return id in data ? {status: 'ok', data: data[id]} : {status: 'missing', data: []};
+      },
+      draw(name, fn) { if (fn) { fns.set(name, fn); if (data || failed) run(name); } else run(name); },
+      get colors() { return [getComputedStyle(document.documentElement).getPropertyValue('--dash-color-0').trim() || '#c2562f']; },
+    };
+  })();
+</script>
+</head>
+<body>
+<main id="dash-root">
+<style>
+  .fr { max-width: 72rem; margin-inline: auto; display: grid; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); font-variant-numeric: tabular-nums; }
+  .fr-head { display: grid; gap: var(--cds-gap-sm); }
+  .fr-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+  .fr-sub { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; }
+  .fr-lead { font-size: var(--cds-font-size-body); max-width: 68ch; margin: 0; line-height: 1.55; }
+  .fr .fr-lead b, .fr .fr-prose b { font-weight: 600; }
+  .fr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr)); gap: var(--cds-gap-md); }
+  .fr-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); display: grid; gap: var(--cds-gap-xs); align-content: start; }
+  .fr-tile-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .fr-tile-value { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; }
+  .fr-tile-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .fr-section { display: grid; gap: var(--cds-gap-md); }
+  .fr-h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .fr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
+  .fr-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); align-content: start; min-width: 0; }
+  .fr-card h3 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .fr-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0; line-height: 1.45; }
+  .fr-chart { position: relative; min-height: 240px; }
+  .fr-chart.tall { min-height: 300px; }
+  .fr-chart svg { display: block; overflow: visible; }
+  .fr-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+  .fr-tip .k { color: var(--cds-text-secondary); }
+  .fr-scroll { overflow: auto; max-height: 34rem; }
+  .fr-scroll.short { max-height: 24rem; }
+  .fr table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); }
+  .fr th, .fr td { text-align: left; padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
+  .fr th { position: sticky; top: 0; background: var(--color-panel); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); z-index: 1; }
+  .fr th.num, .fr td.num { text-align: right; }
+  .fr th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+  .fr th button:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; border-radius: 2px; }
+  .fr th[aria-sort="ascending"] button::after { content: "▲"; font-size: 0.7em; }
+  .fr th[aria-sort="descending"] button::after { content: "▼"; font-size: 0.7em; }
+  .fr .bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .fr .bar i { display: block; height: 8px; border-radius: 2px; background: var(--cds-chart-muted); min-width: 1px; }
+  .fr .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--color-border-line); white-space: nowrap; }
+  .fr .pill.ok { color: var(--color-ok); }
+  .fr .pill.warn { color: var(--color-warn); }
+  .fr .pill.bad { color: var(--color-bad); }
+  .fr .muted { color: var(--color-fg-muted); }
+  .fr-search { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); width: min(100%, 20rem); min-height: 36px; box-sizing: border-box; }
+  .fr-prose { display: grid; gap: var(--cds-gap-sm); max-width: 72ch; }
+  .fr-prose p, .fr-prose li { margin: 0; line-height: 1.55; font-size: var(--cds-font-size-body); }
+  .fr-prose ol, .fr-prose ul { margin: 0; padding-left: 1.3em; display: grid; gap: var(--cds-gap-sm); }
+  .fr code { font-size: 0.92em; }
+  .fr-fail { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .fr-fail::before { content: ""; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--color-bad); }
+  .fr [data-dash-source-state=empty] { color: transparent; }
+  .fr [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="fr">
+  <header class="fr-head" id="top">
+    <h1 class="fr-title">pulse Factory-Report</h1>
+    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den acht Target-Repositories. Stand: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>.</p>
+    <p class="fr-lead">Die Factory hat in <b data-draw="sum" data-fmt="int" data-source="summary" data-field="runs" data-row="0">—</b> Läufen <b data-draw="sum" data-fmt="int" data-source="summary" data-field="features_done" data-row="0">—</b> Features gebaut und dafür <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</b> verbraucht, im Median <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="feature_usd_median" data-row="0">—</b> pro Feature. <b data-draw="sum" data-fmt="pct" data-source="summary" data-field="first_pass" data-row="0">—</b> der Target-PRs wurden ohne Handarbeit gemergt. Der Rest zeigt die eigentliche Schwäche: Die Review-Stufe ist billig und prüft kaum selbst. Sie hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.</p>
+  </header>
+
+  <section class="fr-tiles" aria-label="Kennzahlen">
+    <div class="fr-tile">
+      <span class="fr-tile-label">Kosten gesamt</span>
+      <span class="fr-tile-value" data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</span>
+      <span class="fr-tile-note">API-Listenpreis laut CLI</span>
+    </div>
+    <div class="fr-tile">
+      <span class="fr-tile-label">Factory-Läufe</span>
+      <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="runs" data-row="0">—</span>
+      <span class="fr-tile-note">Ein Lauf ist ein Zustand, z. B. implement</span>
+    </div>
+    <div class="fr-tile">
+      <span class="fr-tile-label">Laufzeit aller Läufe</span>
+      <span class="fr-tile-value"><span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="factory_h" data-row="0">—</span> h</span>
+      <span class="fr-tile-note">Summe der GitHub-Actions-Läufe</span>
+    </div>
+    <div class="fr-tile">
+      <span class="fr-tile-label">Tokens</span>
+      <span class="fr-tile-value"><span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="tokens_m" data-row="0">—</span> M</span>
+      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct0" data-source="summary" data-field="cached_share" data-row="0">—</span> davon aus dem Cache</span>
+    </div>
+    <div class="fr-tile">
+      <span class="fr-tile-label">Target-PRs gemergt</span>
+      <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_merged" data-row="0">—</span> / <span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs" data-row="0">—</span></span>
+      <span class="fr-tile-note"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_open" data-row="0">—</span> noch offen</span>
+    </div>
+    <div class="fr-tile">
+      <span class="fr-tile-label">PRs mit Handarbeit</span>
+      <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_human" data-row="0">—</span>
+      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct" data-source="summary" data-field="human_share" data-row="0">—</span> aller Target-PRs</span>
+    </div>
+  </section>
+
+  <section class="fr-section" id="zeit">
+    <h2 class="fr-h2">Dauer</h2>
+    <div class="fr-tiles">
+      <div class="fr-tile">
+        <span class="fr-tile-label">Durchlaufzeit pro Feature, Median</span>
+        <span class="fr-tile-value"><span data-draw="sum" data-fmt="hm" data-source="summary" data-field="lead_h_median" data-row="0">—</span></span>
+        <span class="fr-tile-note">Erster Lauf bis letzter Merge</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Durchlaufzeit, 90. Perzentil</span>
+        <span class="fr-tile-value"><span data-draw="sum" data-fmt="hm" data-source="summary" data-field="lead_h_p90" data-row="0">—</span></span>
+        <span class="fr-tile-note">Neun von zehn Features waren schneller</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">PR offen bis Merge, Median</span>
+        <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="pr_merge_min_median" data-row="0">—</span> min</span>
+        <span class="fr-tile-note">Prüfung durch eine Person</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Kosten pro Target-PR</span>
+        <span class="fr-tile-value" data-draw="sum" data-fmt="usd" data-source="summary" data-field="pr_usd" data-row="0">—</span>
+        <span class="fr-tile-note">Alle Kosten geteilt durch alle PRs</span>
+      </div>
+    </div>
+    <p class="fr-note">Ein Lauf dauert wenige Minuten. Die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es fast immer am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.</p>
+  </section>
+
+  <section class="fr-section" id="kosten">
+    <h2 class="fr-h2">Wofür das Geld ging</h2>
+    <div class="fr-grid">
+      <div class="fr-card">
+        <h3>Kosten nach Schritt</h3>
+        <p class="fr-note">Summe in USD je Workflow-Zustand. Der Implementer arbeitet am längsten und liest die meisten Dateien.</p>
+        <div class="fr-chart" data-draw="steps" data-source="by_step"></div>
+      </div>
+      <div class="fr-card">
+        <h3>Kosten über die Zeit</h3>
+        <p class="fr-note">USD je Stunde (UTC), nach Startzeit des Laufs. Die Arbeit kam in Schüben, jeweils nach dem Merge einer Spec.</p>
+        <div class="fr-chart" data-draw="hours" data-source="by_hour"></div>
+      </div>
+    </div>
+    <div class="fr-card">
+      <h3>Schritte im Detail</h3>
+      <p class="fr-note">Dauer ist die Wandzeit des GitHub-Actions-Laufs, einschließlich Checkout und Installation.</p>
+      <div class="fr-scroll short">
+        <table data-source="by_step" data-row-key="step">
+          <thead><tr>
+            <th data-field="step">Schritt</th>
+            <th data-field="role">Rolle</th>
+            <th class="num" data-field="runs">Läufe</th>
+            <th class="num" data-field="usd">USD gesamt</th>
+            <th class="num" data-field="usd_median">USD Median</th>
+            <th class="num" data-field="usd_max">USD max.</th>
+            <th class="num" data-field="min_median">Min. Median</th>
+            <th class="num" data-field="min_p90">Min. p90</th>
+            <th class="num" data-field="tokens_m">Tokens (M)</th>
+          </tr></thead>
+          <tbody data-draw="steptable"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="fr-card">
+      <h3>Kosten nach Repository</h3>
+      <p class="fr-note">Spec-Läufe zählen zu meta. api und status sind die teuersten Targets, weil die meisten Features sie berühren und ihre Test-Suiten groß sind.</p>
+      <div class="fr-scroll short">
+        <table data-source="by_target" data-row-key="target">
+          <thead><tr>
+            <th data-field="target">Repository</th>
+            <th class="num" data-field="issues">Issues</th>
+            <th class="num" data-field="runs">Läufe</th>
+            <th class="num" data-field="usd">USD</th>
+            <th class="num" data-field="usd_per_issue">USD pro Issue</th>
+            <th class="num" data-field="prs_merged">PRs gemergt</th>
+            <th class="num" data-field="prs_human">PRs mit Handarbeit</th>
+          </tr></thead>
+          <tbody data-draw="targettable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="fr-section" id="features">
+    <h2 class="fr-h2">Alle Features</h2>
+    <div class="fr-card">
+      <h3>Kosten, Laufzeit und Handarbeit je Feature</h3>
+      <p class="fr-note">Ein Feature ist ein Eltern-Issue mit seinen Children. Factory-Minuten sind die Summe der Läufe, Durchlaufzeit reicht vom ersten Lauf bis zum letzten Merge. Klick auf eine Spalte sortiert.</p>
+      <input class="fr-search" id="fr-search" type="search" placeholder="Feature suchen" aria-label="Feature suchen">
+      <div class="fr-scroll">
+        <table data-source="features" data-row-key="issue" id="fr-ftable">
+          <thead><tr>
+            <th data-field="issue" data-sort="issue"><button type="button">Issue</button></th>
+            <th data-field="title" data-sort="title"><button type="button">Titel</button></th>
+            <th class="num" data-field="targets" data-sort="targets"><button type="button">Targets</button></th>
+            <th class="num" data-field="runs" data-sort="runs"><button type="button">Läufe</button></th>
+            <th class="num" data-field="spec_usd" data-sort="spec_usd"><button type="button">Spec USD</button></th>
+            <th class="num" data-field="build_usd" data-sort="build_usd"><button type="button">Build USD</button></th>
+            <th class="num" data-field="total_usd" data-sort="total_usd"><button type="button">Gesamt USD</button></th>
+            <th class="num" data-field="factory_min" data-sort="factory_min"><button type="button">Factory-Min.</button></th>
+            <th class="num" data-field="lead_h" data-sort="lead_h"><button type="button">Durchlauf</button></th>
+            <th class="num" data-field="human_fixes" data-sort="human_fixes"><button type="button">Hand-Commits</button></th>
+            <th data-field="status" data-sort="status"><button type="button">Status</button></th>
+          </tr></thead>
+          <tbody data-draw="ftable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="fr-section" id="qualitaet">
+    <h2 class="fr-h2">Qualität</h2>
+    <div class="fr-tiles">
+      <div class="fr-tile">
+        <span class="fr-tile-label">Review schickt zurück</span>
+        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="review_back" data-row="0">—</span>
+        <span class="fr-tile-note">bei allen build/review-Läufen</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Plan-Review schickt zurück</span>
+        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="plan_back" data-row="0">—</span>
+        <span class="fr-tile-note">bei allen spec/plan-review-Läufen</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Holds (needs-input)</span>
+        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="holds" data-row="0">—</span>
+        <span class="fr-tile-note">Implementer brach ab, Spec nicht umsetzbar</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Merge-Läufe</span>
+        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="merge_runs" data-row="0">—</span>
+        <span class="fr-tile-note">resolve und review bei Konflikten</span>
+      </div>
+      <div class="fr-tile">
+        <span class="fr-tile-label">Fehlgeschlagene Actions-Läufe</span>
+        <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="actions_failed" data-row="0">—</span> / <span data-draw="sum" data-fmt="int" data-source="summary" data-field="actions_total" data-row="0">—</span></span>
+        <span class="fr-tile-note">Workflow factory-run.yml</span>
+      </div>
+    </div>
+    <div class="fr-grid">
+      <div class="fr-card">
+        <h3>Was Personen nachbessern mussten</h3>
+        <p class="fr-note">Commits auf Factory-PRs, die nicht vom Factory-Bot stammen. Mehrere davon schließen Datenlecks in Fehlermeldungen.</p>
+        <div class="fr-scroll short">
+          <table data-source="human_fixes" data-row-key="key">
+            <thead><tr>
+              <th data-field="pr">PR</th>
+              <th data-field="fix">Commit</th>
+              <th data-field="date">Datum</th>
+            </tr></thead>
+            <tbody data-draw="humantable"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="fr-card">
+        <h3>Rückläufer, Holds und Konflikte</h3>
+        <p class="fr-note">Jede Stelle, an der die Factory nicht geradeaus durchlief.</p>
+        <div class="fr-scroll short">
+          <table data-source="events" data-row-key="key">
+            <thead><tr>
+              <th data-field="issue">Issue</th>
+              <th data-field="kind">Ereignis</th>
+              <th data-field="title">Titel</th>
+              <th data-field="at">Zeit (UTC)</th>
+            </tr></thead>
+            <tbody data-draw="eventtable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="fr-section" id="fall-324">
+    <h2 class="fr-h2">Fallstudie: #324, Small review leftovers (P3), round 3</h2>
+    <div class="fr-grid">
+      <div class="fr-card">
+        <h3>Läufe von #324 und seinen Children</h3>
+        <p class="fr-note">Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="c324_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="c324_tokens_m" data-row="0">—</b> M Tokens. Die Spec lief vormittags, der Build nach dem Merge der Spec parallel in allen Targets.</p>
+        <div class="fr-chart tall" data-draw="case" data-source="case324"></div>
+      </div>
+      <div class="fr-card fr-prose">
+        <h3>Was dabei auffiel</h3>
+        <ul>
+          <li><b>api #372:</b> Die Spec verlangt leere Manual-Incident-Reads ohne Admin-Tokens. Der Implementer fand „keinen Bug“ und schrieb Tests und Doku für das Gegenteil. Der Reviewer bestätigte das. Eine Person korrigierte es auf pulse-api#48.</li>
+          <li><b>Fehler in der Spec:</b> Der Plan ließ die erwartete Service-Liste aus <code>compose.yaml</code> lesen, also aus der Datei, die geprüft wird. Die Prüfung konnte nie fehlschlagen. Eine Person ersetzte sie durch eine feste Liste.</li>
+          <li><b>config #375:</b> Die Frage nach TypeScript 7 blieb offen. Das contract-Child fand im selben Lauf die Antwort, aber die Children teilen kein Wissen.</li>
+          <li><b>Mutation-Runs:</b> Kein Reviewer hat sie wiederholt. Der fehlschlagende Output steht nur in Issue-Kommentaren, nicht in den PR-Beschreibungen, obwohl die Spec das verlangt.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="fr-section" id="befunde">
+    <h2 class="fr-h2">Befunde (Stand 30.10.2026)</h2>
+    <div class="fr-prose">
+      <ol>
+        <li><b>Kosten sind kein Engpass.</b> Ein Feature kostet im Median etwa so viel wie ein Kaffee. Den größten Teil verbraucht build/implement. Der hohe Cache-Anteil hält die Preise niedrig.</li>
+        <li><b>Die Zeit liegt bei Menschen.</b> Die Läufe selbst dauern Minuten. Längere Durchlaufzeiten entstehen beim Warten auf den Merge der Spec und der PRs.</li>
+        <li><b>Das Review ist zu passiv.</b> Es kostet deutlich weniger als ein Implement-Lauf, schickt fast nie zurück und wiederholt keine Mutation-Checks. Was durchrutschte, zeigt die Liste der Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (probe#34, notify#24, api#43), fehlende Exporte und Validierungen (contract#29, contract#24, api#37) und eine Abweichung von der Spec (api#48).</li>
+        <li><b>Holds kommen aus ungeprüften Annahmen in der Spec.</b> Bei SonarJS (#66) hingen alle Children gleichzeitig fest, weil typescript-eslint TypeScript 7 nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Issue-Review und Plan lesen die Clones nur stichprobenartig.</li>
+        <li><b>Plan-Review greift eher als Build-Review.</b> Es schickte Pläne häufiger zurück als das Build-Review Code. Das Issue-Review hat kein Feature blockiert.</li>
+        <li><b>Die Infrastruktur ist stabil.</b> Kaum fehlgeschlagene Actions-Läufe, wenige Merge-Konflikte, vereinzelt fehlgeschlagene Vorbereitungen bei frühen Features.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="fr-section" id="empfehlungen">
+    <h2 class="fr-h2">Empfehlungen (Stand 30.10.2026)</h2>
+    <div class="fr-prose">
+      <ol>
+        <li><b>Reviewer prüft selbst.</b> Mindestens einen Mutation-Run wiederholen. Meldet der Implementer „kein Bug, keine Änderung“ zu einem Punkt, den die Spec als Verhaltensänderung beschreibt, geht das Issue an eine Person (needs-input) statt durch.</li>
+        <li><b>Sicherheits-Checkliste im Review:</b> Keine Secrets, URLs, Header- oder Dateiinhalte in Fehler- und Log-Texten. Das war die häufigste Art von Nacharbeit.</li>
+        <li><b>Plan prüft Annahmen gegen die Repos:</b> Tool-Versionen, Linter-Kompatibilität und was Biome prüft. Das hätte die Holds bei #66 und #96 vermieden.</li>
+        <li><b>Gemeinsame Befunde teilen:</b> Wenn ein Child eine Frage klärt, die die Spec mehreren Children stellt (TS 7), soll der Befund am Feature stehen und von den anderen gelesen werden.</li>
+        <li><b>Spec-Regel für Prüfungen:</b> Eine Prüfung leitet ihren Sollwert nie aus der Datei ab, die sie prüft.</li>
+        <li><b>PR-Beschreibung füllen:</b> Den Bericht des Implementers samt Mutation-Output in den PR übernehmen, nicht nur „Closes …“.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="fr-section" id="methode">
+    <h2 class="fr-h2">Methode und Grenzen</h2>
+    <div class="fr-prose">
+      <ul>
+        <li>Quelle sind die Kommentare des Factory-Bots auf allen Issues in pulse-meta. Jeder Lauf schreibt einen Datensatz mit Zustand, Rolle, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories.</li>
+        <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
+        <li>Handarbeit heißt: ein Commit auf einem Factory-PR, dessen Autor nicht der Factory-Bot ist. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
+        <li>Die Zahlen erzeugt <code>report/generate.mjs</code> täglich neu. Laufende Features zählen nur mit den Läufen bis zum Stand oben. Befunde, Empfehlungen und die Fallstudie sind Text vom 30.10.2026 und werden nicht neu geschrieben.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script>
+  window.frFmt = (v, kind) => {
+    if (v === null || v === undefined || v === '') return '—';
+    switch (kind) {
+      case 'usd': return Number(v).toLocaleString('de-DE', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2});
+      case 'int': return Number(v).toLocaleString('de-DE', {maximumFractionDigits: 0});
+      case 'dec1': return Number(v).toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+      case 'dec2': return Number(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      case 'pct': return Number(v).toLocaleString('de-DE', {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1});
+      case 'pct0': return Number(v).toLocaleString('de-DE', {style: 'percent', maximumFractionDigits: 0});
+      case 'hm': { const m = Math.round(Number(v) * 60); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min'; }
+      default: return String(v);
+    }
+  };
+  window.frFail = (el) => { const d = document.createElement('div'); d.className = 'fr-fail'; d.textContent = 'Failed to load'; el.replaceChildren(d); };
+  window.frTip = (box) => {
+    let t = box.querySelector('.fr-tip');
+    if (!t) { t = document.createElement('div'); t.className = 'fr-tip'; t.hidden = true; box.appendChild(t); }
+    return {
+      show(ev, lines) {
+        t.replaceChildren(...lines.map(([k, v], i) => { const p = document.createElement('div'); if (i === 0) { p.className = 'k'; p.textContent = k; } else { p.textContent = k + ': ' + v; } return p; }));
+        t.hidden = false;
+        const r = box.getBoundingClientRect(); const w = t.offsetWidth, h = t.offsetHeight;
+        let x = ev.clientX - r.left + 12, y = ev.clientY - r.top - h - 8;
+        if (x + w > r.width) x = Math.max(0, ev.clientX - r.left - w - 12);
+        if (y < 0) y = ev.clientY - r.top + 16;
+        t.style.left = x + 'px'; t.style.top = y + 'px';
+      },
+      hide() { t.hidden = true; }
+    };
+  };
+  window.frCell = (tr, text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
+  window.frBarCell = (tr, value, max, kind) => {
+    const td = document.createElement('td'); td.className = 'num';
+    const wrap = document.createElement('span'); wrap.className = 'bar';
+    const s = document.createElement('span'); s.textContent = window.frFmt(value, kind);
+    const i = document.createElement('i'); i.style.width = (max > 0 ? Math.max(1, 56 * Number(value) / max) : 1) + 'px';
+    wrap.append(s, i); td.appendChild(wrap); tr.appendChild(td); return td;
+  };
+</script>
+
+<script>
+  dash.draw('sum', (el) => {
+    const s = dash.data('summary');
+    if (s.status !== 'ok' || !s.data.length) { el.textContent = '—'; return; }
+    el.textContent = window.frFmt(s.data[0][el.dataset.field], el.dataset.fmt || 'text');
+  });
+</script>
+
+<script>
+  dash.draw('steps', (el) => {
+    const d = dash.data('by_step');
+    if (d.status === 'error') { window.frFail(el); return; }
+    if (d.status !== 'ok') { el.replaceChildren(); return; }
+    const rows = d.data.map((r) => ({...r, usd: Number(r.usd), runs: Number(r.runs)})).sort((a, b) => b.usd - a.usd);
+    el.replaceChildren();
+    const W = el.clientWidth || 360, rowH = 30, H = rows.length * rowH + 8;
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const probe = svg.append('text').attr('font-size', 12);
+    let lw = 0; rows.forEach((r) => { probe.text(r.step); lw = Math.max(lw, probe.node().getComputedTextLength()); });
+    probe.text(window.frFmt(d3.max(rows, (r) => r.usd), 'usd')); const vw = probe.node().getComputedTextLength(); probe.remove();
+    const x = d3.scaleLinear([0, d3.max(rows, (r) => r.usd)], [lw + 12, W - vw - 10]);
+    const y = d3.scaleBand(rows.map((r) => r.step), [4, H - 4]).padding(0.28);
+    const tip = window.frTip(el);
+    const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r');
+    g.append('text').attr('x', 0).attr('y', (r) => y(r.step) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg-muted)').text((r) => r.step);
+    g.append('rect').attr('x', x(0)).attr('y', (r) => y(r.step)).attr('height', y.bandwidth()).attr('width', (r) => Math.max(1, x(r.usd) - x(0))).attr('rx', 3)
+      .attr('fill', (r, i) => i === 0 ? dash.colors[0] : 'var(--cds-chart-muted)')
+      .on('pointermove', (ev, r) => tip.show(ev, [[r.step], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')], ['Median pro Lauf', window.frFmt(r.usd_median, 'usd')]]))
+      .on('pointerleave', () => tip.hide());
+    g.append('text').attr('x', (r) => x(r.usd) + 6).attr('y', (r) => y(r.step) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg)').text((r) => window.frFmt(r.usd, 'usd'));
+  });
+
+  dash.draw('hours', (el) => {
+    const d = dash.data('by_hour');
+    if (d.status === 'error') { window.frFail(el); return; }
+    if (d.status !== 'ok') { el.replaceChildren(); return; }
+    const rows = d.data.map((r) => ({t: new Date(r.hour), usd: Number(r.usd), runs: Number(r.runs)}));
+    el.replaceChildren();
+    const W = el.clientWidth || 360, H = 240, m = {t: 10, r: 8, b: 26, l: 40};
+    const t0 = d3.utcHour.floor(d3.min(rows, (r) => r.t)), t1 = d3.utcHour.offset(d3.max(rows, (r) => r.t), 1);
+    const x = d3.scaleUtc([t0, t1], [m.l, W - m.r]);
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.usd)], [H - m.b, m.t]).nice();
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const yt = y.ticks(4);
+    svg.append('g').selectAll('line').data(yt).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(yt).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text((v) => '$' + v);
+    const days = d3.utcDay.range(d3.utcDay.ceil(t0), t1);
+    const step = W < 420 ? 12 : 6;
+    const ticks = d3.utcHour.every(step).range(t0, t1).filter((t) => t.getUTCHours() % step === 0);
+    svg.append('g').selectAll('text').data(ticks).join('text').attr('x', x).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)')
+      .text((t) => t.getUTCHours() === 0 ? d3.utcFormat('%-d.%-m.')(t) : d3.utcFormat('%H h')(t));
+    svg.append('g').selectAll('line').data(days).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '3 3');
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', H - m.b).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
+    const bw = Math.max(2, (x(d3.utcHour.offset(t0, 1)) - x(t0)) * 0.78);
+    const tip = window.frTip(el);
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => x(r.t) + 0.5).attr('width', bw).attr('y', (r) => y(r.usd)).attr('height', (r) => Math.max(1, y(0) - y(r.usd))).attr('rx', 2).attr('fill', dash.colors[0])
+      .on('pointermove', (ev, r) => tip.show(ev, [[d3.utcFormat('%-d.%-m. %H:00 UTC')(r.t)], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')]]))
+      .on('pointerleave', () => tip.hide());
+  });
+
+  dash.draw('case', (el) => {
+    const d = dash.data('case324');
+    if (d.status === 'error') { window.frFail(el); return; }
+    if (d.status !== 'ok') { el.replaceChildren(); return; }
+    const rows = d.data.map((r) => ({...r, s: new Date(r.start), usd: Number(r.usd), minutes: Number(r.minutes)}));
+    rows.forEach((r) => { r.e = new Date(r.s.getTime() + r.minutes * 60000); });
+    const lanes = ['Spec', 'contract', 'probe', 'api', 'status', 'notify', 'config'].filter((l) => rows.some((r) => r.target === l));
+    el.replaceChildren();
+    const W = el.clientWidth || 360, rowH = 34, m = {t: 8, r: 10, b: 26, l: 64}, H = m.t + lanes.length * rowH + m.b;
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const y = d3.scaleBand(lanes, [m.t, H - m.b]).padding(0.3);
+    const spec = rows.filter((r) => r.target === 'Spec'), build = rows.filter((r) => r.target !== 'Spec');
+    const gap = 26, mid = m.l + (W - m.l - m.r) * 0.32;
+    const xs = d3.scaleUtc([d3.min(spec, (r) => r.s), d3.max(spec, (r) => r.e)], [m.l, mid - gap / 2]);
+    const xb = d3.scaleUtc([d3.min(build, (r) => r.s), d3.max(build, (r) => r.e)], [mid + gap / 2, W - m.r]);
+    const X = (r, t) => r.target === 'Spec' ? xs(t) : xb(t);
+    svg.append('g').selectAll('text').data(lanes).join('text').attr('x', 0).attr('y', (l) => y(l) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg-muted)').text((l) => l);
+    svg.append('line').attr('x1', mid).attr('x2', mid).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '3 3');
+    const fmt = d3.utcFormat('%H:%M');
+    [[xs, spec], [xb, build]].forEach(([sc, rs]) => {
+      const a = d3.min(rs, (r) => r.s), b = d3.max(rs, (r) => r.e);
+      svg.append('text').attr('x', sc(a)).attr('y', H - 8).attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text(fmt(a));
+      svg.append('text').attr('x', sc(b)).attr('y', H - 8).attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text(fmt(b));
+    });
+    const tip = window.frTip(el);
+    const colorOf = (r) => /review/.test(r.step) ? 'var(--cds-chart-muted)' : dash.colors[0];
+    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => X(r, r.s)).attr('width', (r) => Math.max(2, X(r, r.e) - X(r, r.s) - 1)).attr('y', (r) => y(r.target)).attr('height', y.bandwidth()).attr('rx', 3).attr('fill', colorOf)
+      .on('pointermove', (ev, r) => tip.show(ev, [['#' + r.issue + ' ' + r.step], ['Start', fmt(r.s) + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]]))
+      .on('pointerleave', () => tip.hide());
+  });
+</script>
+
+<script>
+  dash.draw('steptable', (tb) => {
+    const d = dash.data('by_step');
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    const max = d3.max(d.data, (r) => Number(r.usd));
+    tb.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.step;
+      window.frCell(tr, r.step); window.frCell(tr, r.role, 'muted'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
+      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_median, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.usd_max, 'usd'), 'num');
+      window.frCell(tr, window.frFmt(r.min_median, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.min_p90, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.tokens_m, 'dec1'), 'num');
+      return tr;
+    }));
+  });
+
+  dash.draw('targettable', (tb) => {
+    const d = dash.data('by_target');
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    const max = d3.max(d.data, (r) => Number(r.usd));
+    tb.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.target;
+      window.frCell(tr, r.target); window.frCell(tr, window.frFmt(r.issues, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
+      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_per_issue, 'usd'), 'num');
+      window.frCell(tr, window.frFmt(r.prs_merged, 'int'), 'num'); window.frCell(tr, window.frFmt(r.prs_human, 'int'), 'num');
+      return tr;
+    }));
+  });
+
+  window.frSort = {key: 'total_usd', dir: -1};
+  document.querySelectorAll('#fr-ftable th[data-sort] button').forEach((b) => {
+    b.addEventListener('click', () => {
+      const k = b.parentElement.dataset.sort;
+      window.frSort = window.frSort.key === k ? {key: k, dir: -window.frSort.dir} : {key: k, dir: (k === 'title' || k === 'status' || k === 'issue') ? 1 : -1};
+      dash.draw('ftable');
+    });
+  });
+  document.querySelectorAll('#fr-search').forEach((i) => i.addEventListener('input', () => dash.draw('ftable')));
+
+  dash.draw('ftable', (tb) => {
+    const d = dash.data('features');
+    document.querySelectorAll('#fr-ftable th[data-sort]').forEach((th) => {
+      th.setAttribute('aria-sort', th.dataset.sort === window.frSort.key ? (window.frSort.dir > 0 ? 'ascending' : 'descending') : 'none');
+    });
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    let q = ''; document.querySelectorAll('#fr-search').forEach((i) => { q = i.value.trim().toLowerCase(); });
+    const {key, dir} = window.frSort;
+    const val = (r) => (key === 'title' || key === 'status') ? String(r[key]) : (r[key] === null ? -Infinity : Number(r[key]));
+    const rows = d.data.filter((r) => !q || String(r.title).toLowerCase().includes(q) || String(r.issue).includes(q))
+      .slice().sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+    const max = d3.max(d.data, (r) => Number(r.total_usd));
+    tb.replaceChildren(...rows.map((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = String(r.issue);
+      window.frCell(tr, '#' + r.issue); window.frCell(tr, r.title);
+      window.frCell(tr, window.frFmt(r.targets, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
+      window.frCell(tr, window.frFmt(r.spec_usd, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.build_usd, 'usd'), 'num');
+      window.frBarCell(tr, r.total_usd, max, 'usd'); window.frCell(tr, window.frFmt(r.factory_min, 'dec1'), 'num');
+      const lt = window.frCell(tr, r.lead_h === null ? 'läuft' : window.frFmt(r.lead_h, 'hm'), 'num'); if (r.lead_h === null) lt.classList.add('muted');
+      const hf = window.frCell(tr, window.frFmt(r.human_fixes, 'int'), 'num'); if (Number(r.human_fixes) > 0) hf.style.color = 'var(--color-warn)';
+      const st = document.createElement('td'); const p = document.createElement('span'); p.className = 'pill ' + (r.status === 'abgeschlossen' ? 'ok' : 'warn'); p.textContent = r.status; st.appendChild(p); tr.appendChild(st);
+      return tr;
+    }));
+  });
+
+  dash.draw('humantable', (tb) => {
+    const d = dash.data('human_fixes');
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    tb.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.key;
+      window.frCell(tr, r.pr); window.frCell(tr, r.fix); window.frCell(tr, r.date, 'muted');
+      return tr;
+    }));
+  });
+
+  dash.draw('eventtable', (tb) => {
+    const d = dash.data('events');
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    tb.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr'); tr.dataset.key = r.key;
+      window.frCell(tr, '#' + r.issue);
+      const k = document.createElement('td'); const p = document.createElement('span');
+      p.className = 'pill ' + (/Hold|fehlgeschlagen/.test(r.kind) ? 'bad' : 'warn'); p.textContent = r.kind; k.appendChild(p); tr.appendChild(k);
+      window.frCell(tr, r.title); window.frCell(tr, r.at, 'muted');
+      return tr;
+    }));
+  });
+</script>
+
+<p class="fr-source" style="max-width:72rem;margin:32px auto 0">Erzeugt von <a href="https://github.com/lorenzh/pulse-meta/tree/main/report">report/generate.mjs</a> aus den öffentlichen Issues, Actions-Läufen und Pull Requests der pulse-Repositories.</p>
+</main>
+</body>
+</html>
