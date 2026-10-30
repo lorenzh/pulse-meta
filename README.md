@@ -14,8 +14,8 @@ The [Factory report](https://lorenzh.github.io/pulse-meta/) shows the cost, dura
 | --- | --- | --- |
 | [pulse-contract](https://github.com/lorenzh/pulse-contract) | The wire contract: zod schemas for `Check`, `Result`, `Incident` and the API shapes, the TypeScript types and validators built from them, the wire version (`x-pulse-contract` header) and `fetchJson`, a JSON GET client with timeout, size cap, version check and validation. Library, no settings. | zod; pulse-config (dev) |
 | [pulse-kit](https://github.com/lorenzh/pulse-kit) | Shared runtime helpers of the services: env settings with bounds, signal handling and bounded shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, a Prometheus registry, the JSON logger, small HTTP and timer helpers. Library, no settings. | pulse-config (dev) |
-| [pulse-probe](https://github.com/lorenzh/pulse-probe) | Worker that fetches the checks from the API, runs HTTP and TLS certificate checks and posts the results. It reloads the checks every `PULSE_CHECKS_RELOAD_MS` and when the API answers 404 for a result. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
-| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads the checks file, takes heartbeat pings, stores results in SQLite (`bun:sqlite`), computes state and incidents, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
+| [pulse-probe](https://github.com/lorenzh/pulse-probe) | Worker that fetches the checks from the API, runs HTTP, TLS certificate, TCP, DNS and domain-expiry checks and posts the results. It buffers results in memory while the API cannot be reached and delivers them later. It reloads the checks every `PULSE_CHECKS_RELOAD_MS` and when the API answers 404 for a result. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
+| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads and hot-reloads the checks file (also writable through admin routes), takes heartbeat pings, stores results in SQLite (`bun:sqlite`), computes state, incidents, latency history and availability objectives, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
 | [pulse-status](https://github.com/lorenzh/pulse-status) | Status page with an allow-listed `/api/*` proxy to pulse-api, an Atom feed and SVG badges. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-notify](https://github.com/lorenzh/pulse-notify) | Notifier that polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook (optionally signed), file, Slack, Teams and email (SMTP through nodemailer). Failed events can be listed and resent with a CLI. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-config](https://github.com/lorenzh/pulse-config) | Shared tooling configuration: Biome, tsconfig, ESLint with SonarJS (on its own nested TypeScript 6), Lefthook, and the reusable CI workflow `check.yml`. No product code. | nothing |
@@ -23,14 +23,16 @@ The [Factory report](https://lorenzh.github.io/pulse-meta/) shows the cost, dura
 
 The code repositories use pulse-contract, pulse-kit and pulse-config as Git dependencies pinned to a commit SHA (`github:lorenzh/pulse-config#<sha>`). They extend the pulse-config files (`extends` for Biome, TypeScript and Lefthook, a one-line `eslint.config.js`) and call its CI workflow with `uses: lorenzh/pulse-config/.github/workflows/check.yml@<sha>`. A rule change is made in pulse-config and reaches a repository when its pin is updated. See the [pulse-config README](https://github.com/lorenzh/pulse-config#readme).
 
-Data flow at run time: pulse-probe gets its checks from `GET /probe/checks` with its token (an older API that answers 404 gets the public `GET /checks` instead) and sends `POST /results`. A cron job or worker pings `GET|POST /heartbeat/<id>` with the check's secret. pulse-status reads pulse-api through its own `/api/*` proxy. pulse-notify polls `GET /incidents` and `GET /checks`. See [docs/architecture.md](docs/architecture.md).
+Data flow at run time: pulse-probe gets its checks from `GET /probe/checks` with its token (an older API that answers 404 gets the public `GET /checks` instead) and sends `POST /results`. A cron job or worker pings `GET|POST /heartbeat/<id>` with the check's secret. pulse-status reads pulse-api through its own `/api/*` proxy. pulse-notify polls `GET /incidents` and `GET /checks`. `POST /results` is idempotent on (check, location, timestamp), so a probe can re-send buffered results; `GET /locations` lists the probe locations as `reporting` or `silent`. See [docs/architecture.md](docs/architecture.md).
 
 In short:
 
 - A check is `up`, `degraded` (slower than its latency objective), `down`, `unknown` (no results yet) or `maintenance` (inside a maintenance window).
-- A check is `http` (the default), `tls` or `heartbeat`. An HTTP check can set `method`, `headers` (a value can be `{"env": "NAME"}`, which the probe resolves from its own environment), `body`, `expectedStatus`, `keyword` and `jsonAssert`, plus retries and a latency objective. A heartbeat check is never probed: the job pings the API, and the check is down when no ping arrives within `period + grace`. See the [checks file](https://github.com/lorenzh/pulse-api/blob/main/docs/configuration.md#checksjson).
-- A check removed from the checks file becomes inactive at the next API start. It leaves `GET /checks`, its open incident is resolved, and its history stays.
+- A check is `http` (the default), `tls`, `tcp`, `dns`, `domain` or `heartbeat`. An HTTP check can set `method`, `headers` (a value can be `{"env": "PULSE_HEADER_NAME"}`, which the probe resolves from its own environment; the name must start with `PULSE_HEADER_`, see the [probe migration note](https://github.com/lorenzh/pulse-probe/blob/main/docs/configuration.md#migration)), `body`, `expectedStatus`, `keyword` and `jsonAssert`, plus retries and a latency objective. A heartbeat check is never probed: the job pings the API, and the check is down when no ping arrives within `period + grace`. See the [checks file](https://github.com/lorenzh/pulse-api/blob/main/docs/configuration.md#checksjson).
+- The API applies a changed checks file without a restart (a look every `PULSE_CHECKS_RELOAD_INTERVAL_MS`, default 5 s, or `SIGHUP`). With `PULSE_API_ADMIN_TOKENS_FILE` set, operators can also change checks, components and maintenance windows through the [admin config routes](https://github.com/lorenzh/pulse-api/blob/main/docs/rest-api.md#admin-config-routes), which rewrite the file. See [changing checks](https://github.com/lorenzh/pulse-api/blob/main/docs/operation.md#changing-checks).
+- A check removed from the checks file becomes inactive at the next reload. It leaves `GET /checks`, its open incident is resolved, and its history stays.
 - pulse-api keeps 90 days of raw results by default (`PULSE_RETENTION_DAYS`). Incidents are never deleted.
+- pulse-api serves 90 days of daily p50 and p95 latency per HTTP check (`GET /latency`), and a check or component with `availabilityTarget` carries a 30-day `slo` with the remaining error budget. See [latency history and availability objective](https://github.com/lorenzh/pulse-api/blob/main/docs/concepts.md#latency-history-and-availability-objective). The status page draws the latency chart with `PULSE_STATUS_SHOW_CHECKS=true` ([latency and availability](https://github.com/lorenzh/pulse-status/blob/main/docs/operation.md#latency-and-availability)).
 - The status page hides check targets, keywords, heartbeat period and grace, and failure reasons by default (`PULSE_STATUS_HIDE_DETAILS=true`). It serves an Atom feed of incidents at `/feed.atom` when `PULSE_STATUS_PUBLIC_URL` is set, and an SVG badge per check at `/badge/<check id>.svg`. See [what is public](https://github.com/lorenzh/pulse-status/blob/main/docs/operation.md#what-is-public).
 - The status page uses the losoft design by default. An operator can white-label it (name, logo, colours, fonts) with settings and a theme file. See [theming](https://github.com/lorenzh/pulse-status/blob/main/docs/theming.md).
 - All repositories are licensed under the MIT license. See [LICENSE](LICENSE).
@@ -62,11 +64,11 @@ docker compose up -d --build
 
 Open <http://localhost:8080>. The example check `Status page` (`compose/checks.json`) probes the status page itself. The probe runs it right away and then every 10 s, so it turns `up` within seconds. A fresh start has no down check and no incident.
 
-Only the status page is public. It serves the page and five read-only API paths through its proxy. The API listens on `127.0.0.1` only.
+Only the status page is public. It serves the page and a fixed allow-list of read-only API paths through its proxy ([what is public](https://github.com/lorenzh/pulse-status/blob/main/docs/operation.md#what-is-public)). The API listens on `127.0.0.1` only.
 
 - `.env.example` has a placeholder token (`replace-with-...`) that the API rejects at start, so the `sed` line above writes a random one. Without a `.env` the API stops at start too.
 - Change the host ports in `.env` with `PULSE_STATUS_PORT` (default 8080) and `PULSE_API_PORT` (default 3000, bound to 127.0.0.1).
-- Add or remove checks in `compose/checks.json`, then run `docker compose restart api`. The API reads the file once at startup, and `up -d` does not recreate it for a changed checks file. The probe reloads the checks from the API on its own within `PULSE_CHECKS_RELOAD_MS` (default 60 s). A removed check becomes inactive: it leaves `GET /checks`, its open incident is resolved, and its history stays.
+- Add or remove checks in `compose/checks.json`. The API looks at the file every 5 s and applies a change without a restart; `docker compose kill -s HUP api` applies it at once. Limit: Compose bind-mounts the single file, so the container keeps seeing the old file after an atomic replace on the host (an editor that saves to a new file and renames it, `sed -i`), even after `SIGHUP`. Edit the file in place (for example `cat new.json > compose/checks.json`); after an atomic replace run `docker compose up -d --force-recreate api`. A directory mount avoids this. The admin routes are off by default (`404`, `PULSE_API_ADMIN_TOKENS_FILE` unset); with admin tokens enabled they answer `503` as long as the checks file is mounted read-only. The probe reloads the checks from the API on its own within `PULSE_CHECKS_RELOAD_MS` (default 60 s). A removed check becomes inactive: it leaves `GET /checks`, its open incident is resolved, and its history stays.
 - notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
 - Health: Docker checks `api` on `/readyz`, and `probe`, `status` and `notify` on `/healthz`. See [Health, readiness and metrics](#health-readiness-and-metrics).
 - The end-to-end test fixtures are not part of this stack. They live in pulse-api's `compose.e2e.yaml` and `compose/e2e/`, used only by `scripts/compose-e2e.sh`.
@@ -175,10 +177,15 @@ pulse-contract and pulse-kit are libraries and have no settings.
 | pulse-api | `PULSE_CHECKS_FILE` | `./checks.json` |
 | pulse-api | `PULSE_TOKENS_FILE` | `./tokens.json` (file required) |
 | pulse-api | `PULSE_RETENTION_DAYS` | `90` (at least 90) |
+| pulse-api | `PULSE_CHECKS_RELOAD_INTERVAL_MS` | `5000` (`0` turns the look off) |
+| pulse-api | `PULSE_API_ADMIN_TOKENS_FILE` | unset (admin write routes off) |
+| pulse-api | `PULSE_LOCATION_SILENT_MS` | derived from the check intervals (at least 180000) |
 | pulse-probe | `PULSE_API_URL` | `http://localhost:3000` |
 | pulse-probe | `PULSE_LOCATION` | `default` |
 | pulse-probe | `PULSE_PROBE_TOKEN` | none (required) |
 | pulse-probe | `PULSE_CHECKS_RELOAD_MS` | `60000` (5000 to 2147483647) |
+| pulse-probe | `PULSE_BUFFER_MAX_RESULTS` | `10000` |
+| pulse-probe | `PULSE_BUFFER_MAX_AGE_MS` | `3600000` (1 h) |
 | pulse-probe | `PULSE_HEALTH_PORT` | unset, no listener (Docker image: `9100`) |
 | pulse-probe | `PULSE_HEALTH_HOST` | `127.0.0.1` (Docker image: `0.0.0.0`) |
 | pulse-status | `PORT` | `8080` |
@@ -189,6 +196,7 @@ pulse-contract and pulse-kit are libraries and have no settings.
 | pulse-status | `PULSE_STATUS_THEME` | none |
 | pulse-status | `PULSE_STATUS_PUBLIC_URL` | none (turns on `/feed.atom`) |
 | pulse-status | `PULSE_STATUS_HIDE_DETAILS` | `true` |
+| pulse-status | `PULSE_STATUS_SHOW_CHECKS` | `false` (`true` lists checks and draws latency charts) |
 | pulse-status | `PULSE_STATUS_CACHE_MS` | `2000` (`0` turns the cache off) |
 | pulse-status | `PULSE_STATUS_UPSTREAM_TIMEOUT_MS` | `4000` |
 | pulse-notify | `PULSE_NOTIFY_CONFIG` | none (required) |
