@@ -6,7 +6,7 @@ The pulse repositories may use a runtime dependency only when it is on this list
 
 | Package | Version | Licence | Runtime deps | Use |
 | --- | --- | --- | --- | --- |
-| [zod](https://zod.dev) | `4.6.7` | MIT | none | Schemas and validation. The contract types come from the schemas through `z.infer`. Used by pulse-contract and through it by all services, and by the config parsers of the services. Exact pin. |
+| [zod](https://zod.dev) | `4.6.7` | MIT | none | Schemas and validation. The contract types come from the schemas through `z.infer`. Used by pulse-contract and through it by all services. The service config parsers move to it in #310. Exact pin. |
 | [nodemailer](https://nodemailer.com) | `10.3.1` | MIT-0 | none | SMTP in pulse-notify only. Never use the `raw` option. Pin the latest patched version. |
 | [@fontsource-variable/jetbrains-mono](https://fontsource.org/fonts/jetbrains-mono), [@fontsource-variable/space-grotesk](https://fontsource.org/fonts/space-grotesk) | `5.3.0` | OFL-1.1 | none | Font files that pulse-status serves itself (the CSP allows only same-origin fonts). Assets only, no code. Exact pin (status still uses `^`; to be fixed). |
 | pulse-contract | Git SHA | MIT | zod | Internal. `github:lorenzh/pulse-contract#<sha>`. |
@@ -27,7 +27,7 @@ These packages were checked in the pulse shared-code analysis (#166). Each one i
 
 | Package | Reason |
 | --- | --- |
-| pino | 11 transitive dependencies; the kit logger is enough. |
+| pino | 11 direct dependencies; the kit logger is enough. |
 | @prometheus-io/client | Apache-2.0; the kit metrics registry is enough. |
 | p-retry | Backoff is two lines. |
 | ky | `fetch` with `AbortSignal` is enough. |
