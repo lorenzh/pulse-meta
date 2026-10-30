@@ -20,7 +20,8 @@ labels.
   rule (`expected` and `resolver` are never served, in any mode).
 - **Snapshot**: what the server must know in order to filter in hidden mode. It is read from the
   unfiltered upstream answers of `/components` (each component `id` and `checkIds`, in order) and
-  `/checks` (the set of active check `id`s).
+  `/checks` (the set of active check `id`s). The `/checks` part is read only when the
+  components part is non-empty (Required behavior step 2).
 - **Hidden key**: the string that replaces a check id in hidden mode. It reveals no check id or
   name and is deterministic, so several replicas give the same answer:
   - a check that belongs to one or more components: `components:` followed by the ids of the
@@ -88,31 +89,37 @@ Order of the reads and failure handling (fail closed):
    |---|---|---|
    | `/api/checks`, `/api/uptime` | yes (to know whether hidden mode applies) | no |
    | `/api/components` | yes (its own read) | no: component keys depend only on `/components` |
-   | `/api/incidents?…`, `/api/maintenance` | yes | yes (for the `service` key and to drop orphans) |
+   | `/api/incidents?…`, `/api/maintenance` | yes | only in hidden mode, that is only when the components read gave a non-empty list (for the `service` key and to drop orphans) |
    | `/api/components/uptime`, `/api/manual-incidents`, `/api/latency` | no | no |
 
-   The route's own upstream read and the snapshot reads may run in parallel.
+   The route's own upstream read and the `/components` snapshot read may run in parallel. The
+   `/checks` snapshot read of incidents and maintenance starts only after the components read
+   gave a valid non-empty list. With components `[]` (or `hasChecks` true) `/checks` is not read
+   for these routes at all, so a failing or odd `/checks` answer cannot change them there.
 3. If the route's own upstream read fails, the answer is the same error answer as today
    (`fetchUpstream` in `src/server.ts`): an upstream HTTP error is forwarded with the upstream
    status and `{"error":"API error"}` (for example `500`), invalid JSON or a wire mismatch is
    `502 {"error":"invalid API response"}`, and an unreachable api is `502`. This rule wins over
    step 4: for `/api/components` the components read *is* its own read, so a `/components`
    upstream `500` gives `500 {"error":"API error"}` there, exactly as today, and never data.
-   Likewise a failed `/checks` read gives today's error answer on `/api/checks`.
+   Likewise a failed `/checks` read gives today's error answer on `/api/checks`. When the own
+   read and a snapshot read both fail (for example the api is down), the own read's error
+   answer is served (today's `502 {"error":"API unreachable"}`).
 4. If the route's own read succeeds but a snapshot read the route needs (per the table) fails,
    the answer is `502` with the generic body today's proxy uses for that failure kind. That
    covers a non-200 status, a timeout, a network error, invalid JSON, a wire mismatch, or a body
    that is not an array of objects with a string `id` (and, for components, a string-array
    `checkIds`). The data is never served unfiltered. The route's wire header is still forwarded.
    A failed `/checks` read therefore affects only `/api/checks` (its own read, as today),
-   `/api/incidents?…` and `/api/maintenance`; `/api/components`, component badges and the
+   and, only in hidden mode, `/api/incidents?…` and `/api/maintenance`; `/api/components`,
+   component badges and the
    components part of the page stay available.
 5. Snapshot components `[]` means not hidden mode: the route is served as today (checks shown by
    design), except for the DNS rule. The served *bodies* are then unchanged, but the read itself
    is new: whether components exist is known only after reading `/components`, so with
    `hasChecks` false (the default) every `/api/checks`, `/api/uptime`, `/api/incidents?…` and
-   `/api/maintenance` answer reads `/components` (and incidents and maintenance also `/checks`)
-   even when the deployment has no components. Step 4 applies there too: a `/components` body
+   `/api/maintenance` answer reads `/components` even when the deployment has no components.
+   With components `[]` no `/checks` snapshot read follows (step 2). Step 4 applies there too: a `/components` body
    that is not a valid components list (for example `[{"id":"a"}]` without `checkIds`) gives
    `502` on those routes. This is intended (fail closed: an invalid components answer must not
    be read as "no components"). Only `hasChecks` true adds no read at all. The existing tests
@@ -257,9 +264,8 @@ adds upstream reads per answer: up to two (`/components` and `/checks`) per
 reads apply with `showChecks` off **without** components (the default deployment), because the
 server must read `/components` to learn that the list is empty: with caching on they are shared
 with the page's own `/components` and `/checks` reads (no extra call per period); with
-`PULSE_STATUS_CACHE_MS=0` they are the same per-answer counts as in hidden mode (one
-`/components` read per checks or uptime answer, `/components` plus `/checks` per incidents or
-maintenance answer). Only `showChecks: true` adds no read in either setting. Hidden mode adds a
+`PULSE_STATUS_CACHE_MS=0` they are one `/components` read per checks, uptime, incidents or
+maintenance answer (no `/checks` read, because components are `[]`, step 2). Only `showChecks: true` adds no read in either setting. Hidden mode adds a
 linear pass over
 already parsed arrays. The implementer confirms with the existing `server.cache.test.ts` style:
 count the fake-api calls per cache period with two concurrent page loads in hidden mode and in
@@ -326,7 +332,10 @@ Each case below is a hard rule that a wrong implementation would get wrong.
    names as today. The output must equal today's output byte for byte, except that DNS checks
    lack `expected` and `resolver`. The `/components` read itself is new (step 5); a wrong
    implementation that treats a malformed `/components` body as "no components" and serves ids
-   fails (it must answer `502`).
+   fails (it must answer `502`). With components `[]` and a `/checks` answer that is not a valid
+   checks list (for example `[1, null]` or items with a numeric `id`), `/api/incidents?status=open`
+   and `/api/maintenance` still answer `200` with today's bodies: a wrong implementation that
+   reads `/checks` before it knows components exist answers `502` there.
 9. **`PULSE_STATUS_SHOW_CHECKS=true` with components**: no extra upstream reads (fake-api call
    counts per path unchanged) and answers identical to today's, except the DNS rule.
 9a. **Double read**: in hidden mode, one load of `/api/components` with `PULSE_STATUS_CACHE_MS`
@@ -385,6 +394,10 @@ Files:
 - `src/poller.ts` (comment only, if it names DNS `expected`/`resolver`)
 - `src/server.privacy.test.ts` (fake `start` helper: `/components` answers `[]` unless set) and
   the sentinel and DNS tests (there or in a new `src/server.hidden-checks.test.ts`)
+- `src/server.test.ts` (the module-level fake answers `/components` with `[]`, see "Existing
+  tests that change")
+- `src/server.health.test.ts` (the `/metrics` test's fake answers `/components` with `[]`, same
+  section)
 - `src/server.components.test.ts` (the ~104 end-to-end test changes, see "Existing tests that
   change"), `src/server.ssr.test.ts` (only if needed, same section) and
   `src/server.syndication.test.ts`: page, feed and badge
@@ -448,11 +461,33 @@ Checks (TDD, written first and seen failing on `main`):
      (call list per path equal to the route's own path only).
    - `showChecks: false` without components (fake `/components` answers `[]`): the bodies equal
      the output of `filterApiBody` alone (with the new DNS rule); the fake api gets exactly the
-     extra reads of "Required behavior" step 2 (`/components` for checks and uptime,
-     `/components` and `/checks` for incidents and maintenance), shared through the raw cache.
+     extra reads of "Required behavior" step 2 (one `/components` read for checks, uptime,
+     incidents and maintenance, shared through the raw cache; no `/checks` read for incidents
+     or maintenance). In the same test, a fake `/checks` that answers 500 leaves
+     `/api/incidents?status=open` and `/api/maintenance` at `200` with today's bodies.
 
 Existing tests that change (checked on `20ccc80`; every other existing test must pass unchanged,
-and the PR lists any further change with its reason, which must be one of the three kinds below):
+and the PR lists any further change with its reason, which must be one of the four kinds below):
+- **Tests with the default `showChecks` whose fake api does not answer `/components` with a valid
+  components list** (a `404`, or a shared body that is not a components list) on a route of the
+  step 2 table, while the test expects a `200` from that route. The change is either: the fake
+  answers `/components` with `200 []` (the test keeps `showChecks` off and its assertions), or
+  the test gets `showChecks: true` when it is about shown output. Named on `20ccc80`:
+  - `src/server.test.ts` "serves page, modules, and proxies the API" (~33): the module-level
+    fake `api` (~26) answers only `/checks` and `/incidents?status=open` and `404` otherwise, so
+    `/api/checks` and `/api/incidents?status=open` would answer `502`. Change: the fake also
+    answers `req.url === "/components"` with `[]`. Assertions stay (`[{ id: "a" }]` and `[]`).
+  - `src/server.health.test.ts` "/metrics serves the series and leaks no hidden detail" (~65):
+    the fake answers `[{ id: "web", url, keyword }]` for every path, so `/components` is a
+    non-empty list without `checkIds` and `/api/checks` would answer `502`, breaking
+    `http_requests_total{code="200"} 1`. Change: the fake answers `/components` with `[]` (it
+    then needs `req.url`); the leak assertions stay.
+  Checked and not affected: the other `server.test.ts` tests (the TLS test's fake answers `[]`
+  for other paths; "502 when the API is down" and "a malformed upstream URL" keep today's
+  `502 API unreachable`, because the own read's error wins, step 3; `proxyWith` either fails its
+  own read or answers `[]` for every path), `server.contract-modules.test.ts` (requests no
+  step 2 route), and the other `server.health.test.ts` tests (no proxied route; the "bypass"
+  test still asserts `hits === 0` because `/healthz`, `/readyz` and `/metrics` read nothing).
 - **Call-counting cache tests with the default `showChecks`** (`src/server.cache.test.ts`):
   "20 parallel requests share one upstream call; a new one after the TTL", "each path and query
   is one cache entry; a new call per path after the TTL", "cacheMs 0 turns the cache off" and
@@ -469,7 +504,10 @@ and the PR lists any further change with its reason, which must be one of the th
   keys" (~481). With the override, `/components` gets a non-components body and the answer is
   `502`. Change: the fake's `body`/`status` override no longer applies to `/components`, which
   answers `200 []` unless a test sets it (one change in the `start` helper, ~line 67-76); the
-  tests keep `showChecks` false and their assertions. ("upstream errors are generic …", ~141,
+  tests keep `showChecks` false and their assertions. The `/checks` override stays: with
+  components `[]`, incidents and maintenance do not read `/checks` (step 2), so the
+  non-checks bodies of ~455 (`[1, null, "x", {checkId, …}]`) and ~481 (numeric `id`) never
+  reach a snapshot check and those tests keep `200`. ("upstream errors are generic …", ~141,
   then also keeps today's answers, since a failed own read wins, step 3.)
 - **Tests that are hidden mode by fixture** (components and default `showChecks`):
   `src/server.components.test.ts` "end to end: the page shows components over HTTP and no hidden
