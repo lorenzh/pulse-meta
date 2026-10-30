@@ -7,7 +7,7 @@ pulse has four services and three shared libraries.
 | pulse-api | Loads the checks file, takes heartbeat pings, stores results in SQLite, decides the state of each check, serves REST. |
 | pulse-probe | Fetches the checks, runs HTTP and TLS checks, posts the results. One probe is one location. |
 | pulse-status | Status page. Reads pulse-api through its own allow-listed `/api/*` proxy. Serves an Atom feed and SVG badges. |
-| pulse-notify | Polls pulse-api and sends a notification when an incident opens or resolves, and reminders while it stays open. Channels: webhook, file, Slack, Teams and email. |
+| pulse-notify | Polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook, file, Slack, Teams and email. |
 | pulse-contract | The wire contract: zod schemas, the types and validators built from them, the wire version and the `fetchJson` client. Used by api, probe, status and notify. |
 | pulse-kit | Shared runtime helpers: env settings, shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, metrics and the JSON logger. Used by api, probe, status and notify. |
 | pulse-config | Shared Biome, tsconfig, ESLint and Lefthook configuration and the reusable CI workflow `check.yml`. |

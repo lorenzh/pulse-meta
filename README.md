@@ -15,7 +15,7 @@ pulse is built by Paragon Factory agents from the issues in this repository. Dev
 | [pulse-probe](https://github.com/lorenzh/pulse-probe) | Worker that fetches the checks from the API, runs HTTP and TLS certificate checks and posts the results. It reloads the checks every `PULSE_CHECKS_RELOAD_MS` and when the API answers 404 for a result. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-api](https://github.com/lorenzh/pulse-api) | Loads the checks file, takes heartbeat pings, stores results in SQLite, computes state and incidents, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
 | [pulse-status](https://github.com/lorenzh/pulse-status) | Status page with an allow-listed `/api/*` proxy to pulse-api, an Atom feed and SVG badges. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
-| [pulse-notify](https://github.com/lorenzh/pulse-notify) | Notifier that polls pulse-api and sends a notification when an incident opens or resolves, and reminders while it stays open. Channels: webhook (optionally signed), file, Slack, Teams and email (SMTP through nodemailer). Failed events can be listed and resent with a CLI. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
+| [pulse-notify](https://github.com/lorenzh/pulse-notify) | Notifier that polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook (optionally signed), file, Slack, Teams and email (SMTP through nodemailer). Failed events can be listed and resent with a CLI. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-config](https://github.com/lorenzh/pulse-config) | Shared tooling configuration: Biome, tsconfig, ESLint with SonarJS (on its own nested TypeScript 6), Lefthook, and the reusable CI workflow `check.yml`. No product code. | nothing |
 | [pulse-meta](https://github.com/lorenzh/pulse-meta) | This repository: issues, specs, Factory configuration. | none |
 
@@ -158,7 +158,7 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract, pu
 
 ## Settings
 
-Every service reads environment variables once at start. An invalid value stops the start with exit code 2 and one line that names the variable. An empty value counts as unset. The configuration page of each service is the source of truth:
+Every service reads environment variables once at start. An invalid value stops the start with exit code 2 and one line that names the variable. Exception for now: pulse-probe does not yet validate `PULSE_API_URL`; a wrong value makes it retry the fetch forever. An empty value counts as unset. The configuration page of each service is the source of truth:
 [pulse-api](https://github.com/lorenzh/pulse-api/blob/main/docs/configuration.md),
 [pulse-probe](https://github.com/lorenzh/pulse-probe/blob/main/docs/configuration.md),
 [pulse-status](https://github.com/lorenzh/pulse-status/blob/main/docs/configuration.md),
@@ -216,7 +216,7 @@ Every service answers `GET /healthz` (liveness), `GET /readyz` (readiness) and `
 | Service | Where | `/healthz` | `/readyz` | Docker `HEALTHCHECK` |
 | --- | --- | --- | --- | --- |
 | pulse-api | its main port (`PORT`, 3000) | `200` while the process answers, no database access | `200` when the database answers and the API is not shutting down | `/readyz` |
-| pulse-status | its main port (`PORT`, 8080), next to the page | `200` while the server runs, never depends on the API | `200` after a successful API poll within `max(3 x POLL_MS, 30 s)` and with the same wire version | `/healthz` |
+| pulse-status | its main port (`PORT`, 8080), next to the page | `200` while the server runs, never depends on the API | `200` after a successful API poll within `max(3 x POLL_MS, 30 s)` and no reported wire version mismatch | `/healthz` |
 | pulse-probe | a separate listener on `PULSE_HEALTH_HOST:PULSE_HEALTH_PORT`, off by default; the image uses `0.0.0.0:9100` | `200` while the listener serves | `200` once the checks were fetched and the probe is not shutting down | `/healthz` |
 | pulse-notify | a separate listener on `PULSE_HEALTH_HOST:PULSE_HEALTH_PORT`, off by default; the image uses `0.0.0.0:9100` | `503` while starting, shutting down, or after `PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS` failed polls in a row | same as `/healthz` | `/healthz` |
 
