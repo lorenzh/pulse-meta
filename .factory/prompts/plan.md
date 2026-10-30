@@ -13,6 +13,15 @@ Read the open points and the acceptance check of the issue review in
 If that file is missing, request a hold with status `needs-input`.
 
 State the goal, scope, non-goals, required behavior, risks, and acceptance evidence.
+
+Write a section headed `## Performance impact` before the repository sections. It names which
+metrics of `bench/budgets.json` in the api repository the change can move (startup CPU, load CPU,
+idle or peak RSS, test CPU, build CPU, and the reported ones: wall-clock startup, p95 latency,
+requests per second, image size), in which direction and roughly how much, and how the
+implementer measures it (for example a local `bun bench/run.ts --a <ref> --b <ref>` A/B). If the
+change cannot move any of them, write "none expected" with a one-line reason. If `bench/` does not
+exist yet in `main` of the api repository, name the kinds of metric instead of the keys.
+
 Then write one section per repository that must change, headed `## Repository: <target>` with
 the target name of that repository, which is also its directory name in the context directory.
 Each section names the files, behavior, checks, and completion evidence of that repository's
