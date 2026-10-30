@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quick start · pulse docs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Space Grotesk";src:url("ds/losoft/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2");font-weight:300 700;font-style:normal;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("ds/losoft/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");font-weight:100 800;font-style:normal;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("ds/losoft/fonts/jetbrains-mono-latin-wght-italic.woff2") format("woff2");font-weight:100 800;font-style:italic;font-display:swap}
+body{margin:0}
+.pl{--sans:"Space Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;--fs-h1:clamp(2.5rem,1.9rem + 2.5vw,4rem);--fs-h2:clamp(2rem,1.8rem + 0.8vw,2.5rem);--fs-h3:clamp(1.25rem,1.15rem + 0.4vw,1.5rem);--fs-lead:clamp(1.125rem,1.05rem + 0.3vw,1.375rem);--fs-body:1.125rem;--fs-ui:0.9375rem;--fs-small:0.875rem;--fs-label:0.8125rem;--fs-tag:0.75rem;--ease:cubic-bezier(0.2,0,0,1);--dur:150ms}
+.pl[data-theme="light"]{--bg:#f2eeec;--surface:#e6dfdc;--rule:#dfd7d4;--line-strong:#c4b8b3;--field-line:#93847e;--text:#271b32;--lead:#4a3f52;--muted:#6a5850;--accent:#8a4f9f;--accent-text:#7a4290;--strong:#271b32;--on-strong:#f2eeec;--code:#271b32;--tint:#e6dbe3;--tint-line:#d6c4d6;--field:#faf8f7;--syn-key:#56619a;--syn-string:#271b32;--syn-number:#7a4290;--syn-punct:#6a5850;--warning:#8a5300;--warning-tint:#f4e5c8;--info:#3d5a94;--info-tint:#dde4f1}
+.pl[data-theme="dark"]{--bg:#271b32;--surface:#33263f;--rule:#3e3049;--line-strong:#5a4b66;--field-line:#766877;--text:#dfd7d4;--lead:#c9bfc4;--muted:#a89b95;--accent:#c29bd3;--accent-text:#c29bd3;--strong:#dfd7d4;--on-strong:#271b32;--code:#1b1224;--tint:#3d2d48;--tint-line:#54406a;--field:#1f1529;--syn-key:#9da7d4;--syn-string:#dfd7d4;--syn-number:#c29bd3;--syn-punct:#a89b95;--warning:#f0c46b;--warning-tint:#3d3020;--info:#a9bde6;--info-tint:#262e47}
+.pl a{color:var(--accent-text);text-decoration-thickness:1px;text-underline-offset:3px}
+.pl a:hover{color:var(--accent-text);text-decoration-thickness:2px}
+.pl a:focus-visible,.pl button:focus-visible,.pl input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.pl .nav a{color:var(--text);text-decoration:none}
+.pl .nav a:hover{color:var(--accent-text)}
+.pl .side a{color:var(--lead);text-decoration:none;transition:background-color var(--dur) var(--ease)}
+.pl .side a:hover{color:var(--text);background:var(--surface)}
+.pl .side a[aria-current="page"]{color:var(--text);background:var(--tint)}
+.pl .toc a{color:var(--muted);text-decoration:none}
+.pl .toc a:hover{color:var(--accent-text)}
+.pl input::placeholder{color:var(--muted)}
+.pl ::selection{background:var(--tint)}
+.pl .m-panel a{color:var(--text);text-decoration:none}
+@media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}.pl .docs-toggle{display:flex!important}.pl .side{display:none!important;max-width:none!important;padding:8px 0 24px!important}.pl .side[data-open="true"]{display:flex!important}.pl .toc{display:none!important}.pl .doc-main{border-left:none!important;padding-left:0!important;padding-top:8px!important}.pl .doc-shell{gap:0!important}}
+@media (prefers-reduced-motion:reduce){.pl *{transition:none!important}}
+</style>
+</helmet>
+<div class="pl" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+
+<header style="border-bottom: 1px solid var(--rule);">
+<div class="hdr-row" style="max-width: 1360px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 40px); min-height: 72px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px;">
+<a href="Main.dc.html" aria-label="pulse home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); min-height: 44px;">
+<img src="/_blob/6474222c10f37b526a779e613657709e" alt="" width="32" height="32" style="display: block; border-radius: 7px;">
+<span style="font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.02em;">pulse</span>
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 2px 10px; border: 1px solid var(--line-strong); border-radius: 999px;">Docs</span>
+</a>
+<nav class="nav hdr-nav" aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 4px 24px; flex: 1 1 auto; font-size: var(--fs-ui); font-weight: 500;">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; min-height: 44px;">Product</a>
+<a href="Hosted.dc.html" style="display: inline-flex; align-items: center; min-height: 44px;">Hosted</a>
+<a href="Docs.dc.html" aria-current="page" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-text);">Guides</a>
+<a href="DocsApi.dc.html" style="display: inline-flex; align-items: center; min-height: 44px;">API reference</a>
+</nav>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 0 auto;">
+<button type="button" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="flex: 0 0 auto; width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{isDark}}" hint-placeholder-val="{{false}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</sc-if>
+<sc-if value="{{isLight}}" hint-placeholder-val="{{true}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+</sc-if>
+</button>
+<button type="button" class="menu-btn" onClick="{{toggleMenu}}" aria-expanded="{{menuExpanded}}" aria-controls="mobile-menu" aria-label="{{menuLabel}}" style="display: none; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</sc-if>
+<sc-if value="{{menuClosed}}" hint-placeholder-val="{{true}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+</sc-if>
+</button>
+</div>
+</div>
+<nav id="mobile-menu" class="m-panel" data-open="{{menuExpanded}}" aria-label="Mobile" style="display: none; flex-direction: column; padding: 4px 20px 16px; border-top: 1px solid var(--rule); font-size: 18px; font-weight: 500;">
+<a href="Main.dc.html" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Product</a>
+<a href="Hosted.dc.html" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Hosted</a>
+<a href="Docs.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Guides</a>
+<a href="DocsApi.dc.html" style="display: flex; align-items: center; min-height: 52px;">API reference</a>
+</nav>
+</header>
+
+<div class="doc-shell" style="max-width: 1360px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 40px); display: flex; flex-wrap: wrap; gap: 48px;">
+
+<button type="button" class="docs-toggle" onClick="{{toggleDocs}}" aria-expanded="{{docsExpanded}}" aria-controls="docs-nav" style="display: none; flex: 1 1 100%; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; margin-top: 16px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: transparent; color: var(--text); font-family: var(--sans); font-size: var(--fs-ui); font-weight: 500; cursor: pointer;">
+<span>Browse the docs</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">Quick start</span>
+</button>
+
+<aside id="docs-nav" class="side" data-open="{{docsExpanded}}" aria-label="Documentation" style="flex: 1 1 240px; max-width: 280px; padding: 32px 0; display: flex; flex-direction: column; gap: 24px; font-size: var(--fs-ui);">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<label for="doc-search" style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Search the docs</label>
+<input id="doc-search" type="search" placeholder="checks.json, quorum, tokens" style="box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--field-line); border-radius: 12px; background: var(--field); color: var(--text); font-family: var(--sans); font-size: var(--fs-ui);">
+</div>
+<nav style="display: flex; flex-direction: column; gap: 20px;">
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px;">Getting started</span>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Overview</a>
+<a href="Docs.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; font-weight: 500;">Quick start</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Install without Docker</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px;">Concepts</span>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Check states</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Quorum and incidents</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Maintenance windows</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Heartbeats</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px;">Configuration</span>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; font-family: var(--mono); font-size: var(--fs-label);">checks.json</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; font-family: var(--mono); font-size: var(--fs-label);">tokens.json</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Environment variables</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Status page theming</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Notification channels</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px;">Reference</span>
+<a href="DocsApi.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">REST API</a>
+<a href="DocsApi.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Metrics</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 6px;">Operation</span>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Upgrades and backup</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px;">Troubleshooting</a>
+</div>
+</nav>
+</aside>
+
+<main class="doc-main" style="flex: 999 1 560px; min-width: 0; padding: 32px 0 72px; border-left: 1px solid var(--rule); padding-left: clamp(0px, 4vw, 48px);">
+<div style="max-width: 720px; display: flex; flex-direction: column; gap: 24px;">
+<nav aria-label="Breadcrumb" style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);"><a href="Docs.dc.html" style="color: var(--muted);">Docs</a> · Getting started · <span aria-current="page">Quick start</span></nav>
+<h1 style="margin: 0; font-size: var(--fs-h1); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; text-wrap: balance;">Quick start</h1>
+<p style="margin: 0; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead);">Run the API, one probe, the status page and the notifier on one machine with Docker Compose. The example check watches the status page itself, so you see a state within seconds.</p>
+
+<div style="display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);"><span>5 min</span><span>Docker Compose 2.23 or newer</span><span>Updated 29 October 2026</span></div>
+
+<h2 id="before" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Before you start</h2>
+<ul style="margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px;">
+<li>Docker with Compose 2.23 or newer.</li>
+<li>Access to github.com: the probe, status and notify images are built from their repositories.</li>
+<li>Ports 3000 and 8080 free on the host, or other ports set in <code style="font-family: var(--mono); font-size: 0.85em; background: var(--surface); padding: 1px 6px; border-radius: 6px;">.env</code>.</li>
+</ul>
+
+<h2 id="step-1" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">1. Get the Compose file</h2>
+<p style="margin: 0;">The Compose file for the whole stack lives in pulse-api.</p>
+<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="Shell commands">
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>git clone https://github.com/lorenzh/pulse-api.git</div>
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>cd pulse-api</div>
+</div>
+
+<h2 id="step-2" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">2. Create the probe token</h2>
+<p style="margin: 0;">Copy the example settings and replace the placeholder token with a random one. Without a valid token the API stops at start.</p>
+<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="Shell commands">
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>cp .env.example .env</div>
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>openssl rand -hex 32</div>
+<div style="white-space: pre; color: #a89b95;">  # paste the output as PULSE_PROBE_TOKEN in .env</div>
+</div>
+<div role="note" style="display: flex; gap: 12px; padding: 16px 18px; border: 1px solid var(--warning); border-radius: 12px; background: var(--warning-tint); color: var(--text);">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 3px; color: var(--warning);"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small); line-height: 1.6;">
+<strong style="font-weight: 600; color: var(--warning);">Warning</strong>
+<span>The tokens in the examples and the demo profile are public. pulse refuses the example placeholder, but treat every token you did not generate yourself as known.</span>
+</div>
+</div>
+
+<h2 id="step-3" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">3. Start the stack</h2>
+<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="Shell commands">
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>docker compose up -d --build</div>
+</div>
+<p style="margin: 0;">Open <a href="http://localhost:8080">http://localhost:8080</a>. The probe runs the example check right away and then every 10 s, so its state leaves <code style="font-family: var(--mono); font-size: 0.85em; background: var(--surface); padding: 1px 6px; border-radius: 6px;">unknown</code> within seconds.</p>
+
+<h2 id="step-4" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">4. Add your own checks</h2>
+<p style="margin: 0;">Edit <code style="font-family: var(--mono); font-size: 0.85em; background: var(--surface); padding: 1px 6px; border-radius: 6px;">compose/checks.json</code> and restart the API. Probes pick up the change on their own within a minute.</p>
+<div style="background: var(--code); border-radius: 12px; padding: 18px 20px; font-family: var(--mono); font-size: 14px; line-height: 1.7; color: #dfd7d4; overflow-x: auto;" role="region" aria-label="Shell commands">
+<div style="white-space: pre;"><span style="color: #c29bd3;">$ </span>docker compose restart api</div>
+</div>
+
+<h2 id="settings" style="margin: 16px 0 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Compose settings</h2>
+<div style="overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 12px;" role="region" aria-label="Compose settings" tabindex="0">
+<table style="width: 100%; border-collapse: collapse; font-size: var(--fs-ui); line-height: 1.5;">
+<thead>
+<tr style="background: var(--surface);">
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">Variable</th>
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">Default</th>
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); white-space: nowrap;">PULSE_PROBE_TOKEN</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">none</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Token of the probe. Compose also writes it to the API’s tokens file.</td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); white-space: nowrap;">PULSE_LOCATION</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">default</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Location name of the probe, shown per result.</td></tr>
+<tr><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); white-space: nowrap;">PULSE_API_PORT</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">3000</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Host port of the API, bound to 127.0.0.1.</td></tr>
+<tr><td style="padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-label); white-space: nowrap;">PULSE_STATUS_PORT</td><td style="padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">8080</td><td style="padding: 12px 16px;">Host port of the status page.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 24px;">
+<a href="Docs.dc.html" style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--text); text-decoration: none;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Previous</span>
+<span style="font-weight: 500;">Overview</span>
+</a>
+<a href="Docs.dc.html" style="flex: 1 1 240px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 18px 20px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--text); text-decoration: none; text-align: right;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Next</span>
+<span style="font-weight: 500;">Check states</span>
+</a>
+</div>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">Found a mistake? <a href="https://github.com/lorenzh/pulse-api/blob/main/docs/install.md">Edit this page on GitHub</a>.</p>
+</div>
+</main>
+
+<nav class="toc" aria-label="On this page" style="flex: 1 1 180px; max-width: 220px; padding: 32px 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small);">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-bottom: 6px;">On this page</span>
+<a href="#before" style="display: flex; align-items: center; min-height: 32px;">Before you start</a>
+<a href="#step-1" style="display: flex; align-items: center; min-height: 32px;">1. Get the Compose file</a>
+<a href="#step-2" style="display: flex; align-items: center; min-height: 32px;">2. Create the probe token</a>
+<a href="#step-3" style="display: flex; align-items: center; min-height: 32px;">3. Start the stack</a>
+<a href="#step-4" style="display: flex; align-items: center; min-height: 32px;">4. Add your own checks</a>
+<a href="#settings" style="display: flex; align-items: center; min-height: 32px;">Compose settings</a>
+</nav>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { theme: null, menuOpen: false, docsOpen: false };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.defaultTheme ?? 'light';
+    const isDark = theme === 'dark';
+    const { menuOpen, docsOpen } = this.state;
+    return {
+      theme,
+      isDark,
+      isLight: !isDark,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      menuOpen,
+      menuClosed: !menuOpen,
+      menuExpanded: menuOpen ? 'true' : 'false',
+      menuLabel: menuOpen ? 'Close menu' : 'Open menu',
+      toggleMenu: () => this.setState({ menuOpen: !menuOpen }),
+      docsExpanded: docsOpen ? 'true' : 'false',
+      toggleDocs: () => this.setState({ docsOpen: !docsOpen })
+    };
+  }
+}
+</script>
+</body>
+</html>
