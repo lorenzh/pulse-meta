@@ -24,3 +24,6 @@ Include a concise defect report and any failed checks in the outcome message.
 
 Return `complete` when the change is ready for a person.
 Include the checks and remaining limitations in the outcome message.
+
+Check that the pull request body carries the acceptance evidence that the spec section asks for
+(checklist, mutation output, removed-test inventory). If it is missing, report it as a finding.

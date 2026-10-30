@@ -24,3 +24,6 @@ Put the changed files, behavior, check results, and remaining limitations in the
 
 Transition to `review` when the change and its checks are complete.
 Use `retry` only when useful work remains for another fresh run.
+
+The pull request body carries the acceptance evidence that the spec section asks for (leftover
+checklist, mutation output, inventory of removed or changed tests), not only `Closes …`.

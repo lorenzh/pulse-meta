@@ -1,6 +1,6 @@
 # Approved packages
 
-The pulse repositories may use a runtime dependency only when it is on this list. Pin every entry to an exact version, never a range. Use pulse-kit, pulse-contract, a Bun built-in (such as `bun:sqlite`), a `node:` module that Bun provides, or a package from this list before you write infrastructure code. To add a package, open a pull request to this file. The pull request names the licence, the state of maintenance, the runtime dependencies of the package, and why a few lines in pulse-kit are not enough.
+The pulse repositories may use a runtime dependency only when it is on this list. Dev dependencies are listed too, in their own table below. Pin every entry to an exact version, never a range. Use pulse-kit, pulse-contract, a Bun built-in (such as `bun:sqlite`), a `node:` module that Bun provides, or a package from this list before you write infrastructure code. To add a package, open a pull request to this file. The pull request names the licence, the state of maintenance, the runtime dependencies of the package, and why a few lines in pulse-kit are not enough.
 
 ## Approved
 
@@ -22,6 +22,19 @@ The pulse repositories may use a runtime dependency only when it is on this list
 | [typescript](https://www.typescriptlang.org) | `6.0.3` | Apache-2.0 | none | pulse-config only: a `dependency` there because pulse-config is the shared lint and tsconfig package and ships the lint toolchain to every target (run through its `pulse-eslint` bin). Exact pin. Type information for the ESLint rules only; targets typecheck with TypeScript 7 as `typescript7`. |
 | pulse-contract | Git SHA | MIT | zod | Internal. `github:lorenzh/pulse-contract#<sha>`. |
 | pulse-kit | Git SHA | MIT | none | Internal. `github:lorenzh/pulse-kit#<sha>`. |
+
+## Dev dependencies
+
+Never in a built image or site. Exact pin, same version in every repository that uses them. Playwright, axe-core, esbuild and @types/bun are listed above.
+
+| Package | Version | Licence | Use |
+| --- | --- | --- | --- |
+| [@biomejs/biome](https://biomejs.dev) | `2.6.3` | MIT OR Apache-2.0 | Format and lint in every repository. |
+| [lefthook](https://github.com/evilmartians/lefthook) | `2.2.2` | MIT | Git hooks in every repository. |
+| [@types/node](https://www.npmjs.com/package/@types/node) | `26.6.6` | MIT | Node types in every repository. |
+| typescript7 (`npm:typescript@7.0.2`) | `7.0.2` | Apache-2.0 | Typecheck with TypeScript 7 under the alias `typescript7`. |
+| [@types/nodemailer](https://www.npmjs.com/package/@types/nodemailer) | `8.0.2` | MIT | pulse-notify only. |
+| [@types/react](https://www.npmjs.com/package/@types/react), [@types/react-dom](https://www.npmjs.com/package/@types/react-dom) | `19.3.0` | MIT | pulse-website only. |
 
 ## Runtime and CI
 
