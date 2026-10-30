@@ -33,9 +33,46 @@ body{margin:0}
 .pl .m-panel a{color:var(--text);text-decoration:none}
 @media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav,.pl .hdr-gh{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}}
 @media (prefers-reduced-motion:reduce){.pl *{transition:none!important}}
+.pl{--section-space:clamp(64px,8vw,128px)}
+@keyframes pl-rise{from{opacity:.001;translate:0 32px}to{opacity:1;translate:0 0}}
+@media (prefers-reduced-motion:no-preference){
+.pl[data-motion] .rv{opacity:.001}
+.pl[data-motion] .rv.in{opacity:1;animation:pl-rise 700ms var(--ease) var(--d,0ms) both}
+.pl[data-motion] .rv:focus-within{opacity:1}
+.pl :focus-within{animation:none!important}
+}
+@media print{.pl .rv{opacity:1!important;animation:none!important}}
+.pl{position:relative;isolation:isolate}
+.pl .net{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.pl .net-c{position:sticky;top:0;display:block;width:100%;height:100vh}
+.pl .btn-secondary{position:relative;isolation:isolate;overflow:hidden}
+.pl .btn-secondary>.fill{position:absolute;inset:0;z-index:-1;background:var(--accent);transform:scaleX(0);transform-origin:left;pointer-events:none}
+.pl .nav a{position:relative}
+.pl .nav a::after{content:"";position:absolute;left:0;right:0;bottom:8px;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:left;pointer-events:none}
+@keyframes pl-nudge{0%,100%{transform:translateX(6px) scale(1)}25%{transform:translateX(10px) scale(1.15)}75%{transform:translateX(4px) scale(1)}}
+@media (prefers-reduced-motion:no-preference){
+.pl .btn,.pl button{transition:background-color 200ms var(--ease),border-color 450ms ease-in-out,color 450ms ease-in-out,box-shadow 250ms var(--ease),transform 320ms cubic-bezier(.34,1.56,.64,1)}
+.pl .btn:active,.pl button:active{transform:scale(.94);transition:transform 120ms ease-out}
+.pl .btn-secondary>.fill{transition:transform 450ms ease-in-out}
+.pl .btn-secondary:focus-visible>.fill{transform:scaleX(1)}
+.pl .btn-secondary:focus-visible{color:var(--on-strong)!important;border-color:var(--accent)!important}
+.pl .arr{transform-box:fill-box;transform-origin:center;transition:transform 200ms var(--ease)}
+.pl a:focus-visible .arr{transform:translateX(6px);animation:pl-nudge 900ms ease-in-out 200ms infinite}
+.pl .stg>div[style*="border: 1px"]{transition:transform 250ms var(--ease),border-color 250ms var(--ease),box-shadow 250ms var(--ease)}
+.pl .nav a::after{transition:transform 300ms var(--ease)}
+}
+@media (hover:hover) and (prefers-reduced-motion:no-preference){
+.pl a:hover .arr{transform:translateX(6px);animation:pl-nudge 900ms ease-in-out 200ms infinite}
+.pl .btn-primary:hover{box-shadow:0 8px 24px -6px var(--accent),0 0 0 4px var(--tint-line)}
+.pl .btn-secondary:hover>.fill{transform:scaleX(1)}
+.pl .btn-secondary:hover{color:var(--on-strong)!important;border-color:var(--accent)!important}
+.pl .stg>div[style*="border: 1px"]:hover{transform:translateY(-6px);border-color:var(--accent)!important;box-shadow:0 18px 36px -16px rgba(20,12,28,.45)}
+.pl .nav a:hover::after{transform:scaleX(1)}
+}
 </style>
 </helmet>
-<div class="pl" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+<div class="pl" ref="{{setRoot}}" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+<div class="net" aria-hidden="true"><canvas class="net-c"></canvas></div>
 
 <header style="border-bottom: 1px solid var(--rule);">
 <div class="hdr-row" style="max-width: 1120px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 40px); min-height: 72px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px;">
@@ -81,22 +118,22 @@ body{margin:0}
 
 <main id="main">
 
-<section style="max-width: 1120px; margin: 0 auto; padding: clamp(56px, 8vw, 104px) clamp(20px, 5vw, 40px) var(--section-pad); display: flex; flex-direction: column; gap: 24px; align-items: flex-start;">
+<section class="fs-hero" style="max-width: 1120px; margin: 0 auto; padding: clamp(80px, 10vw, 152px) clamp(20px, 5vw, 40px) var(--section-space); display: flex; flex-direction: column; gap: 24px; align-items: flex-start;">
 <p style="margin: 0; display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);" aria-hidden="true"></span>Hosted pulse · Early access</p>
 <h1 style="margin: 0; max-width: 860px; font-size: var(--fs-h1); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; text-wrap: balance;">The same pulse, <span style="font-family: var(--mono); font-style: italic; font-weight: 500; letter-spacing: -0.05em; color: var(--accent-text);">without the server</span>.</h1>
 <p style="margin: 0; max-width: 680px; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead);">We run the API, the database, the status page and the notifier for you, with backups and upgrades. Point your probes at your hosted API, or use ours in several regions. Your checks file stays the same, so you can move between hosted and self-hosted at any time.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
 <a class="btn btn-primary" href="#waitlist" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="arr" d="M5 12h14M12 5l7 7-7 7"></path></svg>
 </a>
-<a class="btn btn-secondary" href="#plans" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Compare plans</a>
+<a class="btn btn-secondary" href="#plans" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>Compare plans</a>
 </div>
 </section>
 
-<section aria-labelledby="included-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+<section class="fs" aria-labelledby="included-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 48px;">
 <h2 id="included-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">What we run for you</h2>
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
+<div class="stg" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Managed API</h3>
@@ -121,10 +158,10 @@ body{margin:0}
 </div>
 </section>
 
-<section id="plans" aria-labelledby="plans-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+<section class="fs" id="plans" aria-labelledby="plans-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 48px;">
 <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
-<div style="display: flex; flex-direction: column; gap: 12px; max-width: 640px;">
+<div style="display: flex; flex-direction: column; gap: 16px; max-width: 640px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Plans</p>
 <h2 id="plans-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Start free on your own server, move up when you want us to run it</h2>
 </div>
@@ -134,7 +171,7 @@ body{margin:0}
 </div>
 </div>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 2vw, 24px); align-items: stretch;">
+<div class="stg" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 2vw, 24px); align-items: stretch;">
 
 <div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--line-strong); border-radius: 16px;">
 <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -147,7 +184,7 @@ body{margin:0}
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>All features, one Compose file</li>
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Community support on GitHub</li>
 </ul>
-<a class="btn btn-secondary" href="Docs.dc.html" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Read the quick start</a>
+<a class="btn btn-secondary" href="Docs.dc.html" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>Read the quick start</a>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--line-strong); border-radius: 16px;">
@@ -163,7 +200,7 @@ body{margin:0}
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>90 days of history</li>
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Email and webhook notifications</li>
 </ul>
-<a class="btn btn-secondary" href="#waitlist" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist</a>
+<a class="btn btn-secondary" href="#waitlist" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>Join the waitlist</a>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
@@ -181,6 +218,7 @@ body{margin:0}
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Your domain, logo, colours and fonts</li>
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Slack, Teams, reminders and heartbeats</li>
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>1 year of history, 5 team members</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Components, Atom feed and badges</li>
 </ul>
 <a class="btn btn-primary" href="#waitlist" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist</a>
 </div>
@@ -197,7 +235,7 @@ body{margin:0}
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Several status pages, private pages</li>
 <li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Data processing agreement and invoice</li>
 </ul>
-<a class="btn btn-secondary" href="mailto:[YOUR EMAIL]" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Talk to us</a>
+<a class="btn btn-secondary" href="mailto:[YOUR EMAIL]" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>Talk to us</a>
 </div>
 
 </div>
@@ -208,14 +246,14 @@ body{margin:0}
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">The Team plan is free for open-source projects</h3>
 <p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">For public projects under an OSI-approved licence. A status page for your users, at no cost, for as long as the project stays open.</p>
 </div>
-<a class="btn btn-secondary" href="#waitlist" style="flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--field-line); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Apply with your repository</a>
+<a class="btn btn-secondary" href="#waitlist" style="flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--field-line); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>Apply with your repository</a>
 </div>
 <p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">Prices exclude VAT. Every hosted plan starts with a 14-day trial, no card needed. Yearly billing saves about 20 %.</p>
 </div>
 </section>
 
-<section aria-labelledby="compare-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 24px;">
+<section class="fs" aria-labelledby="compare-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 36px;">
 <h2 id="compare-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Self-hosted or hosted</h2>
 <div style="overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 12px;" role="region" aria-label="Self-hosted compared with hosted" tabindex="0">
 <table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: var(--fs-ui); line-height: 1.5;">
@@ -239,8 +277,8 @@ body{margin:0}
 </div>
 </section>
 
-<section aria-labelledby="faq-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 32px 48px;">
+<section class="fs" aria-labelledby="faq-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 40px 64px;">
 <h2 id="faq-title" style="margin: 0; flex: 1 1 260px; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Questions</h2>
 <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column;">
 <details style="border-bottom: 1px solid var(--rule);">
@@ -267,8 +305,8 @@ body{margin:0}
 </div>
 </section>
 
-<section id="waitlist" aria-labelledby="waitlist-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px);">
+<section class="fs" id="waitlist" aria-labelledby="waitlist-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px);">
 <div style="display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: center; padding: clamp(24px, 4vw, 48px); border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
 <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 12px;">
 <h2 id="waitlist-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Get early access</h2>
@@ -316,11 +354,232 @@ body{margin:0}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":3800}}'>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;},&quot;animations&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;scroll&quot;,&quot;replay&quot;],&quot;default&quot;:&quot;scroll&quot;},&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:4500}}">
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = { theme: null, menuOpen: false, billing: 'monthly', joined: false };
+    this.setRoot = (el) => {
+      const changed = el && el !== this.root;
+      this.root = el;
+      if (changed && this.mounted) { this.startMotion(); this.startNet(); }
+    };
+  }
+  componentDidMount() { this.mounted = true; this.startMotion(); this.startNet(); }
+  componentDidUpdate(prev) { if (prev.animations !== this.props.animations) this.startMotion(); }
+  componentWillUnmount() { this.mounted = false; this.stopMotion(); this.stopNet(); }
+  stopNet() {
+    cancelAnimationFrame(this.netRaf);
+    if (this.netRo) this.netRo.disconnect();
+    this.netRo = null;
+  }
+  // Background network: probes (small nodes) send pulses to collectors (large nodes).
+  // Drawn on a viewport-sized sticky canvas in page coordinates, capped at ~30 fps.
+  startNet() {
+    this.stopNet();
+    const root = this.root;
+    const wrap = root && root.querySelector('.net');
+    const cv = wrap && wrap.querySelector('canvas');
+    if (!cv || !cv.getContext) return;
+    const ctx = cv.getContext('2d');
+    const still = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    let W = 0, H = 0, CH = 0, dpr = 1, nodes = [], edges = [], pulses = [], rings = [];
+    let col = {}, theme = null, nextSpawn = 0, last = 0, lastY = -1, dirty = true, maxP = 3;
+    const seeded = (s) => () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const rgba = (hex, a) => {
+      const h = (hex || '#888888').replace('#', '');
+      const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+    };
+    const readCol = () => {
+      const cs = getComputedStyle(root);
+      col = { a: cs.getPropertyValue('--accent').trim(), w: cs.getPropertyValue('--warning').trim(), l: cs.getPropertyValue('--line-strong').trim() };
+      theme = root.getAttribute('data-theme');
+      dirty = true;
+    };
+    const layout = () => {
+      W = wrap.clientWidth; H = wrap.clientHeight; CH = cv.clientHeight;
+      if (!W || !H || !CH) return;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      if (W * CH * dpr * dpr > 9e6) dpr = 1;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(CH * dpr);
+      maxP = Math.min(12, Math.max(4, Math.round(CH / 200)));
+      // same page size, same network
+      const r = seeded(Math.round(W / 40) * 7919 + Math.round(H / 200));
+      const band = W < 720 ? 0.22 : Math.max(0.1, (W - 1120) / 2 / W + 0.04);
+      const edgeX = (right) => (right ? W * (1 - band * r()) : W * band * r());
+      const recv = [];
+      nodes = []; edges = []; pulses = []; rings = [];
+      // phones: fewer nodes per page height and shorter minimum distances
+      const s = Math.min(1, W / 1200);
+      const dBig = 280 * Math.max(0.6, s), dSmall = 60 * Math.max(0.6, s);
+      const free = (x, y, d) => nodes.every((m) => Math.hypot(m.x - x, m.y - y) >= d);
+      // seeded dart throwing with a minimum distance: an even spread, same layout per page size
+      const place = (gen, d, ok) => {
+        for (let j = 0; j < 30; j++) { const p = gen(); if (free(p.x, p.y, d) && (!ok || ok(p))) return p; }
+        return null;
+      };
+      const near = (x, y) => {
+        let best = null, bd = Infinity, best2 = null, bd2 = Infinity;
+        recv.forEach((q) => {
+          const d = Math.hypot(q.x - x, q.y - y);
+          if (d < bd) { best2 = best; bd2 = bd; best = q; bd = d; } else if (d < bd2) { best2 = q; bd2 = d; }
+        });
+        return { best, bd, best2, bd2 };
+      };
+      // lines at one collector stay at least 20° apart (15° once it has 12 links)
+      const angOk = (q, x, y) => {
+        const a = Math.atan2(y - q.y, x - q.x);
+        const min = (q.angs.length >= 12 ? 15 : 20) * Math.PI / 180;
+        return q.angs.every((b) => { const d = Math.abs(a - b) % (2 * Math.PI); return Math.min(d, 2 * Math.PI - d) >= min; });
+      };
+      const link = (n, q, len) => { q.angs.push(Math.atan2(n.y - q.y, n.x - q.x)); edges.push({ a: n, b: q, len, f: n.f }); };
+      const nr = Math.max(5, Math.round(H / 450 * s));
+      for (let i = 0; i < nr; i++) {
+        const p = place(() => ({ x: edgeX(i % 2 === 1), y: Math.min(H - 40, Math.max(120, H * (i + 0.5) / nr + (r() - 0.5) * 240)) }), dBig);
+        if (!p) continue;
+        const n = { x: p.x, y: p.y, big: true, f: 1, angs: [] };
+        recv.push(n); nodes.push(n);
+      }
+      const per = W < 720 ? 5 : 8;
+      for (let i = 0; i < nr * per; i++) {
+        const p = place(() => {
+          const mid = r() < 0.12;
+          return { mid, x: mid ? W * (0.3 + 0.4 * r()) : edgeX(r() < 0.5), y: 100 + (H - 140) * r() };
+        }, dSmall, (c) => { c.nb = near(c.x, c.y); return !!c.nb.best && angOk(c.nb.best, c.x, c.y); });
+        if (!p) continue;
+        const n = { x: p.x, y: p.y, big: false, f: p.mid ? 0.4 : 1 };
+        const { best, bd, best2, bd2 } = p.nb;
+        nodes.push(n);
+        link(n, best, bd);
+        // some probes also report to a second collector on the same side: a net, few crossings
+        if (best2 && r() < 0.3 && bd2 < Math.min(520, bd * 1.6) && Math.abs(best2.x - n.x) < W * 0.3 && angOk(best2, n.x, n.y)) link(n, best2, bd2);
+      }
+      lastY = -1; dirty = true;
+    };
+    const draw = (now) => {
+      const y0 = cv.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
+      if (!dirty && !pulses.length && !rings.length && y0 === lastY) return;
+      lastY = y0; dirty = false;
+      const k = W < 720 ? 0.6 : 1;
+      const inView = (ya, yb) => Math.max(ya, yb) > y0 - 20 && Math.min(ya, yb) < y0 + CH + 20;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, -y0 * dpr);
+      ctx.clearRect(0, y0, W, CH);
+      ctx.lineWidth = 1;
+      edges.forEach((e) => {
+        if (!inView(e.a.y, e.b.y)) return;
+        ctx.strokeStyle = rgba(col.l, 0.45 * e.f * k);
+        ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke();
+      });
+      nodes.forEach((n) => {
+        if (!inView(n.y, n.y)) return;
+        ctx.fillStyle = n.big ? rgba(col.a, 0.3 * k) : rgba(col.l, 0.8 * n.f * k);
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.big ? 4.5 : 2.2, 0, 6.2832); ctx.fill();
+        if (n.big) { ctx.strokeStyle = rgba(col.a, 0.14 * k); ctx.beginPath(); ctx.arc(n.x, n.y, 9, 0, 6.2832); ctx.stroke(); }
+      });
+      pulses = pulses.filter((p) => {
+        const t = (now - p.t0) / p.dur;
+        if (t >= 1) { rings.push({ n: p.e.b, t0: now, c: p.c }); return false; }
+        const e = p.e, dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+        const hx = e.a.x + dx * t, hy = e.a.y + dy * t;
+        const tt = Math.max(0, t - 70 / e.len);
+        const tx = e.a.x + dx * tt, ty = e.a.y + dy * tt;
+        const g = ctx.createLinearGradient(tx, ty, hx, hy);
+        g.addColorStop(0, rgba(p.c, 0)); g.addColorStop(1, rgba(p.c, 0.7 * e.f * k));
+        ctx.strokeStyle = g; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.fillStyle = rgba(p.c, 0.2 * e.f * k); ctx.beginPath(); ctx.arc(hx, hy, 6, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = rgba(p.c, 0.9 * e.f * k); ctx.beginPath(); ctx.arc(hx, hy, 2.2, 0, 6.2832); ctx.fill();
+        return true;
+      });
+      ctx.lineWidth = 1.5;
+      rings = rings.filter((g) => {
+        const q = (now - g.t0) / 900;
+        if (q >= 1) return false;
+        ctx.strokeStyle = rgba(g.c, 0.45 * (1 - q) * k);
+        ctx.beginPath(); ctx.arc(g.n.x, g.n.y, 5 + 20 * q, 0, 6.2832); ctx.stroke();
+        ctx.fillStyle = rgba(g.c, 0.25 * (1 - q) * k);
+        ctx.beginPath(); ctx.arc(g.n.x, g.n.y, 6, 0, 6.2832); ctx.fill();
+        return true;
+      });
+    };
+    const spawn = (now) => {
+      if (still || now < nextSpawn || pulses.length >= maxP) return;
+      const y0 = lastY < 0 ? 0 : lastY;
+      const vis = edges.filter((e) => Math.max(e.a.y, e.b.y) > y0 && Math.min(e.a.y, e.b.y) < y0 + CH);
+      if (vis.length) {
+        const e = vis[Math.floor(Math.random() * vis.length)];
+        const c = Math.random() < 0.12 ? col.w : col.a;
+        pulses.push({ e, c, t0: now, dur: Math.min(4200, Math.max(1400, e.len / 130 * 1000)) });
+      }
+      nextSpawn = now + (600 + Math.random() * 900) * 3 / maxP;
+    };
+    const tick = (now) => {
+      this.netRaf = requestAnimationFrame(tick);
+      if (document.hidden || now - last < 33) return;
+      last = now;
+      if (root.getAttribute('data-theme') !== theme) readCol();
+      spawn(now);
+      draw(now);
+    };
+    readCol();
+    layout();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.netRo = new ResizeObserver(() => layout());
+      this.netRo.observe(wrap);
+    }
+    this.netRaf = requestAnimationFrame(tick);
+  }
+  stopMotion() {
+    if (this.io) this.io.disconnect();
+    clearInterval(this.timer);
+    this.io = null;
+  }
+  startMotion() {
+    this.stopMotion();
+    const root = this.root;
+    if (!root || typeof IntersectionObserver === 'undefined') return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Entry motion: .rv hides only after JS runs (data-motion on root); .in plays the keyframes.
+    const items = Array.from(root.querySelectorAll('.fs-hero>*,.fs>div>:not(.stg),.stg>*'));
+    items.forEach((el) => {
+      el.classList.remove('in');
+      el.classList.add('rv');
+    });
+    root.setAttribute('data-motion', '');
+    // 100 ms between siblings that appear together
+    const stagger = (els, base) => {
+      const seen = new Map();
+      els.forEach((el) => {
+        const i = seen.get(el.parentElement) || 0;
+        seen.set(el.parentElement, i + 1);
+        el.style.setProperty('--d', (base(el) + i * 100) + 'ms');
+        el.classList.add('in');
+      });
+    };
+    if ((this.props.animations ?? 'scroll') === 'replay') {
+      const sections = Array.from(root.querySelectorAll('section'));
+      const play = () => {
+        items.forEach((el) => el.classList.remove('in'));
+        void root.offsetWidth;
+        stagger(items, (el) => Math.max(0, sections.indexOf(el.closest('section'))) * 300);
+      };
+      play();
+      this.timer = setInterval(play, 7000);
+      return;
+    }
+    this.io = new IntersectionObserver((entries) => {
+      const hits = entries.filter((e) => e.isIntersecting).map((e) => e.target);
+      hits.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      hits.forEach((el) => this.io.unobserve(el));
+      stagger(hits, () => 0);
+    }, { threshold: 0.15 });
+    items.forEach((el) => this.io.observe(el));
   }
   renderVals() {
     const theme = this.state.theme ?? this.props.defaultTheme ?? 'light';
@@ -328,6 +587,7 @@ class Component extends DCLogic {
     const { menuOpen, billing, joined } = this.state;
     const isMonthly = billing === 'monthly';
     return {
+      setRoot: this.setRoot,
       theme,
       isDark,
       isLight: !isDark,

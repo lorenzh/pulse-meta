@@ -31,9 +31,67 @@ body{margin:0}
 .pl .m-panel a{color:var(--text);text-decoration:none}
 @media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav,.pl .hdr-gh{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}.pl .flow-arrow{transform:rotate(90deg)}.pl .flow-gap{min-width:100%!important;flex-direction:row!important;gap:12px!important}}
 @media (prefers-reduced-motion:reduce){.pl *{transition:none!important}.pl .card-link:hover{transform:none}}
+.pl{--section-space:clamp(64px,8vw,128px)}
+@keyframes pl-rise{from{opacity:.001;translate:0 32px}to{opacity:1;translate:0 0}}
+@keyframes pl-slide{from{opacity:.001;translate:-28px 0}to{opacity:1;translate:0 0}}
+@keyframes pl-line{from{opacity:.001}to{opacity:1}}
+@media (prefers-reduced-motion:no-preference){
+.pl[data-motion] .rv{opacity:.001}
+.pl[data-motion] .rv.in{opacity:1;animation:pl-rise 700ms var(--ease) var(--d,0ms) both}
+.pl[data-motion] .rv.in.sl{animation-name:pl-slide}
+.pl[data-motion] .rv.in.ln{animation:pl-line 400ms ease-out var(--d,0ms) both}
+.pl[data-motion] .rv:focus-within{opacity:1}
+.pl :focus-within{animation:none!important}
+}
+@media print{.pl .rv{opacity:1!important;animation:none!important}}
+.pl{position:relative;isolation:isolate}
+.pl .net{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.pl .net-c{position:sticky;top:0;display:block;width:100%;height:100vh}
+.pl .xf{display:inline-grid}
+.pl .xf>*{grid-area:1/1}
+.pl .btn-secondary{position:relative;isolation:isolate;overflow:hidden}
+.pl .btn-secondary>.fill{position:absolute;inset:0;z-index:-1;background:var(--accent);transform:scaleX(0);transform-origin:left;pointer-events:none}
+.pl .nav a{position:relative}
+.pl .nav a::after{content:"";position:absolute;left:0;right:0;bottom:8px;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:left;pointer-events:none}
+.pl .dot{position:relative}
+.pl .ring{position:absolute;inset:0;border-radius:999px;background:inherit;opacity:0;pointer-events:none}
+@keyframes pl-nudge{0%,100%{transform:translateX(6px) scale(1)}25%{transform:translateX(10px) scale(1.15)}75%{transform:translateX(4px) scale(1)}}
+@keyframes pl-seg-a{0%{transform:scaleY(0);box-shadow:0 0 0 2px var(--accent)}60%{transform:scaleY(1);box-shadow:0 0 0 2px var(--accent)}100%{transform:scaleY(1);box-shadow:0 0 0 0 transparent}}
+@keyframes pl-seg-b{0%{transform:scaleY(0);box-shadow:0 0 0 2px var(--accent)}60%{transform:scaleY(1);box-shadow:0 0 0 2px var(--accent)}100%{transform:scaleY(1);box-shadow:0 0 0 0 transparent}}
+@keyframes pl-ring-a{from{transform:scale(1);opacity:.8}to{transform:scale(3.5);opacity:0}}
+@keyframes pl-ring-b{from{transform:scale(1);opacity:.8}to{transform:scale(3.5);opacity:0}}
+@keyframes pl-flash-a{0%,100%{transform:scale(1)}30%{transform:scale(1.1);box-shadow:0 0 0 5px var(--tint-line)}}
+@keyframes pl-flash-b{0%,100%{transform:scale(1)}30%{transform:scale(1.1);box-shadow:0 0 0 5px var(--tint-line)}}
+@media (prefers-reduced-motion:no-preference){
+.pl .btn,.pl button{transition:background-color 200ms var(--ease),border-color 450ms ease-in-out,color 450ms ease-in-out,box-shadow 250ms var(--ease),transform 320ms cubic-bezier(.34,1.56,.64,1)}
+.pl .btn:active,.pl button:active{transform:scale(.94);transition:transform 120ms ease-out}
+.pl .btn-secondary>.fill{transition:transform 450ms ease-in-out}
+.pl .btn-secondary:focus-visible>.fill{transform:scaleX(1)}
+.pl .btn-secondary:focus-visible{color:var(--on-strong)!important;border-color:var(--accent)!important}
+.pl .arr{transform-box:fill-box;transform-origin:center;transition:transform 200ms var(--ease)}
+.pl a:focus-visible .arr{transform:translateX(6px);animation:pl-nudge 900ms ease-in-out 200ms infinite}
+.pl .stg>div[style*="border: 1px"],.pl .stg>div>div[style*="border: 1px"],.pl .card-link{transition:transform 250ms var(--ease),border-color 250ms var(--ease),box-shadow 250ms var(--ease)}
+.pl .nav a::after{transition:transform 300ms var(--ease)}
+.pl .xf>*{transition:opacity 600ms var(--ease)}
+.pl .seg-a{transform-origin:bottom;animation:pl-seg-a 900ms var(--ease)}
+.pl .seg-b{transform-origin:bottom;animation:pl-seg-b 900ms var(--ease)}
+.pl .ring-a{animation:pl-ring-a 1s ease-out 2}
+.pl .ring-b{animation:pl-ring-b 1s ease-out 2}
+.pl .flash-a{animation:pl-flash-a 700ms var(--ease)}
+.pl .flash-b{animation:pl-flash-b 700ms var(--ease)}
+}
+@media (hover:hover) and (prefers-reduced-motion:no-preference){
+.pl a:hover .arr{transform:translateX(6px);animation:pl-nudge 900ms ease-in-out 200ms infinite}
+.pl .btn-primary:hover{box-shadow:0 8px 24px -6px var(--accent),0 0 0 4px var(--tint-line)}
+.pl .btn-secondary:hover>.fill{transform:scaleX(1)}
+.pl .btn-secondary:hover{color:var(--on-strong)!important;border-color:var(--accent)!important}
+.pl .stg>div[style*="border: 1px"]:hover,.pl .stg>div>div[style*="border: 1px"]:hover,.pl .card-link:hover{transform:translateY(-6px);border-color:var(--accent)!important;box-shadow:0 18px 36px -16px rgba(20,12,28,.45)}
+.pl .nav a:hover::after{transform:scaleX(1)}
+}
 </style>
 </helmet>
-<div class="pl" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+<div class="pl" ref="{{setRoot}}" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+<div class="net" aria-hidden="true"><canvas class="net-c"></canvas></div>
 
 <a class="skip" href="#main" style="position: absolute; left: -9999px; top: 8px; padding: 10px 18px; background: var(--strong); color: var(--on-strong); border-radius: 999px; font-size: var(--fs-ui);">Skip to content</a>
 
@@ -68,7 +126,7 @@ body{margin:0}
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
 </sc-if>
 </button>
-<a class="btn btn-secondary hdr-gh" href="https://github.com/lorenzh/pulse-meta" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">
+<a class="btn btn-secondary hdr-gh" href="https://github.com/lorenzh/pulse-meta" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path><path d="M9 18c-4.51 2-5-2-7-2"></path></svg>
 GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);"> (opens in a new tab)</span>
 </a>
@@ -86,20 +144,20 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 
 <main id="main">
 
-<section style="max-width: 1120px; margin: 0 auto; padding: clamp(56px, 8vw, 112px) clamp(20px, 5vw, 40px) var(--section-pad); display: flex; flex-wrap: wrap; gap: 48px; align-items: center;">
+<section class="fs-hero" style="max-width: 1120px; margin: 0 auto; padding: clamp(80px, 10vw, 152px) clamp(20px, 5vw, 40px) var(--section-space); display: flex; flex-wrap: wrap; gap: 48px; align-items: center;">
 <div style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Uptime monitor · Status page · MIT licensed</p>
 <h1 style="margin: 0; font-size: var(--fs-h1); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; text-wrap: balance;">Know when it breaks. Tell people <span style="font-family: var(--mono); font-style: italic; font-weight: 500; letter-spacing: -0.05em; color: var(--accent-text);">when it’s back</span>.</h1>
 <p style="margin: 0; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead); max-width: 560px;">pulse checks HTTP endpoints, TLS certificates and cron jobs from several locations, decides by quorum, and keeps a calm public status page. Incidents reach Slack, Teams, email or a signed webhook. Self-hosted with one Docker Compose file.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
 <a class="btn btn-primary" href="Docs.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Start with Docker Compose
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="arr" d="M5 12h14M12 5l7 7-7 7"></path></svg>
 </a>
-<a class="btn btn-secondary" href="#how" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">See how it works</a>
+<a class="btn btn-secondary" href="#how" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;"><span class="fill" aria-hidden="true"></span>See how it works</a>
 </div>
 </div>
 
-<div style="flex: 1 1 440px; min-width: 0; background: var(--code); color: var(--code-text); border-radius: 16px; overflow: hidden; font-family: var(--mono); font-size: 14px; line-height: 1.7;" role="img" aria-label="Terminal: starting pulse with Docker Compose">
+<div class="term" style="flex: 1 1 440px; min-width: 0; background: var(--code); color: var(--code-text); border-radius: 16px; overflow: hidden; font-family: var(--mono); font-size: 14px; line-height: 1.7;" role="img" aria-label="Terminal: starting pulse with Docker Compose">
 <div style="display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #3e3049;">
 <span style="width: 10px; height: 10px; border-radius: 999px; background: #54406a;"></span>
 <span style="width: 10px; height: 10px; border-radius: 999px; background: #54406a;"></span>
@@ -120,32 +178,50 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 </section>
 
-<section aria-labelledby="preview-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start;">
-<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+<section class="fs" aria-labelledby="preview-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 64px; align-items: flex-start;">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">The status page</p>
 <h2 id="preview-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">What your visitors see</h2>
-<p style="margin: 0; color: var(--lead);">Every check with its state written as a word, 90 days of uptime, open and recently resolved incidents, and planned maintenance. Targets and error reasons stay private by default. Your name, logo, colours and fonts replace the losoft look with one theme file.</p>
+<p style="margin: 0; color: var(--lead);">Every component with its state written as a word, 90 days of uptime, open and recently resolved incidents, and planned maintenance. Checks, targets and error reasons stay private by default. Your name, logo, colours and fonts replace the losoft look with one theme file.</p>
 <a href="Docs.dc.html" style="font-size: var(--fs-ui); font-weight: 500;">Theming and white label</a>
 </div>
-<div style="flex: 1.4 1 480px; min-width: 0; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--bg); overflow: hidden;">
+<div class="status" style="flex: 1.4 1 480px; min-width: 0; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--bg); overflow: hidden;">
 <div style="padding: 20px 24px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
 <span style="font-weight: 700; font-size: 18px; letter-spacing: -0.01em;">Acme status</span>
-<span style="display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--warning-tint); color: var(--warning); font-size: var(--fs-small); font-weight: 500;">
+<span class="xf" style="justify-items: end;">
+<span class="{{degFlash}}" aria-hidden="{{upHidden}}" style="opacity: {{degOp}}; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--warning-tint); color: var(--warning); font-size: var(--fs-small); font-weight: 500;">
 <span style="width: 8px; height: 8px; border-radius: 999px; background: var(--warning);" aria-hidden="true"></span>Partial degradation</span>
+<span class="{{upFlash}}" aria-hidden="{{degHidden}}" style="opacity: {{upOp}}; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--info-tint); color: var(--info); font-size: var(--fs-small); font-weight: 500;">
+<span style="width: 8px; height: 8px; border-radius: 999px; background: var(--info);" aria-hidden="true"></span>Maintenance</span>
+</span>
+</div>
+<div style="padding: 12px 24px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; font-size: var(--fs-small);">
+<span class="xf" style="flex: 1 1 260px; min-width: 0;">
+<span aria-hidden="{{incOpenHidden}}" style="opacity: {{incOpenOp}}; color: var(--warning); font-weight: 500;">Incident open · Checkout API degraded since 14:02</span>
+<span aria-hidden="{{incResHidden}}" style="opacity: {{incResOp}}; color: var(--success); font-weight: 500;">Incident resolved · Checkout API up since 14:09</span>
+<span aria-hidden="{{incNoneHidden}}" style="opacity: {{incNoneOp}}; color: var(--muted);">No open incidents</span>
+</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">Last check {{ago}} s ago</span>
 </div>
 <div style="display: flex; flex-direction: column;">
 <div style="padding: 16px 24px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;">
 <span style="flex: 1 1 160px; font-weight: 500;">Website</span>
 <span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: var(--success);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--success);" aria-hidden="true"></span>Up</span>
 <div style="flex: 1 1 100%; display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px;" aria-hidden="true">
-<span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--warning);"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span><span style="height: 20px; border-radius: 2px; background: var(--success); opacity: 0.8;"></span>
+<sc-for list="{{bars}}" as="seg" hint-placeholder-count="30"><span class="{{seg.cls}}" style="height: 20px; border-radius: 2px; background: {{seg.bg}}; opacity: {{seg.op}};"></span></sc-for>
 </div>
 </div>
 <div style="padding: 16px 24px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;">
 <span style="flex: 1 1 160px; font-weight: 500;">Checkout API</span>
-<span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: var(--warning);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--warning);" aria-hidden="true"></span>Degraded</span>
-<span style="flex: 1 1 100%; font-size: var(--fs-small); color: var(--muted);">Slower than its latency objective since 14:02.</span>
+<span class="xf" style="justify-items: start;">
+<span aria-hidden="{{upHidden}}" style="opacity: {{degOp}}; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: var(--warning);"><span class="dot" style="width: 8px; height: 8px; border-radius: 999px; background: var(--warning);" aria-hidden="true"><span class="{{degRing}}"></span></span>Degraded</span>
+<span aria-hidden="{{degHidden}}" style="opacity: {{upOp}}; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: var(--success);"><span class="dot" style="width: 8px; height: 8px; border-radius: 999px; background: var(--success);" aria-hidden="true"><span class="{{upRing}}"></span></span>Up</span>
+</span>
+<span class="xf" style="flex: 1 1 100%; font-size: var(--fs-small); color: var(--muted);">
+<span aria-hidden="{{upHidden}}" style="opacity: {{degOp}};">Slower than its latency objective since 14:02.</span>
+<span aria-hidden="{{degHidden}}" style="opacity: {{upOp}};">Back within its latency objective since 14:09.</span>
+</span>
 </div>
 <div style="padding: 16px 24px; border-bottom: 1px solid var(--rule); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;">
 <span style="flex: 1 1 160px; font-weight: 500;">Nightly backup</span>
@@ -162,18 +238,18 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 </section>
 
-<section id="features" aria-labelledby="features-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 40px;">
-<div style="display: flex; flex-direction: column; gap: 16px; max-width: 720px;">
+<section class="fs" id="features" aria-labelledby="features-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 56px;">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Features</p>
 <h2 id="features-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Everything a small team needs, nothing it has to babysit</h2>
 </div>
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
+<div class="stg" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
 
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">HTTP checks</h3>
-<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Status code, latency objective, a keyword in the body, retries and timeouts per check.</p>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Any method, headers and body, expected status codes and JSON assertions. Secrets stay in the probe’s environment.</p>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
@@ -207,6 +283,18 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Components</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Group checks into what your users know, like Shop or API. Checks themselves stay private.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Feed and badges</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">An Atom feed of incidents and SVG uptime badges for READMEs and dashboards.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Notifications</h3>
 <p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Slack, Microsoft Teams, email and HMAC-signed webhooks, with reminders while an incident stays open.</p>
@@ -222,15 +310,15 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 </section>
 
-<section id="how" aria-labelledby="how-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 40px;">
-<div style="display: flex; flex-direction: column; gap: 16px; max-width: 720px;">
+<section class="fs" id="how" aria-labelledby="how-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 56px;">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">How it works</p>
 <h2 id="how-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Four small services, one shared contract</h2>
 <p style="margin: 0; color: var(--lead);">Probes run the checks and post results. The API decides the state of every check and keeps the incidents. The status page and the notifier only read from it.</p>
 </div>
 
-<div style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px;">
+<div class="stg" style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px;">
 <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 8px; padding: 20px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">One per location</span>
 <span style="font-family: var(--mono); font-size: 17px; font-weight: 600;">pulse-probe</span>
@@ -243,7 +331,7 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 <div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 8px; padding: 20px; border: 1px solid var(--tint-line); border-radius: 12px; background: var(--tint);">
 <span style="display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);" aria-hidden="true"></span>The source of truth</span>
 <span style="font-family: var(--mono); font-size: 17px; font-weight: 600;">pulse-api</span>
-<span style="font-size: var(--fs-small); color: var(--lead);">Stores results in SQLite, applies quorum and maintenance, opens and resolves incidents, takes heartbeat pings.</span>
+<span style="font-size: var(--fs-small); color: var(--lead);">Stores results in SQLite, applies quorum and maintenance, rolls checks up into components, opens and resolves incidents, takes heartbeat pings.</span>
 </div>
 <div class="flow-gap" style="flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 96px; color: var(--muted);">
 <span style="font-family: var(--mono); font-size: var(--fs-label);">GET, read only</span>
@@ -252,7 +340,7 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 <div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 16px;">
 <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <span style="font-family: var(--mono); font-size: 17px; font-weight: 600;">pulse-status</span>
-<span style="font-size: var(--fs-small); color: var(--lead);">The public page, redacted and cached.</span>
+<span style="font-size: var(--fs-small); color: var(--lead);">The public page, feed and badges, redacted and cached.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <span style="font-family: var(--mono); font-size: 17px; font-weight: 600;">pulse-notify</span>
@@ -264,9 +352,9 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 </section>
 
-<section aria-labelledby="start-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start;">
-<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+<section class="fs" aria-labelledby="start-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 64px; align-items: flex-start;">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Configuration</p>
 <h2 id="start-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Checks live in one file</h2>
 <p style="margin: 0; color: var(--lead);">Describe each check in <span style="font-family: var(--mono); font-size: 0.9em;">checks.json</span>. Unknown keys and out-of-range values stop the start with one line that names the field, so typos never pass silently.</p>
@@ -290,19 +378,24 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
       <span style="color: var(--syn-key);">"period"</span><span style="color: var(--syn-punct);">:</span> <span style="color: var(--syn-number);">86400000</span><span style="color: var(--syn-punct);">,</span>
       <span style="color: var(--syn-key);">"grace"</span><span style="color: var(--syn-punct);">:</span> <span style="color: var(--syn-number);">3600000</span>
     <span style="color: var(--syn-punct);">}</span>
-  <span style="color: var(--syn-punct);">]</span>
+  <span style="color: var(--syn-punct);">],</span>
+  <span style="color: var(--syn-key);">"components"</span><span style="color: var(--syn-punct);">: [{</span>
+    <span style="color: var(--syn-key);">"id"</span><span style="color: var(--syn-punct);">:</span> "shop"<span style="color: var(--syn-punct);">,</span>
+    <span style="color: var(--syn-key);">"name"</span><span style="color: var(--syn-punct);">:</span> "Shop"<span style="color: var(--syn-punct);">,</span>
+    <span style="color: var(--syn-key);">"checkIds"</span><span style="color: var(--syn-punct);">: [</span>"website"<span style="color: var(--syn-punct);">,</span> "nightly-backup"<span style="color: var(--syn-punct);">]</span>
+  <span style="color: var(--syn-punct);">}]</span>
 <span style="color: var(--syn-punct);">}</span></pre>
 </div>
 </div>
 </section>
 
-<section aria-labelledby="docs-title" style="border-top: 1px solid var(--rule);">
-<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 32px;">
-<div style="display: flex; flex-direction: column; gap: 16px; max-width: 720px;">
+<section class="fs" aria-labelledby="docs-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 48px;">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Documentation</p>
 <h2 id="docs-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Written from the code, kept next to it</h2>
 </div>
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
+<div class="stg" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
 <a class="card-link" href="Docs.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 24px; border: 1px solid var(--tint-line); border-radius: 12px; background: var(--tint); color: var(--text); text-decoration: none;">
 <span style="display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);" aria-hidden="true"></span>Start here</span>
 <span style="font-size: var(--fs-h3); font-weight: 500; letter-spacing: -0.01em;">Quick start</span>
@@ -341,17 +434,295 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":4400}}'>
+<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"animations":{"editor":"enum","options":["scroll","replay"],"default":"scroll"},"$preview":{"width":1440,"height":5100}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { theme: null, menuOpen: false };
+    const bars = Array.from({ length: 30 }, (_, i) => (i === 12 ? 'w' : 'u'));
+    // live: status preview state; the first render is the fixed state shown with reduced motion
+    this.state = { theme: null, menuOpen: false, deg: true, degN: 0, inc: 'open', bars, barN: 0, ago: 3 };
+    this.setRoot = (el) => {
+      const changed = el && el !== this.root;
+      this.root = el;
+      if (changed && this.mounted) { this.startMotion(); this.startNet(); }
+    };
+  }
+  componentDidMount() { this.mounted = true; this.startMotion(); this.startNet(); }
+  componentDidUpdate(prev) { if (prev.animations !== this.props.animations) this.startMotion(); }
+  componentWillUnmount() { this.mounted = false; this.stopMotion(); this.stopNet(); }
+  stopNet() {
+    cancelAnimationFrame(this.netRaf);
+    if (this.netRo) this.netRo.disconnect();
+    this.netRo = null;
+  }
+  // Background network: probes (small nodes) send pulses to collectors (large nodes).
+  // Drawn on a viewport-sized sticky canvas in page coordinates, capped at ~30 fps.
+  startNet() {
+    this.stopNet();
+    const root = this.root;
+    const wrap = root && root.querySelector('.net');
+    const cv = wrap && wrap.querySelector('canvas');
+    if (!cv || !cv.getContext) return;
+    const ctx = cv.getContext('2d');
+    const still = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    let W = 0, H = 0, CH = 0, dpr = 1, nodes = [], edges = [], pulses = [], rings = [];
+    let col = {}, theme = null, nextSpawn = 0, last = 0, lastY = -1, dirty = true, maxP = 3;
+    const seeded = (s) => () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const rgba = (hex, a) => {
+      const h = (hex || '#888888').replace('#', '');
+      const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+    };
+    const readCol = () => {
+      const cs = getComputedStyle(root);
+      col = { a: cs.getPropertyValue('--accent').trim(), w: cs.getPropertyValue('--warning').trim(), l: cs.getPropertyValue('--line-strong').trim() };
+      theme = root.getAttribute('data-theme');
+      dirty = true;
+    };
+    const layout = () => {
+      W = wrap.clientWidth; H = wrap.clientHeight; CH = cv.clientHeight;
+      if (!W || !H || !CH) return;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      if (W * CH * dpr * dpr > 9e6) dpr = 1;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(CH * dpr);
+      maxP = Math.min(12, Math.max(4, Math.round(CH / 200)));
+      // same page size, same network
+      const r = seeded(Math.round(W / 40) * 7919 + Math.round(H / 200));
+      const band = W < 720 ? 0.22 : Math.max(0.1, (W - 1120) / 2 / W + 0.04);
+      const edgeX = (right) => (right ? W * (1 - band * r()) : W * band * r());
+      const recv = [];
+      nodes = []; edges = []; pulses = []; rings = [];
+      // phones: fewer nodes per page height and shorter minimum distances
+      const s = Math.min(1, W / 1200);
+      const dBig = 280 * Math.max(0.6, s), dSmall = 60 * Math.max(0.6, s);
+      const free = (x, y, d) => nodes.every((m) => Math.hypot(m.x - x, m.y - y) >= d);
+      // seeded dart throwing with a minimum distance: an even spread, same layout per page size
+      const place = (gen, d, ok) => {
+        for (let j = 0; j < 30; j++) { const p = gen(); if (free(p.x, p.y, d) && (!ok || ok(p))) return p; }
+        return null;
+      };
+      const near = (x, y) => {
+        let best = null, bd = Infinity, best2 = null, bd2 = Infinity;
+        recv.forEach((q) => {
+          const d = Math.hypot(q.x - x, q.y - y);
+          if (d < bd) { best2 = best; bd2 = bd; best = q; bd = d; } else if (d < bd2) { best2 = q; bd2 = d; }
+        });
+        return { best, bd, best2, bd2 };
+      };
+      // lines at one collector stay at least 20° apart (15° once it has 12 links)
+      const angOk = (q, x, y) => {
+        const a = Math.atan2(y - q.y, x - q.x);
+        const min = (q.angs.length >= 12 ? 15 : 20) * Math.PI / 180;
+        return q.angs.every((b) => { const d = Math.abs(a - b) % (2 * Math.PI); return Math.min(d, 2 * Math.PI - d) >= min; });
+      };
+      const link = (n, q, len) => { q.angs.push(Math.atan2(n.y - q.y, n.x - q.x)); edges.push({ a: n, b: q, len, f: n.f }); };
+      const nr = Math.max(5, Math.round(H / 450 * s));
+      for (let i = 0; i < nr; i++) {
+        const p = place(() => ({ x: edgeX(i % 2 === 1), y: Math.min(H - 40, Math.max(120, H * (i + 0.5) / nr + (r() - 0.5) * 240)) }), dBig);
+        if (!p) continue;
+        const n = { x: p.x, y: p.y, big: true, f: 1, angs: [] };
+        recv.push(n); nodes.push(n);
+      }
+      const per = W < 720 ? 5 : 8;
+      for (let i = 0; i < nr * per; i++) {
+        const p = place(() => {
+          const mid = r() < 0.12;
+          return { mid, x: mid ? W * (0.3 + 0.4 * r()) : edgeX(r() < 0.5), y: 100 + (H - 140) * r() };
+        }, dSmall, (c) => { c.nb = near(c.x, c.y); return !!c.nb.best && angOk(c.nb.best, c.x, c.y); });
+        if (!p) continue;
+        const n = { x: p.x, y: p.y, big: false, f: p.mid ? 0.4 : 1 };
+        const { best, bd, best2, bd2 } = p.nb;
+        nodes.push(n);
+        link(n, best, bd);
+        // some probes also report to a second collector on the same side: a net, few crossings
+        if (best2 && r() < 0.3 && bd2 < Math.min(520, bd * 1.6) && Math.abs(best2.x - n.x) < W * 0.3 && angOk(best2, n.x, n.y)) link(n, best2, bd2);
+      }
+      lastY = -1; dirty = true;
+    };
+    const draw = (now) => {
+      const y0 = cv.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
+      if (!dirty && !pulses.length && !rings.length && y0 === lastY) return;
+      lastY = y0; dirty = false;
+      const k = W < 720 ? 0.6 : 1;
+      const inView = (ya, yb) => Math.max(ya, yb) > y0 - 20 && Math.min(ya, yb) < y0 + CH + 20;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, -y0 * dpr);
+      ctx.clearRect(0, y0, W, CH);
+      ctx.lineWidth = 1;
+      edges.forEach((e) => {
+        if (!inView(e.a.y, e.b.y)) return;
+        ctx.strokeStyle = rgba(col.l, 0.45 * e.f * k);
+        ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke();
+      });
+      nodes.forEach((n) => {
+        if (!inView(n.y, n.y)) return;
+        ctx.fillStyle = n.big ? rgba(col.a, 0.3 * k) : rgba(col.l, 0.8 * n.f * k);
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.big ? 4.5 : 2.2, 0, 6.2832); ctx.fill();
+        if (n.big) { ctx.strokeStyle = rgba(col.a, 0.14 * k); ctx.beginPath(); ctx.arc(n.x, n.y, 9, 0, 6.2832); ctx.stroke(); }
+      });
+      pulses = pulses.filter((p) => {
+        const t = (now - p.t0) / p.dur;
+        if (t >= 1) { rings.push({ n: p.e.b, t0: now, c: p.c }); return false; }
+        const e = p.e, dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+        const hx = e.a.x + dx * t, hy = e.a.y + dy * t;
+        const tt = Math.max(0, t - 70 / e.len);
+        const tx = e.a.x + dx * tt, ty = e.a.y + dy * tt;
+        const g = ctx.createLinearGradient(tx, ty, hx, hy);
+        g.addColorStop(0, rgba(p.c, 0)); g.addColorStop(1, rgba(p.c, 0.7 * e.f * k));
+        ctx.strokeStyle = g; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
+        ctx.fillStyle = rgba(p.c, 0.2 * e.f * k); ctx.beginPath(); ctx.arc(hx, hy, 6, 0, 6.2832); ctx.fill();
+        ctx.fillStyle = rgba(p.c, 0.9 * e.f * k); ctx.beginPath(); ctx.arc(hx, hy, 2.2, 0, 6.2832); ctx.fill();
+        return true;
+      });
+      ctx.lineWidth = 1.5;
+      rings = rings.filter((g) => {
+        const q = (now - g.t0) / 900;
+        if (q >= 1) return false;
+        ctx.strokeStyle = rgba(g.c, 0.45 * (1 - q) * k);
+        ctx.beginPath(); ctx.arc(g.n.x, g.n.y, 5 + 20 * q, 0, 6.2832); ctx.stroke();
+        ctx.fillStyle = rgba(g.c, 0.25 * (1 - q) * k);
+        ctx.beginPath(); ctx.arc(g.n.x, g.n.y, 6, 0, 6.2832); ctx.fill();
+        return true;
+      });
+    };
+    const spawn = (now) => {
+      if (still || now < nextSpawn || pulses.length >= maxP) return;
+      const y0 = lastY < 0 ? 0 : lastY;
+      const vis = edges.filter((e) => Math.max(e.a.y, e.b.y) > y0 && Math.min(e.a.y, e.b.y) < y0 + CH);
+      if (vis.length) {
+        const e = vis[Math.floor(Math.random() * vis.length)];
+        const c = Math.random() < 0.12 ? col.w : col.a;
+        pulses.push({ e, c, t0: now, dur: Math.min(4200, Math.max(1400, e.len / 130 * 1000)) });
+      }
+      nextSpawn = now + (600 + Math.random() * 900) * 3 / maxP;
+    };
+    const tick = (now) => {
+      this.netRaf = requestAnimationFrame(tick);
+      if (document.hidden || now - last < 33) return;
+      last = now;
+      if (root.getAttribute('data-theme') !== theme) readCol();
+      spawn(now);
+      draw(now);
+    };
+    readCol();
+    layout();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.netRo = new ResizeObserver(() => layout());
+      this.netRo.observe(wrap);
+    }
+    this.netRaf = requestAnimationFrame(tick);
+  }
+  stopMotion() {
+    if (this.io) this.io.disconnect();
+    if (this.liveIo) this.liveIo.disconnect();
+    clearInterval(this.timer);
+    clearInterval(this.liveTimer);
+    this.io = null;
+    this.liveIo = null;
+  }
+  startLive(root) {
+    const box = root.querySelector('.status');
+    if (!box) return;
+    // one change every 4 s; the counter ticks every second; paused while hidden or off screen
+    const events = ['bar', 'up', 'resolved', 'bar', 'none', 'bar', 'deg', 'open'];
+    let sec = 0;
+    let ev = 0;
+    this.liveSeen = false;
+    this.liveIo = new IntersectionObserver((entries) => { this.liveSeen = entries[entries.length - 1].isIntersecting; });
+    this.liveIo.observe(box);
+    this.liveTimer = setInterval(() => {
+      if (document.hidden || !this.liveSeen) return;
+      sec += 1;
+      if (sec % 4 !== 0) { this.setState((s) => ({ ago: s.ago + 1 })); return; }
+      const e = events[ev];
+      ev = (ev + 1) % events.length;
+      if (e === 'bar') this.setState((s) => ({ bars: s.bars.slice(1).concat('u'), barN: s.barN + 1, ago: 0 }));
+      else if (e === 'up') this.setState((s) => ({ deg: false, degN: s.degN + 1, ago: s.ago + 1 }));
+      else if (e === 'deg') this.setState((s) => ({ deg: true, degN: s.degN + 1, ago: s.ago + 1 }));
+      else this.setState((s) => ({ inc: e, ago: s.ago + 1 }));
+    }, 1000);
+  }
+  startMotion() {
+    this.stopMotion();
+    const root = this.root;
+    if (!root || typeof IntersectionObserver === 'undefined') return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Entry motion: .rv hides only after JS runs (data-motion on root); .in plays the keyframes.
+    const items = Array.from(root.querySelectorAll('.fs-hero>:not(.term),.fs>div>:not(.stg):not(.status),.stg>*,.status>div:last-child>div,.term>div:last-child>div'));
+    items.forEach((el) => {
+      el.classList.remove('in');
+      el.classList.add('rv');
+      if (el.matches('.status>div:last-child>div')) el.classList.add('sl');
+      if (el.matches('.term>div:last-child>div')) el.classList.add('ln');
+    });
+    root.setAttribute('data-motion', '');
+    this.startLive(root);
+    // 100 ms between siblings that appear together
+    const stagger = (els, base) => {
+      const seen = new Map();
+      els.forEach((el) => {
+        const i = seen.get(el.parentElement) || 0;
+        seen.set(el.parentElement, i + 1);
+        el.style.setProperty('--d', (base(el) + i * 100) + 'ms');
+        el.classList.add('in');
+      });
+    };
+    if ((this.props.animations ?? 'scroll') === 'replay') {
+      const sections = Array.from(root.querySelectorAll('section'));
+      const play = () => {
+        items.forEach((el) => el.classList.remove('in'));
+        void root.offsetWidth;
+        stagger(items, (el) => Math.max(0, sections.indexOf(el.closest('section'))) * 300);
+      };
+      play();
+      this.timer = setInterval(play, 7000);
+      return;
+    }
+    this.io = new IntersectionObserver((entries) => {
+      const hits = entries.filter((e) => e.isIntersecting).map((e) => e.target);
+      hits.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      hits.forEach((el) => this.io.unobserve(el));
+      stagger(hits, () => 0);
+    }, { threshold: 0.15 });
+    items.forEach((el) => this.io.observe(el));
   }
   renderVals() {
     const theme = this.state.theme ?? this.props.defaultTheme ?? 'light';
     const isDark = theme === 'dark';
     const menuOpen = this.state.menuOpen;
+    const { deg, degN, inc, bars, barN, ago } = this.state;
+    const segCls = barN === 0 ? '' : (barN % 2 ? 'seg-a' : 'seg-b');
+    // alternating class names restart the one-shot ring and flash on each state change
+    const ab = degN === 0 ? '' : (degN % 2 ? 'a' : 'b');
+    const ring = ab ? 'ring ring-' + ab : 'ring';
+    const flash = ab ? 'flash-' + ab : '';
     return {
+      setRoot: this.setRoot,
+      degRing: deg ? ring : 'ring',
+      upRing: deg ? 'ring' : ring,
+      degFlash: deg ? flash : '',
+      upFlash: deg ? '' : flash,
+      degOp: deg ? '1' : '0',
+      upOp: deg ? '0' : '1',
+      degHidden: deg ? 'false' : 'true',
+      upHidden: deg ? 'true' : 'false',
+      incOpenOp: inc === 'open' ? '1' : '0',
+      incResOp: inc === 'resolved' ? '1' : '0',
+      incNoneOp: inc === 'none' ? '1' : '0',
+      incOpenHidden: inc === 'open' ? 'false' : 'true',
+      incResHidden: inc === 'resolved' ? 'false' : 'true',
+      incNoneHidden: inc === 'none' ? 'false' : 'true',
+      bars: bars.map((b, i) => ({
+        bg: b === 'w' ? 'var(--warning)' : 'var(--success)',
+        op: b === 'w' ? '1' : '0.8',
+        cls: i === bars.length - 1 ? segCls : ''
+      })),
+      ago,
       theme,
       isDark,
       isLight: !isDark,

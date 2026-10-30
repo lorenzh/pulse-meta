@@ -1,20 +1,76 @@
 {
   "v": 3,
-  "createdOnFiles": { "v": 1, "at": "2026-10-29T21:52:00Z" },
-  "title": "pulse Website",
-  "launch": { "view": "canvas" },
-  "pages": [],
+  "attachments": {},
   "boards": {
-    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 4400, "title": "Home", "expand": "fill", "is_interactive": true },
-    "Docs.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 2700, "title": "Docs · Quick start", "expand": "fill", "is_interactive": true },
-    "DocsApi.dc.html": { "x": 3040, "y": 0, "w": 1440, "h": 3000, "title": "Docs · REST API", "expand": "fill", "is_interactive": true },
-    "Hosted.dc.html": { "x": 4560, "y": 0, "w": 1440, "h": 3800, "title": "Hosted · Plans", "expand": "fill", "is_interactive": true }
+    "Docs.dc.html": {
+      "expand": "fill",
+      "h": 2700,
+      "is_interactive": true,
+      "title": "Docs · Quick start",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "DocsApi.dc.html": {
+      "expand": "fill",
+      "h": 3000,
+      "is_interactive": true,
+      "title": "Docs · REST API",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Hosted.dc.html": {
+      "expand": "fill",
+      "h": 4500,
+      "is_interactive": true,
+      "title": "Hosted · Plans",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 5100,
+      "is_interactive": true,
+      "title": "Home",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    }
   },
-  "order": ["Main.dc.html", "Docs.dc.html", "DocsApi.dc.html", "Hosted.dc.html"],
-  "notes": {
-    "title": { "x": 0, "y": -300, "text": "pulse website · losoft design system", "kind": "title1", "maxW": 6000 }
+  "createdOnFiles": {
+    "at": "2026-10-29T21:52:00Z",
+    "v": 1
   },
   "designSystems": [
-    { "title": "losoft", "namespace": "losoft", "artifact": "https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH", "version": "1793220369-a87d", "copiedAt": "2026-10-29T21:52:00Z" }
-  ]
+    {
+      "artifact": "https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH",
+      "copiedAt": "2026-10-29T21:52:00Z",
+      "namespace": "losoft",
+      "title": "losoft",
+      "version": "1793220369-a87d"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "title": {
+      "kind": "title1",
+      "maxW": 6000,
+      "text": "pulse website · losoft design system",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Docs.dc.html",
+    "DocsApi.dc.html",
+    "Hosted.dc.html"
+  ],
+  "pages": [],
+  "title": "pulse Website"
 }
