@@ -17,15 +17,15 @@ body{margin:0}
 .pl[data-theme="light"]{--bg:#f2eeec;--surface:#e6dfdc;--rule:#dfd7d4;--line-strong:#c4b8b3;--field-line:#93847e;--text:#271b32;--lead:#4a3f52;--muted:#6a5850;--accent:#8a4f9f;--accent-text:#7a4290;--strong:#271b32;--on-strong:#f2eeec;--code:#271b32;--tint:#e6dbe3;--tint-line:#d6c4d6;--field:#faf8f7;--syn-key:#56619a;--syn-string:#271b32;--syn-number:#7a4290;--syn-punct:#6a5850;--warning:#8a5300;--warning-tint:#f4e5c8;--info:#3d5a94;--info-tint:#dde4f1}
 .pl[data-theme="dark"]{--bg:#271b32;--surface:#33263f;--rule:#3e3049;--line-strong:#5a4b66;--field-line:#766877;--text:#dfd7d4;--lead:#c9bfc4;--muted:#a89b95;--accent:#c29bd3;--accent-text:#c29bd3;--strong:#dfd7d4;--on-strong:#271b32;--code:#1b1224;--tint:#3d2d48;--tint-line:#54406a;--field:#1f1529;--syn-key:#9da7d4;--syn-string:#dfd7d4;--syn-number:#c29bd3;--syn-punct:#a89b95;--warning:#f0c46b;--warning-tint:#3d3020;--info:#a9bde6;--info-tint:#262e47}
 .pl a{color:var(--accent-text);text-decoration-thickness:1px;text-underline-offset:3px}
-.pl a:hover{color:var(--accent-text);text-decoration-thickness:2px}
+@media (hover:hover){.pl a:hover{color:var(--accent-text);text-decoration-thickness:2px}}
 .pl a:focus-visible,.pl button:focus-visible,.pl input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .pl .nav a{color:var(--text);text-decoration:none}
-.pl .nav a:hover{color:var(--accent-text)}
+@media (hover:hover){.pl .nav a:hover{color:var(--accent-text)}}
 .pl .side a{color:var(--lead);text-decoration:none;transition:background-color var(--dur) var(--ease)}
 @media (hover:hover){.pl .side a:hover{color:var(--text);background:var(--surface)}}
 .pl .side a[aria-current="page"]{color:var(--text);background:var(--tint)}
 .pl .toc a{color:var(--muted);text-decoration:none}
-.pl .toc a:hover{color:var(--accent-text)}
+@media (hover:hover){.pl .toc a:hover{color:var(--accent-text)}}
 .pl input::placeholder{color:var(--muted)}
 .pl ::selection{background:var(--tint)}
 .pl .m-panel a{color:var(--text);text-decoration:none}
