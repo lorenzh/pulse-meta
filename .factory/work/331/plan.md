@@ -39,21 +39,14 @@ See the repository sections. Without a `components` array, every output, page an
 4. `/badge/component/<id>.svg` and `/feed.atom` name the component; other paths remain blocked; hide-details still redacts.
 5. Each repo's new tests fail on the old code and pass on the new.
 
+Approver note: status is built before api (contract → status → api), because api's `compose-e2e` builds status from `main`. status tests the new routes against its fake API; api's e2e may then assert that the page shows the components.
+
 ## Repository: contract
 Files: `src/schema.ts`, `src/validate.ts`, `src/index.ts`, `src/version.ts`/package version, `test/`, `docs/index.md`, README if it lists exports.
 - Add `componentSchema` (`id`, `name`, `description?`, `checkIds`, `group?`; rules of decision 5; strict unknown keys), `componentWithStateSchema` (adds `state: CheckState`, `uptime: percent`, `incidentIds: integer[]`), `componentUptimeSchema` (`componentId`, `days`, `uptime`), and a pure helper `combineStates(states)` implementing decision 1 and `aggregateUptime(days[][])` per decision 2 so api and status share one rule. Types `Component`, `ComponentWithState`, `ComponentUptime`, `ComponentsResponse`, `ComponentsUptimeResponse`. Validators and client methods (if the client wraps routes, add `components()` and `componentsUptime()`) in the existing style.
 - Docs: the state rule table, uptime aggregation, id rules, route response shapes.
 - Tests: table test for every state combination, aggregation tests (empty day, weighting, null), schema accept/reject (bad id, empty or duplicate checkIds, unknown key, too-long name), validators. Each fails on the old code (exports missing).
 - Done when: lint, typecheck, tests pass; minor version bumped and ready to publish.
-
-## Repository: api
-Depends on contract.
-Files: `src/config.ts` (+ tests `config.components.test.ts`, `config.strict.test.ts`, `config.examples.test.ts`), `src/server.ts`, `src/service.ts`/`state.ts` as needed, `src/server.reads.test.ts`, `checks.example.json`, `compose.yaml`, `compose/checks.json`, `docs/`, README.
-- Config: accept optional top-level `components` in the checks file; validate with the contract schema and the set of known check ids (pattern of `maintenance`); reject unknown check ids, duplicate component ids, unknown keys (top-level and per component) with path-bearing errors; a check may be in several components. Components are not passed to `/probe/checks`.
-- Routes (same auth as other reads): `GET /components` returns `ComponentWithState[]` in configured order (state via contract `combineStates` over current check states including maintenance; `uptime`; `incidentIds` of open incidents of member checks). `GET /components/uptime` returns `ComponentUptime[]`. Both return `[]` without components. Responses validate against the contract.
-- Compose: `compose/checks.json` gets two components, e.g. `web` (group "Services", two checks) and `public-api` (group "Services" or a second group, sharing one of them). Update `checks.example.json` and docs (checks file, routes, examples).
-- Tests: config accept/reject cases, route output with states down/degraded/maintenance/unknown, open incident ids, shared check in two components, empty list, auth required, probe checks unchanged, example file test. Each fails on old code.
-- Done when: checks, tests pass; the e2e compose stack serves both components.
 
 ## Repository: status
 Depends on api (new routes) and contract.
@@ -66,3 +59,12 @@ Files: `src/api-filter.ts`, `src/api-poll.ts`, `src/poller.ts`, `src/settings.ts
 - Tests: allow-list, settings, sections/render with and without components, hide-details redaction, no hidden check id/name in HTML, feed, badges, poller failure. Each fails on old code.
 - Browser check: run the api e2e compose stack and load the page with and without components (and with the show-checks setting); record in the PR what was seen.
 - Done when: lint, typecheck, tests pass and the browser check is described.
+## Repository: api
+Depends on contract.
+Files: `src/config.ts` (+ tests `config.components.test.ts`, `config.strict.test.ts`, `config.examples.test.ts`), `src/server.ts`, `src/service.ts`/`state.ts` as needed, `src/server.reads.test.ts`, `checks.example.json`, `compose.yaml`, `compose/checks.json`, `docs/`, README.
+- Config: accept optional top-level `components` in the checks file; validate with the contract schema and the set of known check ids (pattern of `maintenance`); reject unknown check ids, duplicate component ids, unknown keys (top-level and per component) with path-bearing errors; a check may be in several components. Components are not passed to `/probe/checks`.
+- Routes (same auth as other reads): `GET /components` returns `ComponentWithState[]` in configured order (state via contract `combineStates` over current check states including maintenance; `uptime`; `incidentIds` of open incidents of member checks). `GET /components/uptime` returns `ComponentUptime[]`. Both return `[]` without components. Responses validate against the contract.
+- Compose: `compose/checks.json` gets two components, e.g. `web` (group "Services", two checks) and `public-api` (group "Services" or a second group, sharing one of them). Update `checks.example.json` and docs (checks file, routes, examples).
+- Tests: config accept/reject cases, route output with states down/degraded/maintenance/unknown, open incident ids, shared check in two components, empty list, auth required, probe checks unchanged, example file test. Each fails on old code.
+- Done when: checks, tests pass; the e2e compose stack serves both components.
+
