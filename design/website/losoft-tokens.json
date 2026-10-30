@@ -1,0 +1,624 @@
+{
+  "name": "losoft",
+  "version": 1,
+  "meta": {
+    "source": "github",
+    "repo": "losoftdev/website",
+    "ref": "perf-a11y@c342704 (plus uncommitted work)",
+    "paths": {
+      "tokens": [
+        "src/styles/tokens.css"
+      ],
+      "fonts": [
+        "node_modules/@fontsource-variable/space-grotesk",
+        "node_modules/@fontsource-variable/jetbrains-mono"
+      ],
+      "assets": [
+        "public/"
+      ],
+      "docs": [
+        "CLAUDE.md",
+        "src/styles/contrast.test.ts"
+      ]
+    },
+    "components": {
+      "Button": "src/components/Button.tsx",
+      "Tag": "src/components/Tag.tsx",
+      "Card": "src/components/Card.tsx",
+      "NoteRow": "src/components/NoteRow.tsx",
+      "NotesList": "src/components/NotesList.tsx",
+      "RepoCard": "src/components/RepoCard.tsx",
+      "SiteHeader": "src/components/Layout.tsx",
+      "SiteFooter": "src/components/Layout.tsx",
+      "TerminalHero": "src/components/TerminalHero.tsx",
+      "AsciiField": "src/components/AsciiField.tsx"
+    },
+    "synced": "2026-09-24"
+  },
+  "color": {
+    "themes": [
+      {
+        "id": "light",
+        "name": "Light"
+      },
+      {
+        "id": "dark",
+        "name": "Dark"
+      }
+    ],
+    "tokens": [
+      {
+        "name": "bg",
+        "value": {
+          "light": "#f2eeec",
+          "dark": "#271b32"
+        },
+        "usage": "Page background (warm paper / deep plum). The ground every text token is checked against."
+      },
+      {
+        "name": "surface",
+        "value": {
+          "light": "#e6dfdc",
+          "dark": "#33263f"
+        },
+        "usage": "Raised areas: cards, panels, table header row, inline code. Takes text, muted and accent-text."
+      },
+      {
+        "name": "rule",
+        "value": {
+          "light": "#dfd7d4",
+          "dark": "#3e3049"
+        },
+        "usage": "Hairlines: dividers between sections, rows and list items; header and footer rules. Decorative only, never the sole boundary of a control."
+      },
+      {
+        "name": "line-strong",
+        "value": {
+          "light": "#c4b8b3",
+          "dark": "#5a4b66"
+        },
+        "usage": "Stronger hairline: outline cards and panels, secondary button border, table header rule."
+      },
+      {
+        "name": "field-line",
+        "value": {
+          "light": "#93847e",
+          "dark": "#766877"
+        },
+        "usage": "Input and checkbox borders; at least 3:1 on field and bg in both themes (WCAG 1.4.11). Use this for controls, not line-strong."
+      },
+      {
+        "name": "text",
+        "value": {
+          "light": "#271b32",
+          "dark": "#dfd7d4"
+        },
+        "usage": "Body copy and headings on bg, surface, tint and field (4.5:1+ in both themes)."
+      },
+      {
+        "name": "lead",
+        "value": {
+          "light": "#4a3f52",
+          "dark": "#c9bfc4"
+        },
+        "usage": "Intro paragraphs and secondary copy (card bodies, descriptions) on bg and tint."
+      },
+      {
+        "name": "muted",
+        "value": {
+          "light": "#6a5850",
+          "dark": "#a89b95"
+        },
+        "usage": "Labels, meta, dates, eyebrows, footers and placeholders on bg, surface, tint and field."
+      },
+      {
+        "name": "accent",
+        "value": {
+          "light": "#8a4f9f",
+          "dark": "#c29bd3"
+        },
+        "usage": "Amethyst, the brand hue: focus ring (3:1 on bg and field), current navigation item, accent button fill (with on-strong text), highlighted tags, the logo cursor."
+      },
+      {
+        "name": "accent-text",
+        "value": {
+          "light": "#7a4290",
+          "dark": "#c29bd3"
+        },
+        "usage": "Accent as text: inline links and accent eyebrows on bg, surface and tint. Darker than accent in light so small text holds 4.5:1."
+      },
+      {
+        "name": "accent2",
+        "value": {
+          "light": "#56619a",
+          "dark": "#9da7d4"
+        },
+        "usage": "Second hue, slate blue: secondary categories and tags on bg. Never blended with accent."
+      },
+      {
+        "name": "strong",
+        "value": {
+          "light": "#271b32",
+          "dark": "#dfd7d4"
+        },
+        "usage": "Inverted fill: primary button, selected segment or filter, skip link. Text on it is on-strong."
+      },
+      {
+        "name": "on-strong",
+        "value": {
+          "light": "#f2eeec",
+          "dark": "#271b32"
+        },
+        "usage": "Text on strong and on accent fills (primary and accent buttons, solid tags)."
+      },
+      {
+        "name": "code",
+        "value": {
+          "light": "#271b32",
+          "dark": "#1b1224"
+        },
+        "usage": "Terminal background: streamed output, logs and CLI views. Dark in both themes. Editors use field instead."
+      },
+      {
+        "name": "code-text",
+        "value": {
+          "light": "#dfd7d4",
+          "dark": "#dfd7d4"
+        },
+        "usage": "Terminal text on code."
+      },
+      {
+        "name": "tint",
+        "value": {
+          "light": "#e6dbe3",
+          "dark": "#3d2d48"
+        },
+        "usage": "Highlight fill: accent card, featured item, text selection, confirmation notices. Takes text, lead, muted and accent-text."
+      },
+      {
+        "name": "tint-line",
+        "value": {
+          "light": "#d6c4d6",
+          "dark": "#54406a"
+        },
+        "usage": "Border of tint surfaces."
+      },
+      {
+        "name": "field",
+        "value": {
+          "light": "#faf8f7",
+          "dark": "#1f1529"
+        },
+        "usage": "Input and textarea background. Takes text and muted (placeholder)."
+      },
+      {
+        "name": "syn-key",
+        "value": {
+          "light": "#56619a",
+          "dark": "#9da7d4"
+        },
+        "usage": "Editors: object keys and property names on field. Follows the theme; 4.5:1 on field in both themes."
+      },
+      {
+        "name": "syn-string",
+        "value": {
+          "light": "#271b32",
+          "dark": "#dfd7d4"
+        },
+        "usage": "Editors: string values and plain code text on field. Follows the theme; 4.5:1 on field in both themes."
+      },
+      {
+        "name": "syn-number",
+        "value": {
+          "light": "#7a4290",
+          "dark": "#c29bd3"
+        },
+        "usage": "Editors: numbers, booleans and null on field. Follows the theme; 4.5:1 on field in both themes."
+      },
+      {
+        "name": "syn-punct",
+        "value": {
+          "light": "#6a5850",
+          "dark": "#a89b95"
+        },
+        "usage": "Editors: brackets, commas, colons, comments and line numbers on field. Follows the theme; 4.5:1 on field in both themes."
+      },
+      {
+        "name": "error",
+        "value": {
+          "light": "#a4262c",
+          "dark": "#f2a7ab"
+        },
+        "usage": "Errors and alerts on bg; invalid input border on field. Always paired with a written message, never colour alone."
+      },
+      {
+        "name": "error-tint",
+        "value": {
+          "light": "#f5dddd",
+          "dark": "#40232a"
+        },
+        "usage": "Fill behind error callouts and error rows. Takes text and error (4.5:1+ in both themes)."
+      },
+      {
+        "name": "success",
+        "value": {
+          "light": "#2d6a44",
+          "dark": "#9fd4ae"
+        },
+        "usage": "Success and connected states: icons and short text on bg, surface, field and success-tint. Always with a written word, never colour alone."
+      },
+      {
+        "name": "success-tint",
+        "value": {
+          "light": "#dcebe0",
+          "dark": "#233a2c"
+        },
+        "usage": "Fill behind success callouts. Takes text and success."
+      },
+      {
+        "name": "warning",
+        "value": {
+          "light": "#8a5300",
+          "dark": "#f0c46b"
+        },
+        "usage": "Warnings: something needs attention but nothing failed. Icons and text on bg, surface, field and warning-tint."
+      },
+      {
+        "name": "warning-tint",
+        "value": {
+          "light": "#f4e5c8",
+          "dark": "#3d3020"
+        },
+        "usage": "Fill behind warning callouts. Takes text and warning."
+      },
+      {
+        "name": "info",
+        "value": {
+          "light": "#3d5a94",
+          "dark": "#a9bde6"
+        },
+        "usage": "Neutral information and hints: icons and text on bg, surface, field and info-tint."
+      },
+      {
+        "name": "info-tint",
+        "value": {
+          "light": "#dde4f1",
+          "dark": "#262e47"
+        },
+        "usage": "Fill behind info callouts. Takes text and info."
+      },
+      {
+        "name": "scrim",
+        "value": {
+          "light": "rgba(39, 27, 50, 0.4)",
+          "dark": "rgba(10, 6, 14, 0.6)"
+        },
+        "usage": "Overlay behind modal dialogs. Popovers and menus get no scrim."
+      },
+      {
+        "name": "term-line",
+        "value": {
+          "light": "#3e3049",
+          "dark": "#3e3049"
+        },
+        "usage": "Console views: title bar rule and scrollbar track. Dark in both themes."
+      },
+      {
+        "name": "term-text",
+        "value": {
+          "light": "#dfd7d4",
+          "dark": "#dfd7d4"
+        },
+        "usage": "Console views: command and output text on code."
+      },
+      {
+        "name": "term-lead",
+        "value": {
+          "light": "#c9bfc4",
+          "dark": "#c9bfc4"
+        },
+        "usage": "Console views: emphasised output on code."
+      },
+      {
+        "name": "term-muted",
+        "value": {
+          "light": "#a89b95",
+          "dark": "#a89b95"
+        },
+        "usage": "Console views: muted output (meta lines, hints) on code."
+      },
+      {
+        "name": "term-placeholder",
+        "value": {
+          "light": "#92858b",
+          "dark": "#92858b"
+        },
+        "usage": "Console views: input placeholder on code."
+      },
+      {
+        "name": "term-prompt",
+        "value": {
+          "light": "#c29bd3",
+          "dark": "#c29bd3"
+        },
+        "usage": "Console views: the prompt and the focus ring on code."
+      },
+      {
+        "name": "term-link",
+        "value": {
+          "light": "#9da7d4",
+          "dark": "#9da7d4"
+        },
+        "usage": "Console views: links and paths on code."
+      },
+      {
+        "name": "term-dot",
+        "value": {
+          "light": "#54406a",
+          "dark": "#54406a"
+        },
+        "usage": "Console views: window dots in the title bar (decorative)."
+      },
+      {
+        "name": "term-error",
+        "value": {
+          "light": "#f2a7ab",
+          "dark": "#f2a7ab"
+        },
+        "usage": "Console views: error lines on code."
+      }
+    ]
+  },
+  "type": {
+    "fonts": [
+      {
+        "family": "Space Grotesk",
+        "file": "fonts/space-grotesk-latin-wght-normal.woff2",
+        "weight": "300 700",
+        "style": "normal"
+      },
+      {
+        "family": "JetBrains Mono",
+        "file": "fonts/jetbrains-mono-latin-wght-normal.woff2",
+        "weight": "100 800",
+        "style": "normal"
+      },
+      {
+        "family": "JetBrains Mono",
+        "file": "fonts/jetbrains-mono-latin-wght-italic.woff2",
+        "weight": "100 800",
+        "style": "italic"
+      }
+    ],
+    "families": {
+      "sans": "\"Space Grotesk\", \"Space Grotesk Fallback\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+      "mono": "\"JetBrains Mono\", \"JetBrains Mono Fallback\", ui-monospace, \"SFMono-Regular\", Menlo, Consolas, monospace"
+    },
+    "groups": [
+      {
+        "name": "Display & headings",
+        "family": "sans",
+        "styles": [
+          {
+            "name": "t-display",
+            "fontSize": "96px",
+            "lineHeight": 1,
+            "fontWeight": 700,
+            "letterSpacing": "-0.035em",
+            "sample": "losoft",
+            "usage": "Largest headline on marketing pages, one per page at most. Fluid: --fs-display, 48px at 390 → 96px at 1440."
+          },
+          {
+            "name": "t-h1",
+            "fontSize": "64px",
+            "lineHeight": 1.05,
+            "fontWeight": 700,
+            "letterSpacing": "-0.03em",
+            "sample": "Invoices",
+            "usage": "Page title (h1) on marketing and content pages. Fluid 40 → 64px (--fs-h1)."
+          },
+          {
+            "name": "t-h2",
+            "fontSize": "40px",
+            "lineHeight": 1.1,
+            "fontWeight": 700,
+            "letterSpacing": "-0.02em",
+            "sample": "Open projects",
+            "usage": "Section titles; the page title in application screens. Fluid 32 → 40px (--fs-h2)."
+          },
+          {
+            "name": "t-h3",
+            "fontSize": "24px",
+            "lineHeight": 1.3,
+            "fontWeight": 500,
+            "letterSpacing": "-0.01em",
+            "sample": "Billing details",
+            "usage": "Card, panel and sub-section headings. Fluid 20 → 24px (--fs-h3). Medium, not bold."
+          }
+        ]
+      },
+      {
+        "name": "Text",
+        "family": "sans",
+        "styles": [
+          {
+            "name": "t-lead",
+            "fontSize": "22px",
+            "lineHeight": 1.5,
+            "fontWeight": 400,
+            "sample": "Everything you need to run the project in one place.",
+            "usage": "Intro paragraph under a page title, in lead. Fluid 18 → 22px (--fs-lead)."
+          },
+          {
+            "name": "t-body",
+            "fontSize": "18px",
+            "lineHeight": 1.75,
+            "fontWeight": 400,
+            "sample": "Changes are saved automatically and synced to your team.",
+            "usage": "Running copy (--fs-body). UI line height is 1.6; long-form prose uses 1.75."
+          },
+          {
+            "name": "t-ui",
+            "fontSize": "15px",
+            "lineHeight": 1.6,
+            "fontWeight": 500,
+            "sample": "Dashboard  Projects  Invoices  Settings",
+            "usage": "Navigation, buttons, tables, form controls and dense UI (--fs-ui). Set font-size: var(--fs-ui)."
+          },
+          {
+            "name": "t-small",
+            "fontSize": "14px",
+            "lineHeight": 1.5,
+            "fontWeight": 400,
+            "sample": "Last updated 2 hours ago",
+            "usage": "Secondary notes under cards, fields and items (--fs-small)."
+          }
+        ]
+      },
+      {
+        "name": "Mono",
+        "family": "mono",
+        "styles": [
+          {
+            "name": "t-label",
+            "fontSize": "13px",
+            "lineHeight": 1.6,
+            "fontWeight": 400,
+            "sample": "2026-09-24 · #1042",
+            "usage": "Dates, IDs, meta lines and field hints, in muted (--fs-label)."
+          },
+          {
+            "name": "t-eyebrow",
+            "fontSize": "12px",
+            "lineHeight": 1.4,
+            "fontWeight": 500,
+            "letterSpacing": "0.06em",
+            "sample": "STATUS",
+            "usage": "UPPERCASE mono eyebrow (text-transform: uppercase): card titles, table headers, group labels, in muted (--fs-tag)."
+          },
+          {
+            "name": "t-accent",
+            "fontSize": "1em",
+            "fontWeight": 500,
+            "fontStyle": "italic",
+            "letterSpacing": "-0.05em",
+            "sample": "what matters",
+            "usage": "Italic mono accent inside a heading or line, at the surrounding size, in accent. Once per screen."
+          }
+        ]
+      }
+    ]
+  },
+  "spacing": {
+    "tokens": [
+      {
+        "name": "grid-gap",
+        "value": "32px",
+        "usage": "Gap between cards, panels and grid columns."
+      },
+      {
+        "name": "touch",
+        "value": "44px",
+        "usage": "Minimum size of every interactive target (buttons, links in menus, toggles, checkboxes rows). WCAG 2.5.8 floor is 24px; the brand standard is 44px."
+      },
+      {
+        "name": "content-max",
+        "value": "1120px",
+        "usage": "Max width of page content; the side gutter grows to centre it (20px on phones → 160px at 1440)."
+      },
+      {
+        "name": "prose-max",
+        "value": "720px",
+        "usage": "Reading column for long-form text (articles, documentation, legal pages)."
+      }
+    ]
+  },
+  "radius": {
+    "tokens": [
+      {
+        "name": "radius-sm",
+        "value": "6px",
+        "usage": "Inputs, inline code, small chips."
+      },
+      {
+        "name": "radius",
+        "value": "12px",
+        "usage": "Cards, panels, code blocks."
+      },
+      {
+        "name": "radius-lg",
+        "value": "16px",
+        "usage": "Large panels, dialogs and console windows."
+      },
+      {
+        "name": "radius-pill",
+        "value": "999px",
+        "usage": "Buttons, tags and segmented controls: every button is a pill."
+      }
+    ]
+  },
+  "fontSize": {
+    "note": "Fluid sizes behind the type styles; use these variables in CSS rather than fixed px.",
+    "tokens": [
+      {
+        "name": "fs-display",
+        "value": "clamp(3rem, 1.6rem + 5.6vw, 6rem)",
+        "usage": "48 → 96px. t-display."
+      },
+      {
+        "name": "fs-h1",
+        "value": "clamp(2.5rem, 1.9rem + 2.5vw, 4rem)",
+        "usage": "40 → 64px. Page titles."
+      },
+      {
+        "name": "fs-h2",
+        "value": "clamp(2rem, 1.8rem + 0.8vw, 2.5rem)",
+        "usage": "32 → 40px. Section titles."
+      },
+      {
+        "name": "fs-h3",
+        "value": "clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem)",
+        "usage": "20 → 24px. Card and sub-section headings."
+      },
+      {
+        "name": "fs-lead",
+        "value": "clamp(1.125rem, 1.05rem + 0.3vw, 1.375rem)",
+        "usage": "18 → 22px. Lead paragraphs."
+      },
+      {
+        "name": "fs-body",
+        "value": "1.125rem",
+        "usage": "18px. Body copy."
+      },
+      {
+        "name": "fs-ui",
+        "value": "0.9375rem",
+        "usage": "15px. Navigation, buttons, tables, form controls."
+      },
+      {
+        "name": "fs-small",
+        "value": "0.875rem",
+        "usage": "14px. Secondary text."
+      },
+      {
+        "name": "fs-label",
+        "value": "0.8125rem",
+        "usage": "13px. Mono labels, IDs and dates."
+      },
+      {
+        "name": "fs-tag",
+        "value": "0.75rem",
+        "usage": "12px. Tags and eyebrows."
+      }
+    ]
+  },
+  "layout": {
+    "tokens": [
+      {
+        "name": "section-pad",
+        "value": "clamp(40px, 5vw, 72px)",
+        "usage": "Vertical padding of page sections (40 → 72px)."
+      }
+    ]
+  }
+}

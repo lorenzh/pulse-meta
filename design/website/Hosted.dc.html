@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hosted pulse · Plans and pricing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@font-face{font-family:"Space Grotesk";src:url("ds/losoft/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2");font-weight:300 700;font-style:normal;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("ds/losoft/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");font-weight:100 800;font-style:normal;font-display:swap}
+@font-face{font-family:"JetBrains Mono";src:url("ds/losoft/fonts/jetbrains-mono-latin-wght-italic.woff2") format("woff2");font-weight:100 800;font-style:italic;font-display:swap}
+body{margin:0}
+.pl{--sans:"Space Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;--fs-h1:clamp(2.5rem,1.9rem + 2.5vw,4rem);--fs-h2:clamp(2rem,1.8rem + 0.8vw,2.5rem);--fs-h3:clamp(1.25rem,1.15rem + 0.4vw,1.5rem);--fs-lead:clamp(1.125rem,1.05rem + 0.3vw,1.375rem);--fs-body:1.125rem;--fs-ui:0.9375rem;--fs-small:0.875rem;--fs-label:0.8125rem;--fs-tag:0.75rem;--section-pad:clamp(40px,5vw,72px);--ease:cubic-bezier(0.2,0,0,1);--dur:150ms}
+.pl[data-theme="light"]{--bg:#f2eeec;--surface:#e6dfdc;--rule:#dfd7d4;--line-strong:#c4b8b3;--field-line:#93847e;--text:#271b32;--lead:#4a3f52;--muted:#6a5850;--accent:#8a4f9f;--accent-text:#7a4290;--accent2:#56619a;--strong:#271b32;--on-strong:#f2eeec;--code:#271b32;--tint:#e6dbe3;--tint-line:#d6c4d6;--field:#faf8f7;--success:#2d6a44;--success-tint:#dcebe0;--info:#3d5a94;--info-tint:#dde4f1}
+.pl[data-theme="dark"]{--bg:#271b32;--surface:#33263f;--rule:#3e3049;--line-strong:#5a4b66;--field-line:#766877;--text:#dfd7d4;--lead:#c9bfc4;--muted:#a89b95;--accent:#c29bd3;--accent-text:#c29bd3;--accent2:#9da7d4;--strong:#dfd7d4;--on-strong:#271b32;--code:#1b1224;--tint:#3d2d48;--tint-line:#54406a;--field:#1f1529;--success:#9fd4ae;--success-tint:#233a2c;--info:#a9bde6;--info-tint:#262e47}
+.pl a{color:var(--accent-text);text-decoration-thickness:1px;text-underline-offset:3px}
+.pl a:hover{color:var(--accent-text);text-decoration-thickness:2px}
+.pl a:focus-visible,.pl button:focus-visible,.pl input:focus-visible,.pl summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.pl .nav a{color:var(--text);text-decoration:none}
+.pl .nav a:hover{color:var(--accent-text)}
+.pl .btn{transition:background-color var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+.pl .btn-primary:hover{background:var(--accent);color:var(--on-strong)}
+.pl .btn-secondary:hover{border-color:var(--text)}
+.pl input::placeholder{color:var(--muted)}
+.pl summary{cursor:pointer;list-style:none}
+.pl summary::-webkit-details-marker{display:none}
+.pl details[open] .chev{transform:rotate(180deg)}
+.pl .chev{transition:transform var(--dur) var(--ease)}
+.pl ::selection{background:var(--tint)}
+.pl .m-panel a{color:var(--text);text-decoration:none}
+@media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav,.pl .hdr-gh{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}}
+@media (prefers-reduced-motion:reduce){.pl *{transition:none!important}}
+</style>
+</helmet>
+<div class="pl" data-theme="{{theme}}" style="background: var(--bg); color: var(--text); font-family: var(--sans); font-size: var(--fs-body); line-height: 1.6; min-height: 100%;">
+
+<header style="border-bottom: 1px solid var(--rule);">
+<div class="hdr-row" style="max-width: 1120px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 40px); min-height: 72px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px;">
+<a href="Main.dc.html" aria-label="pulse home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); min-height: 44px;">
+<img src="/_blob/6474222c10f37b526a779e613657709e" alt="" width="32" height="32" style="display: block; border-radius: 7px;">
+<span style="font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.02em;">pulse</span>
+<span style="display: inline-block; width: 0.55em; height: 1.05em; background: var(--accent); margin-left: -6px; font-size: 20px;" aria-hidden="true"></span>
+</a>
+<nav class="nav hdr-nav" aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 4px 24px; flex: 1 1 auto; font-size: var(--fs-ui); font-weight: 500;">
+<a href="Main.dc.html#features" style="display: inline-flex; align-items: center; min-height: 44px;">Features</a>
+<a href="Hosted.dc.html" aria-current="page" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-text);">Hosted</a>
+<a href="Docs.dc.html" style="display: inline-flex; align-items: center; min-height: 44px;">Docs</a>
+<a href="DocsApi.dc.html" style="display: inline-flex; align-items: center; min-height: 44px;">API</a>
+</nav>
+<div style="display: flex; align-items: center; gap: 8px; margin-left: auto; flex: 0 0 auto;">
+<button type="button" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{isDark}}" hint-placeholder-val="{{false}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</sc-if>
+<sc-if value="{{isLight}}" hint-placeholder-val="{{true}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+</sc-if>
+</button>
+<button type="button" class="menu-btn" onClick="{{toggleMenu}}" aria-expanded="{{menuExpanded}}" aria-controls="mobile-menu" aria-label="{{menuLabel}}" style="display: none; width: 44px; height: 44px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); align-items: center; justify-content: center; cursor: pointer;">
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+</sc-if>
+<sc-if value="{{menuClosed}}" hint-placeholder-val="{{true}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+</sc-if>
+</button>
+<a class="btn btn-primary hdr-gh" href="#waitlist" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist</a>
+</div>
+</div>
+<nav id="mobile-menu" class="m-panel" data-open="{{menuExpanded}}" aria-label="Mobile" style="display: none; flex-direction: column; padding: 4px 20px 16px; border-top: 1px solid var(--rule); font-size: 18px; font-weight: 500;">
+<a href="Main.dc.html#features" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Features</a>
+<a href="Hosted.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Hosted</a>
+<a href="Docs.dc.html" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">Docs</a>
+<a href="DocsApi.dc.html" style="display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--rule);">API</a>
+<a href="#waitlist" onClick="{{closeMenu}}" style="display: flex; align-items: center; min-height: 52px;">Join the waitlist</a>
+</nav>
+</header>
+
+<main id="main">
+
+<section style="max-width: 1120px; margin: 0 auto; padding: clamp(56px, 8vw, 104px) clamp(20px, 5vw, 40px) var(--section-pad); display: flex; flex-direction: column; gap: 24px; align-items: flex-start;">
+<p style="margin: 0; display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);" aria-hidden="true"></span>Hosted pulse · Early access</p>
+<h1 style="margin: 0; max-width: 860px; font-size: var(--fs-h1); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; text-wrap: balance;">The same pulse, <span style="font-family: var(--mono); font-style: italic; font-weight: 500; letter-spacing: -0.05em; color: var(--accent-text);">without the server</span>.</h1>
+<p style="margin: 0; max-width: 680px; font-size: var(--fs-lead); line-height: 1.5; color: var(--lead);">We run the API, the database, the status page and the notifier for you, with backups and upgrades. Point your probes at your hosted API, or use ours in several regions. Your checks file stays the same, so you can move between hosted and self-hosted at any time.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px;">
+<a class="btn btn-primary" href="#waitlist" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"></path></svg>
+</a>
+<a class="btn btn-secondary" href="#plans" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 22px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Compare plans</a>
+</div>
+</section>
+
+<section aria-labelledby="included-title" style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+<h2 id="included-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">What we run for you</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Managed API</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">pulse-api with its database, daily backups and upgrades in maintenance windows you can see.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Probes in 4 regions</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">Frankfurt, Helsinki, Ashburn and Singapore decide by quorum. Bring your own probes for internal targets, or use both.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Status page on your domain</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">White-labelled, with TLS for <span style="font-family: var(--mono); font-size: 0.9em;">status.yourcompany.com</span>.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Notifications included</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">Slack, Teams, email and signed webhooks, delivered from our mail and network.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="plans" aria-labelledby="plans-title" style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 640px;">
+<p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Plans</p>
+<h2 id="plans-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Start free on your own server, move up when you want us to run it</h2>
+</div>
+<div role="group" aria-label="Billing period" style="display: inline-flex; padding: 4px; border: 1px solid var(--line-strong); border-radius: 999px; gap: 4px;">
+<button type="button" onClick="{{pickMonthly}}" aria-pressed="{{monthlyPressed}}" style="min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: {{monthlyBg}}; color: {{monthlyFg}}; font-family: var(--sans); font-size: var(--fs-ui); font-weight: 500; cursor: pointer;">Monthly</button>
+<button type="button" onClick="{{pickYearly}}" aria-pressed="{{yearlyPressed}}" style="min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: {{yearlyBg}}; color: {{yearlyFg}}; font-family: var(--sans); font-size: var(--fs-ui); font-weight: 500; cursor: pointer;">Yearly</button>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: clamp(16px, 2vw, 24px); align-items: stretch;">
+
+<div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--line-strong); border-radius: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Self-hosted</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">Everything, on your own machine.</p>
+</div>
+<div style="display: flex; align-items: baseline; gap: 6px;"><span style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">Free</span><span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">MIT licence</span></div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small); flex: 1 1 auto;">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Unlimited checks and probes</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>All features, one Compose file</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Community support on GitHub</li>
+</ul>
+<a class="btn btn-secondary" href="Docs.dc.html" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Read the quick start</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--line-strong); border-radius: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Starter</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">For a side project or a small product.</p>
+</div>
+<div style="display: flex; align-items: baseline; gap: 6px;"><span style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">{{starterPrice}}</span><span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">{{per}}</span></div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small); flex: 1 1 auto;">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>20 checks, 1-minute interval</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>2 hosted regions in the EU</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Status page on a pulse subdomain</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>90 days of history</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Email and webhook notifications</li>
+</ul>
+<a class="btn btn-secondary" href="#waitlist" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Team</h3>
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--on-strong); font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;">Recommended</span>
+</div>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">For a company with customers to inform.</p>
+</div>
+<div style="display: flex; align-items: baseline; gap: 6px;"><span style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">{{teamPrice}}</span><span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">{{per}}</span></div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small); flex: 1 1 auto;">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>100 checks, 30-second interval</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>All hosted regions plus your own probes</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Your domain, logo, colours and fonts</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Slack, Teams, reminders and heartbeats</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>1 year of history, 5 team members</li>
+</ul>
+<a class="btn btn-primary" href="#waitlist" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--strong); color: var(--on-strong); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Join the waitlist</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 20px; padding: 28px 24px; border: 1px solid var(--line-strong); border-radius: 16px;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">Business</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">For uptime that is part of a contract.</p>
+</div>
+<div style="display: flex; align-items: baseline; gap: 6px;"><span style="font-size: 40px; font-weight: 700; letter-spacing: -0.02em;">From €149</span><span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">/ month</span></div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small); flex: 1 1 auto;">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>99.95 % availability, in writing</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Data kept in Germany, 10-second interval</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Several status pages, private pages</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Data processing agreement and invoice</li>
+</ul>
+<a class="btn btn-secondary" href="mailto:[YOUR EMAIL]" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Talk to us</a>
+</div>
+
+</div>
+<div id="oss" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; padding: 24px; border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; color: var(--accent-text);"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+<div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px;">
+<p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Open source</p>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500;">The Team plan is free for open-source projects</h3>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--lead);">For public projects under an OSI-approved licence. A status page for your users, at no cost, for as long as the project stays open.</p>
+</div>
+<a class="btn btn-secondary" href="#waitlist" style="flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border: 1px solid var(--field-line); border-radius: 999px; color: var(--text); text-decoration: none; font-size: var(--fs-ui); font-weight: 500;">Apply with your repository</a>
+</div>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">Prices exclude VAT. Every hosted plan starts with a 14-day trial, no card needed. Yearly billing saves about 20 %.</p>
+</div>
+</section>
+
+<section aria-labelledby="compare-title" style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 24px;">
+<h2 id="compare-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Self-hosted or hosted</h2>
+<div style="overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 12px;" role="region" aria-label="Self-hosted compared with hosted" tabindex="0">
+<table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: var(--fs-ui); line-height: 1.5;">
+<thead>
+<tr style="background: var(--surface);">
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">You get</th>
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">Self-hosted</th>
+<th scope="col" style="text-align: left; padding: 12px 16px; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-strong);">Hosted</th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--rule);">Who runs the servers</th><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">You</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">We do</td></tr>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--rule);">Upgrades and backups</th><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">You run them</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Included</td></tr>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--rule);">Probe locations</th><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Wherever you deploy them</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">4 regions, plus your own</td></tr>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--rule);">Is the monitor down when your network is?</th><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">It can be</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">No, it runs elsewhere</td></tr>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px; border-bottom: 1px solid var(--rule);">Checks file and API</th><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Same</td><td style="padding: 12px 16px; border-bottom: 1px solid var(--rule);">Same</td></tr>
+<tr><th scope="row" style="text-align: left; font-weight: 500; padding: 12px 16px;">Price</th><td style="padding: 12px 16px;">Free, MIT</td><td style="padding: 12px 16px;">From €9 a month · free for open-source projects</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="faq-title" style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; gap: 32px 48px;">
+<h2 id="faq-title" style="margin: 0; flex: 1 1 260px; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Questions</h2>
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column;">
+<details style="border-bottom: 1px solid var(--rule);">
+<summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; font-weight: 500;">Can I move from self-hosted to hosted, and back?<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="m6 9 6 6 6-6"></path></svg></summary>
+<p style="margin: 0 0 20px; color: var(--lead); max-width: 640px;">Yes. Hosted pulse runs the same open-source code and reads the same <span style="font-family: var(--mono); font-size: 0.9em;">checks.json</span>. Upload your file to start; export it with your history to leave.</p>
+</details>
+<details style="border-bottom: 1px solid var(--rule);">
+<summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; font-weight: 500;">Can I monitor services inside my network?<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="m6 9 6 6 6-6"></path></svg></summary>
+<p style="margin: 0 0 20px; color: var(--lead); max-width: 640px;">Run a pulse-probe inside your network with a token from your hosted account. It only sends results out; nothing needs to reach in.</p>
+</details>
+<details style="border-bottom: 1px solid var(--rule);">
+<summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; font-weight: 500;">Who counts as an open-source project?<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="m6 9 6 6 6-6"></path></svg></summary>
+<p style="margin: 0 0 20px; color: var(--lead); max-width: 640px;">A project whose source is public under an OSI-approved licence and that you monitor for its users, such as a docs site, a package registry or a demo. Apply with the repository link; we review every request and renew it once a year.</p>
+</details>
+<details style="border-bottom: 1px solid var(--rule);">
+<summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; font-weight: 500;">Where is my data stored?<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="m6 9 6 6 6-6"></path></svg></summary>
+<p style="margin: 0 0 20px; color: var(--lead); max-width: 640px;">In Frankfurt, Germany, with encrypted backups in Helsinki, Finland; both stay in the EU. Results are kept for 90 days on Starter and one year on Team, incidents for as long as your account exists.</p>
+</details>
+<details style="border-bottom: 1px solid var(--rule);">
+<summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; font-weight: 500;">Who watches the watcher?<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto;"><path d="m6 9 6 6 6-6"></path></svg></summary>
+<p style="margin: 0 0 20px; color: var(--lead); max-width: 640px;">Hosted pulse has its own public status page at status.losoft.dev, monitored from a separate provider.</p>
+</details>
+</div>
+</div>
+</section>
+
+<section id="waitlist" aria-labelledby="waitlist-title" style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-pad) clamp(20px, 5vw, 40px);">
+<div style="display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: center; padding: clamp(24px, 4vw, 48px); border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 12px;">
+<h2 id="waitlist-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;">Get early access</h2>
+<p style="margin: 0; color: var(--lead);">We open hosted pulse in small groups. Leave your email and we write once, when your spot is ready.</p>
+</div>
+<div style="flex: 1 1 360px; min-width: 0;">
+<sc-if value="{{isJoined}}" hint-placeholder-val="{{false}}">
+<div role="status" style="display: flex; gap: 12px; padding: 16px 18px; border: 1px solid var(--success); border-radius: 12px; background: var(--success-tint);">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 3px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>
+<span style="font-size: var(--fs-ui);">You’re on the list. We’ll write to you when your spot is ready.</span>
+</div>
+</sc-if>
+<sc-if value="{{isNotJoined}}" hint-placeholder-val="{{true}}">
+<form onSubmit="{{join}}" style="display: flex; flex-direction: column; gap: 8px;">
+<label for="waitlist-email" style="font-size: var(--fs-small); font-weight: 500;">Work email</label>
+<div style="display: flex; flex-wrap: wrap; gap: 8px;">
+<input id="waitlist-email" type="email" required="" autocomplete="email" placeholder="you@company.com" style="flex: 1 1 220px; min-width: 0; box-sizing: border-box; min-height: 44px; padding: 0 14px; border: 1px solid var(--field-line); border-radius: 12px; background: var(--field); color: var(--text); font-family: var(--sans); font-size: var(--fs-ui);">
+<button type="submit" class="btn btn-primary" style="flex: 0 0 auto; min-height: 44px; padding: 0 22px; border: none; border-radius: 999px; background: var(--strong); color: var(--on-strong); font-family: var(--sans); font-size: var(--fs-ui); font-weight: 500; cursor: pointer;">Join the waitlist</button>
+</div>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">No newsletter. We delete the address if you never sign up.</span>
+</form>
+</sc-if>
+</div>
+</div>
+</div>
+</section>
+
+</main>
+
+<footer style="border-top: 1px solid var(--rule);">
+<div style="max-width: 1120px; margin: 0 auto; padding: 40px clamp(20px, 5vw, 40px); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; font-size: var(--fs-small); color: var(--muted);">
+<div style="display: flex; align-items: center; gap: 10px;">
+<img src="/_blob/6474222c10f37b526a779e613657709e" alt="" width="24" height="24" style="display: block; border-radius: 5px;">
+<span>pulse is MIT licensed · built by <span style="font-family: var(--mono); color: var(--text);">losoft</span></span>
+</div>
+<nav class="nav" aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 4px 24px;">
+<a href="Hosted.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--muted);">Hosted</a>
+<a href="Docs.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--muted);">Docs</a>
+<a href="[TERMS URL]" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--muted);">Terms</a>
+<a href="[PRIVACY URL]" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--muted);">Privacy</a>
+<a href="[IMPRINT URL]" style="display: inline-flex; align-items: center; min-height: 44px; color: var(--muted);">Imprint</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":3800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { theme: null, menuOpen: false, billing: 'monthly', joined: false };
+  }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.defaultTheme ?? 'light';
+    const isDark = theme === 'dark';
+    const { menuOpen, billing, joined } = this.state;
+    const isMonthly = billing === 'monthly';
+    return {
+      theme,
+      isDark,
+      isLight: !isDark,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      menuOpen,
+      menuClosed: !menuOpen,
+      menuExpanded: menuOpen ? 'true' : 'false',
+      menuLabel: menuOpen ? 'Close menu' : 'Open menu',
+      toggleMenu: () => this.setState({ menuOpen: !menuOpen }),
+      closeMenu: () => this.setState({ menuOpen: false }),
+      per: isMonthly ? '/ month' : '/ month, billed yearly',
+      starterPrice: isMonthly ? '€9' : '€7',
+      teamPrice: isMonthly ? '€29' : '€24',
+      monthlyPressed: isMonthly ? 'true' : 'false',
+      yearlyPressed: isMonthly ? 'false' : 'true',
+      monthlyBg: isMonthly ? 'var(--strong)' : 'transparent',
+      monthlyFg: isMonthly ? 'var(--on-strong)' : 'var(--text)',
+      yearlyBg: isMonthly ? 'transparent' : 'var(--strong)',
+      yearlyFg: isMonthly ? 'var(--text)' : 'var(--on-strong)',
+      pickMonthly: () => this.setState({ billing: 'monthly' }),
+      pickYearly: () => this.setState({ billing: 'yearly' }),
+      isJoined: joined,
+      isNotJoined: !joined,
+      join: (e) => { e.preventDefault(); this.setState({ joined: true }); }
+    };
+  }
+}
+</script>
+</body>
+</html>
