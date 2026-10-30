@@ -1,0 +1,69 @@
+name: Paragon Factory sweep
+
+# Finds open issues in a Factory state that nothing moves: no run is active for them, no other issue
+# blocks them, and their last comment or label change is older than the threshold. It comments once
+# with a restart hint. It changes no labels and no claims, and it starts no run.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: factory-sweep
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FACTORY_STALL_MINUTES: ${{ vars.FACTORY_STALL_MINUTES || '60' }}
+    steps:
+      - name: Comment on stalled issues
+        run: |
+          [[ "$FACTORY_STALL_MINUTES" =~ ^[1-9][0-9]{0,4}$ ]] || { echo "::error::FACTORY_STALL_MINUTES must be a whole number of minutes." >&2; exit 1; }
+          FACTORY_CUTOFF="$(date -u -d "-$FACTORY_STALL_MINUTES minutes" +%Y-%m-%dT%H:%M:%SZ)"
+          export FACTORY_CUTOFF
+          marker='<!-- pulse-factory-alert -->'
+          # factory-run.yml titles each run "Factory run #<issue> <admission>".
+          active="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-run.yml/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status != "completed") | .display_title')"
+          # shortcut: one page of 100 open issues; paginate when the repository has more open issues.
+          # A state label has three parts (factory/<workflow>/<state>); status labels have four.
+          # An issue with an open blocker waits for unblock; an issue on hold waits for a person.
+          # shellcheck disable=SC2016 # jq string interpolation, not shell
+          candidates="$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" --jq '
+            .[] | select(.pull_request == null)
+            | select(.updated_at < env.FACTORY_CUTOFF)
+            | select((.issue_dependencies_summary.blocked_by // 0) == 0)
+            | select(any(.labels[].name; test("^factory/[^/]+/status/")) | not)
+            | (first(.labels[].name | select(test("^factory/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"))) // empty) as $state
+            | "\(.number) \(.comments) \($state) \(.updated_at)"')"
+          [[ -n "$candidates" ]] || { echo "No stalled issue."; exit 0; }
+          while read -r issue comments state updated; do
+            if grep -q "^Factory run #$issue " <<< "$active"; then
+              echo "#$issue: a run is active."; continue
+            fi
+            if (( comments > 0 )); then
+              last="$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments?per_page=1&page=$comments" --jq '.[0].body // ""')"
+              if [[ "$last" == *"$marker"* ]]; then
+                echo "#$issue: already reported."; continue
+              fi
+            fi
+            body="Factory: this issue is in \`$state\`, but nothing has changed since $updated and no run is active.
+
+          Check the last run of [factory-run.yml]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/factory-run.yml). Then start it again:
+
+          \`\`\`sh
+          gh workflow run factory-run.yml --repo $GITHUB_REPOSITORY -f issue=$issue -f admission=restart
+          \`\`\`
+
+          $marker"
+            gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" -f body="$body" > /dev/null
+            echo "#$issue: reported ($state since $updated)."
+          done <<< "$candidates"

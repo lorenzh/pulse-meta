@@ -17,7 +17,9 @@ jobs:
   unblock:
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -72,3 +74,25 @@ jobs:
             gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
               -f issue="$issue" -f admission=label
           done
+
+      # A failure before the claim leaves no Factory comment. Say so on the issue, with the failed
+      # step and the command that starts it again. Only the run URL and step name are printed.
+      - name: Report the failure on the issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue="${{ github.event.issue.number }}"
+          [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "No issue to report on."; exit 0; }
+          step="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name][0] // "unknown"')" || step=unknown
+          body="Factory: job \`$GITHUB_JOB\` of [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) failed in step \`$step\`.
+
+          Check the log and fix the cause. Then start it again:
+
+          \`\`\`sh
+          gh run rerun $GITHUB_RUN_ID --repo $GITHUB_REPOSITORY --failed
+          \`\`\`
+
+          <!-- pulse-factory-alert -->"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" -f body="$body" > /dev/null
