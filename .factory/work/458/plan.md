@@ -15,7 +15,8 @@ labels.
 - **Hidden mode**: `PULSE_STATUS_SHOW_CHECKS` is off (`hasChecks` false) **and** the upstream
   `GET <api>/components` returns a non-empty list. Without components the page shows checks by
   name by design ("has no effect without components"), so that case stays unchanged. With
-  `PULSE_STATUS_SHOW_CHECKS=true` nothing changes.
+  `PULSE_STATUS_SHOW_CHECKS=true` nothing changes. In both cases the only exception is the DNS
+  rule (`expected` and `resolver` are never served, in any mode).
 - **Snapshot**: what the server must know in order to filter in hidden mode. It is read from the
   unfiltered upstream answers of `/components` (each component `id` and `checkIds`, in order) and
   `/checks` (the set of active check `id`s).
@@ -46,7 +47,8 @@ proxy (`src/server.ts`), the browser label join (`src/components-view.ts`), the 
 - No api, contract or config change. The api keeps serving full data to the status server.
 - `/metrics` and `/readyz` are not moved to an ops port (rest of L7, separate issue).
 - No change when checks are shown (`PULSE_STATUS_SHOW_CHECKS=true`), and no change without
-  components.
+  components, except the removal of DNS `expected` and `resolver`, which applies in every mode
+  (see "DNS checks").
 - Operator-written text (component names, descriptions, maintenance notes, manual incidents) stays
   public as it is. If an operator writes a check name into a note, that is not covered here.
 - Incident `reason` keeps today's hide-details rule (`null` when hidden, sanitized when shown).
@@ -76,30 +78,46 @@ allow-list, not a deny list. Changes per route:
 
 Order of the reads and failure handling (fail closed):
 
-1. With `hasChecks` true, nothing changes: no snapshot is read and the answers are byte-identical
-   to today's.
-2. With `hasChecks` false, an answer for one of the routes `/api/checks`, `/api/uptime`,
-   `/api/incidents?…`, `/api/maintenance` or `/api/components` needs the snapshot. The route's own
-   upstream read and the snapshot reads may run in parallel.
+1. With `hasChecks` true, no snapshot is read and the answers are byte-identical to today's,
+   except that DNS checks in `/api/checks` no longer carry `expected` and `resolver` (every mode,
+   see "DNS checks"). The upstream call count per path is unchanged.
+2. With `hasChecks` false, each route needs only the snapshot parts it uses:
+
+   | Route | Needs `/components` | Needs `/checks` (active ids) |
+   |---|---|---|
+   | `/api/checks`, `/api/uptime` | yes (to know whether hidden mode applies) | no |
+   | `/api/components` | yes (its own read) | no: component keys depend only on `/components` |
+   | `/api/incidents?…`, `/api/maintenance` | yes | yes (for the `service` key and to drop orphans) |
+   | `/api/components/uptime`, `/api/manual-incidents`, `/api/latency` | no | no |
+
+   The route's own upstream read and the snapshot reads may run in parallel.
 3. If the route's own upstream read fails, the answer is the same error answer as today.
-4. If the route's own read succeeds but a snapshot read fails, the answer is `502` with the
-   generic body today's proxy uses for that failure kind. That covers a non-200 status, a
-   timeout, a network error, invalid JSON, a wire mismatch, or a body that is not an array of
-   objects with a string `id` (and, for components, a string-array `checkIds`). The data is never
-   served unfiltered. The route's wire header is still forwarded.
+4. If the route's own read succeeds but a snapshot read the route needs (per the table) fails,
+   the answer is `502` with the generic body today's proxy uses for that failure kind. That
+   covers a non-200 status, a timeout, a network error, invalid JSON, a wire mismatch, or a body
+   that is not an array of objects with a string `id` (and, for components, a string-array
+   `checkIds`). The data is never served unfiltered. The route's wire header is still forwarded.
+   A failed `/checks` read therefore affects only `/api/checks` (its own read, as today),
+   `/api/incidents?…` and `/api/maintenance`; `/api/components`, component badges and the
+   components part of the page stay available.
 5. Snapshot components `[]` means not hidden mode: the route is served as today (checks shown by
-   design).
-6. The snapshot reads go through the same single-flight cache as the proxy, with the same
-   `cacheMs` and their own cache keys (for example `raw:/components`, `raw:/checks`). The cached
-   value is the raw body, which is never sent to a client. With caching on, hidden mode adds at
-   most one upstream read of `/components` and one of `/checks` per cache period, whatever the
-   number of visitors. With `PULSE_STATUS_CACHE_MS=0` every answer reads the snapshot afresh.
-   Implementers may reuse a route's own raw read for the snapshot (the `/api/checks` and
-   `/api/components` routes read exactly those paths), as long as no raw body is served.
-7. Each served answer is cached per path as today. When components appear or disappear, a cached
-   answer can stay for at most `cacheMs`. An answer cached before components existed was computed
-   while checks were shown by design, so this is no leak. An answer computed in hidden mode never
-   holds ids.
+   design), except for the DNS rule.
+6. **One upstream call per path per cache period (required reuse).** Every upstream read of the
+   proxy goes through one single-flight raw cache keyed by the upstream path (for example
+   `raw:/components`, `raw:/checks`, `raw:/incidents?status=open`), with the same `cacheMs`. The
+   cached value is the parsed but unfiltered body plus the wire header and the failure kind. It
+   is never sent to a client. A route's served answer and every snapshot that needs the same
+   upstream path derive from that one cached read: `/api/components` and the components snapshot
+   share `raw:/components`; `/api/checks` and the active-ids snapshot share `raw:/checks`. With
+   caching on, this gives at most one upstream call per upstream path per cache period, whatever
+   the number of visitors and routes, in every mode. With `PULSE_STATUS_CACHE_MS=0` nothing is
+   cached across answers, but within one served answer each upstream path is still read at most
+   once (the `/api/components` answer reads `/components` once and uses it for both).
+7. Served answers are derived from the raw cache entry on each request, or cached per path with
+   the same expiry; either way no answer outlives `cacheMs`. When components appear or disappear,
+   a stale answer can stay for at most `cacheMs`. An answer computed before components existed was
+   computed while checks were shown by design, so this is no leak. An answer computed in hidden
+   mode never holds ids.
 
 SSR (`renderState`), the feed and the badges keep reading the same filtered answers through
 `cachedAnswer`, so they see exactly what a browser sees. No second, unfiltered path reaches any
@@ -122,6 +140,14 @@ in `dnsCheckSchema`.
   mapping of every `view.checks` id to `Service` stays, so data without hidden keys still works:
   for example a cached answer from before components appeared.
 - The shown branch is unchanged.
+- **Summary count changes in hidden mode.** `renderSummary` counts every open incident in
+  `state.incidents`. Hidden mode drops incidents of checks that are neither active nor in a
+  component (orphans), so the line "N incidents open" no longer counts them. Today it does count
+  them although the page lists none of them. After the change the count equals the number of
+  open incidents the page lists. This is intended: an orphan count tells visitors about checks
+  that the page does not name, and a count that matches the list is less confusing.
+  `renderSummary` itself is not changed; the change comes from the filtered data. With checks
+  shown or without components the count is unchanged.
 - The page renders entries with the label, never with the key. The maintenance `data-key` already
   uses the label. Check that no hidden key reaches the HTML when a label is missing: entries
   without a label are already dropped by `labeledIncidents` and `labeledMaintenance`.
@@ -151,7 +177,8 @@ in `dnsCheckSchema`.
     filtered as before; the setting controls what the page, feed and badges show" with the hidden
     mode answers above (`/api/checks` and `/api/uptime` empty; incident, maintenance and component
     check ids replaced by keys made from component ids, or `service`; fail closed with `502`
-    while components cannot be read).
+    while components cannot be read, and for incidents and maintenance also while checks cannot
+    be read; the open-incident count leaves out incidents of removed checks).
   - Feed bullet: fix "instead of the check, An incident" → "instead of the check. An incident".
   - DNS sentence (~49): replace "`expected` and `resolver` of a DNS check are passed on but not
     drawn" with "`expected` and `resolver` of a DNS check are never served".
@@ -170,8 +197,9 @@ in `dnsCheckSchema`.
   missing or wrong for at most one cache period. Today's per-path caching already has this skew.
   Mitigation: all keys come from one function of (component order, membership, active ids), so
   equal upstream data always gives equal keys.
-- **Fail closed costs availability.** If `/components` or `/checks` upstream fails, the hidden-mode
-  check routes answer `502`. The page treats incidents, maintenance and components as required,
+- **Fail closed costs availability.** If `/components` upstream fails, the hidden-mode routes of
+  the table answer `502`; if only `/checks` fails, only `/api/checks`, `/api/incidents?…` and
+  `/api/maintenance` fail, and `/api/components` and component badges keep working. The page treats incidents, maintenance and components as required,
   so it shows the existing error banner and keeps the last data. That is the same as today when
   `/components` fails, because the page needs it anyway. The feed and component badges answer
   `503`, as they already do when `/components` fails.
@@ -180,7 +208,14 @@ in `dnsCheckSchema`.
   `validateMaintenanceResponse` and `validateComponentsResponse` keep passing. `[]` passes
   `validServedChecks` and `validateUptimeResponse`.
 - **Regression in shown mode.** All hidden-mode code is behind `hasChecks === false`. Existing
-  tests with checks shown or without components must pass unchanged.
+  tests with checks shown or without components must pass unchanged, except tests that assert
+  DNS `expected` or `resolver` in a served body. On `20ccc80` that is one test:
+  `src/api-filter.test.ts` "tcp, dns and domain targets are served only when not hidden", whose
+  `TARGET_STRINGS` includes `ns-answer.internal` and `RESOLVER` and expects them in the shown
+  output. It changes to expect those two strings absent in both outputs, while `dns.internal`
+  stays expected when shown. (`grep -rn 'resolver\|expected:' src e2e` finds no other.)
+- **Raw cache refactor.** Moving the cache below the filter (required reuse) touches every
+  proxied route. The existing `server.cache.test.ts` tests guard it and must pass unchanged.
 - **Cognitive complexity ≤ 15 (SonarJS).** Put the key logic in a new pure module instead of
   growing `fetchUpstream`.
 
@@ -189,11 +224,13 @@ in `dnsCheckSchema`.
 Status only. The api's `bench/budgets.json` metrics (`startup_cpu_ms`, `load_cpu_s`,
 `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, build CPU, wall-clock startup, p95 latency, rps,
 image size) measure pulse-api, and this change does not touch the api's code. None of them moves:
-none expected. On the status server, hidden mode adds at most one upstream read each of
-`/components` and `/checks` per cache period (both are already read once per period by any
-visiting page). It also adds a linear pass over already parsed arrays. The implementer confirms
-with the existing `server.cache.test.ts` style: count the fake-api calls per cache period with
-two concurrent page loads in hidden mode. That is at most one call per upstream path per period.
+none expected. On the status server, every upstream path is read through one shared raw cache,
+so hidden mode adds no upstream call: `/components` and `/checks` are already read once per
+period by any visiting page, and the snapshot reuses those reads. Total: at most one upstream
+call per upstream path per cache period, in every mode. Hidden mode adds a linear pass over
+already parsed arrays. The implementer confirms with the existing `server.cache.test.ts` style:
+count the fake-api calls per cache period with two concurrent page loads in hidden mode and in
+shown mode; each upstream path gets at most one call.
 
 ## Security impact
 
@@ -240,13 +277,25 @@ Each case below is a hard rule that a wrong implementation would get wrong.
 5. **Check in no component**: incident key `service`, page label `Service`, feed title
    `Service: Open`. Not the check name, not the id.
 6. **Incident of a removed check** (inactive, in no component): dropped from the incidents and
-   maintenance answers. It must not appear as `service`. Today's page does not show it either.
+   maintenance answers. It must not appear as `service`. Today's page does not list it, but
+   today's summary counts it if it is open: with one listed open incident and one orphan open
+   incident, the summary says "2 incidents open" today and must say "1 incident open" in hidden
+   mode. A wrong implementation that keeps orphans (for example keyed `service`) gives 2.
 7. **Components read fails** (`/components` answers 500 upstream) while `hasChecks` is false:
    `/api/incidents?status=open` answers `502`, never the incident list with real `checkId`s.
+7a. **Only the checks read fails** (`/checks` answers 500, `/components` fine) while `hasChecks`
+   is false: `/api/components` answers `200` with hidden keys and `/badge/component/shop.svg` is
+   `200`; `/api/incidents?status=open` and `/api/maintenance` answer `502`. A wrong
+   implementation that makes `/api/components` depend on `/checks` answers `502` there.
 8. **Components read returns `[]`**: not hidden mode. `/api/checks` lists checks with ids and
-   names as today. The output must equal today's output byte for byte.
-9. **`PULSE_STATUS_SHOW_CHECKS=true` with components**: no snapshot reads (fake-api call counts
-   unchanged) and answers identical to today's.
+   names as today. The output must equal today's output byte for byte, except that DNS checks
+   lack `expected` and `resolver`.
+9. **`PULSE_STATUS_SHOW_CHECKS=true` with components**: no extra upstream reads (fake-api call
+   counts per path unchanged) and answers identical to today's, except the DNS rule.
+9a. **Double read**: in hidden mode, one load of `/api/components` with `PULSE_STATUS_CACHE_MS`
+   above 0 and a parallel page load must cause exactly one upstream `/components` call. An
+   implementation with a separate snapshot cache key that does not share the route's read
+   causes two.
 10. **DNS check with details shown** (`PULSE_STATUS_HIDE_DETAILS=false`): `/api/checks` has
    `dnsName` and `recordType` but no `expected` or `resolver`. With details hidden it has none of
    the four.
@@ -283,9 +332,12 @@ Files:
   `/api/maintenance` and `/api/components` for hidden mode)
 - `src/hidden-checks.test.ts` (new)
 - `src/api-filter.ts` (DNS allow-list: drop `expected` and `resolver`; doc comment)
-- `src/api-filter.test.ts`
-- `src/server.ts` (snapshot reads through the single-flight cache under internal keys; hidden mode
-  rewrite after `filterApiBody`; fail closed with `502`)
+- `src/api-filter.test.ts` (the test "tcp, dns and domain targets are served only when not
+  hidden" changes: `ns-answer.internal` and `RESOLVER` are expected absent in both outputs)
+- `src/server.ts` (single-flight raw cache keyed by upstream path, shared by served answers and
+  snapshots; hidden mode rewrite after `filterApiBody`; per-route snapshot needs; fail closed
+  with `502`)
+- `src/server.cache.test.ts` (one call per upstream path per period, in hidden and shown mode)
 - `src/components-view.ts` (`HIDDEN_CHECK_KEY`; `checkLabels` hidden branch)
 - `src/components-view.test.ts`
 - `src/feed.ts` (`entries` keeps incidents labelled by components or `HIDDEN_CHECK_KEY` in hidden
@@ -314,13 +366,15 @@ Checks (TDD, written first and seen failing on `main`):
    - for each check, an open incident, a resolved incident within 7 days and a future maintenance
      window;
    - `/uptime` and `/latency` entries for all checks;
+   - an open incident and a maintenance window of an orphan check `sentinel-gone` (not in
+     `/checks`, in no component);
    - a manual incident on `shop`.
 
    With `showChecks: false`, `publicUrl` set, and `hideDetails` true and false, it requests every
    route the page can reach: each path in `ALLOWED_API_PATHS`, `/`, `/feed.atom`,
    `/badge/sentinel-id.svg`, `/badge/sentinel-loose.svg`, `/badge/component/shop.svg`. No body
-   contains `sentinel-id`, `SENTINEL-NAME`, `sentinel-loose` or `SENTINEL-LOOSE` (case-sensitive
-   substring on the raw body). The test fails on `main` (mutation output in the PR).
+   contains `sentinel-id`, `SENTINEL-NAME`, `sentinel-loose`, `SENTINEL-LOOSE` or
+   `sentinel-gone` (case-sensitive substring on the raw body). The test fails on `main` (mutation output in the PR).
 2. **DNS test**: a DNS check `{ expected: ["10.9.8.7"], resolver: "10.0.0.53" }`, with
    `hideDetails` true and false, and `showChecks` true and false (with and without components).
    No body of the routes above contains `10.9.8.7` or `10.0.0.53`. With details shown,
@@ -328,7 +382,9 @@ Checks (TDD, written first and seen failing on `main`):
 3. **Function in hidden mode** (same fixture):
    - the SSR page `/` lists the open and resolved incidents and the maintenance labelled
      "Online shop", "Online shop, API" and "Service";
-   - the summary counts components;
+   - the summary counts components, and its open-incident count is 3 (the listed open incidents
+     of `sentinel-id`, `sentinel-loose` and `db`), not 4: the orphan `sentinel-gone` incident is
+     dropped (Counterexample 6). On `main` the same fixture says 4;
    - `/feed.atom` has those incidents titled `Online shop: Open`, `Online shop, API: Open` and
      `Service: Open` (and the resolved ones);
    - `/badge/component/shop.svg` is `200`;
@@ -338,13 +394,20 @@ Checks (TDD, written first and seen failing on `main`):
 4. **Fail closed**: the fake `/components` answers 500 (and, in a second case, malformed JSON).
    `/api/incidents?status=open`, `/api/maintenance`, `/api/components`, `/api/checks` and
    `/api/uptime` answer `502` and contain no sentinel. `/api/components/uptime` and
-   `/api/manual-incidents` are unaffected.
+   `/api/manual-incidents` are unaffected. Second part: only the fake `/checks` answers 500.
+   `/api/components` answers `200` with hidden keys, `/badge/component/shop.svg` is `200`,
+   `/api/incidents?status=open` and `/api/maintenance` answer `502` without sentinel
+   (Counterexample 7a).
 5. **Unchanged modes**: with `showChecks: true` (with components), and with `showChecks: false`
-   without components, the existing tests pass unchanged. One explicit test compares the bodies
-   to the output of `filterApiBody` alone and checks that the fake api gets no extra `/components`
-   or `/checks` calls.
-6. **Cache**: in hidden mode, two concurrent loads of `/` within one cache period cause at most
-   one upstream call per path (`/components`, `/checks`, and each route).
+   without components, the existing tests pass unchanged, except the one DNS assertion in
+   `src/api-filter.test.ts` named above, which changes to expect `expected` and `resolver`
+   absent. One explicit test compares the bodies to the output of `filterApiBody` alone (with the
+   new DNS rule) and checks that the fake api gets no extra `/components` or `/checks` calls.
+6. **Cache**: in hidden mode and in shown mode, two concurrent loads of `/` plus one request
+   each of `/api/components` and `/api/checks` within one cache period cause at most one
+   upstream call per upstream path (`/components`, `/checks`, and each other route), as required
+   by "Required behavior" step 6 (Counterexample 9a). With `PULSE_STATUS_CACHE_MS=0`, one
+   `/api/components` request causes exactly one `/components` call.
 7. Unit tests of `src/hidden-checks.ts`: key for 0, 1 and 2 owners; deduplicated `checkIds` in
    first-appearance order; dropping of unknown inactive ids; malformed snapshot rejected.
 
