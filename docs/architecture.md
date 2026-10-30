@@ -4,13 +4,15 @@ pulse has four services and three shared libraries.
 
 | Repository | Role |
 | --- | --- |
-| pulse-api | Loads the checks file, takes heartbeat pings, stores results in SQLite, decides the state of each check, serves REST. |
+| pulse-api | Loads the checks file, takes heartbeat pings, stores results in SQLite (`bun:sqlite`), decides the state of each check, serves REST. |
 | pulse-probe | Fetches the checks, runs HTTP and TLS checks, posts the results. One probe is one location. |
 | pulse-status | Status page. Reads pulse-api through its own allow-listed `/api/*` proxy. Serves an Atom feed and SVG badges. |
 | pulse-notify | Polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook, file, Slack, Teams and email. |
 | pulse-contract | The wire contract: zod schemas, the types and validators built from them, the wire version and the `fetchJson` client. Used by api, probe, status and notify. |
 | pulse-kit | Shared runtime helpers: env settings, shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, metrics and the JSON logger. Used by api, probe, status and notify. |
 | pulse-config | Shared Biome, tsconfig, ESLint and Lefthook configuration and the reusable CI workflow `check.yml`. |
+
+The four services and three libraries run on Bun 1.4.0 (`packageManager: bun@1.4.0`, `bun.lock`). Install with `bun install --frozen-lockfile`, test with `bun test` (`bun:test`), and run scripts with `bun run <script>`; the services start with `bun start`. The Docker images build on `oven/bun:1.4.0-alpine`, pinned by digest. pulse-api creates its SQLite schema at start and has no database migrations: a database file of an older version is not upgraded. pulse-website still runs on Node 24 until [#367](https://github.com/lorenzh/pulse-meta/issues/367) moves it to Bun.
 
 ## Data flow
 

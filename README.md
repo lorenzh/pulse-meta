@@ -13,7 +13,7 @@ pulse is built by Paragon Factory agents from the issues in this repository. Dev
 | [pulse-contract](https://github.com/lorenzh/pulse-contract) | The wire contract: zod schemas for `Check`, `Result`, `Incident` and the API shapes, the TypeScript types and validators built from them, the wire version (`x-pulse-contract` header) and `fetchJson`, a JSON GET client with timeout, size cap, version check and validation. Library, no settings. | zod; pulse-config (dev) |
 | [pulse-kit](https://github.com/lorenzh/pulse-kit) | Shared runtime helpers of the services: env settings with bounds, signal handling and bounded shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, a Prometheus registry, the JSON logger, small HTTP and timer helpers. Library, no settings. | pulse-config (dev) |
 | [pulse-probe](https://github.com/lorenzh/pulse-probe) | Worker that fetches the checks from the API, runs HTTP and TLS certificate checks and posts the results. It reloads the checks every `PULSE_CHECKS_RELOAD_MS` and when the API answers 404 for a result. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
-| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads the checks file, takes heartbeat pings, stores results in SQLite, computes state and incidents, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
+| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads the checks file, takes heartbeat pings, stores results in SQLite (`bun:sqlite`), computes state and incidents, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
 | [pulse-status](https://github.com/lorenzh/pulse-status) | Status page with an allow-listed `/api/*` proxy to pulse-api, an Atom feed and SVG badges. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-notify](https://github.com/lorenzh/pulse-notify) | Notifier that polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook (optionally signed), file, Slack, Teams and email (SMTP through nodemailer). Failed events can be listed and resent with a CLI. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-config](https://github.com/lorenzh/pulse-config) | Shared tooling configuration: Biome, tsconfig, ESLint with SonarJS (on its own nested TypeScript 6), Lefthook, and the reusable CI workflow `check.yml`. No product code. | nothing |
@@ -90,15 +90,15 @@ docker volume rm pulse_demo-api-data pulse_demo-config
 
 The demo tokens are public example values: never use them for a real deployment. The [pulse-api install page](https://github.com/lorenzh/pulse-api/blob/main/docs/install.md#demo-profile) lists each demo check, when it appears, and how to try a white-label theme.
 
-## Run all of pulse with npm
+## Run all of pulse with Bun
 
-You need Node 24 or newer, git, and network access to GitHub (pulse-contract, pulse-kit and pulse-config are installed as Git dependencies). Every service runs in its own terminal.
+You need Bun 1.4.0, git, and network access to GitHub (pulse-contract, pulse-kit and pulse-config are installed as Git dependencies). Every service runs in its own terminal.
 
 1. Clone and install the services next to each other:
 
    ```sh
    for r in api probe status notify; do
-     git clone https://github.com/lorenzh/pulse-$r.git && (cd pulse-$r && npm ci)
+     git clone https://github.com/lorenzh/pulse-$r.git && (cd pulse-$r && bun install --frozen-lockfile)
    done
    ```
 
@@ -135,23 +135,23 @@ You need Node 24 or newer, git, and network access to GitHub (pulse-contract, pu
 4. Start the services, the API first, each in its own terminal:
 
    ```sh
-   cd pulse-api && npm start                                  # port 3000
-   cd pulse-probe && PULSE_PROBE_TOKEN='<token>' npm start   # replace <token> with your token
-   cd pulse-status && npm start                               # port 8080
+   cd pulse-api && bun start                                  # port 3000
+   cd pulse-probe && PULSE_PROBE_TOKEN='<token>' bun start   # replace <token> with your token
+   cd pulse-status && bun start                               # port 8080
    ```
 
-   Node prints an experimental warning for `node:sqlite`. It is harmless. To get notifications, also start pulse-notify with a channel config (see the [pulse-notify configuration](https://github.com/lorenzh/pulse-notify/blob/main/docs/configuration.md#channel-config-file)):
+   To get notifications, also start pulse-notify with a channel config (see the [pulse-notify configuration](https://github.com/lorenzh/pulse-notify/blob/main/docs/configuration.md#channel-config-file)):
 
    ```sh
    cd pulse-notify
    echo '{ "channels": [{ "id": "log", "type": "file", "path": "./incidents.jsonl" }] }' > notify.json
-   PULSE_NOTIFY_CONFIG=./notify.json npm start
+   PULSE_NOTIFY_CONFIG=./notify.json bun start
    ```
 
 5. Start something for the check to find on port 9000:
 
    ```sh
-   node -e "require('node:http').createServer((q, r) => r.end('ok')).listen(9000)"
+   bun -e "Bun.serve({ port: 9000, fetch: () => new Response('ok') })"
    ```
 
 6. Open <http://localhost:8080>. The check "Example endpoint" is `unknown` until the first result arrives, then `up` within about a second. Stop the port 9000 process and the state turns `down`; the third consecutive down result opens an incident, which the page shows. Start it again and the first up result resolves the incident. With one probe, its location decides alone. When more than one location reports in, a check is down only when at least two of them report it down.
