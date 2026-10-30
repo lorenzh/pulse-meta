@@ -34,7 +34,7 @@ checks.json --> pulse-api <--GET /probe/checks--- pulse-probe
 5. pulse-api stores the result and evaluates the check. The rules for quorum and incidents are in the [pulse-api concepts page](https://github.com/lorenzh/pulse-api/blob/main/docs/concepts.md#quorum-and-incidents).
 6. pulse-status and pulse-notify read the state and the incidents from pulse-api. pulse-status serves only an allow-listed subset and hides targets and reasons by default.
 
-A nightly bench in pulse-api (`bench/`, `.github/workflows/bench.yml`) measures CPU time and memory of every service and the test and build time of every repository against `bench/budgets.json`. See the [bench README](https://github.com/lorenzh/pulse-api/blob/main/bench/README.md).
+A nightly bench in pulse-api (`bench/`, `.github/workflows/bench.yml`) measures CPU time and memory of every service, the test CPU time of all seven repositories and the build CPU time of pulse-contract and pulse-kit against `bench/budgets.json`. See the [bench README](https://github.com/lorenzh/pulse-api/blob/main/bench/README.md).
 
 Every response of pulse-api carries the wire version in the `x-pulse-contract` header. The probe, the status page and the notifier check it.
 
