@@ -20,7 +20,7 @@ The security checklist covers secrets and server texts in errors, logs and respo
 
 **Reviewer profile.** Both roles run on Claude (`.factory/config.yaml`, `models`): the worker on `claude-opus-5-5` at effort `medium`, the reviewer on `claude-opus-5-5` at effort `high`, with an adversarial prompt.
 
-**Agent CLI versions.** `factory-run.yml` installs exact versions of the agent CLIs. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` override the defaults; `skip` leaves one out.
+**Agent CLI versions.** `factory-run.yml` installs Claude Code at an exact version and skips the Codex CLI, which no model in the loop uses. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` override the defaults with an exact version or `skip`.
 
 **Failure comments.** When a job of `factory.yml`, `factory-run.yml`, `factory-fan-out.yml` or `factory-unblock.yml` fails, its last step comments on the issue with the run link, the failed step, and the command that starts it again. This also covers failures before the Factory claim, which leave no Factory comment.
 

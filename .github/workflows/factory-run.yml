@@ -138,11 +138,12 @@ jobs:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
         run: npm ci
 
-      # Exact versions: `latest` failed twice with a registry 404. The defaults are the versions of
-      # the green runs on 2026-10-30; a repository variable overrides one, and `skip` leaves it out.
+      # Exact versions: `latest` failed twice with a registry 404. Claude Code defaults to the version
+      # of the green runs on 2026-10-30. Codex defaults to `skip`: no model in the loop uses it. A
+      # repository variable overrides either default; `skip` leaves a CLI out.
       - name: Install agent CLIs
         env:
-          FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION || '0.166.0' }}
+          FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION || 'skip' }}
           FACTORY_CLAUDE_VERSION: ${{ vars.FACTORY_CLAUDE_VERSION || '2.1.314' }}
         run: |
           if [ "$FACTORY_CODEX_VERSION" != skip ]; then
