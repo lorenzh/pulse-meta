@@ -57,7 +57,7 @@ workspaces:
           url: https://github.com/lorenzh/pulse-meta.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
           workflows: [ spec, merge ]
-          context: [ contract, probe, api, status, notify, config, kit ]
+          context: [ contract, probe, api, status, notify, config, kit, website ]
         contract:
           url: https://github.com/lorenzh/pulse-contract.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-contract } }
@@ -69,28 +69,28 @@ workspaces:
           url: https://github.com/lorenzh/pulse-probe.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-probe } }
           workflows: [ build, merge ]
-          context: [ meta, contract, config, kit]
+          context: [ meta, contract, config, kit ]
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
         api:
           url: https://github.com/lorenzh/pulse-api.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-api } }
           workflows: [ build, merge ]
-          context: [ meta, contract, config, kit]
+          context: [ meta, contract, config, kit ]
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
         status:
           url: https://github.com/lorenzh/pulse-status.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-status } }
           workflows: [ build, merge ]
-          context: [ meta, contract, api, config, kit]
+          context: [ meta, contract, api, config, kit ]
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
         notify:
           url: https://github.com/lorenzh/pulse-notify.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-notify } }
           workflows: [ build, merge ]
-          context: [ meta, contract, api, config, kit]
+          context: [ meta, contract, api, config, kit ]
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
         config:
@@ -105,6 +105,13 @@ workspaces:
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-kit } }
           workflows: [ build, merge ]
           context: [ meta, config ]
+          exclude: [ /.factory/ ]
+          pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
+        website:
+          url: https://github.com/lorenzh/pulse-website.git
+          provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-website } }
+          workflows: [ build, merge ]
+          context: [ meta, config, contract, api, probe, status, notify, kit ]
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
