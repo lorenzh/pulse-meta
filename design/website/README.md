@@ -24,9 +24,11 @@ Home (`Main.dc.html`) and Hosted (`Hosted.dc.html`):
 
 - Section spacing is `--section-space: clamp(64px, 8vw, 128px)`, with no separator lines between sections.
 - Sections fade and rise in once when they scroll into view (IntersectionObserver).
-- Micro-animations: the arrow on the primary button nudges on hover and pulses once; outline buttons fill with an accent curtain on hover; buttons give press feedback; cards lift on hover; nav links get an underline; the live status preview on Home updates while it is on screen.
+- Micro-animations: the arrow on the primary button nudges in a loop (900 ms) while the button is hovered or focused; outline buttons fill with an accent curtain on hover; buttons give press feedback; cards lift on hover; nav links get an underline; the live status preview on Home updates while it is on screen.
 - Hosted "Open source" card: on hover or focus-within the heart fills with accent (250 ms) and pops 1 → 1.2 → 1 (300 ms). Eight small hearts (6–10 px) burst up and sideways 30–70 px, then fall and fade over 1.1 s; one burst per hover. The design uses static markup for the particles; the site may create them by script with randomised paths.
-- Background: a canvas node network behind the page. Large receiver nodes and small sender nodes, joined by thin lines, with shooting-star pulses running along the links. Minimum distance 280 px between receivers and 60 px between senders; links at a node are at least 20° apart.
+- Background: a canvas node network behind the page. Large receiver nodes and small sender nodes, joined by thin lines, with shooting-star pulses running along the links. Minimum distance 280 px between receivers and 60 px between senders on desktop; on phones they scale down, but never below 168 px and 36 px. Links at a node are at least 20° apart, 15° at a node with 12 or more links.
+
+Hosted offer: every price, plan limit, SLA, region, backup, retention and open-source offer is a marked placeholder. The design uses tokens such as `[PRICE]`, `[REGIONS]`, `[TRIAL]`, `[RETENTION]`, small "placeholder" or "planned" tags, and a "Planned offer, details not final" note above the plans.
 
 Layout details on Home and in the header:
 
@@ -45,6 +47,6 @@ Docs pages (`Docs.dc.html`, `DocsApi.dc.html`): every command code block gets a 
 Rules for the build:
 
 - Under `prefers-reduced-motion: reduce` all of this is off: no scroll-in, no micro-animations, no canvas animation. Content is visible from the start. The Open source heart only fills (no pop, no burst); the copy button only swaps the icon.
-- Docs pages stay calm: no background animation and no scroll-in; the copy button is their only motion.
-- Hover effects apply only on devices that hover (`@media (hover: hover)`).
-- The canvas animation runs at most at 30 fps, and its timers and the live preview pause while the tab is hidden (`document.hidden`) or the element is off screen.
+- Docs pages stay calm: no background animation and no scroll-in. The copy button and the hover-only colour transition of the sidebar links are their only motion.
+- Every hover effect, on all pages, sits under `@media (hover: hover)`.
+- The canvas animation runs at most at 30 fps. It pauses while the tab is hidden (`document.hidden`) and while the canvas is off screen; the live preview pauses the same way.
