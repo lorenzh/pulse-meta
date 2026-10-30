@@ -32,8 +32,8 @@ Targets `contract`, `api`, `status`, `probe`, `notify`. `kit` and `config` are u
 - Done when: test for prototype-only `id` passes, docs name the bound, checks green.
 
 ## Repository: api
-Depends on contract (pin bump to its new main).
-- `package.json`/lockfile: pin pulse-contract to current contract main (the SHA that probe/status/notify use or newer); no API change expected.
+Independent of the contract change in this spec.
+- `package.json`/lockfile: pin pulse-contract to commit `55e67ab0ff8a9f3838162ab8b20d61fb64ce6f5d` (current contract main, already exists; probe/status/notify pin `cc8c1faa`); no API change expected, the api needs nothing from this spec's contract change.
 - `docs/development.md` (~55-58): Compose test restarts only the API, not probe.
 - `src/start.ts` (~89): token validation startup errors include the tokens file path and the key (decision 6). Test it.
 - `src/main.test.ts` (~62) SIGTERM test: bound the readiness wait, reject on early child exit, always clean up the child.
