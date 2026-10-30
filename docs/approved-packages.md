@@ -26,8 +26,8 @@ The pulse repositories may use a runtime dependency only when it is on this list
 
 | Tool | Pin | Use |
 | --- | --- | --- |
-| Bun | `1.4.0` | Package manager, runtime and test runner of every pulse repository except pulse-website (`packageManager: bun@1.4.0`, `engines.bun: 1.4.0`, `bun.lock`). pulse-website runs on Node 24 until [#367](https://github.com/lorenzh/pulse-meta/issues/367). |
-| [oven-sh/setup-bun](https://github.com/oven-sh/setup-bun) | `0c5077e51419868618aeaa5fe8019c62421857d6` (v2.2.0) | Installs Bun in CI, in the reusable `check.yml` of pulse-config. Pinned by commit SHA. |
+| Bun | `1.4.0` | Package manager, runtime and test runner of every pulse repository (`packageManager: bun@1.4.0`, `engines.bun: 1.4.0`, `bun.lock`). |
+| [oven-sh/setup-bun](https://github.com/oven-sh/setup-bun) | `0c5077e51419868618aeaa5fe8019c62421857d6` (v2.2.0) | Installs Bun in CI, in the reusable `check.yml` of pulse-config and in the `site` job of pulse-website. Pinned by commit SHA. |
 | [oven/bun](https://hub.docker.com/r/oven/bun) | `1.4.0-alpine@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb` | Base image of the api, probe, status and notify Dockerfiles. Pinned by digest. |
 
 ## Built-ins before packages
