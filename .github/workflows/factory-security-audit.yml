@@ -1,0 +1,69 @@
+name: Security audit issue
+
+# Every Monday, opens one security audit issue for one target repository, in rotation by ISO week.
+# It only creates the issue: it adds no factory/ label, so no workflow starts. The lead decides how
+# the audit runs. An open audit issue of the same repository blocks a second one.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target repository, or rotation for this week's one
+        required: false
+        default: rotation
+        type: choice
+        options: [rotation, contract, probe, api, status, notify, config, kit, website]
+
+concurrency:
+  group: factory-security-audit
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  open-issue:
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUDIT_TARGET: ${{ inputs.target }}
+    steps:
+      - name: Open the audit issue
+        run: |
+          targets=(contract probe api status notify config kit website)
+          # A scheduled run has no input.
+          if [[ -z "$AUDIT_TARGET" || "$AUDIT_TARGET" == rotation ]]; then
+            week="$(date -u +%V)"
+            AUDIT_TARGET="${targets[$((10#$week % ${#targets[@]}))]}"
+          fi
+          [[ " ${targets[*]} " == *" $AUDIT_TARGET "* ]] || { echo "::error::Unknown target: $AUDIT_TARGET" >&2; exit 1; }
+          open="$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&labels=security,target/$AUDIT_TARGET&per_page=100" \
+            --jq '[.[] | select(.pull_request == null) | select(.title | startswith("Security audit:"))][0].number // empty')"
+          if [[ -n "$open" ]]; then
+            echo "#$open is still open for $AUDIT_TARGET. No new issue."; exit 0
+          fi
+          today="$(date -u +%Y-%m-%d)"
+          body="Periodic security audit of \`main\` in [pulse-$AUDIT_TARGET](https://github.com/lorenzh/pulse-$AUDIT_TARGET). Opened by \`factory-security-audit.yml\`. Nothing starts it: the lead decides how it runs.
+
+          ## Task
+
+          Audit the current \`main\` of pulse-$AUDIT_TARGET, not one change. Run the service or the package locally and attack it with hostile inputs. For every item that applies, record the test name or the command and its output. Items that do not apply get one line with the reason.
+
+          - Secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) in errors, logs and responses.
+          - Authentication before any other check; status codes and their order on admin routes.
+          - Body and size limits on every method, also before any write.
+          - Input validation at every trust boundary; validators never throw on any input type.
+          - No accessor or getter of untrusted input runs.
+          - SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers.
+          - File writes atomic and path-safe.
+          - Dependencies, Docker base images and CI actions pinned and approved (\`docs/approved-packages.md\`).
+
+          ## Result
+
+          One comment here with the checked items and their evidence. Each finding becomes its own issue with the label \`security\`, a reproduction (failing test or command with output) and a severity. Do not fix findings in this issue."
+          url="$(gh api "repos/$GITHUB_REPOSITORY/issues" \
+            -f title="Security audit: pulse-$AUDIT_TARGET ($today)" -f body="$body" \
+            -f "labels[]=security" -f "labels[]=target/$AUDIT_TARGET" --jq .html_url)"
+          echo "Opened $url"

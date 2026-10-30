@@ -69,7 +69,12 @@ Transition to `implement` when any of these holds. Each one alone is enough:
 Include each finding with its proof (the failing test, the command and its output) and the failed
 checks in the outcome message.
 
-Return `complete` only when you read the whole diff and no gate holds. If you could not review the
+When you read the whole diff and no gate holds, read the line `Security impact:` in the section
+`## Security impact` of the spec. If it says `yes`, transition to `security`: a separate state attacks
+the change with hostile inputs. If it says `no`, or the spec has no such section (specs written before
+it existed), return `complete`.
+
+Return `complete` or `security` only when you read the whole diff and no gate holds. If you could not review the
 code or run a check, that is not `complete`: say why and transition to `implement`, or request a
 `needs-input` hold if a person must act. Include the checks you ran, the CI result, the mutation
 output, and remaining limitations in the outcome message.
@@ -81,4 +86,5 @@ verdict: ship
 verdict: fix first
 ```
 
-`verdict: ship` goes with `complete`. Every other outcome ends with `verdict: fix first`.
+`verdict: ship` goes with `complete` and with `security`. Every other outcome ends with
+`verdict: fix first`.

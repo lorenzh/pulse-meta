@@ -166,13 +166,23 @@ workflows:
         transitions:
           - to: review
         description: Implement this repository's section of the approved spec.
+      # Factory has no conditional transitions: the reviewer picks `security` instead of `complete`
+      # when the spec says "Security impact: yes".
       review:
         prompt: ../.factory/prompts/review.md
         model: reviewer
         transitions:
           - to: implement
+          - to: security
         terminal: true
         description: Review the change in a fresh agent session.
+      security:
+        prompt: ../.factory/prompts/security.md
+        model: reviewer
+        transitions:
+          - to: implement
+        terminal: true
+        description: Attack the change with hostile inputs when the spec flags a security impact.
   merge:
     interrupt: true
     initial: resolve

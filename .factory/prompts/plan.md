@@ -22,10 +22,33 @@ implementer measures it (for example a local `bun bench/run.ts --a <ref> --b <re
 change cannot move any of them, write "none expected" with a one-line reason. If `bench/` does not
 exist yet in `main` of the api repository, name the kinds of metric instead of the keys.
 
+Write these sections before the repository sections too. Every spec has all four:
+
+- `## Security impact`. Its first line is exactly `Security impact: yes` or `Security impact: no`,
+  followed by a one-line reason. Write `yes` when the change touches any of: admin routes or
+  authentication; parsers or validators at a trust boundary (contract); the probe HTTP client, its
+  headers or redirects; file writes; error or log texts that carry external data; dependencies;
+  Dockerfiles; CI. With `yes`, name the checklist items that apply (secrets in errors, logs and
+  responses; auth order and status codes; body and size limits; input validation; accessor
+  execution; SSRF and redirects; atomic, path-safe writes; dependency pins). A `yes` adds a
+  security state with hostile inputs after the review.
+- `## Rollout order`. When the change crosses repositories, list the merge and release order and,
+  for each step, which older consumers still run (probes and services on old pins of contract,
+  kit, or config; status against an older api) and why they keep working. For one repository,
+  write "one repository" with the reason.
+- `## Counterexamples`. For every hard rule (limits, ordering, status codes, validation,
+  statistics), give at least one input or case that the rule must reject or that a wrong
+  implementation would get wrong. Define every statistic exactly: window, sample set, percentile
+  method, rounding. Never average percentiles; say how they are computed from the samples.
+- `## Contract fields`. List every new or renamed field, key, name, or route. For each, show the
+  search of the contract and config clones that proves it does not collide with an existing name
+  (for example `grep -rn '<name>' .repos/contract/src`).
+  If there is none, write "no new names".
+
 Then write one section per repository that must change, headed `## Repository: <target>` with
 the target name of that repository, which is also its directory name in the context directory.
-Each section names the files, behavior, checks, and completion evidence of that repository's
-task. Leave out every repository that needs no change. Order the sections so that a repository
+Each section starts with a `Files:` list of every file it creates or changes, then names the
+behavior, checks, and completion evidence of that repository's task. Leave out every repository that needs no change. Order the sections so that a repository
 comes after the repositories it needs.
 
 Create the artifact directory if needed. Write the spec to
