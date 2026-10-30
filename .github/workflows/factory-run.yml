@@ -89,32 +89,26 @@ jobs:
           # The runner record compares authors exactly, so the logins must match, case included.
           [[ "$login" == "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::The secret FACTORY_GITHUB_TOKEN belongs to $login, but the repository variable FACTORY_GITHUB_ACTOR is $FACTORY_GITHUB_ACTOR." >&2; exit 1; }
 
-      - name: Log in to the target hosts
-        env:
-          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
-          FACTORY_TARGET_LOGINS: ${{ secrets.FACTORY_TARGET_LOGINS }}
+      # Git gets the bot token only through GIT_ASKPASS, on the steps that run Factory. The helper
+      # prints the GH_TOKEN of the calling process and stores nothing, so no git config and no gh
+      # file holds a credential, and the checkout keeps none. The agent still inherits GH_TOKEN
+      # from the run step: see docs/factory.md, "Prompt injection and credentials".
+      - name: Write the Git askpass helper
         run: |
-          # Each line is "<host> <token>". Mask every token before any command can print one.
-          # A secret pasted with CRLF line ends keeps no CR in a field.
-          while read -r host token extra; do
-            host="${host%$'\r'}" token="${token%$'\r'}" extra="${extra%$'\r'}"
-            [[ -n "$host" ]] || continue
-            [[ -n "$token" && -z "$extra" ]] || { echo "::error::Each line of FACTORY_TARGET_LOGINS must be <host> <token>." >&2; exit 1; }
-            echo "::add-mask::$token"
-          done <<< "$FACTORY_TARGET_LOGINS"
-          while read -r host token extra; do
-            host="${host%$'\r'}" token="${token%$'\r'}"
-            [[ -n "$host" ]] || continue
-            gh auth login --hostname "$host" --with-token <<< "$token"
-          done <<< "$FACTORY_TARGET_LOGINS"
-          # Git reaches the repositories on github.com and on these hosts through gh.
-          GH_TOKEN="$FACTORY_GITHUB_TOKEN" gh auth setup-git
+          cat > "$RUNNER_TEMP/factory-git-askpass" <<'ASKPASS'
+          #!/bin/sh
+          case "$1" in
+            Username*) printf '%s\n' x-access-token ;;
+            Password*) printf '%s\n' "$GH_TOKEN" ;;
+          esac
+          ASKPASS
+          chmod 0755 "$RUNNER_TEMP/factory-git-askpass"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          token: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       # A job image with exactly the pinned Node and its npm needs no download.
       - name: Check the preinstalled Node
@@ -122,7 +116,7 @@ jobs:
         run: |
           if [[ "$(node --version 2>/dev/null)" == v24.19.0 ]] && command -v npm > /dev/null; then echo "preinstalled=true" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         if: ${{ steps.node.outputs.preinstalled != 'true' }}
         with:
           node-version: 24.19.0
@@ -138,14 +132,20 @@ jobs:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
         run: npm ci
 
-      # Exact versions: `latest` failed twice with a registry 404. Claude Code defaults to the version
-      # of the green runs on 2026-10-30. Codex defaults to `skip`: no model in the loop uses it. A
-      # repository variable overrides either default; `skip` leaves a CLI out.
+      # Claude Code defaults to the version of the green runs on 2026-10-30 when the variable is
+      # unset; the variable is `latest` by owner decision. Codex defaults to `skip`: no model
+      # in the loop uses it. A repository variable overrides either default with an exact
+      # MAJOR.MINOR.PATCH, `latest` or `skip`; anything else (a range, another tag) fails here.
       - name: Install agent CLIs
         env:
           FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION || 'skip' }}
           FACTORY_CLAUDE_VERSION: ${{ vars.FACTORY_CLAUDE_VERSION || '2.1.314' }}
         run: |
+          exact='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          for name in FACTORY_CODEX_VERSION FACTORY_CLAUDE_VERSION; do
+            value="${!name}"
+            [[ "$value" == skip || "$value" == latest || "$value" =~ $exact ]] || { echo "::error::$name must be an exact MAJOR.MINOR.PATCH version, latest or skip, not '$value'." >&2; exit 1; }
+          done
           if [ "$FACTORY_CODEX_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@openai/codex@$FACTORY_CODEX_VERSION"
           fi
@@ -175,6 +175,7 @@ jobs:
         if: ${{ inputs.admission == 'cancel' }}
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
         run: >-
           node ./node_modules/@paragondata/factory-cli/dist/bin.js resume
           --issue "$FACTORY_ISSUE" --cancel-interruption --apply
@@ -185,6 +186,7 @@ jobs:
         id: run
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
         run: >-
           node ./node_modules/@paragondata/factory-cli/dist/bin.js run

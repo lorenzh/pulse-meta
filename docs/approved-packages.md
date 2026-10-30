@@ -42,6 +42,10 @@ Never in a built image or site. Exact pin, same version in every repository that
 | --- | --- | --- |
 | Bun | `1.4.0` | Package manager, runtime and test runner of every pulse repository (`packageManager: bun@1.4.0`, `engines.bun: 1.4.0`, `bun.lock`). |
 | [oven-sh/setup-bun](https://github.com/oven-sh/setup-bun) | `0c5077e51419868618aeaa5fe8019c62421857d6` (v2.2.0) | Installs Bun in CI, in the reusable `check.yml` of pulse-config and in the `site` job of pulse-website. Pinned by commit SHA. |
+| [actions/checkout](https://github.com/actions/checkout) | `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` (v5.1.0) | Checkout in the pulse-meta workflows, always with `persist-credentials: false`. Pinned by commit SHA. |
+| [actions/setup-node](https://github.com/actions/setup-node) | `249970729cb0ef3589644e2896645e5dc5ba9c38` (v6.5.0) | Node for the Factory CLI in the pulse-meta workflows. Pinned by commit SHA. |
+| [actions/upload-pages-artifact](https://github.com/actions/upload-pages-artifact) | `7b1f4a764d45c48632c6b24a0339c27f5614fb0b` (v4.0.0) | Factory report build in pulse-meta. Pinned by commit SHA. |
+| [actions/deploy-pages](https://github.com/actions/deploy-pages) | `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` (v4.0.5) | Factory report publish in pulse-meta. Pinned by commit SHA. |
 | [oven/bun](https://hub.docker.com/r/oven/bun) | `1.4.0-alpine@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb` | Base image of the api, probe, status and notify Dockerfiles. Pinned by digest. |
 
 ## Built-ins before packages

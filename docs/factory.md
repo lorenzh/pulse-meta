@@ -24,7 +24,7 @@ The security checklist covers secrets and server texts in errors, logs and respo
 
 **Reviewer profile.** Both roles run on Claude (`.factory/config.yaml`, `models`): the worker on `claude-opus-5-5` at effort `medium`, the reviewer on `claude-opus-5-5` at effort `high`, with an adversarial prompt.
 
-**Agent CLI versions.** `factory-run.yml` installs Claude Code at an exact version and skips the Codex CLI, which no model in the loop uses. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` override the defaults with an exact version or `skip`.
+**Agent CLI versions.** `factory-run.yml` installs Claude Code at the version in `FACTORY_CLAUDE_VERSION` (`latest` by owner decision; `2.1.314` when unset) and skips the Codex CLI, which no model in the loop uses. The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` accept only an exact `MAJOR.MINOR.PATCH`, `latest` or `skip`. The step "Install agent CLIs" fails on anything else, such as a range or a `v` prefix.
 
 **Failure comments.** When a job of `factory.yml`, `factory-run.yml`, `factory-fan-out.yml` or `factory-unblock.yml` fails, its last step comments on the issue with the run link, the failed step, and the command that starts it again. This also covers failures before the Factory claim, which leave no Factory comment.
 
@@ -33,6 +33,14 @@ The security checklist covers secrets and server texts in errors, logs and respo
 **Security audit issues.** `factory-security-audit.yml` opens one issue every Monday, for one target repository in rotation by ISO week (or the one picked on a manual run). The issue is labelled `security` and `target/<repo>` and asks for an audit of `main` with hostile inputs. It gets no `factory/` label, so nothing starts it; the lead decides how it runs. An open audit issue of the same repository blocks a new one.
 
 **Workflow script tests.** `.github/workflow-tests/test.sh` runs the scripts of the sweeper and the audit workflow against fixtures with a stub `gh` (needs bash, jq, python3 with PyYAML).
+
+## Prompt injection and credentials
+
+**Remaining risk.** The issue title, body and every comment, from any author, reach the agent. The agent runs with `permissionMode: auto` and holds the bot token (`GH_TOKEN`, write access to every pulse repository) and the Claude OAuth token in its environment. A comment on an issue with a `factory/` label can therefore try to make the agent push code or leak a token. Filtering comments by author needs a Factory feature (paragondata/factory#292). Giving the token only to the Factory publish, not to the agent, needs another one (paragondata/factory#292 or the linked upstream issue). Both are open.
+
+**What the workflows do now.** No checkout keeps credentials (`persist-credentials: false`). No step runs `gh auth setup-git` or `gh auth login`. Git gets the token only through `GIT_ASKPASS` on the steps that run Factory, so no git config and no gh file stores one. Every action is pinned by commit SHA. The report loads d3 with Subresource Integrity.
+
+**Interim rule.** Only the repository owner applies `factory/` labels. Before a person starts or restarts a run (label, `factory start`, `admission=restart`), they read every comment that arrived since the last run, and they remove or answer any comment that asks the agent to do something outside the issue.
 
 Each repository's `AGENTS.md` holds its code conventions (test-driven development, end-to-end tests, lint). Its `docs/development.md` shows the commands.
 
