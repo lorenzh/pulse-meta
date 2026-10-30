@@ -115,11 +115,19 @@ workspaces:
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
+# Both roles run on Claude (no GPT key). The reviewer gets a higher effort than the worker, so it is
+# not a copy of the implementer's view; review.md frames it adversarially.
 models:
   worker:
     harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: medium
   reviewer:
     harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
 
 statuses:
   needs-input:

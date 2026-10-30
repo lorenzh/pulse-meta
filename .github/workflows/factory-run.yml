@@ -1,4 +1,6 @@
 name: Paragon Factory run
+# The sweeper (factory-sweep.yml) finds the active run of an issue by this title.
+run-name: "Factory run #${{ inputs.issue }} ${{ inputs.admission }}"
 
 on:
   workflow_dispatch:
@@ -31,6 +33,7 @@ jobs:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
       issues: write
       pull-requests: write
@@ -135,16 +138,16 @@ jobs:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.FACTORY_PACKAGES_TOKEN }}
         run: npm ci
 
+      # Exact versions: `latest` failed twice with a registry 404. The defaults are the versions of
+      # the green runs on 2026-10-30; a repository variable overrides one, and `skip` leaves it out.
       - name: Install agent CLIs
         env:
-          FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION }}
-          FACTORY_CLAUDE_VERSION: ${{ vars.FACTORY_CLAUDE_VERSION }}
+          FACTORY_CODEX_VERSION: ${{ vars.FACTORY_CODEX_VERSION || '0.166.0' }}
+          FACTORY_CLAUDE_VERSION: ${{ vars.FACTORY_CLAUDE_VERSION || '2.1.314' }}
         run: |
-          FACTORY_CODEX_VERSION="${FACTORY_CODEX_VERSION:-latest}"
           if [ "$FACTORY_CODEX_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@openai/codex@$FACTORY_CODEX_VERSION"
           fi
-          FACTORY_CLAUDE_VERSION="${FACTORY_CLAUDE_VERSION:-latest}"
           if [ "$FACTORY_CLAUDE_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@$FACTORY_CLAUDE_VERSION"
           fi
@@ -190,12 +193,35 @@ jobs:
           --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR" --chain-limit 10
           --continue-output "$GITHUB_OUTPUT"
 
+      # A failure before the claim leaves no Factory comment. Say so on the issue, with the failed
+      # step and the command that starts it again. Only the run URL and step name are printed.
+      - name: Report the failure on the issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue="$FACTORY_ISSUE"
+          [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "No issue to report on."; exit 0; }
+          step="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name][0] // "unknown"')" || step=unknown
+          body="Factory: job \`$GITHUB_JOB\` of [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) failed in step \`$step\`.
+
+          Check the log and fix the cause. Then start it again:
+
+          \`\`\`sh
+          gh workflow run factory-run.yml --repo $GITHUB_REPOSITORY -f issue=$issue -f admission=restart
+          \`\`\`
+
+          <!-- pulse-factory-alert -->"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" -f body="$body" > /dev/null
+
   continue:
     needs: run-state
     if: ${{ needs.run-state.outputs.continue == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
       actions: write
+      issues: write
     env:
       FACTORY_ISSUE: ${{ inputs.issue }}
       FACTORY_GENERATION: ${{ needs.run-state.outputs.generation }}
@@ -209,3 +235,25 @@ jobs:
           [[ "$FACTORY_GENERATION" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "Not a canonical generation: $FACTORY_GENERATION" >&2; exit 1; }
           gh workflow run factory-run.yml --repo "$GITHUB_REPOSITORY" --ref "$FACTORY_DEFAULT_BRANCH" \
             -f issue="$FACTORY_ISSUE" -f admission=continuation -f generation="$FACTORY_GENERATION"
+
+      # A failure before the claim leaves no Factory comment. Say so on the issue, with the failed
+      # step and the command that starts it again. Only the run URL and step name are printed.
+      - name: Report the failure on the issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue="$FACTORY_ISSUE"
+          [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "No issue to report on."; exit 0; }
+          step="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            --jq '[.jobs[].steps[]? | select(.conclusion == "failure") | .name][0] // "unknown"')" || step=unknown
+          body="Factory: job \`$GITHUB_JOB\` of [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) failed in step \`$step\`.
+
+          Check the log and fix the cause. Then start it again:
+
+          \`\`\`sh
+          gh workflow run factory-run.yml --repo $GITHUB_REPOSITORY -f issue=$issue -f admission=continuation -f generation=$FACTORY_GENERATION
+          \`\`\`
+
+          <!-- pulse-factory-alert -->"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" -f body="$body" > /dev/null
