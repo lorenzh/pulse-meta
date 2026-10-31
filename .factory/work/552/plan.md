@@ -209,10 +209,28 @@ Expected: none above noise. Keys from api `bench/budgets.json`:
   already in `bun.lock:311`).
 - `image_mb`: no change, because there is no new dependency.
 
-How to measure: the api implementer runs
-`bun bench/run.ts --a c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e --b <api branch sha> --rounds 3`.
-The probe implementer runs it with `--others-ref <probe branch sha>` on both sides of an api A = B
-run, against `--others-ref main`. Each attaches the table, and no gating row may fail.
+How to measure. Each item is required completion evidence of the named child:
+
+- **api child (bench A/B).** From the api branch, run
+  `bun bench/run.ts --a c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e --b <api branch sha> --others-ref main --rounds 3`.
+  `--others-ref main` pins every other repository to the same `main` on both sides
+  (api `bench/refs.ts:60-62`), so only the api differs. Attach the table. No gating row may show
+  `FAIL`.
+- **probe child (local `test_cpu_s` A/B).** The api bench cannot vary the probe alone: the
+  `--others-ref` value applies to all six non-api repositories at once (api `bench/refs.ts:60-62`),
+  so a probe branch SHA fails the checkout of the others. The probe's runtime metrics
+  (`startup_cpu_ms`, `load_cpu_s`, RSS) are therefore not A/B-measured in this child; they are
+  expected not to move (see above). The probe child measures what it can change alone, in its own
+  repository: make two worktrees, A at `50ec9ca` and B at the branch, run `bun install
+  --frozen-lockfile` in each, then alternate A, B five times with
+  `/usr/bin/time -f '%U %S' bun run test` and take the median of user + sys per side. Pass when
+  `B - A <= max(0.1 × A, 0.2 s)` and `B <= 2.3 s`. These thresholds are literals from api
+  `bench/README.md` ("Reading a failure": 10 %, floor `s` 0.2) and api `bench/budgets.json`
+  (`probe.test_cpu_s.budget` 2.3), which this change does not touch. Attach the ten values.
+- **contract child.** The same local procedure for `test_cpu_s` (A `ebcbbb6`, pass when
+  `B - A <= max(0.1 × A, 2 s)` and `B <= 9.0 s`, from `contract.test_cpu_s` in api
+  `bench/budgets.json`). `build_cpu_s` is not measured, because the compiler bytes do not change.
+- **status, notify children.** No measurement: the change is a pin bump and one test.
 
 ## Security impact
 
@@ -268,8 +286,8 @@ Release and operator order:
      which is a subset of what they accept.
    - Old status (`9fe5e80`) and old notify (`61f7bf8`) keep working. The new api serves integer
      latency and reasons of 1000 characters or fewer, which their looser validators accept.
-   - Rollback to the old api is safe. It accepts everything a new probe sends, except latency
-     over 86400000, which it already rejects today.
+   - Rollback of the api alone (status still old) is safe; see "Rollback" below for the order
+     once status is upgraded.
 4. **Release probe.**
    - Against an old api: integer latency and capped reasons pass the old intake. Checks that only
      the old contract accepts are skipped with a log line, which step 2 avoids.
@@ -284,6 +302,30 @@ Release and operator order:
      status goes after the api, and its child depends on api.
    - Notify only drops a check it cannot validate (notify `src/api.ts:174`) and has no ordering
      constraint beyond step 2.
+
+Rollback (reverse order of release):
+
+1. **Roll status back first**, to the release before this change (contract pin `9fe5e80`). Only
+   then roll the api back. Reason: the new api rounds every served latency in `toResult`, but the
+   old api serves the stored rows as they are. Rows written by old probes before the api upgrade
+   hold fractional `latency_ms` (no migration rewrites them), and the old api serves stored reasons
+   uncapped. A new status validates `/checks` with `validateChecksResponse` (status
+   `src/poller.ts:101`) and would reject that data, so the status page would stop refreshing. The
+   old status accepts both.
+2. **Then roll the api back.** Effects on the clients that still run:
+   - The old api restores `MAX_LATENCY_MS = 86_400_000` (api `src/server.ts:43`). A new probe's
+     result with `latencyMs` above 86400000 (only possible for a check with `timeoutMs` above
+     86400000) is answered `400`, exactly as an old probe's is today. All other new-probe results
+     pass the old intake: integer latency `<= 86400000` and reasons `<= 1000`.
+   - Rows the new api stored with `latency_ms` in `86400001..2147483647` stay in the database.
+     The old api serves them, and the old status and old notify accept them (their contract
+     pins `9fe5e80` and `61f7bf8` define `resultSchema.latencyMs: finite` with no upper bound,
+     contract `src/schema.ts:469` at both SHAs; the daily latency rollup schema has no upper bound
+     either, `src/schema.ts:640-643` at `ebcbbb6`).
+   - Checks files stay valid for the old api, because the new rules only reject more.
+3. **Probes and notify** can be rolled back in any order. An old probe ignores
+   `PULSE_PROBE_HEADER_HOSTS`. Notify does not validate nested results (notify `src/api.ts:174`
+   validates only the check), so fractional history does not affect it.
 
 ## Counterexamples
 
@@ -317,15 +359,28 @@ Release and operator order:
 - **Redirect with binding.** Policy binds `PULSE_HEADER_T` to `a.test` and `b.test`. A check on
   `http://a.test/` gets `302 Location: http://b.test/`. The result is `down`,
   `redirect to http://b.test not followed`, and `b.test` gets no request.
-- **Reason cap.**
-  - A 302 whose `Location` is `http://<2000 × "a">.test/` on a secret-bearing check gives
-    `redirect to http://<80 × "a">… not followed`, and the reason length is at most 1000.
-  - A `Location` with a 2000-character scheme `<2000 × "a">:x` gives
-    `redirect to <80 characters>… not followed`.
-  - A DNS check with 20 `expected` entries of 500 characters each gives a reason of length
-    exactly 1000 that ends in `…`.
-  - A TCP fake connect that throws an `Error` with a 5000-character message and no code gives a
-    reason of length 1000.
+- **Fragment quoting (80 characters plus `…`).** `quote()` cuts the whole interpolated value,
+  so for an origin the scheme counts against the 80 characters.
+  - A 302 whose `Location` is `http://<2000 × "a">.test/` on a secret-bearing check: the origin
+    is `http://<2000 × "a">.test`, its first 80 characters are `http://` plus 73 × `a`. The
+    reason is exactly `redirect to http://<73 × "a">… not followed` (length 12 + 80 + 1 + 13 =
+    106). A wrong implementation that quotes only the hostname gives 80 × `a` and fails this.
+  - A `Location` of `<2000 × "a">:x` (a 2000-character scheme): `target.protocol` is
+    `<2000 × "a">:`. The reason is exactly `redirect to <80 × "a">… not followed` (length 106).
+  - An RDAP redirect to `https://<2000 × "a">.test/` from a host that is not in the bootstrap
+    file: the reason is exactly `RDAP redirect to <80 × "a">… not followed` (`target.host`, no
+    scheme; probe `src/check-domain.ts:268` uses the `RdapError` message as the reason).
+  - A TXT DNS check with `expected` of 20 entries, each 500 × `a`, and an answer `["b"]`: the
+    reason is exactly `expected [<80 × "a">…], got [b]` (each joined list is quoted separately,
+    so the reason is short; it never reaches 1000 through this path).
+- **Final reason cap (1000 characters).** `capReason` covers fragments that are not quoted, such
+  as an error message.
+  - A TCP check whose injected `tcpConnect` rejects with `new Error("m".repeat(5000))` (no
+    `code`): `errorReason` returns the message unquoted (probe `src/attempt.ts:37`), and the
+    result reason is exactly `"m".repeat(999) + "…"` (length 1000). A wrong implementation that
+    applies only `quote()` gives length 81; one with no final cap gives 5000.
+  - `capReason` unit cases: a 1000-character input is returned unchanged; a 1001-character input
+    becomes its first 999 characters plus `…` (length 1000); `""` stays `""`.
   - Contract boundaries: `reason` of 1000 characters is valid, 1001 is rejected, `null` is valid,
     in both `validateResult` and `validatePostResultRequest`.
 - **URL userinfo.** These are rejected: `http://user@h.test/`, `http://:pw@h.test/`,
@@ -380,6 +435,22 @@ Existing local names that the new exports replace or must not shadow:
 - api `src/server.ts:41`, `export const MAX_REASON_LENGTH = 1000`: the api keeps its export and
   sets it from the contract constant.
 
+## Shared tool facts
+
+Shared config read at the pinned refs with
+`gh api "repos/lorenzh/pulse-config/contents/<path>?ref=<sha>" --jq .content | base64 -d`.
+`biome.json` and `.github/workflows/check.yml` are byte-identical at `51e95b0` (contract pin),
+at `dc69a126` (api, probe, status, notify pin) and in the config clone (`main`, `dc69a12`). Line
+numbers below hold for all three:
+
+- Shared `biome.json:10-17`: Biome checks `**` except `dist`, `node_modules`, `bun.lock`, `*.html`
+  and `test/fixtures`, with the git ignore file (`:3-7`). Formatter: 2 spaces, line width 100
+  (`:19-25`). Linter recommended rules plus `noNonNullAssertion` and `noExplicitAny` as errors
+  (`:41-52`), with `noNonNullAssertion` off in tests (`:53-64`).
+- Shared `check.yml`: Bun `1.4.0` (`:22-24`), `bun install --frozen-lockfile` (`:25-26`),
+  `bun run lint` (`:27-28`), `bun run typecheck` (`:29-30`), only with input `build: true`
+  `bun run build` and `git diff --exit-code -- dist` (`:31-36`), then `bun run test` (`:37-38`).
+
 ## Repository: contract
 
 Files:
@@ -390,6 +461,7 @@ Files:
 - `test/check-types.test.ts`
 - `test/admin.test.ts`
 - `test/types.fixture.ts`
+- `test/smoke.test.ts`
 - `docs/index.md`
 - `AGENTS.md`
 - `package.json`
@@ -405,13 +477,15 @@ Validators reject unprefixed env names, userinfo URLs, `warnDays > 3650`, non-in
 Tool facts:
 - `check` is `lint && build && typecheck && test` (`package.json:28`).
 - `build` and `typecheck` use `node_modules/typescript7/bin/tsc` (`package.json:22-23`).
-- Biome is `2.6.3` (`package.json:31`). `biome.json` extends `@lorenzh/pulse-config/biome.json`,
-  which is identical at the pin `51e95b0` and in the clone.
-- CI uses `pulse-config/.github/workflows/check.yml@51e95b0` with `build: true`
-  (`.github/workflows/ci.yml:17`). At that ref, `check.yml:25-38` runs
-  `bun install --frozen-lockfile`, lint, typecheck, build, `git diff --exit-code -- dist` and test
-  with Bun `1.4.0` (`:24`). The file is identical to the clone's `main`.
-- `bunfig.toml` `[test]` has line coverage 0.8.
+- `lint` is `biome check . && pulse-eslint .` (`package.json:25`). Biome is `2.6.3`
+  (`package.json:31`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`, pinned to
+  `51e95b0` (`package.json:32`); scope and rules in "Shared tool facts".
+- Bun `1.4.0` (`package.json:7`, `packageManager`).
+- CI uses `pulse-config/.github/workflows/check.yml@51e95b0` (`.github/workflows/ci.yml:17`) with
+  `build: true` (`ci.yml:19`), so it also builds and runs `git diff --exit-code -- dist`
+  (shared `check.yml:31-36`).
+- `test` is `bun test` (`package.json:24`). `bunfig.toml:1-3`: `[test]` with `coverage = true`
+  and `coverageThreshold = { lines = 0.8 }` (line 3).
 
 Work:
 - `src/schema.ts`:
@@ -438,6 +512,10 @@ Work:
     `KEY`, `types.fixture.ts:68`.
   - Admin create and replace inputs reject a userinfo URL and an unprefixed env name, through
     `validate-admin`.
+  - `test/smoke.test.ts:43-128` asserts the exact sorted list of package exports. Add
+    `"HEADER_ENV_PREFIX"`, `"MAX_REASON_LENGTH"` and `"MAX_WARN_DAYS"` to that literal list (and
+    nothing else), or CI fails. Add one assertion of their literal values: `"PULSE_HEADER_"`,
+    `1000`, `3650`.
 - Docs: `docs/index.md` lines 16, 102-104, 123, 178, 190-193, 219 (`SVC_TOKEN` becomes
   `PULSE_HEADER_SVC_TOKEN`), 368 and 383. State the new rules, the three constants, that the
   probe binds `PULSE_HEADER_*` variables to hosts (`PULSE_PROBE_HEADER_HOSTS`, see the probe
@@ -450,6 +528,8 @@ Completion evidence:
   `-1`, `1.5` in both schemas, reason 1001 in both, env `TOKEN`.
 - `git diff --exit-code -- dist` is clean after a fresh `bun run build`, so the dist matches an
   independent build.
+- The local `test_cpu_s` A/B of the Performance impact section: ten values, both medians and the
+  pass rule result.
 
 ## Repository: api
 
@@ -479,9 +559,12 @@ Tool facts:
 - `check` is `lint && typecheck && test` (`package.json:20`). `typecheck` uses `typescript7`
   `7.0.2` (`package.json:14`, `:27`).
 - The contract pin is at `package.json:31`.
-- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126` (`.github/workflows/ci.yml:18`),
-  which is identical to `51e95b0` and to the clone (steps as in the contract section, without
-  build).
+- `lint` is `biome check . && pulse-eslint .` (`package.json:16`), Biome `2.6.3`
+  (`package.json:23`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`, pinned to
+  `dc69a126` (`package.json:24`). Bun `1.4.0` (`package.json:35`).
+- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126`
+  (`.github/workflows/ci.yml:18`) without `build`, so shared `check.yml:31-36` are skipped.
+- `test` is `bun test` (`package.json:15`); `bunfig.toml:3` sets line coverage 0.8.
 - The `compose-e2e` job runs `bash scripts/compose-e2e.sh` (`ci.yml:66-73`). That script sets
   `COMPOSE_FILE=compose.yaml:compose.e2e.yaml` (`scripts/compose-e2e.sh:13`) and runs
   `docker compose up -d --build` (`:321`). `compose.yaml:28` builds `probe` from
@@ -531,6 +614,17 @@ Work:
     builds) give `400`.
   - `2147483647` gives `204`.
   - A reason of 1000 characters gives `204`, and one of 1001 gives `400`.
+  - **Probe reasons reach ingestion** (the api half of the issue's long-target criterion), in
+    `src/server.validation.test.ts`, with a real `createApiServer` on `127.0.0.1` and a fetch
+    `POST /results` as in the existing test "certDaysLeft out of range answers 400, a far expiry
+    is stored and served" (`:145`). Post an HTTP check result with `status: "down"`,
+    `statusCode: null`, `latencyMs: 0`, `attempts: 1` and each reason literal of the probe tests:
+    (a) `"redirect to http://" + "a".repeat(73) + "… not followed"` and (b)
+    `"m".repeat(999) + "…"`. Each answer is `204`. Then `service.listResults(<id>, 10)` and
+    `GET /checks/<id>/results` both show `status` `down`, `statusCode` null and the posted reason
+    unchanged (length 106 and 1000). A control post of `"m".repeat(1000) + "…"` (1001, what an
+    uncapped probe would send at minimum) answers `400` and stores nothing. These literals are
+    written out in the test; they are not imported from the probe.
   - A database seeded by direct `INSERT` with `latency_ms = 12.5` and a 1500-character reason:
     `GET /checks/<id>/results` and `GET /checks` serve `13` and a reason of length 1000. The
     response passes `validateResultsResponse` and `validateChecksResponse` of the new contract.
@@ -550,7 +644,8 @@ Completion evidence:
 - A list of the new tests that fail on `c00a375`: fractional intake rounding (`3.7` → `204`),
   latency `2147483647` → `204`, served `12.5` → `13`, TLS `warnDays: 3651` rejected, and userinfo
   rejected after the pin.
-- The bench table of the Performance impact section.
+- The bench table of the Performance impact section (api A/B with `--others-ref main`), with no
+  gating `FAIL`.
 
 ## Repository: probe
 
@@ -561,6 +656,7 @@ Files:
 - `src/header-hosts.ts` (new: parse and match the binding)
 - `src/header-hosts.test.ts` (new)
 - `src/reason.ts` (new: `quote`, `capReason`)
+- `src/reason.test.ts` (new: `capReason` unit cases)
 - `src/client.ts`
 - `src/check.ts`
 - `src/check-domain.ts`
@@ -587,9 +683,13 @@ Tool facts:
 - `check` is `lint && typecheck && test` (`package.json:19`). `typecheck` uses `typescript7`
   `7.0.2` (`package.json:14`, `:27`).
 - The contract pin is at `package.json:30`.
-- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126` (`.github/workflows/ci.yml:18`),
-  which is identical to the clone. `biome.json` extends the shared config, identical at
-  `dc69a126`.
+- `lint` is `biome check . && pulse-eslint .` (`package.json:16`), Biome `2.6.3`
+  (`package.json:22`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`, pinned to
+  `dc69a126` (`package.json:23`). Bun `1.4.0` (`package.json:8`).
+- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126`
+  (`.github/workflows/ci.yml:18`) without `build`.
+- `test` is `bun test` (`package.json:15`); `bunfig.toml:3` sets line coverage 0.8, so the new
+  `src/header-hosts.ts` and `src/reason.ts` need tests.
 - Settings errors are `StartupError` from `loadSettings` (`src/settings.ts:58-83`) and stop the
   start with exit code 2 (`docs/configuration.md:56`).
 
@@ -630,7 +730,7 @@ Work:
     Integer latency. The 1000-character reason cap.
 - Also in the docs: `docs/operation.md` and `docs/troubleshooting.md` for the denial reason and
   the startup errors.
-- Tests (literals; fakes for `fetch`; no real network). Each of the first two fails on `50ec9ca`.
+- Tests (literals; fakes for `fetch`; no real network). Tests 1, 2 and 3 each fail on `50ec9ca`.
   1. **Unbound header not sent.** Policy `{"PULSE_HEADER_T":["a.test"]}`, env `PULSE_HEADER_T =
      "Bearer sentinel-552"`, and a fake API serving one check on `http://b.test/x` with
      `Authorization: {env: PULSE_HEADER_T}`.
@@ -644,30 +744,40 @@ Work:
      - Repeat with no key in the policy, and with `[]`.
   2. **Long target, capped reason.** A secret-bearing check gets 302 to
      `http://<2000 × "a">.test/`. Then a 2000-character scheme.
-     - The reasons equal `redirect to http://<80 × "a">… not followed` and
-       `redirect to <80 × "a">… not followed`.
+     - The reasons equal exactly `redirect to http://<73 × "a">… not followed` and
+       `redirect to <80 × "a">… not followed` (literals from the Counterexamples).
      - `validatePostResultRequest(result).ok` is `true` with the new contract.
-     - `reason.length <= 1000`. 1000 is the api's literal limit at `src/server.ts:41`.
-     - The RDAP redirect host case, the DNS 20 × 500 case (length exactly 1000) and the TCP
-       5000-character error case come from the Counterexamples.
-  3. Latency readings `100.25` → `101.75` give `latencyMs` `2`, and the objective edge cases
+     - The RDAP redirect host case and the DNS 20 × 500 case give the literal reasons of the
+       Counterexamples.
+  3. **Final 1000 cap.** The TCP case of the Counterexamples: reason exactly
+     `"m".repeat(999) + "…"`, length 1000. Plus the three `capReason` unit cases. This test fails
+     on `50ec9ca` (reason length 5000).
+  4. **Posting.** The result of test 2 (long origin) and of test 3 are each posted through the
+     probe's real result poster (`postResult`, probe `src/client.ts:305`, called from
+     `src/main.ts:161`) to a local
+     `Bun.serve` stand-in on `127.0.0.1` that records the request body and answers `204`. Assert
+     that the recorded JSON has `status` `down`, `statusCode` null and the literal reason of
+     test 2 or 3. The api side of the same posts is the api regression "probe reasons reach
+     ingestion" (api section), which uses the same literals against the real api code.
+  5. Latency readings `100.25` → `101.75` give `latencyMs` `2`, and the objective edge cases
      `500.4` and `500.5`.
-  4. The setting's valid and invalid cases of the Counterexamples, through `loadSettings`. Each
+  6. The setting's valid and invalid cases of the Counterexamples, through `loadSettings`. Each
      error is a `StartupError` with the literal message, and no message contains the raw JSON.
-  5. Kept as guards: same-origin redirects with an allowed header still work. Cross-origin and
+  7. Kept as guards: same-origin redirects with an allowed header still work. Cross-origin and
      downgrade redirects stay blocked even when both hosts are bound. Checks with only literal
      headers or none behave as before. Unset or invalid variables still skip with today's log
      lines.
 
 Completion evidence:
 - `bun run check` is green, and CI is green.
-- A list of the tests that fail on `50ec9ca` (tests 1-3).
+- A list of the tests that fail on `50ec9ca` (tests 1, 2, 3 and 5).
 - `bun start` with `PULSE_PROBE_HEADER_HOSTS='{'` exits 2 with the literal message. Report the
   command and output.
 - Api `compose-e2e` run locally from api `main` (with the merged fixture). Edit `compose.yaml:28`
   only in a local, uncommitted copy so that it builds `pulse-probe.git#<probe branch sha>`. The
   run is green with `e2e-post` `up`. Record the api, probe and status SHAs.
-- The bench table, if run.
+- The local `test_cpu_s` A/B of the Performance impact section: ten values, both medians and the
+  pass rule result.
 
 ## Repository: status
 
@@ -683,9 +793,13 @@ Tool facts:
 - `check` is `lint && typecheck && test` (`package.json:19`). `typecheck` runs `typescript7` on
   `.` and on `e2e` (`package.json:13`, pin `:29`).
 - The contract pin is at `package.json:34` (`9fe5e80`).
-- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126` (`.github/workflows/ci.yml:18`),
-  which is identical to the clone. CI also runs `bun run check:a11y` (`ci.yml:66`,
-  `package.json:18`).
+- `lint` is `biome check . && pulse-eslint .` (`package.json:15`), Biome `2.6.3`
+  (`package.json:23`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`, pinned to
+  `dc69a126` (`package.json:24`). Bun `1.4.0` (`package.json:38`).
+- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126`
+  (`.github/workflows/ci.yml:18`) without `build`. CI also runs `bun run check:a11y`
+  (`ci.yml:66`, script at `package.json:18`).
+- `test` is `bun test` (`package.json:14`); `bunfig.toml:3` sets line coverage 0.8.
 
 Work:
 - Bump `@lorenzh/pulse-contract` to the merged contract SHA and refresh `bun.lock`.
@@ -713,8 +827,12 @@ Tool facts:
 - `check` is `lint && typecheck && test` (`package.json:17`). `typecheck` uses `typescript7`
   `7.0.2` (`package.json:12`, `:27`).
 - The contract pin is at `package.json:30` (`61f7bf8`).
-- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126` (`.github/workflows/ci.yml:18`),
-  which is identical to the clone.
+- `lint` is `biome check . && pulse-eslint .` (`package.json:14`), Biome `2.6.3`
+  (`package.json:21`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`, pinned to
+  `dc69a126` (`package.json:22`). Bun `1.4.0` (`package.json:35`).
+- CI `check` uses `pulse-config/.github/workflows/check.yml@dc69a126`
+  (`.github/workflows/ci.yml:18`) without `build`.
+- `test` is `bun test` (`package.json:13`); `bunfig.toml:3` sets line coverage 0.8.
 
 Work:
 - Bump `@lorenzh/pulse-contract` to the merged contract SHA and refresh `bun.lock`.
@@ -733,7 +851,7 @@ These are the issue's acceptance criteria and where their expected values come f
 | Criterion | Test | Expected value from |
 | --- | --- | --- |
 | An unbound header is not sent to another host | probe test 1 | Literal: 0 requests, the reason text above, no `sentinel-552` |
-| A 2000-character target posts a capped reason that the api accepts | probe test 2, and the api test that 1000 characters give `204` | Literal 1000 (api `src/server.ts:41`, independent of the probe) and the quoted reason literal |
+| A 2000-character target posts a capped reason that the api accepts | probe tests 2-4 (exact reason literals, the posted body via `postResult`), and the api regression "probe reasons reach ingestion" (same literals: `204`, stored `down` with the reason, `400` for 1001) | Literals written in the spec: the two reason strings, lengths 106 and 1000, statuses `204` and `400`; the api limit 1000 is api `src/server.ts:41`, independent of the probe |
 | A URL with userinfo is rejected | contract userinfo tests, api `422`, notify drop | Literal message, literal `422` |
 | Out-of-range `warnDays` and negative `latencyMs` are rejected | contract tests (`3651`, `-1`), api TLS `3651` | Literal messages |
 | CI green in every touched repo; `compose-e2e` green | CI of contract, api, probe, status and notify; api `compose-e2e` after the api merge and again after the probe merge (re-run on `main`) | CI conclusions; `e2e-post` `up` in the script |
