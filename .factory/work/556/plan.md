@@ -42,16 +42,17 @@ The five service images (api, probe, status, notify, console) read configuration
 
 ### Image test (each service, `scripts/image-dotenv.sh <image>`)
 
-A bash script (`set -euo pipefail`) that a new step `Image ignores dotenv files` runs in the existing `docker` job on both matrix legs, right after the image build: `run: bash scripts/image-dotenv.sh pulse-<svc>:local`. It creates its files in one `mktemp -d` directory (mode `0755`, files `0644`, so the image user `bun` can read them), gives each container a unique name, and removes containers and the directory in an `EXIT` trap, also on failure. It uses no public network endpoint and no secret.
+A bash script that a new step `Image ignores dotenv files` runs in the existing `docker` job on both matrix legs, right after the image build: `run: bash scripts/image-dotenv.sh pulse-<svc>:local`. It creates its files in one `mktemp -d` directory (mode `0755`, files `0644`, so the image user `bun` can read them), gives each container a unique name, and removes containers and the directory in an `EXIT` trap, also on failure. It uses no public network endpoint and no secret.
 
-1. **Static image config.** `docker image inspect` of the image: `.Config.Cmd` equals the literal of "Images" above; the first four entries of `.Config.Healthcheck.Test` equal `["CMD","bun","--no-env-file","-e"]` (compared with `jq -e`).
-2. **Environment control.** `timeout 30 docker run --rm <fixture> -e PULSE_LOG_LEVEL=dotenv-marker-556 <image>` exits `2` and its stderr contains `PULSE_LOG_LEVEL`. This proves that the marker is observable when the process does read it.
-3. **Dotenv files are ignored.** For each name in `.env`, `.env.production`, `.env.local`: write the fixture dotenv file (line `PULSE_LOG_LEVEL=dotenv-marker-556`; api and status add `PORT=1`, console adds `PULSE_CONSOLE_PORT=1`, so that a healthcheck that loaded the file would fetch a wrong port), start `docker run -d --name <unique> <fixture> -v "<dir>/dotenv:/app/<name>:ro" <image>` with the image's default entrypoint and command (no `--entrypoint`, no command, no `--env-file`, no `-e PULSE_LOG_LEVEL`, no `-e PORT`/`PULSE_CONSOLE_PORT`, no override of `NODE_ENV`, nothing mounted over `/app`). Then:
-   - `docker exec <c> sh -c 'test -r /app/<name> && test -s /app/<name>'` succeeds (the file is there and readable by the image user);
-   - within 30 s (polling every 0.5 s) the container is still running and the image's own healthcheck command, read from `.Config.Healthcheck.Test` (entries after `"CMD"`) and run with `docker exec <c> ...`, exits `0`. If the container stops, the script prints `docker logs` and fails;
-   - `docker logs <c>` does not contain `dotenv-marker-556`;
-   - `docker stop -t 10 <c>` and `.State.ExitCode` is `0`.
-4. Exit `0` with one `ok:` line per case; any failed assertion exits non-zero with a message that names the case.
+**Aggregation, not first-failure exit.** The script runs all five cases below, in this fixed order, whatever the result of an earlier case: `control`, `.env`, `.env.production`, `.env.local`, `image-config`. The behavioral cases come first, so a baseline image shows the dotenv failure before the static check is reached. Each case runs in its own child process, `bash "$0" --case <case> <image>`, which uses `set -euo pipefail`. The parent records the child's exit code and prints one line per case: `ok: <case>`, or `FAIL: <case>: <reason>`. It exits `0` only when all five are `ok`, else `1`. The parent must not run a case as a function inside `if`, `||` or `&&`: bash ignores `set -e` in that context, so a failing command inside the case would not stop it. A failing dotenv case prints the container's exit code (`.State.ExitCode`) and the last 20 lines of `docker logs` before its `FAIL:` line, so the red run shows why it failed.
+
+1. **`control` (environment control).** `timeout 30 docker run --rm <fixture> -e PULSE_LOG_LEVEL=dotenv-marker-556 <image>` exits `2`, and its stderr contains `PULSE_LOG_LEVEL`. This proves that the marker is visible when the process does read it. It passes on the baseline image and on the fixed image.
+2. **`.env`, `.env.production`, `.env.local` (dotenv files are ignored).** Write the fixture dotenv file: the line `PULSE_LOG_LEVEL=dotenv-marker-556`, plus `PORT=1` for api and status, or `PULSE_CONSOLE_PORT=1` for console, so that a healthcheck that loaded the file would fetch the wrong port. Then start `docker run -d --name <unique> <fixture> -v "<dir>/dotenv:/app/<name>:ro" <image>` with the image's default entrypoint and command. The run uses no `--entrypoint`, no command, no `--env-file`, no `-e PULSE_LOG_LEVEL`, no `-e PORT`/`PULSE_CONSOLE_PORT`, no override of `NODE_ENV`, and mounts nothing over `/app`. Then, in this order:
+   - Within 30 s, polling every 0.5 s, the container is still running and the image's own healthcheck command exits `0`. The script reads that command from `.Config.Healthcheck.Test` (the entries after `"CMD"`) and runs it with `docker exec <c> ...`. If the container stops first, the case fails with `container exited <code>`. This is the baseline outcome: exit `2`, with `PULSE_LOG_LEVEL: must be one of debug, info, warn, error` in the logs.
+   - `docker exec <c> sh -c 'test -r /app/<name> && test -s /app/<name>'` succeeds: the file is there and the image user can read it.
+   - `docker logs <c>` does not contain `dotenv-marker-556`.
+   - After `docker stop -t 10 <c>`, `.State.ExitCode` is `0`.
+3. **`image-config` (static image config).** On `docker image inspect` of the image, `.Config.Cmd` equals the literal of "Images" above, and the first four entries of `.Config.Healthcheck.Test` equal `["CMD","bun","--no-env-file","-e"]` (compared with `jq -e`). This case alone cannot make the red run: acceptance 1 also requires the `.env` case to fail.
 
 Fixture (`<fixture>`) per service, all through `-e` and read-only mounts outside `/app`:
 
@@ -63,7 +64,7 @@ Fixture (`<fixture>`) per service, all through `-e` and read-only mounts outside
 | notify | `-v <dir>/config:/config:ro -e PULSE_NOTIFY_CONFIG=/config/notify.json -e PULSE_API_URL=http://127.0.0.1:9 -e PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS=1000`; `notify.json` = `{"channels":[{"id":"log","type":"file","path":"/data/incidents.jsonl"}]}` (state under the image default `/data`). |
 | console | `-e PULSE_API_URL=http://api.invalid:3000` (as the existing smoke step). |
 
-If a service's control (step 2) does not exit `2` with `PULSE_LOG_LEVEL` in stderr, or a fixture does not reach a passing healthcheck on the fixed image, the implementer requests a hold with the observed output instead of changing the marker or the assertions.
+If a service's `control` case does not exit `2` with `PULSE_LOG_LEVEL` in stderr, or a fixture does not reach a passing healthcheck on the fixed image, the implementer requests a hold with the observed output instead of changing the marker or the assertions.
 
 ### Workflow check `pulse-workflows` (config)
 
@@ -125,13 +126,30 @@ Each service states, in its Docker section, that the image starts Bun with `--no
 
 ## Performance impact
 
-- `--no-env-file` removes Bun's lookup of up to six dotenv paths at process start. Expected effect on `startup_cpu_ms` and `startup_wall_ms` (api, probe, status, notify): below 1 ms, inside noise; direction down or none. The healthcheck process runs every 10 s (api) or 30 s, so `idle_rss_mib`, `peak_rss_mib` and `load_cpu_s` do not move.
-- `image_mb`: unchanged; only image config metadata (`CMD`, `HEALTHCHECK`) changes, no layer content.
-- p95 keys (`p95_get_checks_ms`, `p95_post_results_ms`, `p95_get_latency_ms`, `p95_get_check_latency_ms`), `rps`, `cold_*`: none expected, request handling does not change.
-- `test_cpu_s`: none expected for the services (the check runs in `lint`, not `test`; notify adds a few small tests, well under 0.1 s). config `test_cpu_s` (budget 29.8 s, floor 3) grows by the new tests, expected under 1 s; the bin tests spawn Bun a handful of times.
-- `build_cpu_s`: not measured for these repositories; none.
-- CI: each `docker` leg gains about 30 to 60 s (three container starts plus the control run); `lint` gains under 1 s.
-- Measurement: the implementer of api runs `bun bench/run.ts --a c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e --b <PR head>` once locally (it builds the images through `bench/compose.bench.yaml`) and reports `startup_cpu_ms`, `startup_wall_ms` and `image_mb` for the four benched services; probe, status and notify cite that run. A difference beyond the run-to-run noise documented in `bench/README.md` is reported in the PR, not tuned away.
+Keys of `api/bench/budgets.json` that the change can move, per benched service (api, probe, status, notify; console has no budget entry):
+
+- **`startup_cpu_ms`, `startup_wall_ms`.** `--no-env-file` removes Bun's lookup of up to six dotenv paths when PID 1 starts. Expected direction: down or unchanged. Expected size: under 1 ms. That is below the 10 ms CPU-time resolution (`api/bench/README.md:30`), so the expected median difference is 0 ± 10 ms CPU, with wall time inside noise.
+- **`image_mb`** (`docker image inspect --format '{{.Size}}'` / 1e6, `api/bench/stack.ts:75-84`). The value changes slightly; the layers do not stay identical. The final stage copies `package.json` (`COPY package.json ./`: api `Dockerfile:13`, probe `:13`, status `:11`, notify `:15`, console `:11`) and the production `node_modules` (`bun install --production`, `Dockerfile:5` in each). `bun.lock` is not copied into the final stage.
+  - api, probe, status, console: `package.json` changes in two places. The config pin keeps its length (40 hex characters replace 40). The `lint` script grows by ` && pulse-workflows` (19 bytes). `@lorenzh/pulse-config` is a devDependency in all five (`package.json` `devDependencies` at api `:22`, probe `:21`, status `:21`, notify `:20`, console `:20`), so the production `node_modules` does not change. Expected `image_mb` difference: +19 bytes, which is +0.00002 MB and shows as 0.00 at the bench's two-decimal display.
+  - notify: the same +19 bytes, plus the runtime dependency `@lorenzh/pulse-contract` moving from `61f7bf8` to `ebcbbb6`. Between the two commits, `dist/schema.js` grows from 30 744 to 31 089 bytes (+345, measured with `git show <sha>:dist/schema.js | wc -c` in the contract clone). The rest of the 5-file diff is source, tests and docs: 71 lines added, 6 removed (`git diff --stat 61f7bf8 ebcbbb6`). Expected `image_mb` difference: +0.0004 to +0.005 MB. The upper bound applies if Bun keeps the whole git checkout of the dependency rather than only `files: ["dist"]` (contract `package.json:18-20`).
+  - If any service differs by more than +0.01 MB (10 000 bytes), the implementer reports the difference and its cause in the PR.
+- **None expected:** `idle_rss_mib`, `peak_rss_mib`, `load_cpu_s`. These keys read PID 1 only (`api/bench/README.md:30`), and the healthcheck runs as a separate exec process every 10 s (api) or 30 s, so its flag does not count toward them. The p95 keys (`p95_get_checks_ms`, `p95_post_results_ms`, `p95_get_latency_ms`, `p95_get_check_latency_ms`), `rps` and `cold_*` are also unaffected, because request handling does not change.
+- **`test_cpu_s`.** None expected for the services. The check runs in `lint`, not `test`. notify adds one small test, well under 0.1 s. config `test_cpu_s` (budget 29.8 s, floor 3) grows by the new tests. Expected: under 1 s, because the bin tests spawn Bun a handful of times.
+- **`build_cpu_s`.** Not measured for these repositories; none.
+- **CI time (not a bench key).** Each `docker` leg gains about 30 to 60 s: three container starts plus the control run. `lint` gains under 1 s.
+
+**Measurement: a local A/B per service, without `bench/run.ts`.** `bench/run.ts` takes refs only for api. For the other repositories, `bench/refs.ts:55-66` uses the newest tag on side A and `main` on side B. That cannot isolate a probe, status or notify PR while the five children run in parallel. Each service implementer therefore measures its own two revisions on one machine:
+
+1. Build two images from the service repository. A is built from the inspected baseline commit (api `c00a375`, probe `50ec9ca`, status `2e3067d`, notify `c090a07`, console `11a3f5f`). B is built from the PR head. Use `docker build -t pulse-<svc>:a <worktree at baseline>` and `docker build -t pulse-<svc>:b .`. Only that repository's revision differs; every other input comes from the pins in that revision's own `package.json`/`bun.lock`.
+2. **`image_mb`:** `docker image inspect --format '{{.Size}}'` of `:a` and `:b`. Report both values in bytes and their difference. Compare the difference with the expectation above.
+3. **`startup_cpu_ms` and `startup_wall_ms`** (api, probe, status, notify; console optional):
+   - Run 5 rounds alternating A, B, A, B (10 starts). Each start uses the service's image-test fixture (table in "Image test") without any dotenv file, and publishes the health port with `-p 127.0.0.1::<port>`. The ports are api 3000, probe 9100, status 8080, notify 9100, as `api/bench/stack.ts:15-20`.
+   - Poll every 50 ms (`api/bench/stack.ts:13`) from the return of `docker run -d`. api polls `/readyz`, as the bench does. probe, status and notify poll `/healthz`, because their fixtures have no reachable API and probe's `/readyz` waits for a check fetch (`probe/docs/operation.md:55`).
+   - Wall time ends at the first `200`. At that moment, read `docker exec <c> cat /proc/1/stat`: CPU ms = (field 14 utime + field 15 stime) × 10, the bench's method (`api/bench/README.md:30`).
+   - Then `docker rm -f` the container.
+   - The result per side is the median of its 5 values, the bench's statistic (`api/bench/README.md:57`). Report both medians and their difference. Expected: a CPU difference within ±10 ms (one tick), and a wall difference inside noise.
+   - A difference of more than 20 ms CPU in either direction is reported in the PR with a second 5-round run, not tuned away.
+4. These numbers are a local proxy for the bench keys of the same names. For probe, status and notify they measure until liveness, not readiness. The PR states this. The nightly `bench.yml` after the merges (acceptance 7) gives the full-stack numbers.
 
 ## Security impact
 
@@ -155,12 +173,15 @@ Checklist items that apply:
 ## Counterexamples
 
 Image (each must make `scripts/image-dotenv.sh` fail):
-- Current main Dockerfile (`CMD ["bun", "src/main.ts"]`): the `.env` case exits `2` with `PULSE_LOG_LEVEL: must be one of debug, info, warn, error` (observed on console during planning), and step 1 fails.
-- `CMD` fixed but `HEALTHCHECK` without `--no-env-file`: step 1 fails; for api, status and console the healthcheck `docker exec` also fails, because it would read `PORT=1`/`PULSE_CONSOLE_PORT=1` from `/app/.env`.
-- `ENTRYPOINT ["bun","--no-env-file"]` with `CMD ["src/main.ts"]`: step 1 fails (the literal `Cmd` differs); the spec fixes one form.
-- A test that passes the marker with `-e` or `--env-file`, or runs `--entrypoint bun ... --no-env-file`, would pass on main; the script forbids those in step 3.
-- A test that only greps the logs for the marker would pass on main when the service crashes before logging; step 3 requires a passing healthcheck and a clean stop.
-- A fixture file that the user `bun` cannot read (mode `0600` owned by the runner user): Bun would skip it on main too, so the red case vanishes; the `test -r` assertion catches it.
+- Current main Dockerfile (`CMD ["bun", "src/main.ts"]`): output `ok: control`, then `FAIL: .env: container exited 2`, `FAIL: .env.production: container exited 2`, `FAIL: .env.local: container exited 2`, each after logs containing `PULSE_LOG_LEVEL: must be one of debug, info, warn, error` (observed on console during planning), then `FAIL: image-config`. Exit `1`.
+- A script that runs `image-config` first and exits on its failure: on main it never reaches the `.env` case, so the red run does not prove that the file was loaded. The fixed order and aggregation rule this out.
+- A script that runs each case as a function in `if case_env; then …`: bash suspends `set -e` there, so a failed `docker exec` inside the case is ignored and the case can print `ok` on main. The child-process rule rules this out.
+- `CMD` fixed but `HEALTHCHECK` without `--no-env-file`: `image-config` fails. For api, status and console the dotenv cases also fail, because their healthcheck `docker exec` would read `PORT=1`/`PULSE_CONSOLE_PORT=1` from the file.
+- `ENTRYPOINT ["bun","--no-env-file"]` with `CMD ["src/main.ts"]`: `image-config` fails (the literal `Cmd` differs); the spec fixes one form.
+- A test that passes the marker with `-e` or `--env-file`, or runs `--entrypoint bun ... --no-env-file`, would pass on main; the dotenv cases forbid those.
+- A test that only greps the logs for the marker would pass on main when the service crashes before logging; the dotenv cases require a passing healthcheck and a clean stop.
+- A fixture file that the user `bun` cannot read (mode `0600` owned by the runner user): Bun would skip it on main too, so the red case vanishes; the `test -r` assertion catches it on the fixed image.
+- Performance A/B: averaging the 5 per-round values, or taking the median of a mix of A and B rounds, is wrong. The result per side is the median of that side's 5 values, and the reported number is the difference of the two medians.
 
 `pulse-workflows` (each input must give exit `1`; the compliant baseline gives `0`):
 - `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` with no `with` (api `ci.yml:25` today).
@@ -185,7 +206,7 @@ notify contract:
 - An HTTP check with `url` `file:///tmp/dotenv-marker-556` or `ftp://example.invalid/check`, otherwise valid: `fetchChecks` must drop it and call `onInvalidCheck` (the old pin `61f7bf8` accepts it, so this test fails on main).
 - `https://example.invalid/` and `http://example.invalid/` stay accepted. TLS, TCP, DNS, domain and heartbeat checks (no `url`) stay accepted.
 
-Statistics: none. The spec defines no percentile, average or window.
+Statistics: only the local performance A/B. Its sample set is 5 starts per side, alternating A and B. A value is the CPU ms of PID 1 at the first `200`, or the wall ms from the return of `docker run -d` to that `200`. The statistic is the median of the 5 values of one side, with no interpolation needed for an odd count. CPU is in 10 ms ticks; wall time is rounded to whole ms. No percentile and no average.
 
 ## Contract fields
 
@@ -203,7 +224,13 @@ No wire field, route, env var, contract type or service setting is added or rena
 
 Done when all six child PRs are merged and:
 
-1. **Red/green image test per service.** Each service PR quotes `bash scripts/image-dotenv.sh <image>` run twice locally: against an image built from the service's inspected baseline Dockerfile (api `c00a375`, probe `50ec9ca`, status `2e3067d`, notify `c090a07`, console `11a3f5f`) it exits non-zero, with the `.env` case reporting exit `2` and `PULSE_LOG_LEVEL` in the container output; against the PR image it exits `0` with the `ok:` lines for the control and for `.env`, `.env.production`, `.env.local`. In CI, the step `Image ignores dotenv files` is green on both `ubuntu-24.04` and `ubuntu-24.04-arm`.
+1. **Red/green image test per service.** Each service PR quotes `bash scripts/image-dotenv.sh <image>` (the PR's script) run twice locally. The first run is against an image built from the service's inspected baseline commit (api `c00a375`, probe `50ec9ca`, status `2e3067d`, notify `c090a07`, console `11a3f5f`). It exits `1` and shows these literal results:
+   - `ok: control`;
+   - `FAIL: .env: container exited 2`, preceded by logs that contain `PULSE_LOG_LEVEL`. This line is mandatory: a red run whose only failure is `image-config` does not count;
+   - the same for `.env.production` and `.env.local`;
+   - `FAIL: image-config`.
+
+   The second run is against the PR image. It exits `0` with five `ok:` lines (`control`, `.env`, `.env.production`, `.env.local`, `image-config`). In CI, the step `Image ignores dotenv files` is green on both `ubuntu-24.04` and `ubuntu-24.04-arm`.
 2. **Image config.** On the PR image, `docker image inspect --format '{{json .Config.Cmd}}'` prints `["bun","--no-env-file","src/main.ts"]` (notify `["bun","--no-env-file","src/index.ts"]`), and `.Config.Healthcheck.Test[0:4]` is `["CMD","bun","--no-env-file","-e"]`. Expected values are the literals here.
 3. **Workflow check is red on the defects.** In config, `src/workflow-policy.test.ts` covers every counterexample above with an inline fixture and a literal expected violation count. In the api PR, before the four `persist-credentials: false` lines are added, `pulse-workflows` (with the new config installed) exits `1` and lists exactly 4 checkout violations (`ci.yml` jobs `bench-selftest`, `docker`, `compose-e2e`; `bench.yml` job `bench`) and none for `upload-artifact`; after the fix it exits `0`. Each of probe, status, notify and console quotes one temporary mutation (remove `persist-credentials: false` from one checkout) that makes `bun run lint` fail with 1 violation, reverted before commit.
 4. **Policy matches the approval source.** The config test asserts the four `uses`/`sha` pairs of `actions-policy.json` against literals written in the test, copied from `docs/approved-packages.md` (rows `actions/checkout` v7.0.1, `oven-sh/setup-bun`, `actions/attest`, `actions/upload-artifact`); and a test changes one character of one SHA in a copy of the policy and expects exit `1` for a compliant workflow.
@@ -211,6 +238,7 @@ Done when all six child PRs are merged and:
 6. **Release unchanged.** `git -C pulse-config diff --exit-code dc69a126bebbe50d8a7339ea1325d51b2ea43d7d <merged config SHA> -- .github/workflows/release.yml .github/workflows/check.yml` exits `0`. In each service PR, `git diff <baseline>..HEAD -- .github/workflows/ci.yml` shows, inside `jobs.release`, only the changed SHA on the `uses:` line.
 7. **CI green** on the merged main of config, api, probe, status, notify and console: `check`, both `docker` legs, api `bench-selftest` and `compose-e2e`, status `a11y`. The next nightly (or a `workflow_dispatch`) run of api `bench.yml` after the merge is green and uploads `bench-out`.
 8. **Docs.** `grep -rn 'bun src/main.ts\|bun src/index.ts' docs README.md` in each service finds no sentence that names the image command without `--no-env-file`; probe `docs/install.md` no longer has the `.env` files list (old lines 23-32).
+9. **Performance A/B.** Each service PR quotes the local A/B of "Performance impact": `.Size` of `:a` and `:b` in bytes and their difference; for api, probe, status and notify, also the 5 values and the median per side for CPU and wall time. The expected values are the literals in "Performance impact": a size difference up to +10 000 bytes, and a CPU median difference within ±10 ms. They come from the measured contract delta and Bun's tick size, not from the images under test. A value outside them is reported and explained in the PR; it does not block the merge alone.
 
 ## Repository: config
 
@@ -273,9 +301,9 @@ Behavior:
 
 Tool facts (verified): `package.json:16` lint, `:15` test `bun test`, `:35` `packageManager: bun@1.4.0`, `:24` config pin `dc69a126…`; `biome.json:2` extends `@lorenzh/pulse-config/biome.json` (the pinned `biome.json` equals the clone, checked with `gh api …/contents/biome.json?ref=dc69a126…`); `bunfig.toml` `[test]` coverage 0.8 lines; `ci.yml:18` check uses `check.yml@dc69a126…`, whose Lint step runs `bun run lint` (`config/.github/workflows/check.yml:27-28`, fetched at the pin with `gh api …/contents/.github/workflows/check.yml?ref=dc69a126…`: identical to the clone); `ci.yml:54` already uses `jq` on the runner.
 
-Checks: acceptance 1, 2, 3 (the 4-violation red run), 6, 7 (including the next `bench.yml` run), and the local bench A/B of "Performance impact".
+Checks: acceptance 1, 2, 3 (the 4-violation red run), 6, 7 (including the next `bench.yml` run), and 9 (local A/B).
 
-Completion evidence: CI green on both `docker` legs, `bench-selftest`, `compose-e2e`; PR quotes red/green output of the image test and of `pulse-workflows`, and the bench numbers.
+Completion evidence: CI green on both `docker` legs, `bench-selftest`, `compose-e2e`; PR quotes red/green output of the image test and of `pulse-workflows`, and the A/B numbers.
 
 ## Repository: probe
 
@@ -302,9 +330,9 @@ Behavior:
 
 Tool facts (verified): `package.json:8` `packageManager: bun@1.4.0`, `:15` test, `:16` lint, `:23` config pin; `biome.json:2` extends the shared config (pinned file equals clone); `bunfig.toml` `[test]` coverage 0.8; `ci.yml:18` check at `dc69a126…` (Lint step `check.yml:27-28`, identical at the pin); `ci.yml:28-30` checkout already compliant.
 
-Checks: acceptance 1, 2, 3 (mutation), 6, 7, 8.
+Checks: acceptance 1, 2, 3 (mutation), 6, 7, 8, 9.
 
-Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output and the lint mutation.
+Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output and the lint mutation, and the A/B numbers.
 
 ## Repository: status
 
@@ -327,9 +355,9 @@ Behavior:
 
 Tool facts (verified): `package.json:38` `packageManager: bun@1.4.0`, `:14` test, `:15` lint, `:24` config pin; `biome.json:2` extends the shared config; `bunfig.toml` `[test]` coverage 0.8; `ci.yml:18` check at `dc69a126…`; checkouts `ci.yml:29-31,55-57` already compliant; `a11y` job (`ci.yml:49-66`) unchanged.
 
-Checks: acceptance 1, 2, 3 (mutation), 6, 7 (including `a11y`).
+Checks: acceptance 1, 2, 3 (mutation), 6, 7 (including `a11y`), 9.
 
-Completion evidence: CI green on both `docker` legs and `a11y`; PR quotes red/green image test output and the lint mutation.
+Completion evidence: CI green on both `docker` legs and `a11y`; PR quotes red/green image test output and the lint mutation, and the A/B numbers.
 
 ## Repository: notify
 
@@ -356,9 +384,9 @@ Behavior:
 
 Tool facts (verified): `package.json:35` `packageManager: bun@1.4.0`, `:13` test `bun test`, `:14` lint, `:22` config pin, `:30` contract pin `61f7bf8…`; tests live in `test/*.test.ts` (`test/check-types.test.ts`, `test/api.test.ts`); `biome.json:2` extends the shared config; `bunfig.toml` `[test]` coverage 0.8 with `test/**` excluded from coverage; `ci.yml:18` check at `dc69a126…`; checkout `ci.yml:29-31` already compliant.
 
-Checks: acceptance 1, 2, 3 (mutation), 5, 6, 7.
+Checks: acceptance 1, 2, 3 (mutation), 5, 6, 7, 9.
 
-Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output, the lint mutation, and the contract test failing on the old pin.
+Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output, the lint mutation, and the contract test failing on the old pin, and the A/B numbers.
 
 ## Repository: console
 
@@ -381,6 +409,6 @@ Behavior:
 
 Tool facts (verified): `package.json:31` `packageManager: bun@1.4.0`, `:14` test, `:15` lint, `:22` config pin; `biome.json:2` extends the shared config; `bunfig.toml` `[test]` coverage 0.8; `ci.yml:18` check at `dc69a126…`; checkout `ci.yml:29-31` already compliant.
 
-Checks: acceptance 1, 2, 3 (mutation), 6, 7.
+Checks: acceptance 1, 2, 3 (mutation), 6, 7, 9 (image size; startup optional).
 
-Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output and the lint mutation.
+Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output and the lint mutation, and the A/B numbers.
