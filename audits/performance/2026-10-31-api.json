@@ -209,7 +209,7 @@
         "api"
       ],
       "location": "src/service.ts:757",
-      "severity": "P3",
+      "severity": "P2",
       "candidate": true,
       "title": "The first GET /checks and the first GET /uptime after a start aggregate the whole 30- and 90-day window in one synchronous call (2.4 s each at 10x the bench seed)",
       "command": "Growth script: fresh copy of the seeded database (1x bench seed, or 10x: 10 results per minute per check, 8.64 M rows), sync, bun src/main.ts, wait for 'backfill done', then time the first request to each route (fetch) and 29 more, each after one POST /results; 3 runs per data set",
@@ -225,10 +225,18 @@
         "api": "11f555598831ef61f13de40bef5f2da620230c97"
       },
       "review": {
-        "result": "spot-checked, holds",
+        "result": "spot-checked, holds; severity raised from P3 to P2",
         "command": "timeout 300 bun reads.ts <api copy> <db> <cfg> <port> <n> on the 1x seed, the end-of-day database of finding 2, and a 10x database (1x seed plus 9 more results per minute via sqlite3 INSERT ... SELECT, 8,640,000 rows)",
         "exitCode": 0,
-        "excerpt": "cold GET /checks / GET /uptime: 1x 277.4/271.2 and 284.7/275.8 ms; end of day 754.9/746.3, 759.7/753.5, 755.1/773.0 ms; 10x 3373.1/3447.4 ms (then GET /checks 29.9 ms)"
+        "excerpt": "cold GET /checks / GET /uptime: 1x 277.4/271.2 and 284.7/275.8 ms; end of day 754.9/746.3, 759.7/753.5, 755.1/773.0 ms; 10x 3373.1/3447.4 ms (then GET /checks 29.9 ms)",
+        "remeasurement": {
+          "commit": "11f555598831ef61f13de40bef5f2da620230c97",
+          "command": "timeout 90 bun tmp/cold-timeout.ts (bench seed plus one day of 20 checks x 3 locations x 10 s samples; after a start, concurrent cold GET /checks and GET /uptime via curl, then the same requests cached; 2 repetitions)",
+          "exitCode": 1,
+          "excerpt": "run 1: /uptime curl exit 28, 4002 ms, 0 bytes received\nrun 2: /uptime curl exit 28, 4003 ms, 0 bytes received\nAssertionError: cold public reads exceed the status proxy default 4000 ms timeout\n2 !== 0\ncached: 5-21 ms",
+          "statusTimeout": "pulse-status 3f80bda9d7ed17127a43bcf51b71cd1e05add9b0: src/server.ts:71 DEFAULT_UPSTREAM_TIMEOUT_MS = 4000; src/settings.ts:71 PULSE_STATUS_UPSTREAM_TIMEOUT_MS fallback 4000; docs/configuration.md:17; docs/operation.md:138 (then 502 API unreachable)"
+        },
+        "note": "Severity raised from P3 to P2: at the bench's own density, cold reads after a restart exceed the status proxy's default 4000 ms upstream timeout in both repetitions, so the first status-page poll fails with 502. Absolute timings depend on the host."
       }
     },
     {
