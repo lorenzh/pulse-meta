@@ -39,7 +39,17 @@ missing, empty, or contradicts the described behavior:
   for at least one name yourself.
 
 Check that every repository section starts with a `Files:` list and that the files exist in the
-clone or are marked as new. Check the spec against itself: flag two statements that cannot both
+clone or are marked as new. Check that the line after it is `Behavior change: yes` or
+`Behavior change: no` with a reason, and flag `no` for a section that asks for new or changed
+behavior. Check every tool fact that a section relies on (a tool or runtime version, which
+linter, formatter, or type checker runs, the Biome include or ignore scope, a test runner flag, a
+CI step): it cites file and line in the target's `package.json`, `biome.json`, `bunfig.toml`, or CI
+workflow, and in config at the ref that the target pins when the target file `extends` or `uses`
+config. An unverified tool assumption is a defect. Repeat the check for at least one cited tool
+fact yourself. Check that every acceptance check names a literal expected value or an independent
+source for it. Flag an acceptance check that derives its expected value from the file it checks
+(read from, or regenerated from, the file or code under test in the same run): it can never fail.
+Check the spec against itself: flag two statements that cannot both
 hold (for example "never runs inside a request" and "runs on the first read").
 
 If either file is missing, transition to `plan` with a concise message.
