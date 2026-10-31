@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Runs the script of factory-sweep.yml and .github/audits/open-issue.sh (factory-audit.yml)
-# against fixtures, with a stub `gh` that serves canned API answers and records every write. Needs bash, jq, and python3
-# with PyYAML. Usage: .github/workflow-tests/test.sh
+# Runs the script of factory-sweep.yml, .github/audits/open-issue.sh (factory-audit.yml) and the
+# scripts of the Factory report (.github/report/*.sh) against fixtures, with a stub `gh` that serves
+# canned API answers and records every write. Needs bash, jq, git, node, and python3 with PyYAML.
+# Usage: .github/workflow-tests/test.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 workflows="$here/../workflows"
@@ -21,6 +22,7 @@ cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 [[ "$1" == workflow ]] && { echo "DISPATCH $*" >> "$FIXTURES/writes.log"; exit 0; }
 shift # api
+method=""; [[ "$1" == -X ]] && { method="$2"; shift 2; }
 paginate=false; [[ "$1" == --paginate ]] && { paginate=true; shift; }
 url="$1"; shift
 jq_expr="."; writes=()
@@ -35,7 +37,7 @@ done
 key="$(printf '%s' "$url" | tr -c 'A-Za-z0-9=_.-' '_')"
 if ((${#writes[@]})); then
   # Log each field; a body is logged by name only and kept in last-body.md.
-  { echo "WRITE $url"; for w in "${writes[@]}"; do
+  { echo "WRITE $url"; [[ -z "$method" ]] || echo "  -X $method"; for w in "${writes[@]}"; do
       if [[ "$w" == body=* ]]; then echo "  body"; printf '%s' "${w#body=}" > "$FIXTURES/last-body.md"; else echo "  $w"; fi
     done; } >> "$FIXTURES/writes.log"
   if [[ "$jq_expr" != empty && -e "$FIXTURES/created.json" ]]; then jq -r "$jq_expr" "$FIXTURES/created.json"; fi
@@ -284,5 +286,133 @@ open_issues architecture "$page1" '[{"number":60,"title":"Architecture audit: pu
 check "architecture: an open audit on page 2 blocks" "#60 is still open for the whole system. No new issue." "$(audit architecture "" "" 2026-11-05)"
 open_issues architecture '[{"number":60,"title":"Architecture audit: pulse (2026-10-21)"}]'
 check "architecture: an open architecture audit blocks" "#60 is still open for the whole system. No new issue." "$(audit architecture "" "" 2026-11-05)"
+
+# --- factory-report-open.yml (.github/report/open-issue.sh) ---------------------------------------
+export FIXTURES="$tmp/report"; mkdir -p "$FIXTURES"
+echo '{"number":77,"html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
+echo '{"default_branch":"main"}' > "$FIXTURES/$(key "repos/$R").json"
+A=$(printf 'a%.0s' {1..64}) B=$(printf 'b%.0s' {1..64})
+echo "{\"meta\":{\"fingerprint\":\"$A\",\"as_of\":\"2026-11-02T05:41:00.000Z\",\"previous_as_of\":\"2026-11-01T05:41:00.000Z\"}}" > "$tmp/new.json"
+echo "{\"meta\":{\"fingerprint\":\"$B\"}}" > "$tmp/prev.json"
+echo "{\"meta\":{\"fingerprint\":\"$A\"}}" > "$tmp/same.json"
+report() { # <previous data.json> [<new data.json>] -> output; writes go to $FIXTURES/writes.log
+  rm -f "$FIXTURES/writes.log" "$FIXTURES/last-body.md"
+  PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R REPORT_DATA="${2:-$tmp/new.json}" REPORT_PREVIOUS="$1" REPORT_RUN_ID=4242 \
+    REPORT_TODAY=2026-11-02 bash "$here/../report/open-issue.sh" 2>&1
+}
+report_open() { # <page 1 json> [<page 2 json>]: the open report issues, as --paginate reads them
+  local k; k="$(key "repos/$R/issues?state=open&labels=report&per_page=100")"
+  echo "$1" > "$FIXTURES/$k.0.json"
+  if [[ -n "${2:-}" ]]; then echo "$2" > "$FIXTURES/$k.1.json"; else echo '[]' > "$FIXTURES/$k.1.json"; fi
+}
+report_open '[]'
+check "report: unchanged numbers open nothing and start nothing" "The numbers have not changed since the last merged report ($A). No new issue." "$(report "$tmp/same.json"; writes)"
+check "report: changed numbers create the label, open the issue and start the run" "Created the label report.
+Opened https://example.test/new-issue
+Started the report run of #77." "$(report "$tmp/prev.json")"
+check "report: label, title, start label, then the dispatch" "WRITE repos/$R/labels
+  name=report
+  color=1d76db
+  description=Factory report of pulse; its runs stay out of the report numbers
+WRITE repos/$R/issues
+  title=Factory report: pulse (2026-11-02)
+  body
+  labels[]=report
+  labels[]=factory/report/report
+DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
+check "report: the issue body names as-of, run, data hash and fingerprint, no placeholder left" "as-of: 2026-11-02T05:41:00.000Z
+data-run: 4242
+data-sha256: $(sha256sum "$tmp/new.json" | cut -d' ' -f1)
+fingerprint: $A
+previous-as-of: 2026-11-01T05:41:00.000Z
+0" "$(grep -E '^(as-of|data-run|data-sha256|fingerprint|previous-as-of): ' "$FIXTURES/last-body.md"; grep -c '{[a-z_]*}' "$FIXTURES/last-body.md" || true)"
+echo '{"name":"report"}' > "$FIXTURES/$(key "repos/$R/labels/report").json"
+check "report: without a merged report the first one opens" "Opened https://example.test/new-issue
+Started the report run of #77." "$(report "$tmp/missing.json")"
+page1="$(python3 -c 'import json; print(json.dumps([{"number": 300 + i, "title": "Report a broken probe"} for i in range(100)]))')"
+report_open "$page1" '[{"number":61,"title":"Factory report: pulse (2026-11-01)"}]'
+check "report: an open report issue on page 2 blocks and writes nothing" "#61 is still open. No new issue." "$(report "$tmp/prev.json"; writes)"
+report_open '[{"number":62,"title":"Factory report: pulse (2026-11-01)","pull_request":{"url":"x"}}]'
+check "report: a pull request with the title does not block" "Opened https://example.test/new-issue
+Started the report run of #77." "$(report "$tmp/prev.json")"
+echo '{"number":"077","html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
+check "report: a non-canonical issue number fails before the dispatch" "Opened https://example.test/new-issue
+::error::Not a canonical issue number: 077
+no dispatch" "$(report "$tmp/prev.json" || true; writes | grep -q DISPATCH && echo dispatch || echo no dispatch)"
+echo '{"number":77,"html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
+echo '{"meta":{}}' > "$tmp/nofp.json"
+check "report: data without a fingerprint fails" "::error::$tmp/nofp.json has no fingerprint." "$(report "$tmp/prev.json" "$tmp/nofp.json" || true)"
+check "permissions: the report opener may dispatch workflows" "{'actions': 'write', 'contents': 'read', 'issues': 'write'}" \
+  "$(python3 -c 'import sys, yaml; print(dict(sorted(yaml.safe_load(open(sys.argv[1]))["jobs"]["open-issue"]["permissions"].items())))' "$workflows/factory-report-open.yml")"
+# The artifact the opener uploads is the one the report prompt downloads, and the build compares
+# against the merged report.
+opener_py='
+import re, sys, yaml
+w = yaml.safe_load(open(sys.argv[1]))
+steps = w["jobs"]["open-issue"]["steps"]
+upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact@"))
+build = next(s for s in steps if s.get("name") == "Build the report data")
+opener = next(s for s in steps if s.get("name") == "Open the report issue")
+prompt = re.search(r"--name (\S+)", open(sys.argv[2]).read()).group(1)
+print(upload["with"]["name"], prompt, build["run"].split("--previous ")[1], opener["env"]["REPORT_PREVIOUS"], [c["cron"] for c in w[True]["schedule"]])
+'
+check "report: artifact name, previous data and schedule" "report-data report-data report/data.json report/data.json ['41 5 * * *']" \
+  "$(python3 -c "$opener_py" "$workflows/factory-report-open.yml" "$here/../../.factory/prompts/report.md")"
+
+# --- factory-report.yml (.github/report/close-issue.sh) ---------------------------------------------
+close() { # <narrative json> -> output; writes go to $FIXTURES/writes.log
+  rm -f "$FIXTURES/writes.log"; echo "$1" > "$tmp/narrative.json"
+  PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R REPORT_NARRATIVE="$tmp/narrative.json" REPORT_URL=https://example.test/report \
+    bash "$here/../report/close-issue.sh" 2>&1
+}
+echo '{"number":77,"state":"open","labels":[{"name":"report"},{"name":"factory/complete"}]}' > "$FIXTURES/$(key "repos/$R/issues/77").json"
+echo '{"number":78,"state":"closed","labels":[{"name":"report"}]}' > "$FIXTURES/$(key "repos/$R/issues/78").json"
+echo '{"number":79,"state":"open","labels":[{"name":"bug"}]}' > "$FIXTURES/$(key "repos/$R/issues/79").json"
+check "close: the deploy closes the open report issue of the narrative" "Closed #77.
+WRITE repos/$R/issues/77/comments
+  body
+WRITE repos/$R/issues/77
+  -X PATCH
+  state=closed
+  state_reason=completed" "$(close '{"issue":77}'; writes)"
+check "close: a closed report issue stays as it is" "#78 is closed. Nothing to close." "$(close '{"issue":78}'; writes)"
+check "close: an issue without the label report stays open" "#79 is open, without the label report. Nothing to close." "$(close '{"issue":79}'; writes)"
+check "close: a report without an issue closes nothing" "The report names no issue. Nothing to close." "$(close '{"issue":null}'; writes)"
+check "close: only after a push, after the deploy, with issues: write" "\${{ github.event_name == 'push' }} deploy {'contents': 'read', 'issues': 'write'}" \
+  "$(python3 -c 'import sys, yaml; j = yaml.safe_load(open(sys.argv[1]))["jobs"]["close-issue"]; print(j["if"], j["needs"], dict(sorted(j["permissions"].items())))' "$workflows/factory-report.yml")"
+check "deploy: no schedule and no live data" "False False" \
+  "$(python3 -c 'import sys, yaml; w = yaml.safe_load(open(sys.argv[1])); t = open(sys.argv[1]).read(); print("schedule" in w[True], "data.mjs" in t)' "$workflows/factory-report.yml")"
+
+# --- report-check.yml (.github/report/check-pr.sh) ---------------------------------------------------
+# A small repository: the base commit holds the report; each case is a branch on top of it.
+repo="$tmp/repo"; mkdir -p "$repo/report"
+cp "$here/../../report/"{check.mjs,data.json,narrative.json,index.html} "$repo/report/"
+g() { git -C "$repo" -c user.name=t -c user.email=t@t "$@"; }
+g init -q -b main && g add -A && g commit -qm base
+base="$(g rev-parse HEAD)"
+data_sha="$(sha256sum "$repo/report/data.json" | cut -d' ' -f1)"; as_of="$(jq -r .meta.as_of "$repo/report/data.json")"
+jq -n --arg b "as-of: $as_of
+data-sha256: $data_sha" '{body: $b}' > "$FIXTURES/$(key "repos/$R/issues/77").json"
+prcheck() { # <branch> <change command> -> last line of the check output
+  g checkout -q -B "$1" "$base"; (cd "$repo" && eval "$2"); g commit -qam "$1" --allow-empty
+  (cd "$repo" && PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R BASE_SHA="$base" HEAD_REF="$1" bash "$here/../report/check-pr.sh" 2>&1 | tail -1)
+}
+text77="jq '.issue = 77' report/narrative.json > n && mv n report/narrative.json"
+warns="$(cd "$repo" && node report/check.mjs | grep -c '^warn' || true)"
+check "pr check: a Factory report run that changes only the text passes" "check: ok, $warns warnings" \
+  "$(prcheck factory/77-factory-report-pulse "$text77")"
+check "pr check: a Factory report run that changes the template fails" "check: 1 failed, $warns warnings" \
+  "$(prcheck factory/77-factory-report-pulse "$text77 && echo x >> report/index.html")"
+check "pr check: weakening check.mjs in the pull request does not help" "check: 2 failed, $warns warnings" \
+  "$(prcheck factory/77-factory-report-pulse "$text77 && echo x >> report/index.html && echo 'process.exit(0)' > report/check.mjs")"
+check "pr check: altered data fails the hash" "check: 1 failed, $warns warnings" \
+  "$(prcheck factory/77-factory-report-pulse "$text77 && jq -c '.summary[0].runs += 1' report/data.json > d && mv d report/data.json")"
+check "pr check: a typed number fails" "check: 1 failed, $warns warnings" \
+  "$(prcheck factory/77-factory-report-pulse "jq '.issue = 77 | .changes[0].text = \"Es kamen 34 Läufe dazu.\"' report/narrative.json > n && mv n report/narrative.json")"
+check "pr check: a template change by a person (not a Factory branch) is not locked" "check: ok, $warns warnings (C1 skipped: no --base)" \
+  "$(prcheck design/dashboard "echo x >> report/index.html")"
+g checkout -q -B nocheck "$base" && g rm -q report/check.mjs && g commit -qm nocheck
+check "pr check: a base without check.mjs checks nothing" "::notice::The base commit has no report/check.mjs. Nothing to check." \
+  "$(cd "$repo" && BASE_SHA="$(g rev-parse HEAD)" HEAD_REF=x bash "$here/../report/check-pr.sh" 2>&1)"
 
 exit "$fail"

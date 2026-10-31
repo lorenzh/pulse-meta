@@ -1,0 +1,40 @@
+name: Factory report check
+
+# Runs report/check.mjs of the base commit against the report files of the pull request, so a
+# report run cannot weaken the check it must pass. .github/report/check-pr.sh holds the rules.
+on:
+  pull_request:
+    paths:
+      - 'report/**'
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Check the report with the base commit's check.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        # The base commit's script too, when it has one: the pull request cannot change the rules.
+        run: |
+          script=.github/report/check-pr.sh
+          if git cat-file -e "$BASE_SHA:$script" 2> /dev/null; then
+            script="$RUNNER_TEMP/check-pr.sh"; git show "$BASE_SHA:.github/report/check-pr.sh" > "$script"
+          fi
+          bash "$script"
