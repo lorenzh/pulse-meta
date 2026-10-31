@@ -1,6 +1,6 @@
 # pulse website design
 
-Design reference for the pulse website, exported from the design canvas "pulse Website" on 30 October 2026. Read-only input for the website project; the built site lives in lorenzh/pulse-website.
+Design reference for the pulse website, exported from the design canvas "pulse Website" as version 28 on 31 October 2026. Read-only input for the website project; the built site lives in lorenzh/pulse-website.
 
 | File | Page |
 | --- | --- |
@@ -17,6 +17,15 @@ Content rules for the build:
 
 - Product facts on the site must match the current code and docs of the pulse repos; the docs pages are generated from the repos' `docs/*.md` at pinned commits.
 - The hosted offer does not exist yet. Prices, regions, availability promises, data location and the waitlist are placeholders until a person replaces them. So is every other commitment about the hosted offer (backups, upgrades, who runs the servers, staying up when the customer's network is down, included notifications, white-labelling): each is a marked placeholder, and a test checks the hosted table, plans and included cards.
+
+## Changes in version 28
+
+- Home hero: pulse checks HTTP endpoints, TLS certificates, ports, DNS, domains and cron jobs.
+- Home features: the TLS card is now "TLS, TCP, DNS and domains"; new cards "Incident updates", "Latency and SLOs" and "Checks API". The Home board is 5400 px high.
+- Home architecture: new texts for probe (all five check types, result buffer) and api (admin changes without a restart).
+- Hosted: the included item reads "Components, incident updates, feed and badges".
+- Docs REST API: the intro names probe, admin and heartbeat authentication; new rows `GET /latency`, `GET` and `POST /manual-incidents`, and `PUT /admin/checks/:id` with `If-Match` (`412` on a stale revision).
+- Checked against the service repos on main: "Latency and SLOs" says "per HTTP check" (only HTTP checks have latency), and the REST intro names `GET /admin/config` as a read route that needs a token.
 
 ## Motion and background
 
