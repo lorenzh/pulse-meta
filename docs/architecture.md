@@ -1,6 +1,6 @@
 # Architecture
 
-pulse has five services and three shared libraries.
+pulse has five services, three shared libraries and a deployment repository.
 
 | Repository | Role |
 | --- | --- |
@@ -9,6 +9,7 @@ pulse has five services and three shared libraries.
 | pulse-status | Status page. Reads pulse-api through its own allow-listed `/api/*` proxy. Serves an Atom feed and SVG badges. |
 | pulse-notify | Polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook, file, Slack, Teams and email. |
 | pulse-console | Admin web UI ([#460](https://github.com/lorenzh/pulse-meta/issues/460)): the fifth container of the Compose stack, for one organisation. Today it serves one server-rendered page and its ops routes, and validates `PULSE_API_URL` and an optional admin token. Later items add login and management through the pulse-api admin API, its only upstream. |
+| pulse-deploy | Deployment setups, planned: Docker Compose files for a minimal, a full, a demo and a dev stack (the stack's Compose file moves here from pulse-api later) and a `pulse` CLI setup wizard. Not a service. The repository is a Factory target; it has no code yet. |
 | pulse-contract | The wire contract: zod schemas, the types and validators built from them, the wire version and the `fetchJson` client. Used by api, probe, status and notify. |
 | pulse-kit | Shared runtime helpers: env settings, shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, metrics and the JSON logger. Used by api, probe, status, notify and console. |
 | pulse-config | Shared Biome, tsconfig, ESLint and Lefthook configuration and the reusable CI workflow `check.yml`. |
