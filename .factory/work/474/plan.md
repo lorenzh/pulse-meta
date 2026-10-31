@@ -94,7 +94,11 @@ script and `docs/operation.md`.
    as before #54. A code comment at the build says so.
 8. **Order of checks.** `proxyApi` keeps the hidden `/api/latency` 404, the raw-target check and
    `isAllowedApiPath` in front of the cache. A path that is not allowed never creates an entry.
-   The map is bounded by the 9 `ALLOWED_API_PATHS` (one settings pair per instance).
+   `cachedAnswer` (SSR, feed, badges) has no request to check, so it checks
+   `isAllowedApiPath` itself. Today all its callers pass constant allow-listed paths
+   (`src/syndication.ts`, `renderState`). A path that is not allowed is built without the answer
+   cache and creates no entry. So the map is bounded by the 9 `ALLOWED_API_PATHS` for every
+   caller (one settings pair per instance), not only because today's callers are well-behaved.
 9. **Module.** Put the cache logic (entry type, key, lookup validity, single flight, store on
    finish, delete on reject) in a new pure module `src/answer-cache.ts`. It is generic over the
    build function and the validity check, has no I/O, and receives `now`. It exports the key
@@ -138,7 +142,8 @@ service as a whole: `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mi
 - `peak_rss_mib` (status): down or flat. The issue measured 101–114 MiB, back toward 85–91 MiB.
 - `test_cpu_s` (status): up slightly, by a few new tests (< 0.1 s).
 - `startup_cpu_ms`, `idle_rss_mib`, `startup_wall_ms`, `image_mb`: none expected. Nothing is
-  built at startup, and nothing is added to the image except a source file and a bench script.
+  built at startup. The image gets one more small source file (`src/answer-cache.ts`). The
+  Dockerfile copies only `src` and `public`, so `bench/proxy-cache.ts` is not in the image.
 - p95 latency and rps of the api: none expected. The upstream call count is unchanged.
 
 **Measurement (acceptance gate).** A committed script `bench/proxy-cache.ts` in pulse-status
@@ -195,6 +200,36 @@ that works today keeps working.
 
 ## Counterexamples
 
+### How the tests see a build
+
+The integration tests (`src/server.*.test.ts`) see only HTTP answers and fake-fetch counts. The
+raw cache already makes one upstream call per path per period and is single flight, so upstream
+counts are the same with and without the answer cache. **No integration test asserts a build
+count.** There is no test hook in `ServerOptions` or `ProxyContext` (the non-goal "no new setting"
+holds). Each integration test uses one of these signals instead:
+
+- **The resolved-window signal.** The answer for `/api/incidents?status=resolved` depends on
+  `ctx.now()` at build time (rule 7), but the raw read does not. Fixture: `cacheMs 2000`,
+  mutable clock, `T0 = 10 * RESOLVED_WINDOW_MS`, and the resolved list holds incident `edge` with
+  `resolvedAt = T0 - RESOLVED_WINDOW_MS + 500` plus incident `recent` with
+  `resolvedAt = T0 - 1000`. A build at `T0` keeps `edge` (`resolvedAt >= cutoff`). A build at
+  `T0 + 1000` drops it. So at `T0 + 1000`, while the raw entry from `T0` is still valid
+  (it expires at `T0 + 2000`), a **reused** answer contains `edge` and a **rebuilt** one does not.
+  This makes a build visible through the body alone. Use it in shown mode, or in hidden mode
+  with `/components` `[]`, so the hide step does not change the list.
+- **The body itself**, when the test changes upstream data (a new own body, components or active
+  checks). A stale answer shows the old data.
+- **Fake-fetch counts**, only for "no build at all" (a request that never reaches the build
+  makes no upstream call).
+
+Single flight of the build itself (two concurrent lookups, one build) and the rejected-build
+rule cannot be seen over HTTP. Their discriminating tests are unit tests in
+`src/answer-cache.test.ts`, which count calls of the injected build function. The integration
+versions are **regression guards** and are labeled as such in the test name or a comment, as the
+settings test is.
+
+### Cases
+
 - **Own path changes.** A fixed clock does not catch an answer cache with its own TTL: raw entry
   and answer would be stored at the same instant and expire together. The clock must move
   **between the end of the own raw read and the store of the answer**. Setup: hidden mode
@@ -217,10 +252,24 @@ that works today keeps working.
   t=2500 the `/components` entry has expired, and upstream now returns a component that contains
   `sentinel-id`. The answer must be rebuilt and must contain neither `SENTINEL-NAME` nor
   `sentinel-id`. Deriving expiry from the own path alone would leak.
-- **`/checks` as a hidden dep.** Components are non-empty, the path is `/api/incidents`, and
-  `/checks` is refreshed with a new active set while `/components` and the own path stay valid.
-  The answer must be rebuilt, because a check that is no longer active must lose its `service`
-  key. A dep list fixed to own + components is wrong.
+- **`/checks` as a hidden dep.** In hidden mode every `/checks` read comes with a `/components`
+  read, so the test only discriminates when `/components` is refreshed **after** `/checks` was
+  created and the answer is built in between. Hidden mode, `cacheMs 2000`, components non-empty
+  throughout and unchanged, mutable clock. Timeline:
+  - t=0: `/api/components` creates raw `/components` (expires 2000).
+  - t=1000: `/api/checks` creates raw `/checks` with active set S1 (expires 3000) and reuses
+    `/components`.
+  - t=2000: `/api/components` refreshes raw `/components` (expires 4000).
+  - t=2500: `/api/incidents?status=open` creates its own raw entry (expires 4500), reuses
+    `/components` (4000) and `/checks` S1 (3000). The answer is built from S1. Assert that the
+    incident on a check in S1 carries its `service` key.
+  - Upstream `/checks` switches to S2, in which that check is no longer active. At t=3000,
+    `/api/checks` refreshes raw `/checks` to S2 (expires 5000).
+  - t=3000: `/api/incidents?status=open`. Own (4500) and `/components` (4000) are still valid.
+    The answer must be rebuilt from S2, so that incident has no `service` key. Upstream
+    `/incidents` count stays 1.
+
+  A dep list fixed to own + `/components` serves the S1 answer and fails. The signal is the body.
 - **Settings.** Two instances with the same upstream and clock: hidden (`showChecks` false, with
   components) and shown (`showChecks: true`). Whatever the request order (shown first, then
   hidden, and the reverse), the hidden instance never returns `SENTINEL-NAME` or `sentinel-id`.
@@ -239,30 +288,50 @@ that works today keeps working.
     the reverse), and fails.
 - **Join, not late writer.** Under rule (3) a late writer cannot occur, so there is no
   late-writer test against the production path. Instead:
-  - Join: hidden mode, the fake `/components` fetch is held on a deferred promise. Request X to
-    `/api/uptime` starts; request Y to the same path arrives while X is in flight. Release the
-    deferred: both get identical bytes and the build (and each upstream path) ran once. An
-    implementation that starts a second build while one is in flight fails the count.
+  - Join (discriminating, module level): in `src/answer-cache.test.ts`, the injected build
+    returns a held deferred. Two lookups for the same key run before it is released. Release it:
+    both get the same answer object, and the build function ran once. An implementation that
+    starts a second build while one is in flight fails the count.
+  - Join (integration, **regression guard**): hidden mode, the fake `/components` fetch is held
+    on a deferred promise. Requests X and Y to `/api/uptime` start before it is released. Both
+    get identical bytes, and each upstream path was called once. This also passes on `main`,
+    because the raw cache is single flight. It guards the wiring, not the rule.
   - Older reads are not reused: hidden mode, `cacheMs 2000`. At t=0 a request to
     `/api/components` creates raw `/components` entry C1 (non-empty, expires 2000). At t=1500
     build X of `/api/incidents` creates its own raw entry (expires 3500), reuses C1, and its
     `/checks` read is held on a deferred. At t=2500 a request to `/api/components` refreshes raw
     `/components` to C2 with a different component list. Then the `/checks` deferred is
     released; X finishes and is stored with dep C1. The next request to `/api/incidents` at
-    t=2500 (own entry still valid) must rebuild (`/api/incidents` build count 2, upstream
-    `/incidents` count still 1) and its body must follow C2. An implementation that checks only
-    the own path's entry fails.
+    t=2500 (own entry still valid, upstream `/incidents` count still 1) must answer with the body
+    built from C2: a check that C2 hides by a different component key shows that key, not the C1
+    one. An implementation that checks only the own path's entry serves the C1 body and fails.
+    The signal is the body, not a build count. Choose C1 and C2 so that their hidden keys for the
+    same check differ, and assert both bodies.
   - Identity guard (module level, defense in depth): in `src/answer-cache.test.ts`, start a
     build on key K whose promise is held; replace `map.get(K)` with a different finished entry E
     directly in the injected map; resolve the build. `map.get(K)` must still be E, and E must be
     what the next lookup returns. Without the guard of rule (4) the test fails.
-- **Rejected build.** The build function throws once. The next request must build again (counter
-  2) and must not hang or reuse the rejection.
-- **`cacheMs 0`.** Two requests mean two upstream calls and two builds.
-- **Within a period.** 10 sequential plus 10 parallel requests at a fixed clock give identical
-  bytes and exactly one build.
-- **Not allowed path.** `/api/incidents?status=resolved&x=1` answers 404 and leaves `answers`
-  empty.
+- **Rejected build** (module level, `src/answer-cache.test.ts`). The injected build function
+  throws on its first call. The first lookup rejects, and the map has no entry for the key
+  afterwards. The second lookup calls the build again (count 2), resolves, and does not hang or
+  reuse the rejection. An implementation that keeps the rejected entry fails the count.
+- **`cacheMs 0`** (resolved-window signal). `cacheMs 0`, request
+  `/api/incidents?status=resolved` at `T0`: `edge` is present. Move the clock to `T0 + 1000`
+  and request again: `edge` is gone, and upstream was called twice. An implementation that keeps
+  the answer cache on with `cacheMs 0` still shows `edge` and fails.
+- **Within a period** (resolved-window signal; the core reuse test). Shown mode, request
+  `/api/incidents?status=resolved` 10 times sequentially and 10 times in parallel at `T0`: all
+  bodies are byte-identical and contain `edge`. Move the clock to `T0 + 1000` (raw entry still
+  valid): the body still contains `edge` and is byte-identical to the first one. Upstream was
+  called once. On `main`, or in any implementation without the answer cache, the build at
+  `T0 + 1000` drops `edge` and the test fails. Then move the clock to `T0 + 2000` (raw entry
+  expired): the body no longer contains `edge`, and upstream was called twice. That last step
+  shows that the answer does not outlive its raw entry.
+- **Not allowed path** (fake-fetch count, regression guard for the order of rule 8).
+  `/api/incidents?status=resolved&x=1` answers 404 and makes no upstream call. Every build reads
+  its own path first, so zero calls show that no build ran. The `isAllowedApiPath` check in
+  `cachedAnswer` cannot be reached over HTTP, because today's callers pass only allow-listed
+  constants. The review checks it in the code, and it gets no test.
 
 The benchmark statistic is defined under Performance impact: 5 runs, median (3rd of 5 sorted) of
 the per-run totals over 300 requests. No per-request percentiles.
@@ -286,8 +355,9 @@ Files:
 - `src/server.ts`: `ProxyContext.answers`; `cachedRaw` exposes its `CacheEntry`; `rawReader`
   records deps; `proxyAnswer`/`cachedAnswer` go through the answer cache; `cacheMs === 0` skips
   it; comment on the resolved window; `ServerOptions.cacheMs` comment.
-- `src/server.cache.test.ts`: new integration tests (own path change, `cacheMs 0`, reuse within
-  the period, join of an in-flight build, not-allowed path).
+- `src/server.cache.test.ts`: new integration tests (own path change, `cacheMs 0` and reuse
+  within the period with the resolved-window signal, join of an in-flight build as a regression
+  guard, not-allowed path).
 - `src/server.hidden-checks.test.ts`: new tests (snapshot change while own path is cached;
   `/checks` change; rebuild after `/components` was replaced during a build; two instances
   with different settings, both orders).
@@ -306,13 +376,20 @@ Checks:
 - New tests, one per counterexample above: own path change (with the clock moved between raw
   read and answer store, plus its module twin), snapshot change, `/checks` dep, settings in both
   orders (integration regression guard plus the two discriminating `answer-cache` unit tests),
-  join of an in-flight build, rebuild after a dep was replaced during the build, identity guard
-  (module level), rejected build, `cacheMs 0`, reuse within a period, not allowed path. Each
-  test except the settings integration test must fail against an implementation that ignores
-  the dependency it covers; the counterexample names that implementation. The implementer
-  checks this by breaking the rule locally once per test (not committed) and notes the result
-  in the PR.
-- The rejected-build and identity-guard tests live in `src/answer-cache.test.ts`.
+  join of an in-flight build (module test plus integration regression guard), rebuild after a
+  dep was replaced during the build, identity guard (module level), rejected build (module
+  level), `cacheMs 0`, reuse within a period, not allowed path.
+- No integration test asserts a build count. Integration tests observe a build only through the
+  signals in "How the tests see a build": the resolved-window signal, the body, or a zero
+  upstream count. Build counts are asserted only in `src/answer-cache.test.ts`, through the
+  injected build function.
+- Each test that is not labeled a regression guard must fail against the wrong implementation
+  its counterexample names. The reuse-within-a-period test must also fail on `main`. The
+  implementer checks this by breaking the rule locally once per test (not committed), and for
+  the reuse test by running it on `961a089`. The PR notes each result. The regression guards
+  are the settings integration test, the integration join test and the not-allowed-path test.
+- The join, rejected-build and identity-guard tests that carry the rule live in
+  `src/answer-cache.test.ts`.
 - No timing assertions in `bun test`.
 - `bun run check` passes.
 
