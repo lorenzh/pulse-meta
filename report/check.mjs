@@ -2,16 +2,20 @@
 // agent of the `report` workflow writes only narrative.json; every number in it is a placeholder
 // {field|fmt} that the page fills from data.json, so the text cannot disagree with the data.
 //
-//   C1  only report/data.json and report/narrative.json changed since --base (the template lock)
+//   C1  only report/data.json and report/narrative.json changed since --base, or in --changed
+//       (the template lock: any other path fails, .github/ included)
 //   C2  sha256 of data.json equals --sha; meta.schema is 2; meta.as_of equals --as-of
 //   C3  narrative keys, template version, item counts and lengths; issue and as_of match
-//   C4  every placeholder names a numeric, non-null field of summary[0] and a known format
-//   C5  no digit outside placeholders, references and code spans (digits in code spans and
+//   C4  every placeholder names a numeric, non-null field of summary[0] and a known format, and
+//       stands outside code spans (the page renders code literally)
+//   C5  no digit or other numeric character (\p{N}: any script, fractions, superscripts, Roman
+//       numerals) outside placeholders, references and code spans (digits in code spans and
 //       quantity words are warnings for the reviewer)
 //   C6  every #N is an issue in the data, every pulse-<repo>#N a pull request in human_fixes
 //   C7  no HTML, links or token patterns
 //
-// Usage: node report/check.mjs [--dir report] [--sha <sha256>] [--as-of <iso>] [--issue <n>] [--base <git ref>]
+// Usage: node report/check.mjs [--dir report] [--sha <sha256>] [--as-of <iso>] [--issue <n>]
+//        [--base <git ref> | --changed <file with one changed path per line>]
 // Exit 0 when no check fails; warnings do not fail.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -34,6 +38,9 @@ const FORBIDDEN = [
   [/\]\(/, 'a Markdown link'],
   [/\b(ghp|gho|ghs|ghu|ghr)_[A-Za-z0-9]{6,}|github_pat_|\bsk-[A-Za-z0-9_-]{8,}|\bxox[abprs]-/, 'a token pattern'],
 ];
+// Any numeric character: digits of every script (full-width, Arabic-Indic, ...), fractions,
+// superscripts, Roman numerals. References and placeholders take ASCII digits only.
+const NUMERIC = /\p{N}/u;
 const QUANTITY = /\b(Hälfte|halb|doppelt|dreifach|Drittel|Viertel|meisten|Mehrheit|fast alle|fast nie|kaum|selten|häufiger|seltener)\b/i;
 
 // slot shape: [path, max length]; lists carry [min, max] counts.
@@ -153,6 +160,10 @@ export function check({ data, narrative, dataBytes, changed, sha, asOf, issue } 
     for (const [re, what] of FORBIDDEN) if (re.test(text)) err('C7', path, `contains ${what}`);
 
     let rest = text;
+    // The page renders a code span literally, so a placeholder there would show as {field|fmt}.
+    for (const [, code] of text.matchAll(CODE)) {
+      if (new RegExp(PLACEHOLDER.source).test(code)) err('C4', path, `placeholder inside a code span \`${code}\`: the page shows it unresolved`);
+    }
     for (const [, field, fmt] of text.matchAll(PLACEHOLDER)) {
       if (!FORMATS.includes(fmt)) err('C4', path, `{${field}|${fmt}}: unknown format, use ${FORMATS.join(', ')}`);
       if (!summary || !(field in summary)) err('C4', path, `{${field}|${fmt}}: summary has no field ${field}`);
@@ -160,7 +171,7 @@ export function check({ data, narrative, dataBytes, changed, sha, asOf, issue } 
       else if (typeof summary[field] !== 'number') err('C4', path, `{${field}|${fmt}}: ${field} is not a number`);
     }
     rest = rest.replace(PLACEHOLDER, ' ');
-    for (const [, code] of rest.matchAll(CODE)) if (/\d/.test(code)) warn('C5', path, `digits in code span \`${code}\``);
+    for (const [, code] of rest.matchAll(CODE)) if (NUMERIC.test(code)) warn('C5', path, `digits in code span \`${code}\``);
     rest = rest.replace(CODE, ' ');
     for (const [ref, repo, num] of rest.matchAll(PR_REF)) {
       if (repo === 'meta' ? !issues.has(Number(num)) : !prRefs.has(ref)) err('C6', path, `${ref} is not in the data`);
@@ -168,7 +179,7 @@ export function check({ data, narrative, dataBytes, changed, sha, asOf, issue } 
     rest = rest.replace(PR_REF, ' ');
     for (const [ref, num] of rest.matchAll(ISSUE_REF)) if (!issues.has(Number(num))) err('C6', path, `${ref} is not in the data`);
     rest = rest.replace(ISSUE_REF, ' ');
-    if (/\d/.test(rest)) err('C5', path, `digit outside a placeholder: "${rest.match(/\S*\d\S*/)[0]}"; write numbers as {field|fmt}`);
+    if (NUMERIC.test(rest)) err('C5', path, `digit outside a placeholder: "${rest.match(/\S*\p{N}\S*/u)[0]}"; write numbers as {field|fmt}`);
     if (/[{}`]/.test(rest)) err('C5', path, 'unbalanced { } or ` (a placeholder must be {field|fmt})');
     const q = QUANTITY.exec(rest);
     if (q) warn('C5', path, `quantity word "${q[0]}": check it against the data`);
@@ -200,17 +211,20 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const narrative = parse('report/narrative.json', await readFile(join(dir, 'narrative.json'), 'utf8'));
   const issueArg = opt('--issue');
   const base = opt('--base');
+  const changedFile = opt('--changed');
+  // --changed: a file with one changed path per line (the pull request check reads it from the API).
+  const changed = changedFile ? (await readFile(changedFile, 'utf8')).split('\n').filter(Boolean) : base ? changedSince(base) : undefined;
   const { errors, warnings } = check({
     data,
     narrative,
     dataBytes,
-    changed: base ? changedSince(base) : undefined,
+    changed,
     sha: opt('--sha'),
     asOf: opt('--as-of'),
     issue: issueArg === undefined ? undefined : Number(issueArg),
   });
   for (const w of warnings) console.log(`warn ${w}`);
   for (const e of errors) console.log(`FAIL ${e}`);
-  console.log(errors.length ? `check: ${errors.length} failed, ${warnings.length} warnings` : `check: ok, ${warnings.length} warnings${base ? '' : ' (C1 skipped: no --base)'}`);
+  console.log(errors.length ? `check: ${errors.length} failed, ${warnings.length} warnings` : `check: ok, ${warnings.length} warnings${changed ? '' : ' (C1 skipped: no --base)'}`);
   process.exit(errors.length ? 1 : 0);
 }

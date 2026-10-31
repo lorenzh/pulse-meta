@@ -22,6 +22,7 @@ test('the committed report passes', () => {
 test('C1: a change to the template fails', () => {
   failsWith(run({ changed: ['report/narrative.json', 'report/index.html'] }), 'C1', 'report/index.html');
   failsWith(run({ changed: ['report/check.mjs'] }), 'C1', 'report/check.mjs');
+  failsWith(run({ changed: ['report/narrative.json', '.github/workflows/report-check.yml'] }), 'C1', '.github/workflows/report-check.yml');
 });
 
 test('C2: data.json altered after the opener hashed it fails', () => {
@@ -57,6 +58,16 @@ test('C5: an altered number typed into the text fails', () => {
   const ok = run({ narrative: withText('lead', 'Die Hälfte lief über `TypeScript 7`, Kosten {usd|usd}.') });
   assert.deepEqual(ok.errors, []);
   assert.ok(ok.warnings.some((w) => w.includes('Hälfte')) && ok.warnings.some((w) => w.includes('TypeScript 7')));
+});
+
+test('C5: digits of any script and other numeric characters fail', () => {
+  for (const text of ['Kosten ９９９ Dollar.', 'Kosten ٣ Dollar.', 'Ein ½ Feature.', 'Kapitel Ⅻ.', 'Fehler ² mal.']) {
+    failsWith(run({ narrative: withText('lead', text) }), 'C5', 'digit outside a placeholder');
+  }
+});
+
+test('C4: a placeholder inside a code span fails, because the page renders code literally', () => {
+  failsWith(run({ narrative: withText('lead', 'Kosten `{usd|usd}`.') }), 'C4', 'inside a code span');
 });
 
 test('C6: references outside the data fail', () => {

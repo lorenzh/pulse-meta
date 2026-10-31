@@ -25,12 +25,13 @@ shift # api
 method=""; [[ "$1" == -X ]] && { method="$2"; shift 2; }
 paginate=false; [[ "$1" == --paginate ]] && { paginate=true; shift; }
 url="$1"; shift
-jq_expr="."; writes=()
+jq_expr="."; writes=(); raw=false
 while (($#)); do
   case "$1" in
     --jq) jq_expr="$2"; shift 2 ;;
     -f) writes+=("$2"); shift 2 ;;
     --silent) jq_expr=empty; shift ;;
+    -H) [[ "$2" == *raw* ]] && raw=true; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -50,7 +51,8 @@ if [[ ! -e "${files[0]}" ]]; then
   [[ "$url" == */labels/* ]] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
   echo "[]" > "$FIXTURES/empty.json"; files=("$FIXTURES/empty.json")
 fi
-for f in "${files[@]}"; do [[ "$jq_expr" == empty ]] || jq -r "$jq_expr" "$f"; done
+# A raw read (-H 'Accept: application/vnd.github.raw') returns the file byte for byte.
+for f in "${files[@]}"; do if $raw; then cat "$f"; elif [[ "$jq_expr" != empty ]]; then jq -r "$jq_expr" "$f"; fi; done
 STUB
 chmod +x "$tmp/bin/gh"
 key() { printf '%s' "$1" | tr -c 'A-Za-z0-9=_.-' '_'; }
@@ -384,35 +386,51 @@ check "deploy: no schedule and no live data" "False False" \
   "$(python3 -c 'import sys, yaml; w = yaml.safe_load(open(sys.argv[1])); t = open(sys.argv[1]).read(); print("schedule" in w[True], "data.mjs" in t)' "$workflows/factory-report.yml")"
 
 # --- report-check.yml (.github/report/check-pr.sh) ---------------------------------------------------
-# A small repository: the base commit holds the report; each case is a branch on top of it.
-repo="$tmp/repo"; mkdir -p "$repo/report"
-cp "$here/../../report/"{check.mjs,data.json,narrative.json,index.html} "$repo/report/"
-g() { git -C "$repo" -c user.name=t -c user.email=t@t "$@"; }
-g init -q -b main && g add -A && g commit -qm base
-base="$(g rev-parse HEAD)"
-data_sha="$(sha256sum "$repo/report/data.json" | cut -d' ' -f1)"; as_of="$(jq -r .meta.as_of "$repo/report/data.json")"
+# The workflow runs as it is on the base branch and checks out only the base commit: a pull request
+# that edits the workflow, the script or check.mjs changes nothing about its own check.
+check "pr check: pull_request_target only, base checkout, read-only token, the base commit's script" \
+  "['pull_request_target'] \${{ github.event.pull_request.base.sha }} {'contents': 'read', 'issues': 'read', 'pull-requests': 'read'} .github/report/check-pr.sh 1" \
+  "$(python3 -c '
+import sys, yaml
+w = yaml.safe_load(open(sys.argv[1])); j = w["jobs"]["check"]
+checkouts = [s for s in j["steps"] if s.get("uses", "").startswith("actions/checkout@")]
+print(list(w[True]), checkouts[0]["with"]["ref"], dict(sorted(j["permissions"].items())), j["steps"][-1]["run"], len(checkouts))
+' "$workflows/report-check.yml")"
+# The base checkout: a directory with the merged report; the pull request's files come from the API.
+base="$tmp/base"; mkdir -p "$base/report"
+cp "$here/../../report/"{check.mjs,data.json,narrative.json} "$base/report/"
+pr_fixture() { # <data.json path> <narrative.json path> <changed path>... : the pull request as the API serves it
+  local head=0123abc data="$1" narrative="$2"; shift 2
+  cp "$data" "$FIXTURES/$(key "repos/$R/contents/report/data.json?ref=$head").json"
+  cp "$narrative" "$FIXTURES/$(key "repos/$R/contents/report/narrative.json?ref=$head").json"
+  printf '%s\n' "$@" | jq -R '{filename: .}' | jq -s . > "$FIXTURES/$(key "repos/$R/pulls/9/files?per_page=100").0.json"
+}
+prcheck() { # <head branch> -> last line of the check output
+  (cd "$base" && PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R PR_NUMBER=9 HEAD_REPO=$R HEAD_SHA=0123abc HEAD_REF="$1" \
+    bash "$here/../report/check-pr.sh" 2>&1 | tail -1)
+}
+data_sha="$(sha256sum "$base/report/data.json" | cut -d' ' -f1)"; as_of="$(jq -r .meta.as_of "$base/report/data.json")"
 jq -n --arg b "as-of: $as_of
 data-sha256: $data_sha" '{body: $b}' > "$FIXTURES/$(key "repos/$R/issues/77").json"
-prcheck() { # <branch> <change command> -> last line of the check output
-  g checkout -q -B "$1" "$base"; (cd "$repo" && eval "$2"); g commit -qam "$1" --allow-empty
-  (cd "$repo" && PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R BASE_SHA="$base" HEAD_REF="$1" bash "$here/../report/check-pr.sh" 2>&1 | tail -1)
-}
-text77="jq '.issue = 77' report/narrative.json > n && mv n report/narrative.json"
-warns="$(cd "$repo" && node report/check.mjs | grep -c '^warn' || true)"
-check "pr check: a Factory report run that changes only the text passes" "check: ok, $warns warnings" \
-  "$(prcheck factory/77-factory-report-pulse "$text77")"
-check "pr check: a Factory report run that changes the template fails" "check: 1 failed, $warns warnings" \
-  "$(prcheck factory/77-factory-report-pulse "$text77 && echo x >> report/index.html")"
-check "pr check: weakening check.mjs in the pull request does not help" "check: 2 failed, $warns warnings" \
-  "$(prcheck factory/77-factory-report-pulse "$text77 && echo x >> report/index.html && echo 'process.exit(0)' > report/check.mjs")"
-check "pr check: altered data fails the hash" "check: 1 failed, $warns warnings" \
-  "$(prcheck factory/77-factory-report-pulse "$text77 && jq -c '.summary[0].runs += 1' report/data.json > d && mv d report/data.json")"
-check "pr check: a typed number fails" "check: 1 failed, $warns warnings" \
-  "$(prcheck factory/77-factory-report-pulse "jq '.issue = 77 | .changes[0].text = \"Es kamen 34 Läufe dazu.\"' report/narrative.json > n && mv n report/narrative.json")"
-check "pr check: a template change by a person (not a Factory branch) is not locked" "check: ok, $warns warnings (C1 skipped: no --base)" \
-  "$(prcheck design/dashboard "echo x >> report/index.html")"
-g checkout -q -B nocheck "$base" && g rm -q report/check.mjs && g commit -qm nocheck
-check "pr check: a base without check.mjs checks nothing" "::notice::The base commit has no report/check.mjs. Nothing to check." \
-  "$(cd "$repo" && BASE_SHA="$(g rev-parse HEAD)" HEAD_REF=x bash "$here/../report/check-pr.sh" 2>&1)"
+jq '.issue = 77' "$base/report/narrative.json" > "$tmp/n77.json"
+warns="$(cd "$base" && node report/check.mjs | grep -c '^warn' || true)"
+F=factory/77-factory-report-pulse
+pr_fixture "$base/report/data.json" "$tmp/n77.json" report/data.json report/narrative.json
+check "pr check: a Factory report run that changes only the two report files passes" "check: ok, $warns warnings" "$(prcheck $F)"
+pr_fixture "$base/report/data.json" "$tmp/n77.json" report/narrative.json report/index.html
+check "pr check: a Factory report run that changes the template fails" "check: 1 failed, $warns warnings" "$(prcheck $F)"
+pr_fixture "$base/report/data.json" "$tmp/n77.json" report/narrative.json .github/workflows/report-check.yml report/check.mjs
+check "pr check: a Factory report run that edits the workflow and check.mjs fails, judged by the base check" "check: 2 failed, $warns warnings" "$(prcheck $F)"
+jq -c '.summary[0].runs += 1' "$base/report/data.json" > "$tmp/altered.json"
+pr_fixture "$tmp/altered.json" "$tmp/n77.json" report/data.json report/narrative.json
+check "pr check: altered data fails the hash" "check: 1 failed, $warns warnings" "$(prcheck $F)"
+jq '.changes[0].text = "Es kamen ３４ Läufe dazu."' "$tmp/n77.json" > "$tmp/typed.json"
+pr_fixture "$base/report/data.json" "$tmp/typed.json" report/narrative.json
+check "pr check: a typed number, even in full-width digits, fails" "check: 1 failed, $warns warnings" "$(prcheck $F)"
+pr_fixture "$base/report/data.json" "$base/report/narrative.json" report/index.html
+check "pr check: a template change by a person (not a Factory branch) is not locked" "check: ok, $warns warnings (C1 skipped: no --base)" "$(prcheck design/dashboard)"
+mv "$base/report/check.mjs" "$tmp/check.mjs.bak"
+check "pr check: a base without check.mjs checks nothing" "::notice::The base commit has no report/check.mjs. Nothing to check." "$(prcheck $F)"
+mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
 
 exit "$fail"

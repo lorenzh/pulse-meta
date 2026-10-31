@@ -1,11 +1,14 @@
 name: Factory report check
 
-# Runs report/check.mjs of the base commit against the report files of the pull request, so a
-# report run cannot weaken the check it must pass. .github/report/check-pr.sh holds the rules.
+# Checks the report files of a pull request with report/check.mjs. pull_request_target runs this
+# workflow as it is on the base branch, from a checkout of the base commit, so a pull request
+# cannot change the check that judges it. The pull request's files are read through the API as
+# data; no code of the pull request runs. .github/report/check-pr.sh holds the rules.
 on:
-  pull_request:
+  pull_request_target:
     paths:
       - 'report/**'
+      - '.github/**'
 
 permissions: {}
 
@@ -15,26 +18,23 @@ jobs:
     permissions:
       contents: read
       issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
-          fetch-depth: 0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 24.19.0
           package-manager-cache: false
 
-      - name: Check the report with the base commit's check.mjs
+      - name: Check the pull request's report with the base commit's check.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.head_ref }}
-        # The base commit's script too, when it has one: the pull request cannot change the rules.
-        run: |
-          script=.github/report/check-pr.sh
-          if git cat-file -e "$BASE_SHA:$script" 2> /dev/null; then
-            script="$RUNNER_TEMP/check-pr.sh"; git show "$BASE_SHA:.github/report/check-pr.sh" > "$script"
-          fi
-          bash "$script"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: .github/report/check-pr.sh
