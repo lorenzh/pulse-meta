@@ -104,6 +104,7 @@ for (const c of botComments) {
     reason: done.reason,
     next: done.states ?? [],
     cost: cost ? Number(cost[1]) : null,
+    verdict: [...c.body.matchAll(/^task-(accepted|rejected): T\d+/gm)].at(-1)?.[1],
     tok: usage.total ?? 0,
     cached: usage.cached ?? 0,
     out: usage.output ?? 0,
@@ -211,7 +212,8 @@ const byHour = [...groupBy(runs, (r) => `${r.start.slice(0, 13)}:00:00Z`)]
 
 const eventKind = (r) => {
   if (r.state === 'review' && r.next.includes('implement')) return 'Review schickt zurück';
-  if (r.state === 'plan-review' && r.next.includes('plan')) return 'Plan-Review schickt zurück';
+  if (r.state === 'task-review' && r.reason === 'transition' && r.verdict === 'rejected') return 'Task-Review schickt zurück';
+  if (r.state === 'plan-review' && r.next.some((s) => s === 'plan' || s === 'breakdown')) return 'Plan-Review schickt zurück';
   if (r.reason === 'hold') return 'Hold (needs-input)';
   if (r.reason === 'preparation-failed') return 'Vorbereitung fehlgeschlagen';
   if (r.wf === 'merge') return `Merge-Konflikt (${r.state})`;

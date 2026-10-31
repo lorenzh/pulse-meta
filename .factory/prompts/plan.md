@@ -96,4 +96,5 @@ the work directory.
 
 If the feature needs a material decision, request a hold with status `needs-input`.
 State the decision in the outcome message.
-Transition to `plan-review` when the spec can be executed and checked.
+Transition to `breakdown` when the spec can be executed and checked. The next state cuts each
+repository section into tasks; do not write task files yourself.

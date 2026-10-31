@@ -1,8 +1,9 @@
 # Review the spec
 
-Read `{{variables.work_directory}}/{{issue.id}}/plan.md` and
-`{{variables.work_directory}}/{{issue.id}}/targets.json` as an independent reviewer.
-Do not edit the spec or implement it.
+Read `{{variables.work_directory}}/{{issue.id}}/plan.md`,
+`{{variables.work_directory}}/{{issue.id}}/targets.json`, and the task files
+`{{variables.work_directory}}/{{issue.id}}/tasks/<target>.json` as an independent reviewer.
+Do not edit the spec, the task files, or implement them.
 Check them against the issue and the issue comments.
 {{#if workspace.contextDirectory}}
 Check them against the repositories cloned at
@@ -52,10 +53,36 @@ source for it. Flag an acceptance check that derives its expected value from the
 Check the spec against itself: flag two statements that cannot both
 hold (for example "never runs inside a request" and "runs on the first read").
 
-If either file is missing, transition to `plan` with a concise message.
-If the spec needs changes, transition to `plan` with a concise defect report.
+## Task files
+
+Run the mechanical check. It needs one task file per entry of `targets.json`, 1 to 8 tasks `T1` to
+`Tn` with the last one `final`, the keys of each task, and every path of a section's `Files:` list
+in a task:
+
+```sh
+node scripts/factory-tasks.mjs --check {{variables.work_directory}}/{{issue.id}}
+```
+
+Then check the cut of each file against its section and the code of its repository:
+
+- A split sits at a real seam. Flag a task that could merge with its neighbor (one file, or under
+  about 200 changed lines together), and stages of one algorithm cut into separate tasks.
+- Tests are in the task of the code they test, and each task can leave lint, typecheck, and tests
+  green on its own. A task comes after the tasks it needs.
+- Every behavior and acceptance check of the section maps to a task (`spec`).
+- A `step` task's acceptance runs locally; the compose end-to-end test, the security checklist, and
+  the pull request evidence are in the `final` task.
+- Every `expected` value is a literal or an independent source, as for the acceptance checks.
+- `behaviorChange` agrees with the section's `Behavior change:` line.
+
+## Outcome
+
+If the spec needs changes, or `plan.md` or `targets.json` is missing, transition to `plan` with a
+concise defect report. A changed spec gets new task files after it.
+If only the task files need changes (the check fails, a file is missing, or the cut is wrong),
+transition to `breakdown` with a concise defect report.
 If a material decision needs a person, request a hold with status `needs-input`.
 
 Return `complete` when the spec is coherent and testable. A person then reviews and merges the
-spec pull request. That merge approves the spec, and `factory fan-out` opens one issue per entry
-of `targets.json`.
+spec pull request. That merge approves the spec and its task files, and `factory fan-out` opens one
+issue per entry of `targets.json`.
