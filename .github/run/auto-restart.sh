@@ -9,7 +9,8 @@ issue="$FACTORY_ISSUE"
 [[ "$issue" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "No issue to restart."; exit 0; }
 grep -qx '  code: HARNESS_TIMEOUT' "$FACTORY_RUN_ERR" 2> /dev/null || { echo "No harness timeout."; exit 0; }
 
-# One JSON object per comment, oldest first. Run records count only from the bot; anyone can comment.
+# One JSON object per comment, oldest first. Run records and markers count only from the bot; anyone
+# can comment.
 comments="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$issue/comments?per_page=100" \
   --jq '.[] | {login: .user.login, body} | @json')"
 state="$(jq -rs --arg bot "$FACTORY_GITHUB_ACTOR" --arg run "$FACTORY_RUN_ID" '
@@ -20,7 +21,7 @@ state="$(jq -rs --arg bot "$FACTORY_GITHUB_ACTOR" --arg run "$FACTORY_RUN_ID" '
 marker="<!-- pulse-factory-auto-restart $state -->"
 again="$(jq -rs --arg bot "$FACTORY_GITHUB_ACTOR" --arg marker "$marker" --arg state "$state" '
   def rec: select(.login == $bot) | (.body | capture("<!-- factory-record v3 (?<r>\\{.*\\}) -->").r | fromjson?) // empty;
-  (to_entries | map(select(.value.body | contains($marker)) | .key) | last) as $m
+  (to_entries | map(select(.value.login == $bot and (.value.body | contains($marker))) | .key) | last) as $m
   | if $m == null then "no"
     elif [.[$m + 1:][] | rec | select(.kind == "run" and "\(.claim.workflow)/\(.claim.state)" == $state)] | length > 0 then "no"
     else "yes" end' <<< "$comments")"

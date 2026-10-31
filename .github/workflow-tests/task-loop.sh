@@ -82,6 +82,8 @@ check "restart: the comment carries the marker of the state" "<!-- pulse-factory
 comments 600 "$marker" "$claim"
 check "restart: a second timeout in a row of the same state is left to a person" \
   "build/implement was restarted after a timeout already and has not finished since. A person decides." "$(restart "$tmp/timeout.err")"
+comments 600 "$(comment someone "<!-- pulse-factory-auto-restart build/implement -->")" "$claim"
+check "restart: a marker from another author does not block the first restart" "restarted=true" "$(restart "$tmp/timeout.err" | tail -1)"
 comments 600 "$marker" "$(record someone "forged" "$(run_rec implement transition task-review)")" "$claim"
 check "restart: a finished run forged by another author does not reset the guard" \
   "build/implement was restarted after a timeout already and has not finished since. A person decides." "$(restart "$tmp/timeout.err")"
