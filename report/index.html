@@ -50,8 +50,10 @@
       if (fn) document.querySelectorAll(`[data-draw="${name}"]`).forEach((el) => fn(el));
     };
     const runAll = () => fns.forEach((_, name) => run(name));
-    fetch('data.json').then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-      .then((d) => { data = d; }, (err) => { failed = true; console.error('data.json', err); })
+    const get = (f) => fetch(f).then((r) => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
+    // The page shows the merged report: data.json holds the numbers, narrative.json the agent's text.
+    Promise.all([get('data.json'), get('narrative.json').catch((err) => { console.error(err); return undefined; })])
+      .then(([d, n]) => { data = n === undefined ? d : {...d, narrative: n}; }, (err) => { failed = true; console.error(err); })
       .then(runAll);
     let last = window.innerWidth;
     window.addEventListener('resize', () => { if (Math.abs(window.innerWidth - last) > 20) { last = window.innerWidth; runAll(); } });
@@ -123,8 +125,8 @@
 <div class="fr">
   <header class="fr-head" id="top">
     <h1 class="fr-title">pulse Factory-Report</h1>
-    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den <span data-draw="sum" data-fmt="int" data-source="summary" data-field="targets" data-row="0">—</span> Target-Repositories. Stand: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>.</p>
-    <p class="fr-lead">Die Factory hat in <b data-draw="sum" data-fmt="int" data-source="summary" data-field="runs" data-row="0">—</b> Läufen <b data-draw="sum" data-fmt="int" data-source="summary" data-field="features_done" data-row="0">—</b> Features gebaut und dafür <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</b> verbraucht, im Median <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="feature_usd_median" data-row="0">—</b> pro Feature. <b data-draw="sum" data-fmt="pct" data-source="summary" data-field="first_pass" data-row="0">—</b> der Target-PRs wurden ohne Handarbeit gemergt. Der Rest zeigt die eigentliche Schwäche: Die Review-Stufe ist billig und prüft kaum selbst. Sie hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.</p>
+    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den <span data-draw="sum" data-fmt="int" data-source="summary" data-field="targets" data-row="0">—</span> Target-Repositories. Zeitraum: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>. Detailtabellen und Diagramme zeigen die letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage.</p>
+    <p class="fr-lead" data-draw="narrative" data-slot="lead">—</p>
   </header>
 
   <section class="fr-tiles" aria-label="Kennzahlen">
@@ -184,7 +186,7 @@
         <span class="fr-tile-note">Alle Kosten geteilt durch alle PRs</span>
       </div>
     </div>
-    <p class="fr-note">Ein Lauf dauert wenige Minuten. Die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es fast immer am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.</p>
+    <p class="fr-note" data-draw="narrative" data-slot="notes.duration"></p>
   </section>
 
   <section class="fr-section" id="kosten">
@@ -192,13 +194,13 @@
     <div class="fr-grid">
       <div class="fr-card">
         <h3>Kosten nach Schritt</h3>
-        <p class="fr-note">Summe in USD je Workflow-Zustand. Der Implementer arbeitet am längsten und liest die meisten Dateien.</p>
+        <p class="fr-note">Bekannte Kosten in USD je Workflow-Zustand, letzte <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. <span data-draw="narrative" data-slot="notes.steps"></span></p>
         <div class="fr-chart" data-draw="steps" data-source="by_step"></div>
       </div>
       <div class="fr-card">
         <h3>Kosten über die Zeit</h3>
-        <p class="fr-note">USD je Stunde (UTC), nach Startzeit des Laufs. Die Arbeit kam in Schüben, jeweils nach dem Merge einer Spec.</p>
-        <div class="fr-chart" data-draw="hours" data-source="by_hour"></div>
+        <p class="fr-note">Bekannte Kosten in USD je Tag (UTC), nach Startzeit des Laufs. <span data-draw="narrative" data-slot="notes.days"></span></p>
+        <div class="fr-chart" data-draw="days" data-source="by_day"></div>
       </div>
     </div>
     <div class="fr-card">
@@ -223,7 +225,7 @@
     </div>
     <div class="fr-card">
       <h3>Kosten nach Repository</h3>
-      <p class="fr-note">Spec-Läufe zählen zu meta. api und status sind die teuersten Targets, weil die meisten Features sie berühren und ihre Test-Suiten groß sind.</p>
+      <p class="fr-note">Spec-Läufe zählen zu meta, letzte <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. <span data-draw="narrative" data-slot="notes.targets"></span></p>
       <div class="fr-scroll short">
         <table data-source="by_target" data-row-key="target">
           <thead><tr>
@@ -245,13 +247,12 @@
     <h2 class="fr-h2">Alle Features</h2>
     <div class="fr-card">
       <h3>Kosten, Laufzeit und Handarbeit je Feature</h3>
-      <p class="fr-note">Ein Feature ist ein Eltern-Issue mit seinen Children. Factory-Minuten sind die Summe der Läufe, Durchlaufzeit reicht vom ersten Lauf bis zum letzten Merge. Klick auf eine Spalte sortiert.</p>
-      <input class="fr-search" id="fr-search" type="search" placeholder="Feature suchen" aria-label="Feature suchen">
+      <p class="fr-note">Ein Feature ist ein Eltern-Issue mit seinen Children, hier jedes mit einem Lauf in den letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tagen. Factory-Minuten sind die Summe der Läufe, Durchlaufzeit reicht vom ersten Lauf bis zum letzten Merge. Klick auf eine Spalte sortiert; der Titel steht im verlinkten Issue.</p>
+      <input class="fr-search" id="fr-search" type="search" inputmode="numeric" placeholder="Issue-Nummer" aria-label="Feature nach Issue-Nummer suchen">
       <div class="fr-scroll">
         <table data-source="features" data-row-key="issue" id="fr-ftable">
           <thead><tr>
             <th data-field="issue" data-sort="issue"><button type="button">Issue</button></th>
-            <th data-field="title" data-sort="title"><button type="button">Titel</button></th>
             <th class="num" data-field="targets" data-sort="targets"><button type="button">Targets</button></th>
             <th class="num" data-field="runs" data-sort="runs"><button type="button">Läufe</button></th>
             <th class="num" data-field="spec_usd" data-sort="spec_usd"><button type="button">Spec USD</button></th>
@@ -300,12 +301,13 @@
     <div class="fr-grid">
       <div class="fr-card">
         <h3>Was Personen nachbessern mussten</h3>
-        <p class="fr-note">Commits auf Factory-PRs, die nicht vom Factory-Bot stammen. Mehrere davon schließen Datenlecks in Fehlermeldungen.</p>
+        <p class="fr-note">Commits auf Factory-PRs, die nicht vom Factory-Bot stammen. <span data-draw="narrative" data-slot="notes.human_fixes"></span></p>
         <div class="fr-scroll short">
           <table data-source="human_fixes" data-row-key="key">
             <thead><tr>
               <th data-field="pr">PR</th>
-              <th data-field="fix">Commit</th>
+              <th data-field="sha">Commit</th>
+              <th data-field="feature">Feature</th>
               <th data-field="date">Datum</th>
             </tr></thead>
             <tbody data-draw="humantable"></tbody>
@@ -320,7 +322,7 @@
             <thead><tr>
               <th data-field="issue">Issue</th>
               <th data-field="kind">Ereignis</th>
-              <th data-field="title">Titel</th>
+              <th data-field="step">Schritt</th>
               <th data-field="at">Zeit (UTC)</th>
             </tr></thead>
             <tbody data-draw="eventtable"></tbody>
@@ -330,51 +332,40 @@
     </div>
   </section>
 
-  <section class="fr-section" id="fallstudie">
-    <h2 class="fr-h2">Fallstudie: #<span data-draw="sum" data-source="summary" data-field="case_issue" data-row="0">—</span>, <span data-draw="sum" data-source="summary" data-field="case_title" data-row="0">—</span></h2>
+  <section class="fr-section" id="fallstudie" data-draw="hasCase" hidden>
+    <h2 class="fr-h2">Fallstudie: <span data-draw="caseRef">—</span></h2>
     <div class="fr-grid">
       <div class="fr-card">
         <h3>Läufe des Features und seiner Children</h3>
-        <p class="fr-note">Das teuerste abgeschlossene Feature. Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="case_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="case_tokens_m" data-row="0">—</b> M Tokens. Links die Spec-Läufe, rechts der Build nach dem Merge der Spec, je Target eine Spur.</p>
+        <p class="fr-note">Das teuerste Feature, das in den letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tagen fertig wurde. Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="case_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="case_tokens_m" data-row="0">—</b> M Tokens. Links die Spec-Läufe, rechts der Build nach dem Merge der Spec, je Target eine Spur.</p>
         <div class="fr-chart tall" data-draw="case" data-source="case"></div>
       </div>
-      <div class="fr-card fr-prose" data-case="324" data-draw="casenote" hidden>
-        <h3>Was dabei auffiel (#324)</h3>
-        <ul>
-          <li><b>api #372:</b> Die Spec verlangt leere Manual-Incident-Reads ohne Admin-Tokens. Der Implementer fand „keinen Bug“ und schrieb Tests und Doku für das Gegenteil. Der Reviewer bestätigte das. Eine Person korrigierte es auf pulse-api#48.</li>
-          <li><b>Fehler in der Spec:</b> Der Plan ließ die erwartete Service-Liste aus <code>compose.yaml</code> lesen, also aus der Datei, die geprüft wird. Die Prüfung konnte nie fehlschlagen. Eine Person ersetzte sie durch eine feste Liste.</li>
-          <li><b>config #375:</b> Die Frage nach TypeScript 7 blieb offen. Das contract-Child fand im selben Lauf die Antwort, aber die Children teilen kein Wissen.</li>
-          <li><b>Mutation-Runs:</b> Kein Reviewer hat sie wiederholt. Der fehlschlagende Output steht nur in Issue-Kommentaren, nicht in den PR-Beschreibungen, obwohl die Spec das verlangt.</li>
-        </ul>
+      <div class="fr-card fr-prose">
+        <h3>Was dabei auffiel</h3>
+        <p data-draw="narrative" data-slot="case_study.note"></p>
+        <ul data-draw="narrative" data-slot="case_study.items"></ul>
       </div>
+    </div>
+  </section>
+
+  <section class="fr-section" id="aenderungen" hidden>
+    <h2 class="fr-h2">Seit dem letzten Report</h2>
+    <div class="fr-prose">
+      <ul data-draw="narrative" data-slot="changes"></ul>
     </div>
   </section>
 
   <section class="fr-section" id="befunde">
-    <h2 class="fr-h2">Befunde (Stand 30.10.2026)</h2>
+    <h2 class="fr-h2">Befunde (Stand <span data-draw="meta" data-field="as_of">—</span>)</h2>
     <div class="fr-prose">
-      <ol>
-        <li><b>Kosten sind kein Engpass.</b> Ein Feature kostet im Median etwa so viel wie ein Kaffee. Den größten Teil verbraucht build/implement. Der hohe Cache-Anteil hält die Preise niedrig.</li>
-        <li><b>Die Zeit liegt bei Menschen.</b> Die Läufe selbst dauern Minuten. Längere Durchlaufzeiten entstehen beim Warten auf den Merge der Spec und der PRs.</li>
-        <li><b>Das Review ist zu passiv.</b> Es kostet deutlich weniger als ein Implement-Lauf, schickt fast nie zurück und wiederholt keine Mutation-Checks. Was durchrutschte, zeigt die Liste der Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (probe#34, notify#24, api#43), fehlende Exporte und Validierungen (contract#29, contract#24, api#37) und eine Abweichung von der Spec (api#48).</li>
-        <li><b>Holds kommen aus ungeprüften Annahmen in der Spec.</b> Bei SonarJS (#66) hingen alle Children gleichzeitig fest, weil typescript-eslint TypeScript 7 nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Issue-Review und Plan lesen die Clones nur stichprobenartig.</li>
-        <li><b>Plan-Review greift eher als Build-Review.</b> Es schickte Pläne häufiger zurück als das Build-Review Code. Das Issue-Review hat kein Feature blockiert.</li>
-        <li><b>Die Infrastruktur ist stabil.</b> Kaum fehlgeschlagene Actions-Läufe, wenige Merge-Konflikte, vereinzelt fehlgeschlagene Vorbereitungen bei frühen Features.</li>
-      </ol>
+      <ol data-draw="narrative" data-slot="findings"></ol>
     </div>
   </section>
 
   <section class="fr-section" id="empfehlungen">
-    <h2 class="fr-h2">Empfehlungen (Stand 30.10.2026)</h2>
+    <h2 class="fr-h2">Empfehlungen (Stand <span data-draw="meta" data-field="as_of">—</span>)</h2>
     <div class="fr-prose">
-      <ol>
-        <li><b>Reviewer prüft selbst.</b> Mindestens einen Mutation-Run wiederholen. Meldet der Implementer „kein Bug, keine Änderung“ zu einem Punkt, den die Spec als Verhaltensänderung beschreibt, geht das Issue an eine Person (needs-input) statt durch.</li>
-        <li><b>Sicherheits-Checkliste im Review:</b> Keine Secrets, URLs, Header- oder Dateiinhalte in Fehler- und Log-Texten. Das war die häufigste Art von Nacharbeit.</li>
-        <li><b>Plan prüft Annahmen gegen die Repos:</b> Tool-Versionen, Linter-Kompatibilität und was Biome prüft. Das hätte die Holds bei #66 und #96 vermieden.</li>
-        <li><b>Gemeinsame Befunde teilen:</b> Wenn ein Child eine Frage klärt, die die Spec mehreren Children stellt (TS 7), soll der Befund am Feature stehen und von den anderen gelesen werden.</li>
-        <li><b>Spec-Regel für Prüfungen:</b> Eine Prüfung leitet ihren Sollwert nie aus der Datei ab, die sie prüft.</li>
-        <li><b>PR-Beschreibung füllen:</b> Den Bericht des Implementers samt Mutation-Output in den PR übernehmen, nicht nur „Closes …“.</li>
-      </ol>
+      <ol data-draw="narrative" data-slot="recommendations"></ol>
     </div>
   </section>
 
@@ -382,10 +373,10 @@
     <h2 class="fr-h2">Methode und Grenzen</h2>
     <div class="fr-prose">
       <ul>
-        <li>Quelle sind die Kommentare des Factory-Bots (<code>lorenzh-factory-bot</code>) auf allen Issues in pulse-meta; Kommentare anderer Konten zählen nicht. Jeder Lauf schreibt einen Datensatz mit Zustand, Rolle, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories.</li>
+        <li>Quelle sind die Kommentare des Factory-Bots (<code>lorenzh-factory-bot</code>) auf allen Issues in pulse-meta; Kommentare anderer Konten zählen nicht. Jeder Lauf schreibt einen Datensatz mit Zustand, Profil, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories. Läufe und Issues des Report-Workflows zählen nicht mit.</li>
         <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. Codex-Läufe melden keine Kosten: Sie zählen in allen USD-Werten nicht mit, ihre Tokens schon. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
         <li>Handarbeit heißt: ein Commit auf einem Factory-PR, den ein GitHub-Konto außer dem Factory-Bot geschrieben oder committet hat. Die Git-Identität der Factory gehört zu keinem Konto. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
-        <li>Die Zahlen erzeugt <code>report/generate.mjs</code> täglich neu. Laufende Features zählen nur mit den Läufen bis zum Stand oben. Befunde, Empfehlungen und die Fallstudie sind Text vom 30.10.2026 und werden nicht neu geschrieben.</li>
+        <li>Die Zahlen erzeugt <code>report/data.mjs</code>. Die Kacheln oben zählen alle Läufe seit Beginn, Tabellen und Diagramme die letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. Den Text schreibt der Factory-Workflow <code>report</code>: Er sieht nur Zahlen und Verweise, keine Titel, und jede Zahl im Text ist ein Platzhalter für einen Wert aus <code>data.json</code>. <code>report/check.mjs</code> prüft das, ein Review-Agent prüft die Aussagen, und die Seite zeigt einen Stand erst nach dem Merge.</li>
       </ul>
     </div>
   </section>
@@ -424,6 +415,7 @@
   };
   // Tooltip lines of one case-study run. A Codex run reports no cost: its cost is unknown, not 0.
   window.frCaseTip = (r, start) => [['#' + r.issue + ' ' + r.step], ['Start', start + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', r.usd === null || r.usd === undefined ? 'unbekannt' : window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]];
+  window.frLinkCell = (tr, a) => { const td = document.createElement('td'); td.appendChild(a); tr.appendChild(td); return td; };
   window.frCell = (tr, text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
   window.frBarCell = (tr, value, max, kind) => {
     const td = document.createElement('td'); td.className = 'num';
@@ -440,10 +432,64 @@
     if (s.status !== 'ok' || !s.data.length) { el.textContent = '—'; return; }
     el.textContent = window.frFmt(s.data[0][el.dataset.field], el.dataset.fmt || 'text');
   });
-  // Fixed prose about one case study shows only while that feature is the case.
-  dash.draw('casenote', (el) => {
+  dash.draw('meta', (el) => {
+    const m = dash.data('meta');
+    el.textContent = m.status === 'ok' && m.data[el.dataset.field] ? String(m.data[el.dataset.field]).slice(0, 10) : '—';
+  });
+  dash.draw('hasCase', (el) => {
     const s = dash.data('summary');
-    el.hidden = s.status !== 'ok' || String(s.data[0]?.case_issue) !== el.dataset.case;
+    el.hidden = s.status !== 'ok' || s.data[0]?.case_issue == null;
+  });
+  dash.draw('caseRef', (el) => {
+    const s = dash.data('summary');
+    el.replaceChildren();
+    if (s.status === 'ok' && s.data[0]?.case_issue != null) window.frInline(el, '#' + s.data[0].case_issue, s.data[0]);
+  });
+
+  // The agent's text: narrative.json slots, rendered with textContent only. Inline syntax (checked
+  // by report/check.mjs): **bold**, `code`, {field|fmt} for a summary number, #N and pulse-<repo>#N.
+  window.frRef = (repo, num) => {
+    const a = document.createElement('a');
+    a.href = `https://github.com/lorenzh/${repo}/${repo === 'pulse-meta' ? 'issues' : 'pull'}/${num}`;
+    a.textContent = (repo === 'pulse-meta' ? '' : repo) + '#' + num;
+    return a;
+  };
+  window.frInline = (parent, text, sum) => {
+    const re = /\*\*(.+?)\*\*|`([^`\n]+)`|\{([a-z][a-z0-9_]*)\|([a-z0-9]+)\}|(?<![\w-])pulse-([a-z]+)#(\d+)\b|(?<![\w#-])#(\d+)\b/g;
+    let last = 0;
+    for (const m of String(text).matchAll(re)) {
+      if (m.index > last) parent.append(text.slice(last, m.index));
+      if (m[1] !== undefined) { const b = document.createElement('b'); window.frInline(b, m[1], sum); parent.append(b); }
+      else if (m[2] !== undefined) { const c = document.createElement('code'); c.textContent = m[2]; parent.append(c); }
+      else if (m[3] !== undefined) { const b = document.createElement('b'); b.dataset.field = m[3]; b.textContent = window.frFmt(sum?.[m[3]], m[4]); parent.append(b); }
+      else if (m[5] !== undefined) parent.append(window.frRef('pulse-' + m[5], m[6]));
+      else parent.append(window.frRef('pulse-meta', m[7]));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parent.append(text.slice(last));
+  };
+  dash.draw('narrative', (el) => {
+    const n = dash.data('narrative'), s = dash.data('summary');
+    if (n.status !== 'ok' || s.status !== 'ok') return;
+    const sum = s.data[0];
+    const val = el.dataset.slot.split('.').reduce((o, k) => o?.[k], n.data);
+    el.replaceChildren();
+    if (!Array.isArray(val)) { window.frInline(el, val ?? '', sum); return; }
+    if (el.dataset.slot === 'changes') document.getElementById('aenderungen').hidden = !val.length;
+    for (const it of val) {
+      const li = document.createElement('li');
+      if (it.id) li.id = 'befund-' + it.id;
+      const b = document.createElement('b');
+      window.frInline(b, (it.title ?? it.label) + (el.dataset.slot === 'findings' || el.dataset.slot === 'recommendations' ? '.' : ':'), sum);
+      li.append(b, ' ');
+      window.frInline(li, it.text, sum);
+      if (it.findings) {
+        const span = document.createElement('span'); span.className = 'muted'; span.append(' (zu ');
+        it.findings.forEach((id, i) => { const a = document.createElement('a'); a.href = '#befund-' + id; a.textContent = id; span.append(...(i ? [', ', a] : [a])); });
+        span.append(')'); li.append(span);
+      }
+      el.append(li);
+    }
   });
 </script>
 
@@ -471,31 +517,29 @@
     g.append('text').attr('x', (r) => x(r.usd) + 6).attr('y', (r) => y(r.step) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg)').text((r) => window.frFmt(r.usd, 'usd'));
   });
 
-  dash.draw('hours', (el) => {
-    const d = dash.data('by_hour');
+  dash.draw('days', (el) => {
+    const d = dash.data('by_day');
     if (d.status === 'error') { window.frFail(el); return; }
-    if (d.status !== 'ok') { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({t: new Date(r.hour), usd: Number(r.usd), runs: Number(r.runs)}));
+    if (d.status !== 'ok' || !d.data.length) { el.replaceChildren(); return; }
+    const rows = d.data.map((r) => ({t: new Date(r.day + 'T00:00:00Z'), usd: Number(r.usd), runs: Number(r.runs), unknown: Number(r.runs_cost_unknown)}));
     el.replaceChildren();
-    const W = el.clientWidth || 360, H = 240, m = {t: 10, r: 8, b: 26, l: 40};
-    const t0 = d3.utcHour.floor(d3.min(rows, (r) => r.t)), t1 = d3.utcHour.offset(d3.max(rows, (r) => r.t), 1);
+    const W = el.clientWidth || 360, H = 240, m = {t: 10, r: 8, b: 26, l: 44};
+    const t0 = d3.utcDay.floor(d3.min(rows, (r) => r.t)), t1 = d3.utcDay.offset(d3.max(rows, (r) => r.t), 1);
     const x = d3.scaleUtc([t0, t1], [m.l, W - m.r]);
-    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.usd)], [H - m.b, m.t]).nice();
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.usd) || 1], [H - m.b, m.t]).nice();
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
     const yt = y.ticks(4);
     svg.append('g').selectAll('line').data(yt).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
     svg.append('g').selectAll('text').data(yt).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text((v) => '$' + v);
-    const days = d3.utcDay.range(d3.utcDay.ceil(t0), t1);
-    const step = W < 420 ? 12 : 6;
-    const ticks = d3.utcHour.every(step).range(t0, t1).filter((t) => t.getUTCHours() % step === 0);
-    svg.append('g').selectAll('text').data(ticks).join('text').attr('x', x).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)')
-      .text((t) => t.getUTCHours() === 0 ? d3.utcFormat('%-d.%-m.')(t) : d3.utcFormat('%H h')(t));
-    svg.append('g').selectAll('line').data(days).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '3 3');
+    const days = d3.utcDay.range(t0, t1);
+    const every = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor((W - m.l) / 56))));
+    const bw = Math.max(2, (x(d3.utcDay.offset(t0, 1)) - x(t0)) * 0.78);
+    svg.append('g').selectAll('text').data(days.filter((_, i) => i % every === 0)).join('text').attr('x', (t) => x(t) + bw / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)')
+      .text((t) => d3.utcFormat('%-d.%-m.')(t));
     svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', H - m.b).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
-    const bw = Math.max(2, (x(d3.utcHour.offset(t0, 1)) - x(t0)) * 0.78);
     const tip = window.frTip(el);
     svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => x(r.t) + 0.5).attr('width', bw).attr('y', (r) => y(r.usd)).attr('height', (r) => Math.max(1, y(0) - y(r.usd))).attr('rx', 2).attr('fill', dash.colors[0])
-      .on('pointermove', (ev, r) => tip.show(ev, [[d3.utcFormat('%-d.%-m. %H:00 UTC')(r.t)], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')]]))
+      .on('pointermove', (ev, r) => tip.show(ev, [[d3.utcFormat('%-d.%-m.%Y')(r.t)], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')], ['ohne Kosten', window.frFmt(r.unknown, 'int')]]))
       .on('pointerleave', () => tip.hide());
   });
 
@@ -562,7 +606,7 @@
   document.querySelectorAll('#fr-ftable th[data-sort] button').forEach((b) => {
     b.addEventListener('click', () => {
       const k = b.parentElement.dataset.sort;
-      window.frSort = window.frSort.key === k ? {key: k, dir: -window.frSort.dir} : {key: k, dir: (k === 'title' || k === 'status' || k === 'issue') ? 1 : -1};
+      window.frSort = window.frSort.key === k ? {key: k, dir: -window.frSort.dir} : {key: k, dir: (k === 'status' || k === 'issue') ? 1 : -1};
       dash.draw('ftable');
     });
   });
@@ -574,15 +618,15 @@
       th.setAttribute('aria-sort', th.dataset.sort === window.frSort.key ? (window.frSort.dir > 0 ? 'ascending' : 'descending') : 'none');
     });
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
-    let q = ''; document.querySelectorAll('#fr-search').forEach((i) => { q = i.value.trim().toLowerCase(); });
+    let q = ''; document.querySelectorAll('#fr-search').forEach((i) => { q = i.value.trim().replace(/^#/, ''); });
     const {key, dir} = window.frSort;
-    const val = (r) => (key === 'title' || key === 'status') ? String(r[key]) : (r[key] === null ? -Infinity : Number(r[key]));
-    const rows = d.data.filter((r) => !q || String(r.title).toLowerCase().includes(q) || String(r.issue).includes(q))
+    const val = (r) => key === 'status' ? String(r[key]) : (r[key] === null ? -Infinity : Number(r[key]));
+    const rows = d.data.filter((r) => !q || String(r.issue).includes(q) || (r.children ?? []).some((c) => String(c).includes(q)))
       .slice().sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
     const max = d3.max(d.data, (r) => Number(r.total_usd));
     tb.replaceChildren(...rows.map((r) => {
       const tr = document.createElement('tr'); tr.dataset.key = String(r.issue);
-      window.frCell(tr, '#' + r.issue); window.frCell(tr, r.title);
+      window.frLinkCell(tr, window.frRef('pulse-meta', r.issue));
       window.frCell(tr, window.frFmt(r.targets, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
       window.frCell(tr, window.frFmt(r.spec_usd, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.build_usd, 'usd'), 'num');
       window.frBarCell(tr, r.total_usd, max, 'usd'); window.frCell(tr, window.frFmt(r.factory_min, 'dec1'), 'num');
@@ -598,7 +642,11 @@
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     tb.replaceChildren(...d.data.map((r) => {
       const tr = document.createElement('tr'); tr.dataset.key = r.key;
-      window.frCell(tr, r.pr); window.frCell(tr, r.fix); window.frCell(tr, r.date, 'muted');
+      const [repo, num] = r.pr.split('#');
+      window.frLinkCell(tr, window.frRef(repo, num));
+      const a = document.createElement('a'); a.href = `https://github.com/lorenzh/${repo}/pull/${num}/commits/${r.sha}`; a.textContent = r.sha; const c = window.frLinkCell(tr, a); c.querySelector('a').style.fontFamily = 'ui-monospace, monospace';
+      if (r.feature === null) window.frCell(tr, '—', 'muted'); else window.frLinkCell(tr, window.frRef('pulse-meta', r.feature));
+      window.frCell(tr, r.date, 'muted');
       return tr;
     }));
   });
@@ -608,16 +656,16 @@
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     tb.replaceChildren(...d.data.map((r) => {
       const tr = document.createElement('tr'); tr.dataset.key = r.key;
-      window.frCell(tr, '#' + r.issue);
+      window.frLinkCell(tr, window.frRef('pulse-meta', r.issue));
       const k = document.createElement('td'); const p = document.createElement('span');
       p.className = 'pill ' + (/Hold|fehlgeschlagen/.test(r.kind) ? 'bad' : 'warn'); p.textContent = r.kind; k.appendChild(p); tr.appendChild(k);
-      window.frCell(tr, r.title); window.frCell(tr, r.at, 'muted');
+      window.frCell(tr, r.step, 'muted'); window.frCell(tr, r.at, 'muted');
       return tr;
     }));
   });
 </script>
 
-<p class="fr-source" style="max-width:72rem;margin:32px auto 0">Erzeugt von <a href="https://github.com/lorenzh/pulse-meta/tree/main/report">report/generate.mjs</a> aus den öffentlichen Issues, Actions-Läufen und Pull Requests der pulse-Repositories.</p>
+<p class="fr-source" style="max-width:72rem;margin:32px auto 0">Zahlen von <a href="https://github.com/lorenzh/pulse-meta/tree/main/report">report/data.mjs</a> aus den öffentlichen Issues, Actions-Läufen und Pull Requests der pulse-Repositories; Text vom Factory-Workflow <code>report</code>, gemergt nach Review.</p>
 </main>
 </body>
 </html>

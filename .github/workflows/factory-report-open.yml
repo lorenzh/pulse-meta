@@ -1,0 +1,55 @@
+name: Factory report issue
+
+# Builds the report numbers (report/data.mjs), uploads them as the artifact report-data, and opens
+# the daily report issue with factory/report/report. The job starts the Factory run with
+# workflow_dispatch: a label set with the job token triggers no factory.yml. Nothing opens when the
+# numbers have not changed since the last merged report, or while a report issue is still open.
+# .github/report/open-issue.sh holds the rules, and issue.md next to it the issue text.
+on:
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: factory-report-open
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  open-issue:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      actions: write # gh workflow run factory-run.yml
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Build the report data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
+        run: node report/data.mjs "$RUNNER_TEMP/report-data/data.json" --previous report/data.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-data
+          path: ${{ runner.temp }}/report-data/data.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Open the report issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_DATA: ${{ runner.temp }}/report-data/data.json
+          REPORT_PREVIOUS: report/data.json
+          REPORT_RUN_ID: ${{ github.run_id }}
+        run: .github/report/open-issue.sh

@@ -6,7 +6,7 @@ This repository is the meta repository of pulse. It holds no product code. Featu
 
 pulse is built by Paragon Factory agents from the issues in this repository. Developer and agent guidelines for this repository are in [AGENTS.md](AGENTS.md) (Claude Code reads it through [CLAUDE.md](CLAUDE.md)). Each code repository has its own `AGENTS.md`.
 
-The [Factory report](https://lorenzh.github.io/pulse-meta/) shows the cost, duration and quality of every Factory run. It is rebuilt daily from the public issues and pull requests (`report/`).
+The [Factory report](https://lorenzh.github.io/pulse-meta/) shows the cost, duration and quality of every Factory run. A Factory workflow writes it: a daily job builds the numbers from the public issues and pull requests, an agent writes the text, a second agent reviews it, and the merge of its pull request publishes the page (`report/`, [docs/factory.md](docs/factory.md#factory-report)).
 
 ## Repositories
 
