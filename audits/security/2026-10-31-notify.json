@@ -71,7 +71,7 @@
       "severity": "P3",
       "candidate": true,
       "title": "Text of a non-JSON api response body reaches the poll error and the 'api poll failed' log line",
-      "command": "Fake api answers 200 with a body that is not JSON; read /incidents and inspect the error text (SEC-2 expectation)",
+      "command": "Fake api answers 200 with a body that is not JSON and has a bare word where the parser fails; read /incidents and inspect the error text (SEC-2 expectation). A body that starts with '<' gives only Unrecognized token '<'",
       "exitCode": 1,
       "excerpt": "SEC-2 error: JSON Parse error: Unexpected identifier \"<upstream token>\"",
       "commits": { "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
