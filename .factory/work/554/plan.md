@@ -530,7 +530,8 @@ New names (all owned by status; no contract or config change):
 | `componentLatency` | `PollerState` field | `grep -rn 'componentLatency' .repos/contract/src .repos/config` | 0 hits |
 | `componentId` (in `ComponentLatency`) | field | `grep -rn 'componentId' .repos/contract/src` | `schema.ts:748` (`componentUptimeSchema.componentId`). Reused on purpose, same meaning; not a collision |
 | `highest member check` | label text | `grep -rn 'highest member check' .repos/contract/src .repos/config` | 0 hits |
-| `daily-values` | CSS class / `data-key="daily"` | status-only markup | n/a |
+| `daily-values` | CSS class (status markup) | `grep -rn 'daily-values' .repos/status/src .repos/status/public .repos/contract/src .repos/config` | 0 hits |
+| `data-key="daily"` | morph key (status markup) | `grep -rn 'data-key="daily"' .repos/status/src .repos/status/public .repos/contract/src .repos/config` | 0 hits. Existing keys near it are `data-key="day:<date>"` (`src/render.ts:209`, `:402`) and `data-key="details"` (`src/render.ts:406`, the per-chart table this spec removes); `daily` equals neither, and `day:` keys stay scoped to rows inside the table |
 
 `days` reuses the contract `LatencyDay` type and `latencyDaySchema`. No contract type is copied.
 
