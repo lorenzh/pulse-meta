@@ -38,6 +38,8 @@ Never in a built image or site. Exact pin, same version in every repository that
 
 ## Runtime and CI
 
+The rows that name a target repository are the action policy of the targets. pulse-config ships a copy of them in `actions-policy.json`, and its `pulse-workflows` check rejects every other action and pin in the workflows of api, probe, status, notify and console (#556). A change to such a row needs a pulse-config pull request that updates `actions-policy.json` and names the pulse-meta commit of the change.
+
 | Tool | Pin | Use |
 | --- | --- | --- |
 | Bun | `1.4.0` | Package manager, runtime and test runner of every pulse repository (`packageManager: bun@1.4.0`, `engines.bun: 1.4.0`, `bun.lock`). |
@@ -45,6 +47,7 @@ Never in a built image or site. Exact pin, same version in every repository that
 | [actions/checkout](https://github.com/actions/checkout) | `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` (v5.1.0) | Checkout in the pulse-meta workflows, always with `persist-credentials: false`. Pinned by commit SHA. |
 | [actions/checkout](https://github.com/actions/checkout) | `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) | Checkout in the target repositories (`check.yml` and `release.yml` of pulse-config, the service `ci.yml` jobs, the pulse-deploy `ci.yml`), always with `persist-credentials: false`. Pinned by commit SHA. |
 | [actions/attest](https://github.com/actions/attest) | `1e69f48acb82d1966a394da916b4c1698aa569d6` (v4.2.2) | GitHub artifact attestation (SLSA build provenance) of the released images, in the `publish` job of the reusable `release.yml` of pulse-config only (#527). `push-to-registry: true`, `create-storage-record: false`. Pinned by commit SHA. |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact) | `cf430e030ddbb5b0abf93d22962f4752f3646cd9` (v7.0.2) | MIT, GitHub-owned, maintained (v7.0.2 released 2026-10-07; the tag points to this commit). Uploads the `bench-out` result of the nightly `bench.yml` of pulse-api only (#556). No other target uses it. Pinned by commit SHA. |
 | [actions/setup-node](https://github.com/actions/setup-node) | `249970729cb0ef3589644e2896645e5dc5ba9c38` (v6.5.0) | Node for the Factory CLI in the pulse-meta workflows. Pinned by commit SHA. |
 | [actions/upload-pages-artifact](https://github.com/actions/upload-pages-artifact) | `7b1f4a764d45c48632c6b24a0339c27f5614fb0b` (v4.0.0) | Factory report build in pulse-meta. Pinned by commit SHA. |
 | [actions/deploy-pages](https://github.com/actions/deploy-pages) | `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` (v4.0.5) | Factory report publish in pulse-meta. Pinned by commit SHA. |
