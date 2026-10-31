@@ -1,0 +1,8 @@
+[
+  { "name": "config", "dependsOn": [] },
+  { "name": "api", "dependsOn": ["config"] },
+  { "name": "probe", "dependsOn": ["config"] },
+  { "name": "status", "dependsOn": ["config"] },
+  { "name": "notify", "dependsOn": ["config"] },
+  { "name": "console", "dependsOn": ["config"] }
+]
