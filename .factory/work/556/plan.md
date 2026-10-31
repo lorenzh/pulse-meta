@@ -83,7 +83,7 @@ Rules:
 5. Every `actions/checkout` step must have a `with` map whose own `persist-credentials` key is the boolean `false`. Missing `with`, missing key, `true`, the string `"false"`, an expression, or the key on another step or job do not count. Each checkout is checked on its own.
 6. A job-level `uses` (reusable workflow) is allowed only as `./.github/workflows/<file>` where `<file>` is one of the checked files, or as `lorenzh/pulse-config/.github/workflows/check.yml@<sha>` or `lorenzh/pulse-config/.github/workflows/release.yml@<sha>` where `<sha>` is 40 lower-case hex and equals the SHA in the `package.json` entry `github:lorenzh/pulse-config#<sha>`. Without that entry, every remote reusable workflow is a violation. Any other owner, repository or path is a violation.
 7. A job with `container` or `services` is a violation (`not covered by the action policy`).
-8. A job with neither `steps` nor `uses` is a violation.
+8. A job with neither a non-empty `steps` list nor a job-level `uses` is a violation (`job has no steps`). It counts once per job.
 
 Policy file `actions-policy.json` (config root), exact content apart from the meta commit:
 
@@ -200,6 +200,7 @@ Image (each must make `scripts/image-dotenv.sh` fail):
 - `./.github/workflows/missing.yml` as a job `uses`.
 - A file with a YAML syntax error, a file whose root is a list, `jobs: {}`, `steps: "x"`.
 - A job with `container: node:22`.
+- Rule 8: a workflow whose only job is `idle: { runs-on: ubuntu-24.04 }` (no `steps`, no `uses`): exactly 1 violation (`ci.yml: job idle: job has no steps`), exit `1`. The same job with `steps: []`: exactly 1 violation, exit `1`. Adding one compliant `oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6` step to that job: 0 violations, exit `0`.
 - A comment `# persist-credentials: false` under a checkout: YAML drops comments, so it is still a violation.
 
 notify contract:
@@ -344,6 +345,7 @@ Files:
 - `bun.lock`
 - `docs/install.md`
 - `docs/development.md`
+- `README.md`
 
 Behavior change: yes — the image stops loading dotenv files and lint gains the workflow check.
 
@@ -351,13 +353,13 @@ Behavior:
 - `Dockerfile:16-18`: `--no-env-file` in `HEALTHCHECK` and `CMD`.
 - `scripts/image-dotenv.sh` with the status fixture; dotenv fixture adds `PORT=1`; new step after the build step (`ci.yml:32-33`).
 - `ci.yml:18` and `:76` refs, `package.json:24` pin to the merged config SHA; `package.json:15` lint adds `&& pulse-workflows`. Contract pin `9fe5e80…` unchanged.
-- `docs/install.md:24`: add the start command `bun --no-env-file src/main.ts` and the dotenv sentence. `docs/development.md:55`: name the new step and the lint check.
+- `docs/install.md:24`: add the start command `bun --no-env-file src/main.ts` and the dotenv sentence. `docs/development.md:55`: name the new step and the lint check. README Docker section (lines 34-47): after the `docker run` block (line 39), a one-line note that the image starts `bun --no-env-file src/main.ts`, so a `.env` mounted into `/app` is not read; settings come from `-e`, `docker run --env-file` (read on the host) or Compose.
 
 Tool facts (verified): `package.json:38` `packageManager: bun@1.4.0`, `:14` test, `:15` lint, `:24` config pin; `biome.json:2` extends the shared config; `bunfig.toml` `[test]` coverage 0.8; `ci.yml:18` check at `dc69a126…`; checkouts `ci.yml:29-31,55-57` already compliant; `a11y` job (`ci.yml:49-66`) unchanged.
 
 Checks: acceptance 1, 2, 3 (mutation), 6, 7 (including `a11y`), 9.
 
-Completion evidence: CI green on both `docker` legs and `a11y`; PR quotes red/green image test output and the lint mutation, and the A/B numbers.
+Completion evidence: CI green on both `docker` legs and `a11y`; PR quotes red/green image test output and the lint mutation, and the A/B numbers; `grep -n 'no-env-file' README.md` shows the new Docker note (at least 1 line).
 
 ## Repository: notify
 
@@ -371,6 +373,7 @@ Files:
 - `docs/install.md`
 - `docs/operation.md`
 - `docs/development.md`
+- `README.md`
 
 Behavior change: yes — the image stops loading dotenv files, lint gains the workflow check, and check validation follows contract main (non-http(s) URLs rejected).
 
@@ -380,13 +383,13 @@ Behavior:
 - `ci.yml:18` and `:50` refs, `package.json:22` pin to the merged config SHA; `package.json:14` lint adds `&& pulse-workflows`.
 - `package.json:30` contract pin to `ebcbbb613328494185833f7133f1242910986948`, `bun.lock` regenerated (line 8 and the resolved entry at line 81).
 - `test/api.test.ts`: through the existing fake API helpers in `test/support.ts` (`startFakeApi`, `httpCheck`), `fetchChecks` returns the valid `http://` and `https://` HTTP checks and drops otherwise identical checks with `file:///tmp/dotenv-marker-556` and `ftp://example.invalid/check`, calling `onInvalidCheck` once for each (literal counts: 2 returned, 2 rejected).
-- `docs/install.md:30`: "starts `bun --no-env-file src/index.ts`" plus the dotenv sentence. `docs/operation.md:38`: the Docker command becomes `... pulse-notify:local bun --no-env-file src/index.ts failed list`, so the documented one-off container does not read dotenv either. `docs/development.md`: name the new step and the lint check. The source-run commands (`bun src/index.ts failed ...`, `docs/operation.md:31-35`, README line 7) stay.
+- `docs/install.md:30`: "starts `bun --no-env-file src/index.ts`" plus the dotenv sentence. `docs/operation.md:38`: the Docker command becomes `... pulse-notify:local bun --no-env-file src/index.ts failed list`, so the documented one-off container does not read dotenv either. `docs/development.md`: name the new step and the lint check. The source-run commands (`bun src/index.ts failed ...`, `docs/operation.md:31-35`, README line 7) stay. README "With Docker" block (lines 28-38): after the `docker run` block, a one-line note that the image starts `bun --no-env-file src/index.ts`, so a `.env` mounted into `/app` is not read; settings come from `-e`, `docker run --env-file` (read on the host), Compose, or the files named by the `secretFile`/`urlFile` channel keys (`docs/configuration.md:77-79`).
 
 Tool facts (verified): `package.json:35` `packageManager: bun@1.4.0`, `:13` test `bun test`, `:14` lint, `:22` config pin, `:30` contract pin `61f7bf8…`; tests live in `test/*.test.ts` (`test/check-types.test.ts`, `test/api.test.ts`); `biome.json:2` extends the shared config; `bunfig.toml` `[test]` coverage 0.8 with `test/**` excluded from coverage; `ci.yml:18` check at `dc69a126…`; checkout `ci.yml:29-31` already compliant.
 
 Checks: acceptance 1, 2, 3 (mutation), 5, 6, 7, 9.
 
-Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output, the lint mutation, and the contract test failing on the old pin, and the A/B numbers.
+Completion evidence: CI green on both `docker` legs; PR quotes red/green image test output, the lint mutation, and the contract test failing on the old pin, and the A/B numbers; `grep -n 'no-env-file' README.md` shows the new Docker note (at least 1 line).
 
 ## Repository: console
 
