@@ -148,6 +148,16 @@ jobs:
           done
           if [ "$FACTORY_CODEX_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@openai/codex@$FACTORY_CODEX_VERSION"
+            # The Codex SDK splits its JSONL input with Node readline, which also ends lines at raw
+            # U+2028/U+2029 (openai/codex#45727, paragondata/factory#320). This wrapper escapes both
+            # in the CLI's stdout; the JSON keeps its meaning. Remove it once the SDK reads by \n only.
+            real="$(command -v codex)"
+            mkdir -p "$RUNNER_TEMP/codex-shim"
+            printf '%s\n' '#!/usr/bin/env bash' 'set -o pipefail' \
+              "\"$real\" \"\$@\" | perl -CS -pe 'BEGIN { \$| = 1 } s/\x{2028}/\\\\u2028/g; s/\x{2029}/\\\\u2029/g'" \
+              > "$RUNNER_TEMP/codex-shim/codex"
+            chmod 0755 "$RUNNER_TEMP/codex-shim/codex"
+            echo "$RUNNER_TEMP/codex-shim" >> "$GITHUB_PATH"
           fi
           if [ "$FACTORY_CLAUDE_VERSION" != skip ]; then
             npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@$FACTORY_CLAUDE_VERSION"
