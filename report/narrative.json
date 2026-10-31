@@ -2,13 +2,13 @@
   "template": 1,
   "issue": 614,
   "as_of": "2026-10-31T22:32:46.999Z",
-  "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} von {features|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Die Schwäche bleibt das Review: Es schickte zuletzt viele Änderungen zurück, hat aber Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.",
+  "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} von {features|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Das Build-Review schickte {review_back_rate|pct} der Änderungen zurück, und {prs_human|int} PRs bekamen Commits von Hand.",
   "notes": {
-    "duration": "Ein Lauf dauert wenige Minuten, und die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es meist am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.",
+    "duration": "Die Durchlaufzeit eines Features liegt im Median bei {lead_h_median|hm}. Ein Zehntel der Features brauchte {lead_h_p90|hm} oder länger. Ein PR ist im Median {pr_merge_min_median|int} Minuten offen.",
     "steps": "build/implement ist der teuerste Schritt. Die Review-Schritte laufen zum Teil auf Codex und melden dann keine Kosten; ihre Balken zeigen nur die Läufe mit Kostenangabe.",
-    "days": "Die Arbeit kommt in Schüben, jeweils nach dem Merge einer Spec. Der letzte Tag ist der teuerste, und auf ihn fallen fast alle Codex-Läufe ohne Kostenangabe. Sie fehlen in den Balken.",
+    "days": "Der letzte Tag ist der teuerste, und auf ihn fallen fast alle Codex-Läufe ohne Kostenangabe. Sie fehlen in den Balken.",
     "targets": "api und status sind die teuersten Targets nach den Specs in meta. Unter den Targets haben sie auch die meisten Issues und gemergten PRs.",
-    "human_fixes": "Mehrere davon schließen Datenlecks in Fehlermeldungen. Seit dem letzten Stand kam kein Hand-Commit dazu."
+    "human_fixes": "Die Tabelle zeigt, in welchen PRs eine Person nachgearbeitet hat. Seit dem letzten Stand kam kein Hand-Commit dazu."
   },
   "changes": [
     {
@@ -29,11 +29,11 @@
     }
   ],
   "case_study": {
-    "note": "Das teuerste abgeschlossene Feature betraf nur ein Target. Die Kosten entstanden fast ganz in der Schleife zwischen Implement und Review.",
+    "note": "Das nach bekannten Kosten teuerste abgeschlossene Feature betraf nur ein Target. Die Kosten entstanden überwiegend in der Schleife zwischen Implement und Review.",
     "items": [
       {
         "label": "Review-Schleife",
-        "text": "Das Build-Review schickte den Code {case_review_back|int}-mal zurück, bevor der Security-Schritt ihn freigab. Jede Runde kostete einen Implement- und einen Review-Lauf."
+        "text": "Das Build-Review schickte den Code {case_review_back|int}-mal zurück. Jede Runde kostete einen Implement- und einen Review-Lauf."
       },
       {
         "label": "Ohne Handarbeit",
@@ -48,27 +48,27 @@
   "findings": [
     {
       "id": "F1",
-      "title": "Kosten sind kein Engpass",
-      "text": "Ein Feature kostet im Median {feature_usd_median|usd}, etwa so viel wie ein Kaffee. Den größten Teil verbraucht build/implement. Der Cache-Anteil von {cached_share|pct0} hält die Preise niedrig."
+      "title": "Bekannte Kosten pro Feature",
+      "text": "Ein Feature kostet im Median {feature_usd_median|usd} an bekannten Kosten. Den größten Teil der bekannten Kosten verbraucht build/implement. Der Cache-Anteil liegt bei {cached_share|pct0}. {runs_cost_unknown|int} Läufe melden keine Kosten, die Summen sind darum unvollständig."
     },
     {
       "id": "F2",
-      "title": "Die Zeit liegt bei Menschen",
-      "text": "Die Läufe selbst dauern Minuten. Die Durchlaufzeit liegt im Median bei {lead_h_median|hm}, ein PR ist im Median {pr_merge_min_median|int} Minuten offen. Längere Durchlaufzeiten entstehen beim Warten auf den Merge der Spec und der PRs."
+      "title": "Durchlaufzeit von Features und PRs",
+      "text": "Die Durchlaufzeit liegt im Median bei {lead_h_median|hm}. Ein Zehntel der Features brauchte {lead_h_p90|hm} oder länger. Ein PR ist im Median {pr_merge_min_median|int} Minuten offen."
     },
     {
       "id": "F3",
-      "title": "Das Review prüft zu wenig selbst",
-      "text": "Das Build-Review schickte {review_back_rate|pct} der Änderungen zurück, allein seit dem letzten Stand {d_review_back|int}. Was früher durchrutschte, zeigen die Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (pulse-probe#34, pulse-notify#24, pulse-api#43), fehlende Exporte und Validierungen (pulse-contract#29, pulse-contract#24, pulse-api#37) und eine Abweichung von der Spec (pulse-api#48)."
+      "title": "Rückläufer im Review und Handarbeit",
+      "text": "Das Build-Review schickte {review_back_rate|pct} der Änderungen zurück, allein seit dem letzten Stand {d_review_back|int}. {prs_human|int} PRs bekamen Commits von Hand, etwa pulse-probe#34, pulse-notify#24, pulse-api#43, pulse-contract#29 und pulse-api#48."
     },
     {
       "id": "F4",
-      "title": "Holds kommen aus ungeprüften Annahmen",
-      "text": "Von den {holds|int} Holds hingen bei SonarJS (#66) alle Children gleichzeitig fest, weil typescript-eslint `TypeScript 7` nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Die übrigen Holds verteilen sich auf einzelne Issues, zuletzt #549."
+      "title": "Holds treffen ganze Features",
+      "text": "Es gab {holds|int} Holds. Alle Children von #66 hielten in build/implement an. Ein weiterer Hold stand bei #96. Die übrigen Holds verteilen sich auf einzelne Issues, zuletzt #549."
     },
     {
       "id": "F5",
-      "title": "Plan-Review greift eher als Build-Review",
+      "title": "Plan-Review schickt häufiger zurück",
       "text": "Das Plan-Review schickte {plan_back_rate|pct} der Pläne zurück, das Build-Review {review_back_rate|pct} der Änderungen. Das Issue-Review hielt nur ein Feature an (#528)."
     },
     {
@@ -79,29 +79,29 @@
   ],
   "recommendations": [
     {
-      "title": "Reviewer prüft selbst",
-      "text": "Mindestens einen Mutation-Run wiederholen. Meldet der Implementer „kein Bug, keine Änderung“ zu einem Punkt, den die Spec als Verhaltensänderung beschreibt, geht das Issue an eine Person (needs-input) statt durch.",
+      "title": "Hand-Commits auswerten",
+      "text": "Die Hand-Commits in den PRs neben das jeweilige Review-Ergebnis legen. So zeigt sich, was das Review hätte finden sollen.",
       "findings": [
         "F3"
       ]
     },
     {
-      "title": "Sicherheits-Checkliste im Review",
-      "text": "Keine Secrets, URLs, Header- oder Dateiinhalte in Fehler- und Log-Texten. Das war die häufigste Art von Nacharbeit.",
+      "title": "Nacharbeit nach Art erfassen",
+      "text": "Hand-Commits mit einer Kategorie versehen, etwa Sicherheit, Validierung oder Abweichung von der Spec. Dann lässt sich zählen, welche Art von Nacharbeit am häufigsten ist, und das Review gezielt ergänzen.",
       "findings": [
         "F3"
       ]
     },
     {
-      "title": "Plan prüft Annahmen gegen die Repos",
-      "text": "Tool-Versionen, Linter-Kompatibilität und was Biome prüft. Das hätte die Holds bei #66 und #96 vermieden.",
+      "title": "Ursachen der Holds untersuchen",
+      "text": "Für die Holds bei #66 und #96 die Ursache festhalten und prüfen, ob der Plan sie hätte erkennen können.",
       "findings": [
         "F4"
       ]
     },
     {
       "title": "Gemeinsame Befunde teilen",
-      "text": "Wenn ein Child eine Frage klärt, die die Spec mehreren Children stellt (`TypeScript 7`), soll der Befund am Feature stehen und von den anderen gelesen werden.",
+      "text": "Bei #66 hielten alle Children an. Wenn ein Child eine Frage klärt, die mehrere Children betrifft, soll der Befund am Feature stehen und von den anderen gelesen werden.",
       "findings": [
         "F4"
       ]
