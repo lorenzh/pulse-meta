@@ -1,0 +1,101 @@
+{
+  "issue": 505,
+  "kind": "security",
+  "scope": "api",
+  "commits": {
+    "api": "11f555598831ef61f13de40bef5f2da620230c97",
+    "contract": "ebcbbb613328494185833f7133f1242910986948",
+    "kit": "fa79ba8cd93949fc0cf87f7b41bdaf261dbe4dc6",
+    "config": "51e95b0eb463b27a196a33b428607bd92443e4f0",
+    "meta": "6e05324ba2c7046d7571a568900df3e3e57298a0"
+  },
+  "checklist": [
+    {
+      "item": "Secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) in errors, logs and responses.",
+      "status": "checked",
+      "evidence": "Ran a local instance (bun src/main.ts in a temp copy) with a literal header value, a body, an env reference, a heartbeat secret and throwaway tokens. Searched 13 public read routes for every secret with grep -Ec: leaks=0 on each (HTTP200). GET /admin/config shows header names only, plus hasBody and hasSecret. 422 answers give the path and the rule, never the value (for example 'checks[4].headers.X-K: must be at most 4096 visible ASCII/obs-text characters or spaces'). 7 hostile checks files applied with SIGHUP: 6 rejection lines name the path and the rule only, and the API stays up. 15 broken startup settings and files: one line 'pulse-api: <message>' each, exit 2, no token value. grep -Ec for all secrets over stdout and stderr after all runs: 0. Tests 'sentinel: tokens, the heartbeat secret and the placeholder never reach a log line', 'sentinel: header values, env names, bodies and secrets stay out of every output' and 'GET /checks never serves the secret' pass (14 pass, 0 fail with the name filter; exit 1 only from the coverage gate on a filtered run). Full suite: 390 pass, 0 fail, exit 0. SMTP: not applicable, the API sends no mail. Upstream replies: the API makes no upstream request; it serves the probe's reason as received (see notes)."
+    },
+    {
+      "item": "Authentication before any other check; status codes and their order on admin routes.",
+      "status": "checked",
+      "evidence": "Script of 47 local requests. /admin/*: no token, Basic auth or an unknown bearer gives 401; a probe token gives 403. Both come before 405 and before 413: a 2 MB body without a token gives 401, with a probe token 403, with the admin token 413. With the admin token the order is 400 bad JSON, 428, 400 If-Match *, 400 id mismatch, 412, 422, 409, then 404 for an unknown id or index, as docs/rest-api.md says. A read-only directory gives 503. Feature off: /admin/* and manual-incident writes give 404 with an admin bearer and log nothing. Manual-incident writes give 401 without a token (also with a 20 KB body) and for a probe token. /results gives 401 before 413. /probe/checks gives 401 for no token and for the admin token. Heartbeat: a wrong secret, an unknown id and a probe token all get the same 401. Absolute-form, dot-segment, encoded, backslash and bad-escape paths to /admin get 401 or 404, never 200. Tests 'admin: the status order of the spec', 'auth: 401 beats 400 and 404' and '401 bodies are identical for wrong secret, missing secret and unknown id' pass."
+    },
+    {
+      "item": "Body and size limits on every method, also before any write.",
+      "status": "checked",
+      "evidence": "413 after auth and before any write: POST /results 2 MB, POST /admin/checks 2 MB (Content-Length and chunked), DELETE /admin/checks/web 2 MB (nothing deleted), POST /manual-incidents 20 KB (limit 16 KiB), POST /heartbeat/backup 2 KB with the right secret (limit 1 KB). 300 MB chunked streams: GET /checks 200 in 0.45 s; unauthenticated writes 401 in at most 0.42 s; authenticated writes 413 in at most 0.34 s; RSS 70,308 KB before and at most 75,952 KB after. Unread bodies that hold a whole second request on 6 routes gave responses=1 each (control: 2). CL plus TE, two Content-Length headers or a negative CL give 400; a 64 KB header gives 431. JSON nested up to 800 KB gives 400 or 422, never 500."
+    },
+    {
+      "item": "Input validation at every trust boundary; validators never throw on any input type.",
+      "status": "checked",
+      "evidence": "Fuzz script with 265 hostile inputs (undefined, null, NaN, Infinity, BigInt, Symbol, function, Date, null-prototype, __proto__, arrays, throwing Proxy, accessors) against validateResult, the contract validators, parseConfig, parseTokens, parseAdminTokens and findByToken: 'cases: 265, threw: 2'. Both throws are parseConfig with a throwing Proxy, which JSON.parse cannot produce (note). Bad query integers give 400, a bad id escape gives 400 'bad check id', and invalid env settings give exit 2. Location binding gives 403, a result for a heartbeat check gives 403, a timestamp 1 h ahead gives 400, and a __proto__ key has no effect. Finding security-api-2026-10-31-1: a request target that the URL parser rejects throws and gets 500."
+    },
+    {
+      "item": "No accessor or getter of untrusted input runs.",
+      "status": "checked",
+      "evidence": "HTTP bodies and files go through JSON.parse, which creates no accessors ('JSON.parse makes accessors? false'). The contract validators count accessor fields as absent ('getter runs=0' for the 6 required result fields). Finding security-api-2026-10-31-3: validateResult reads location, attempts and certDaysLeft by plain property access, so a getter runs on a direct call. This cannot happen over HTTP."
+    },
+    {
+      "item": "SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers.",
+      "status": "checked",
+      "evidence": "A grep of the non-test sources for fetch(, http(s).request, net.connect, dns., x-forwarded, forwarded, req.headers.host and process.env finds only process.env in src/main.ts:12 and src/main.ts:27 (settings). During the whole run the API process had 0 TCP sockets besides its listener (ss -tanp). The API makes no outbound request, so it follows no redirect, and it reads no forwarded header. It never resolves {\"env\": NAME} header references; the probe does. Check targets: file: and gopher: URLs give 422 'must be an http: or https: URL'. An admin can add link-local and loopback http URLs (201), which the probe fetches (note)."
+    },
+    {
+      "item": "File writes atomic and path-safe.",
+      "status": "checked",
+      "evidence": "The checks file is the only file the API writes besides SQLite (src/config-fs.ts, src/config-write.ts). Steps: temp file '<path>.<pid>-<12 hex>.tmp' opened with 'wx' (O_CREAT|O_EXCL), write, mode and owner copied, fsync, a second revision check, rename, fsync of the directory. Live: mode 600 kept; 6 parallel creates with one If-Match gave 1 x 201 and 5 x 412, the file stayed valid JSON with 1 new entry, and 0 .tmp files were left. A read-only directory gives 503 with no temp file. A symlinked checks file is replaced by a regular file in the same directory, and the target is unchanged (note). Paths come only from env settings. Test 'admin: EXDEV on rename answers 503 naming the cause' passes."
+    },
+    {
+      "item": "Dependencies, Docker base images and CI actions pinned and approved (docs/approved-packages.md).",
+      "status": "checked",
+      "evidence": "Runtime (production install from bun.lock): zod@4.6.7, pulse-contract@ebcbbb6 (on main) and pulse-kit@fa79ba8 (on main), all approved and exact. Dev dependencies match the dev table; pulse-config is pinned by SHA 51e95b0, which is on main. bun audit: 1 moderate advisory (minimatch@10.2.6, dev-only via eslint), exit 1. Production-only audit: no vulnerabilities, exit 0. Both Dockerfile stages use oven/bun:1.4.0-alpine@sha256:0723...437eb, the approved digest, and the final stage runs as user bun. The oven-sh/setup-bun pin is the approved one. Finding security-api-2026-10-31-2: the actions/checkout and actions/upload-artifact pins and the alpine/openssl demo image are not on the approved list."
+    }
+  ],
+  "findings": [
+    {
+      "id": "security-api-2026-10-31-1",
+      "repos": ["api"],
+      "location": "src/server.ts:535",
+      "severity": "P3",
+      "candidate": true,
+      "title": "A request target that the URL parser rejects gets 500 and an error-level stack trace before authentication",
+      "command": "Raw HTTP/1.1 GET without a token, whose request target the WHATWG URL parser rejects, sent 200 times to a local instance by a Bun script over node:net. Then the status lines, the count of new stderr lines with level error, and the 5xx series of /metrics.",
+      "exitCode": 0,
+      "excerpt": "{\"HTTP/1.1 500 Internal Server Error\":200}\nerror lines added: 200\npulse_api_http_requests_total{route=\"unmatched\",code=\"500\"} 202\n{\"level\":\"error\",\"msg\":\"request failed\",\"error\":\"TypeError: Invalid URL\\n    at URL (unknown)\\n    at handle (<copy>/src/server.ts:535:19)\\n ...\"}",
+      "impact": "Any client without a token can write one error-level log line with a stack trace per request and raise the 5xx request counter: log volume and false alerts. The answer is 500 where 400 is right. No data or secret is exposed.",
+      "fixDirection": "Parse the request URL in a guard, as routeOf (src/server.ts:205) already does, and answer 400 before any route, with no error log.",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "security-api-2026-10-31-2",
+      "repos": ["api", "meta"],
+      "location": ".github/workflows/ci.yml:24",
+      "severity": "P3",
+      "candidate": true,
+      "title": "CI action pins (actions/checkout v7.0.1, actions/upload-artifact v7.0.2) and the demo image alpine/openssl are not on the approved list; checkout does not set persist-credentials: false",
+      "command": "grep -n 'uses: actions/\\|persist-credentials' .github/workflows/*.yml; grep -n 'image: alpine' compose.yaml; grep -c '3d3c42e5aac5ba805825da76410c181273ba90b1\\|actions/upload-artifact\\|alpine/openssl' <pulse-meta>/docs/approved-packages.md",
+      "exitCode": 1,
+      "excerpt": ".github/workflows/bench.yml:36:      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n.github/workflows/bench.yml:52:      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n.github/workflows/ci.yml:24:      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n.github/workflows/ci.yml:37:      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n.github/workflows/ci.yml:54:      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n106:    image: alpine/openssl@sha256:1c361a204e9791bec6202bccbd1065eafaa65cb5a1a9a06ae000238569fba6a2\n0",
+      "impact": "These actions and the image never passed the approval review that docs/approved-packages.md asks for. The approved actions/checkout pin is fbc6f399 (v5.1.0), with persist-credentials: false. The checkout token stays in .git/config while jobs run bun install and repository scripts. Everything is still pinned by SHA or digest, the jobs have contents: read, and alpine/openssl runs only in the demo profile.",
+      "fixDirection": "Approve these pins in docs/approved-packages.md (licence, maintenance, use), or align the workflows with the approved pin. Add persist-credentials: false to every actions/checkout step of pulse-api.",
+      "commits": {
+        "api": "11f555598831ef61f13de40bef5f2da620230c97",
+        "meta": "6e05324ba2c7046d7571a568900df3e3e57298a0"
+      }
+    },
+    {
+      "id": "security-api-2026-10-31-3",
+      "repos": ["api"],
+      "location": "src/server.ts:161",
+      "severity": "P3",
+      "candidate": false,
+      "title": "validateResult runs getters of the optional fields location, attempts and certDaysLeft (not reachable over HTTP)",
+      "command": "bun getter-check.ts <api copy>: imports validateResult from src/server.ts and calls it with a result body whose field is an accessor (the getters of attempts and certDaysLeft return undefined); counts the getter runs.",
+      "exitCode": 0,
+      "excerpt": "validateResult accessor checkId: getter runs=0 result=result.checkId: is required\nvalidateResult accessor location: getter runs=1 result=accepted\nvalidateResult accessor attempts: getter runs=2 result=accepted\nvalidateResult accessor certDaysLeft: getter runs=2 result=accepted\nJSON.parse makes accessors? false",
+      "impact": "A direct caller's getter runs more than once: twice when it returns undefined, up to 5 times when it returns a valid value (attempts 3, certDaysLeft 5, found in the review). A checked value and the stored value can therefore differ. HTTP bodies come from JSON.parse, so the server is not affected.",
+      "fixDirection": "Build the Result from the validated value of the contract, or read the optional fields as own data properties.",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    }
+  ]
+}
