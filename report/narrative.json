@@ -1,27 +1,31 @@
 {
   "template": 1,
-  "issue": null,
-  "as_of": "2026-10-31T21:51:36.044Z",
-  "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Die Schwäche bleibt das Review: Es prüft kaum selbst und hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.",
+  "issue": 614,
+  "as_of": "2026-10-31T22:32:46.999Z",
+  "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} von {features|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Die Schwäche bleibt das Review: Es schickte zuletzt viele Änderungen zurück, hat aber Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.",
   "notes": {
     "duration": "Ein Lauf dauert wenige Minuten, und die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es meist am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.",
-    "steps": "build/implement ist der teuerste Schritt. Die Review-Schritte laufen auf Codex und melden keine Kosten; ihre Balken zeigen nur die Läufe mit Kostenangabe.",
-    "days": "Die Arbeit kommt in Schüben, jeweils nach dem Merge einer Spec. Codex-Läufe fehlen in den Balken, weil sie keine Kosten melden.",
-    "targets": "api und status sind die teuersten Targets, weil viele Features sie berühren und ihre Test-Suiten groß sind.",
-    "human_fixes": "Mehrere davon schließen Datenlecks in Fehlermeldungen."
+    "steps": "build/implement ist der teuerste Schritt. Die Review-Schritte laufen zum Teil auf Codex und melden dann keine Kosten; ihre Balken zeigen nur die Läufe mit Kostenangabe.",
+    "days": "Die Arbeit kommt in Schüben, jeweils nach dem Merge einer Spec. Der letzte Tag ist der teuerste, und auf ihn fallen fast alle Codex-Läufe ohne Kostenangabe. Sie fehlen in den Balken.",
+    "targets": "api und status sind die teuersten Targets nach den Specs in meta. Unter den Targets haben sie auch die meisten Issues und gemergten PRs.",
+    "human_fixes": "Mehrere davon schließen Datenlecks in Fehlermeldungen. Seit dem letzten Stand kam kein Hand-Commit dazu."
   },
   "changes": [
     {
-      "title": "Neue Zählung der Kosten",
-      "text": "Codex-Läufe zählen jetzt als Läufe ohne Kostenangabe statt mit null Dollar. Ihre Tokens zählen mit: {tokens_m_codex|dec1} M."
+      "title": "Mehr Läufe ohne Kostenangabe",
+      "text": "Seit dem letzten Stand kamen {d_runs|int} Läufe und {d_usd|usd} an bekannten Kosten dazu. {d_runs_cost_unknown|int} der neuen Läufe sind Codex-Läufe ohne Kostenangabe."
     },
     {
-      "title": "Mehr Läufe",
-      "text": "Seit dem letzten Stand kamen {d_runs|int} Läufe und {d_usd|usd} an bekannten Kosten dazu, dazu {d_features_done|int} abgeschlossenes Feature."
+      "title": "Mehr Rückläufer im Build-Review",
+      "text": "Das Build-Review schickte {d_review_back|int} weitere Änderungen zurück, das Plan-Review {d_plan_back|int} weitere Pläne. Die Rückläufer betreffen Children noch offener Features, einige davon mehrfach, etwa #596."
     },
     {
-      "title": "Mehr Rückläufer",
-      "text": "Das Build-Review schickte {d_review_back|int} weitere Änderungen zurück, das Plan-Review {d_plan_back|int} weitere Pläne."
+      "title": "Merges ohne neues Feature",
+      "text": "{d_prs_merged|int} weitere PRs wurden gemergt, ohne Handarbeit ({d_prs_human|int}). Abgeschlossen wurde kein weiteres Feature ({d_features_done|int})."
+    },
+    {
+      "title": "Ein neuer Hold",
+      "text": "{d_holds|int} weiterer Hold kam dazu, bei #549 in build/implement. Dazu kam {d_actions_failed|int} weiterer fehlgeschlagener Actions-Lauf."
     }
   ],
   "case_study": {
@@ -37,7 +41,7 @@
       },
       {
         "label": "Dauer",
-        "text": "Vom ersten Lauf der Spec bis zum Merge vergingen {case_lead_h|hm} in {case_runs|int} Läufen."
+        "text": "Vom ersten Lauf der Spec bis zum Merge vergingen {case_lead_h|hm} in {case_runs|int} Läufen, für {case_usd|usd}."
       }
     ]
   },
@@ -54,23 +58,23 @@
     },
     {
       "id": "F3",
-      "title": "Das Review ist zu passiv",
-      "text": "Es schickte nur {review_back_rate|pct} der Build-Reviews zurück und wiederholt keine Mutation-Checks. Was durchrutschte, zeigen die Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (pulse-probe#34, pulse-notify#24, pulse-api#43), fehlende Exporte und Validierungen (pulse-contract#29, pulse-contract#24, pulse-api#37) und eine Abweichung von der Spec (pulse-api#48)."
+      "title": "Das Review prüft zu wenig selbst",
+      "text": "Das Build-Review schickte {review_back_rate|pct} der Änderungen zurück, allein seit dem letzten Stand {d_review_back|int}. Was früher durchrutschte, zeigen die Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (pulse-probe#34, pulse-notify#24, pulse-api#43), fehlende Exporte und Validierungen (pulse-contract#29, pulse-contract#24, pulse-api#37) und eine Abweichung von der Spec (pulse-api#48)."
     },
     {
       "id": "F4",
       "title": "Holds kommen aus ungeprüften Annahmen",
-      "text": "Von den {holds|int} Holds hingen bei SonarJS (#66) alle Children gleichzeitig fest, weil typescript-eslint `TypeScript 7` nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Issue-Review und Plan lesen die Clones nur stichprobenartig."
+      "text": "Von den {holds|int} Holds hingen bei SonarJS (#66) alle Children gleichzeitig fest, weil typescript-eslint `TypeScript 7` nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Die übrigen Holds verteilen sich auf einzelne Issues, zuletzt #549."
     },
     {
       "id": "F5",
       "title": "Plan-Review greift eher als Build-Review",
-      "text": "Das Plan-Review schickte {plan_back_rate|pct} der Pläne zurück, das Build-Review nur {review_back_rate|pct} der Änderungen. Das Issue-Review hat kein Feature blockiert."
+      "text": "Das Plan-Review schickte {plan_back_rate|pct} der Pläne zurück, das Build-Review {review_back_rate|pct} der Änderungen. Das Issue-Review hielt nur ein Feature an (#528)."
     },
     {
       "id": "F6",
       "title": "Die Infrastruktur ist stabil",
-      "text": "{actions_failed|int} von {actions_total|int} Actions-Läufen schlugen fehl, und es gab {merge_runs|int} Merge-Läufe. Fehlgeschlagene Vorbereitungen gab es nur vereinzelt bei frühen Features."
+      "text": "{actions_failed|int} von {actions_total|int} Actions-Läufen schlugen fehl, und es gab {merge_runs|int} Merge-Läufe. Fehlgeschlagene Vorbereitungen gab es nur vereinzelt."
     }
   ],
   "recommendations": [
@@ -103,18 +107,18 @@
       ]
     },
     {
-      "title": "Spec-Regel für Prüfungen",
-      "text": "Eine Prüfung leitet ihren Sollwert nie aus der Datei ab, die sie prüft.",
+      "title": "Rückläufer-Schleifen begrenzen",
+      "text": "Schickt das Build-Review ein Child mehrfach zurück, wie zuletzt #596, soll ein Hold nach einer festen Zahl von Runden eine Person fragen, statt weiter Läufe zu verbrauchen.",
       "findings": [
         "F3",
         "F5"
       ]
     },
     {
-      "title": "PR-Beschreibung füllen",
-      "text": "Den Bericht des Implementers samt Mutation-Output in den PR übernehmen, nicht nur „Closes …“.",
+      "title": "Codex-Kosten erfassen",
+      "text": "Codex-Läufe sollen ihre Kosten melden. Ihre Tokens zählen schon mit ({tokens_m_codex|dec1} M), ihre Kosten fehlen in jeder Summe.",
       "findings": [
-        "F3"
+        "F1"
       ]
     }
   ]
