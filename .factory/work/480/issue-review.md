@@ -1,0 +1,54 @@
+# Issue review: #480 status: Cache-Control and ETag for page, feed, badges and API answers
+
+Target: `status` only. Checked against `main` of `lorenzh/pulse-status` at `4c181af` (merge of #55, the #474/#476 answer cache). No earlier decisions in the issue comments.
+
+## Current behavior (checked)
+
+- `/api/*` (`src/server.ts` `proxyApi`, ~466-490): every answer, success or error, is sent with `content-type: application/json`, `cache-control: no-store` and the wire header when known. No ETag. Rejected paths answer `404` via kit `sendJson` (no cache header).
+- Feed and badges (`src/syndication.ts`): **the issue's premise is only partly right.** Successful `200` answers of `/feed.atom`, `/badge/<id>.svg` and `/badge/component/<id>.svg` already send `cache-control: public, max-age=N`, where `N = max(1, ceil(max(PULSE_STATUS_CACHE_MS, POLL_MS) / 1000))` (`server.ts` ~538). With the default `POLL_MS=5000` that is `max-age=5`, asserted in `src/server.syndication.test.ts` (lines 84, 140). Lines ~192-194 are `sendText`, used only for `400`/`404`/`503`, which send `no-store`. What is missing is the ETag and `304` handling, and a longer max-age.
+- HTML page (`/` and `/index.html`, `server.ts` ~612): no `cache-control` at all.
+- Static assets: **only the fonts** (`/fonts/*.woff2`) send `public, max-age=31536000, immutable`. `page.css`, `theme-init.js`, `theme.css`, `client.js`, the transpiled modules, `/pulse-contract/*`, `/pulse-kit/*` and `/logo` send no cache header.
+- #474 cache (`src/answer-cache.ts`): key = `answerKey(settings, pathname, search)` with the settings `isHidden`/`hasChecks` as a prefix. Entries hold a `ProxyAnswer { status, body, wireVersion? }` and are dropped once any raw entry they were built from expires or is replaced. The map is per server instance (inside `createStatusServer`), so a restart with new settings starts with an empty cache. The feed and badges read through `cachedAnswer`, but the rendered XML or SVG itself is not cached; it is rebuilt on each request.
+- Version mismatch: `fetchRaw` returns `answer(200, { error: "API version mismatch" }, wireHeader)`. The status code is **200**, so "error answers keep `no-store`" cannot key on the status code alone.
+- Browser poller (`src/poller.ts` `getJson`) uses `fetchJson` from the contract with the default `fetch` cache mode. A `no-cache` + ETag answer is revalidated by the browser HTTP cache by itself, and a `304` reaches JS as the stored `200` with its stored headers (wire header included).
+- No response compression and no request header other than the method and URL is read. Feed links come from `PULSE_STATUS_PUBLIC_URL`, never from `Host`.
+- `metrics.recordHttp` counts each status code, so `304` shows up in `/metrics` without changes.
+- Bench: #377's harness is `bench/` in **pulse-api**. Its fixed load sends **no client requests to status**: the status container only runs as configured, so `load_cpu_s` for status covers its own polling. The status repo has its own manual `bench/proxy-cache.ts` (300 cached `GET /api/uptime`, from #474).
+- Docs: `docs/operation.md` "Feed and badges" (line ~100) describes the derived max-age; "Caching" (line ~104) says "Answers carry `cache-control: no-store`". Both become wrong and must be rewritten.
+
+## Open points (for the plan; none blocks the spec)
+
+1. **Feed/badge max-age value.** The issue asks for 60 s (30-120 s allowed), but today's value comes from `POLL_MS`/`PULSE_STATUS_CACHE_MS`. The plan picks either a fixed value or `clamp(derived, 30, 120)`, says why, and updates the two existing `max-age=5` assertions and the docs line.
+2. **"Two configurations never share a tag" vs "ETag over the exact body".** If both configurations produce the same bytes (for example no components configured, so hiding checks changes nothing), a pure body hash gives the same tag. That leaks nothing, because the bytes are the same. But the issue's wording, and the privacy test's "hidden ETag differs from shown ETag", only hold if the tag input also contains the settings. See assumption A2.
+3. **Detecting error answers.** `ProxyAnswer` needs an explicit marker (for example `cacheable: boolean`, or a kind) set in `fetchRaw`, `snapshotFailure` and the `502 INVALID_RESPONSE` paths. The version-mismatch `200` must not get an ETag or `no-cache`. Only answers built from a successful, filtered read are cacheable.
+4. **If-None-Match matching.** RFC 9110 uses weak comparison for `If-None-Match`, and reverse proxies that compress (nginx gzip) turn a strong tag into `W/"…"`. The plan defines the parsing: a comma-separated list, `*`, and `W/` prefixes. Malformed headers are ignored (full `200`).
+5. **Headers on 304.** The plan lists them: at least `ETag`, `Cache-Control`, `Vary` if set, and for `/api/*` the wire header (RFC 9110 15.4.5; the browser merges the 304 headers into the stored response). No body, no `content-length` of the full body.
+6. **HEAD.** `GET` and `HEAD` are both allowed. `HEAD` should carry the same ETag/cache headers and answer `304` the same way.
+7. **Where the hash is computed and cached.** For `/api/*` the ETag is stored on the #474 entry (one hash per built answer). With `PULSE_STATUS_CACHE_MS=0` it is hashed per request. Feed and badge bodies are not cached today. The plan decides whether hashing per request is enough (the bodies are small) or whether to memoize the rendered body and tag. The hash uses `node:crypto` or `Bun.hash`/`Bun.CryptoHasher`, no new dependency.
+8. **"Static assets keep their current immutable caching".** Only the fonts have it. Assumption A4 below: the other static routes keep sending no cache header (no change). The plan must not add `immutable` to non-hashed URLs.
+9. **Bench / 304 share.** The #377 fixed load sends no feed, badge or `/api/*` requests to status, so it cannot show a 304 share, and this feature (target status only) cannot change pulse-api's bench. See assumption A5.
+10. **Acceptance "each fails on the current code".** For feed and badges, the `cache-control: public, max-age` part already passes on `main`, while the ETag/`304` parts fail. The mutation evidence should target the ETag/304 logic (and the max-age value if the plan changes it).
+11. **Vary.** No response depends on a request header today (no compression, no `Accept` negotiation, no cookies or auth), so no `Vary` is expected. The plan confirms this and states it in the docs, so a later compression or negotiation change knows to add `Vary`.
+12. **Feed `lastManual` state.** The feed body can depend on the last successful manual-incidents list (kept across requests when an old api answers 404). The ETag is over the body actually sent, so this stays consistent. No extra handling, but the "upstream change → new tag" test should use a field that really changes the body.
+
+## Assumptions
+
+- A1. The `max-age` of feed and badges is 60 s, unless the plan argues for another value in 30-120 s. It is independent of `POLL_MS`. Error answers (`400`/`404`/`503`) keep `no-store` and get no ETag.
+- A2. The ETag is a strong tag over the exact body bytes plus a fingerprint of the visibility settings (the `answerKey` prefix: `isHidden`, `hasChecks`). A tag therefore changes when the body changes or the settings change, and two configurations never share a tag. It stays a valid strong validator (same tag ⇒ same bytes). Without the settings in the input, the privacy test's "hidden ≠ shown" check would only hold when the bodies differ.
+- A3. `/api/*` success: `cache-control: no-cache` + `ETag`, `304` on match. All error answers (upstream 4xx/5xx passthrough, `502`, snapshot failures, version mismatch `200`, proxy `404`) send `no-store` and no ETag. The proxy `404` from `sendJson` may get an explicit `no-store` for consistency.
+- A4. `/` and `/index.html` send `cache-control: no-cache` without an ETag (the body embeds the render time). The fonts keep `public, max-age=31536000, immutable`, and the other static routes are unchanged.
+- A5. "Bench (#377): status load CPU not worse" means the nightly status `load_cpu_s` stays within its threshold (expected, since the fixed load sends no client traffic to status). The PR shows the 304 share and the CPU with a fixed set of conditional requests in the status repo's own bench (extend `bench/proxy-cache.ts` or add a script next to it: for example N requests each to `/api/checks`, `/feed.atom` and one badge, replaying the last ETag, then reporting 304 share and CPU before/after). Changing pulse-api's bench is out of scope.
+- A6. "Depends on request data other than the path" means anything besides the request URL (path **and query**). Badge `?label=` is part of the URL and so of every shared cache key. No `Vary` is needed today.
+- A7. No change to the page poller: browsers revalidate `no-cache` answers on their own.
+
+## Derived acceptance check
+
+On a status server with a fake upstream (the style of `server.syndication.test.ts` / `server.privacy.test.ts`):
+
+1. `GET /feed.atom`, `GET /badge/<id>.svg` and `GET /badge/component/<id>.svg` answer `200` with `cache-control: public, max-age=<chosen>` and a strong `ETag`. Repeating each with `If-None-Match: <tag>` (also as `W/<tag>` and inside a list) answers `304` with an empty body and the same ETag. After the upstream state changes and the cache period passes, the old tag answers `200` with a different ETag. `HEAD` behaves the same.
+2. `GET /api/checks` answers `200` with `cache-control: no-cache` and an ETag. A matching `If-None-Match` answers `304` with an empty body, the ETag and the wire header. An upstream failure answers `502` with `no-store` and no ETag, and so does a version-mismatch answer.
+3. `GET /` answers with `cache-control: no-cache`. Fonts still send `public, max-age=31536000, immutable`.
+4. Privacy sentinel: with components configured and checks hidden (and hide-details on), for every route (`/api/*` allow-list, `/feed.atom`, check and component badges, `/`), no `200` or `304` carries a body or ETag derived from the unfiltered data. The hidden-checks ETag of `/api/checks` differs from the shown-checks ETag for the same upstream state. Replaying a shown-mode tag against a hidden-mode server gets no `304`. A restart with changed settings yields new ETags.
+5. Mutation output in the PR: disabling the ETag/304 logic, or removing the settings from the tag input, fails the tests above.
+6. `docs/operation.md` lists the cache headers per route and how a reverse proxy should treat them (`public, max-age` may be stored, `no-cache` must be revalidated, `no-store` never stored, pass `If-None-Match` through, weak tags after compression still match). Its old `no-store` and derived-max-age sentences are replaced.
+7. The status bench shows CPU not worse and the 304 share under a fixed conditional-request load. The nightly #377 status `load_cpu_s` does not regress. CI is green.
