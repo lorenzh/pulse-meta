@@ -129,19 +129,50 @@ workspaces:
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
-# Both roles run on Claude (no GPT key). The reviewer gets a higher effort than the worker, so it is
-# not a copy of the implementer's view; review.md frames it adversarially.
+# One profile per role, all on Claude (no GPT key). Effort follows the work: specs and reviews
+# decide what ships and run at high; implementation follows an approved spec and runs at low; a
+# merge conflict is mechanical. review.md and security.md frame the reviewers adversarially.
 models:
-  worker:
-    harness: claude
-    options:
-      model: claude-opus-5-5
-      effort: medium
-  reviewer:
+  spec-reviewer:
     harness: claude
     options:
       model: claude-opus-5-5
       effort: high
+  planner:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
+  plan-reviewer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
+  implementer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: low
+  code-reviewer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
+  security-reviewer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
+  resolver:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: low
+  merge-reviewer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: medium
   # Owner decision: both audit states run at effort xhigh; an audit reads whole repositories, not
   # one diff.
   auditor:
@@ -164,19 +195,19 @@ workflows:
     states:
       issue-review:
         prompt: ../.factory/prompts/issue-review.md
-        model: reviewer
+        model: spec-reviewer
         transitions:
           - to: plan
         description: Check the feature request for gaps before specifying it.
       plan:
         prompt: ../.factory/prompts/plan.md
-        model: worker
+        model: planner
         transitions:
           - to: plan-review
         description: Write the cross-repository spec with one section per repository.
       plan-review:
         prompt: ../.factory/prompts/plan-review.md
-        model: reviewer
+        model: plan-reviewer
         transitions:
           - to: plan
         terminal: true
@@ -186,7 +217,7 @@ workflows:
     states:
       implement:
         prompt: ../.factory/prompts/implement.md
-        model: worker
+        model: implementer
         transitions:
           - to: review
         description: Implement this repository's section of the approved spec.
@@ -194,7 +225,7 @@ workflows:
       # when the spec says "Security impact: yes".
       review:
         prompt: ../.factory/prompts/review.md
-        model: reviewer
+        model: code-reviewer
         transitions:
           - to: implement
           - to: security
@@ -202,7 +233,7 @@ workflows:
         description: Review the change in a fresh agent session.
       security:
         prompt: ../.factory/prompts/security.md
-        model: reviewer
+        model: security-reviewer
         transitions:
           - to: implement
         terminal: true
@@ -231,13 +262,13 @@ workflows:
     states:
       resolve:
         prompt: ../.factory/prompts/merge-resolve.md
-        model: worker
+        model: resolver
         transitions:
           - to: review
         description: Merge the captured base commit and resolve conflicts on the issue branch.
       review:
         prompt: ../.factory/prompts/merge-review.md
-        model: reviewer
+        model: merge-reviewer
         transitions:
           - to: resolve
         terminal: true
