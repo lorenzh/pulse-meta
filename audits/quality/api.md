@@ -46,7 +46,7 @@ export default [
 ];
 ```
 
-`./node_modules/.bin/pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src bench`, exit 1 (every function with a value above 0 is reported; 452 functions). Highest values against the budget of 15:
+`./node_modules/.bin/pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src bench`, exit 1 (every function with a value above 0 is reported; 453 functions in the audit-review re-run, 452 in the audit run). Highest values against the budget of 15:
 
 | Value | Function | Against 15 |
 | --- | --- | --- |
