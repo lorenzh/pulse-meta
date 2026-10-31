@@ -40,7 +40,7 @@ half=$(( $(date -u -d "$today" +%u) >= 5 ? 1 : 0 ))
 
 case "$kind" in
   security)
-    targets=(contract probe api status notify config kit website console)
+    targets=(contract probe api status notify config kit website console deploy)
     slot=$days title="Security audit"
     color=b60205 description="Security weakness or hardening" ;;
   performance)
@@ -51,7 +51,7 @@ case "$kind" in
     targets=() slot=0 title="Architecture audit"
     color=5319e7 description="Structure across repositories: pins, size, duplication, docs, dependency direction" ;;
   quality)
-    targets=(contract probe api status notify config kit website console)
+    targets=(contract probe api status notify config kit website console deploy)
     slot=$weeks title="Quality audit"
     color=0e8a16 description="Code quality: lint, complexity, duplication, dead code, tests, error handling" ;;
   *) echo "::error::Unknown audit kind: $kind" >&2; exit 1 ;;
