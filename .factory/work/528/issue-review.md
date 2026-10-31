@@ -3,30 +3,47 @@
 Targets named by the issue: deploy, api, meta. All facts below were read from the clones under
 `.target/.repos/` (main as of 31 Oct) or checked on GitHub and ghcr.io on 31 Oct.
 
-## Blocking point (hold)
+## Resolved hold: published images (decision A)
 
-**The images this feature pins do not exist yet.** #527 is closed (13:10 on 31 Oct) and its five
-build children (#533 to #538) are merged, so every service `ci.yml` has the `release` job. But the
-owner steps of the #527 spec (Acceptance evidence 1 to 5: test tag, `v0.1.0` on all five services,
-making each package public) have not been done:
+In the first run the images did not exist yet: no `v*` tags, and an anonymous ghcr.io pull token was
+denied. The hold offered A (publish `v0.1.0` first), B (write the spec now and resolve digests later)
+and C (another option). The lead answered on 31 Oct: **A is done.** Pin these literals:
 
-- `gh api repos/lorenzh/pulse-<svc>/tags` returns 0 tags for api, probe, status, notify and console,
-  and none of these repositories has an Actions run on a `v*` ref.
-- Anonymous pull tokens: `https://ghcr.io/token?scope=repository:lorenzh/pulse-<svc>:pull` answers
-  `DENIED` for all five. The control `actions/actions-runner` gets a token, so the query works. The
-  packages are missing or private.
-- The Factory comment on this issue ("that release exists now") is therefore wrong.
+| Service | Pin |
+| --- | --- |
+| api | `ghcr.io/lorenzh/pulse-api:0.1.0@sha256:71d623fb9e51bccdfd1f235882c69c48908960ec39e1c9b565fa700777009b18` |
+| probe | `ghcr.io/lorenzh/pulse-probe:0.1.0@sha256:c5cb30ec6efecd34e37a6047ba165e2eba57b95bbb2e8775c9c77753c6736871` |
+| status | `ghcr.io/lorenzh/pulse-status:0.1.0@sha256:0347481776e1d511dd3bffc7c21d646b6661192e11f08997ffe54eb745e84fa4` |
+| notify | `ghcr.io/lorenzh/pulse-notify:0.1.0@sha256:a63964aa2a2b728849f76b416ac5cc90b5a95306a375c028c3d4d11afe1c9e78` |
+| console | `ghcr.io/lorenzh/pulse-console:0.1.0@sha256:ddadc5e1eef198861731b334bee3a593e1ef29700252212a7dba9ac81087bce3` |
 
-Without published, public images the spec cannot give literal pins
-(`ghcr.io/lorenzh/pulse-<svc>:<version>@sha256:<digest>`), and the deploy child could not pull them in
-CI. Asked in the hold:
+Verified in this run (31 Oct):
 
-- **A (recommended)**: the owner pushes `v0.1.0` on all five services, makes the five packages public,
-  and answers here. The spec then pins `0.1.0` and its digests are recorded as literals.
-- **B**: write the spec now with version `0.1.0` and have the deploy implementer resolve the digests.
-  The owner promises to publish before merging the spec PR, because fan-out starts the deploy child
-  right after the merge.
-- **C**: another version or another precondition named by the owner.
+- An anonymous token from `https://ghcr.io/token?scope=repository:lorenzh/pulse-<svc>:pull` is
+  issued for all five packages, so they are public.
+- `HEAD /v2/lorenzh/pulse-<svc>/manifests/0.1.0` answers `200` with an OCI image index. Its
+  `Docker-Content-Digest` equals the digest above for every service.
+- Each index has `linux/amd64` and `linux/arm64`.
+- The registry tags of each package are `0.1.0`, `0.1`, `0` and the `sha256-…` attestation tag.
+- The `v0.1.0` git tag of each service points at the commit that is `main` HEAD of its clone under
+  `.repos/`:
+
+  | Service | Commit |
+  | --- | --- |
+  | api | `c00a375` |
+  | probe | `50ec9ca` |
+  | status | `2e3067d` |
+  | notify | `c090a07` |
+  | console | `11a3f5f` |
+
+  So every fact below about service behavior (health endpoints, file secrets, SMTP rules, the e2e
+  script's needs) describes exactly the code in the pinned images.
+
+Consequence for the plan:
+
+- The spec records these five pins as literals.
+- The deploy CI pulls them anonymously, with no registry login.
+- The floating `0.1`/`0` tags exist, but the setups use only the full `version@digest` form.
 
 ## Current state (facts)
 
@@ -219,7 +236,7 @@ CI. Asked in the hold:
 
 ## Assumptions
 
-- Version `0.1.0` of all five images is the first pin, once it exists (see the hold).
+- Version `0.1.0` of all five images is the first pin, with the digests listed under "Resolved hold".
 - Images are multi-arch (amd64 and arm64) per #527. CI runs on `ubuntu-24.04` only, unless the plan
   adds arm64.
 - The project name stays `pulse` for the user setups and a separate name for e2e, so the `down -v`
@@ -248,6 +265,7 @@ In pulse-deploy CI on a PR, all green:
 5. Every `image:` in a non-dev setup matches
    `ghcr.io/lorenzh/pulse-(api|probe|status|notify|console):[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}`
    or an approved digest-pinned third-party image. The pinned version appears in exactly one file.
+   The first pins are the five `0.1.0` literals under "Resolved hold".
 6. `docker compose -f <setup> config --format json` shows host ports only:
    - for status, and for console on `127.0.0.1`;
    - for api only where the setup documents it;
