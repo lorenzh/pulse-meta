@@ -15,11 +15,11 @@ The [Factory report](https://lorenzh.github.io/pulse-meta/) shows the cost, dura
 | [pulse-contract](https://github.com/lorenzh/pulse-contract) | The wire contract: zod schemas for `Check`, `Result`, `Incident` and the API shapes, the TypeScript types and validators built from them, the wire version (`x-pulse-contract` header) and `fetchJson`, a JSON GET client with timeout, size cap, version check and validation. Library, no settings. | zod; pulse-config (dev) |
 | [pulse-kit](https://github.com/lorenzh/pulse-kit) | Shared runtime helpers of the services: env settings with bounds, signal handling and bounded shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, a Prometheus registry, the JSON logger, small HTTP and timer helpers. Library, no settings. | pulse-config (dev) |
 | [pulse-probe](https://github.com/lorenzh/pulse-probe) | Worker that fetches the checks from the API, runs HTTP, TLS certificate, TCP, DNS and domain-expiry checks and posts the results. It buffers results in memory while the API cannot be reached and delivers them later. It reloads the checks every `PULSE_CHECKS_RELOAD_MS` and when the API answers 404 for a result. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
-| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads and hot-reloads the checks file (also writable through admin routes), takes heartbeat pings, stores results in SQLite (`bun:sqlite`), computes state, incidents, latency history and availability objectives, serves REST. Holds the Docker Compose file for the whole stack. | pulse-contract, pulse-kit, pulse-config (dev) |
+| [pulse-api](https://github.com/lorenzh/pulse-api) | Loads and hot-reloads the checks file (also writable through admin routes), takes heartbeat pings, stores results in SQLite (`bun:sqlite`), computes state, incidents, latency history and availability objectives, serves REST. | pulse-contract, pulse-kit, pulse-config (dev) |
 | [pulse-status](https://github.com/lorenzh/pulse-status) | Status page with an allow-listed `/api/*` proxy to pulse-api, an Atom feed and SVG badges. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-notify](https://github.com/lorenzh/pulse-notify) | Notifier that polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook (optionally signed), file, Slack, Teams and email (SMTP through nodemailer). Failed events can be listed and resent with a CLI. | pulse-contract, pulse-kit, pulse-config (dev); talks to pulse-api at run time |
 | [pulse-console](https://github.com/lorenzh/pulse-console) | Admin web UI ([#460](https://github.com/lorenzh/pulse-meta/issues/460)): the fifth container of the Compose stack, for one organisation. Today it serves one page and its ops routes and validates `PULSE_API_URL` and an optional admin token; managing checks through the pulse-api admin API comes in later items. | pulse-kit, pulse-config (dev); will talk to the pulse-api admin API |
-| [pulse-deploy](https://github.com/lorenzh/pulse-deploy) | Deployment setups, planned: Docker Compose files for a minimal, a full, a demo and a dev stack (the stack's Compose file moves here from pulse-api later) and a `pulse` CLI setup wizard. Not a running service. No code yet. | composes the images of the services |
+| [pulse-deploy](https://github.com/lorenzh/pulse-deploy) | Docker Compose setups for the whole stack (#528): `minimal`, `full`, `demo` and `dev`, on the published images pinned by version and digest, each tested in CI with the Compose end-to-end test. A `pulse` CLI setup wizard is planned (#529). Not a running service. | composes the images of the services |
 | [pulse-config](https://github.com/lorenzh/pulse-config) | Shared tooling configuration: Biome, tsconfig, ESLint with SonarJS (on its own nested TypeScript 6), Lefthook, and the reusable CI workflow `check.yml`. No product code. | nothing |
 | [pulse-meta](https://github.com/lorenzh/pulse-meta) | This repository: issues, specs, Factory configuration. | none |
 
@@ -43,7 +43,7 @@ In short:
 
 Operator and developer documentation lives in each repository's `docs/` folder. Start at the index of the repository you need:
 
-- [pulse-api docs](https://github.com/lorenzh/pulse-api/blob/main/docs/index.md): install, Compose quick start, `checks.json` and `tokens.json`, the [REST API](https://github.com/lorenzh/pulse-api/blob/main/docs/rest-api.md) (results, incidents, checks), operation and troubleshooting.
+- [pulse-api docs](https://github.com/lorenzh/pulse-api/blob/main/docs/index.md): install, `checks.json` and `tokens.json`, the [REST API](https://github.com/lorenzh/pulse-api/blob/main/docs/rest-api.md) (results, incidents, checks), operation and troubleshooting.
 - [pulse-probe docs](https://github.com/lorenzh/pulse-probe/blob/main/docs/index.md)
 - [pulse-status docs](https://github.com/lorenzh/pulse-status/blob/main/docs/index.md): includes [theming and white label](https://github.com/lorenzh/pulse-status/blob/main/docs/theming.md).
 - [pulse-notify docs](https://github.com/lorenzh/pulse-notify/blob/main/docs/index.md): includes the [notification channels](https://github.com/lorenzh/pulse-notify/blob/main/docs/channels.md).
@@ -53,48 +53,33 @@ Operator and developer documentation lives in each repository's `docs/` folder. 
 
 ## Run all of pulse with Docker Compose
 
-The Compose file lives in pulse-api. It starts `api`, one `probe`, `status`, `notify` and `console`. You need Docker Compose 2.23 or newer and access to github.com: the probe, status, notify and console images are built from `main` of their repositories.
+The Compose setups live in [pulse-deploy](https://github.com/lorenzh/pulse-deploy) (#528). They run the published images from ghcr.io, pinned by version and digest:
+
+| Setup | Services |
+| --- | --- |
+| `minimal` | api, probe |
+| `full` | api, probe, status, notify, console |
+| `demo` | `full` plus seeded demo checks, a target that goes down on purpose and a mail catcher |
+| `dev` | `full`, built from sibling checkouts (`../pulse-api` and so on) |
+
+You need Docker Compose 2.23 or newer. Start `full`:
 
 ```sh
-git clone https://github.com/lorenzh/pulse-api.git
-cd pulse-api
-cp .env.example .env
-# Put a random token into .env. The placeholder in .env.example is rejected at start.
-sed -i.bak "s/^PULSE_PROBE_TOKEN=.*/PULSE_PROBE_TOKEN=$(openssl rand -hex 32)/" .env && rm .env.bak
-docker compose up -d --build
+git clone https://github.com/lorenzh/pulse-deploy.git
+cd pulse-deploy
+scripts/init-secrets.sh            # writes secrets/probe-token (mode 0600), never overwrites
+docker compose -f full/compose.yaml up -d
 ```
 
-Open <http://localhost:8080>. The example check `Status page` (`compose/checks.json`) probes the status page itself. The probe runs it right away and then every 10 s, so it turns `up` within seconds. A fresh start has no down check and no incident.
+Open <http://localhost:8080>. Only the status page is published on all interfaces. The Console is on <http://127.0.0.1:8082>, and the API is not published. Each setup has a README with its config files, ports and variables. Users of pulse-api's former `compose.yaml` keep their data: `full` uses the same project name `pulse` and the same volumes.
 
-Only the status page is public. It serves the page and a fixed allow-list of read-only API paths through its proxy ([what is public](https://github.com/lorenzh/pulse-status/blob/main/docs/operation.md#what-is-public)). The API and the Console listen on `127.0.0.1` only. The Console is at <http://127.0.0.1:8082>; it has nothing to manage yet.
-
-- `.env.example` has a placeholder token (`replace-with-...`) that the API rejects at start, so the `sed` line above writes a random one. Without a `.env` the API stops at start too.
-- Change the host ports in `.env` with `PULSE_STATUS_PORT` (default 8080), `PULSE_API_PORT` (default 3000, bound to 127.0.0.1) and `PULSE_CONSOLE_PORT` (default 8082, bound to 127.0.0.1).
-- Add or remove checks in `compose/checks.json`. The API looks at the file every 5 s and applies a change without a restart; `docker compose kill -s HUP api` applies it at once. Compose mounts the `compose/` directory read-only at `/config`, so an editor save by rename or `sed -i` is seen too. The [admin routes](https://github.com/lorenzh/pulse-api/blob/main/docs/rest-api.md#admin-config-routes) are off by default (`404`, `PULSE_API_ADMIN_TOKENS_FILE` unset). With admin tokens enabled, an authenticated `GET /admin/config` answers `200`, and a write that passes the request checks answers `503` while the directory is mounted read-only; mount it writable to change checks through the API ([changing checks](https://github.com/lorenzh/pulse-api/blob/main/docs/operation.md#changing-checks)). The probe reloads the checks from the API on its own within `PULSE_CHECKS_RELOAD_MS` (default 60 s). A removed check becomes inactive: it leaves `GET /checks`, its open incident is resolved, and its history stays.
-- notify writes incidents to `/data/incidents.jsonl` in the `notify-data` volume (`compose/notify.json`).
-- Health: Docker checks `api` on `/readyz`, and `probe`, `status`, `notify` and `console` on `/healthz`. See [Health, readiness and metrics](#health-readiness-and-metrics).
-- The end-to-end test fixtures are not part of this stack. They live in pulse-api's `compose.e2e.yaml` and `compose/e2e/`, used only by `scripts/compose-e2e.sh`.
-- Stop with `docker compose down`. The volumes keep the database and the notify ledger. `docker compose down -v` deletes them.
-
-Details: [pulse-api install, With Docker Compose](https://github.com/lorenzh/pulse-api/blob/main/docs/install.md#with-docker-compose).
-
-### Demo: every status page state
-
-The `demo` profile starts a self-contained pulse whose status page shows every state within five minutes: up, degraded, down with an open and then resolved incident, maintenance, an upcoming maintenance window and a TLS certificate check. It uses two probes (locations `eu` and `us`) and needs no `.env`.
+The demo starts with one command and needs no secret input:
 
 ```sh
-cd pulse-api
-docker compose --profile demo up demo-status
+docker compose -f demo/compose.yaml up -d
 ```
 
-Open <http://localhost:8081>. The demo has its own volumes and ports, so it does not clash with the regular stack. The demo and the regular stack share the Compose project `pulse`, so `docker compose --profile demo down` also stops the regular stack, and `-v` also deletes its `api-data` and `notify-data` volumes. Stop and reset only the demo with:
-
-```sh
-docker compose --profile demo rm -sf demo-init demo-api demo-targets demo-tls demo-probe-a demo-probe-b demo-status
-docker volume rm pulse_demo-api-data pulse_demo-config
-```
-
-The demo tokens are public example values: never use them for a real deployment. The [pulse-api install page](https://github.com/lorenzh/pulse-api/blob/main/docs/install.md#demo-profile) lists each demo check, when it appears, and how to try a white-label theme.
+Within five minutes its status page (<http://127.0.0.1:8080>) shows every state, including an open incident, and the mail catcher (<http://127.0.0.1:8025>) holds the incident email from notify. Reset it with `docker compose -f demo/compose.yaml down -v`.
 
 ## Run all of pulse with Bun
 
@@ -224,7 +209,7 @@ pulse-contract and pulse-kit are libraries and have no settings.
 | pulse-console | `PULSE_CONSOLE_HOST` | `127.0.0.1` (Docker image: `0.0.0.0`) |
 | pulse-console | `PULSE_CONSOLE_ADMIN_TOKEN` or `PULSE_CONSOLE_ADMIN_TOKEN_FILE` | unset (optional, validated, not used yet; set only one) |
 
-The Compose file in pulse-api has its own variables for `.env` (`PULSE_PROBE_TOKEN`, `PULSE_LOCATION`, `PULSE_API_PORT`, `PULSE_STATUS_PORT`, `PULSE_CONSOLE_PORT`, `PULSE_DEMO_API_PORT`, `PULSE_DEMO_STATUS_PORT`). See [Compose variables](https://github.com/lorenzh/pulse-api/blob/main/docs/configuration.md#compose-variables).
+The Compose setups in [pulse-deploy](https://github.com/lorenzh/pulse-deploy) have their own variables for a `.env` file next to each setup's `compose.yaml` (for example `PULSE_LOCATION`, `PULSE_STATUS_PORT`, `PULSE_CONSOLE_PORT`). The probe token is a file, `secrets/probe-token`, not a variable. Each setup's README and `.env.example` list them.
 
 When you enable tokens on a running deployment, give the probes their tokens first (an older API ignores the header), then enable tokens on the API. Otherwise ingestion stops.
 

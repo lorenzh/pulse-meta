@@ -1,0 +1,4 @@
+[
+  { "name": "deploy", "dependsOn": [] },
+  { "name": "api", "dependsOn": ["deploy"] }
+]
