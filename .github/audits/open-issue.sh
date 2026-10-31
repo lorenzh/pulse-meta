@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Opens one audit issue from the template <kind>.md next to this script. It adds no factory/ label,
-# so no Factory run starts; the lead decides how the audit runs. An open issue of the same kind (and
-# the same repository for per-repository kinds) blocks a new one.
+# so no Factory run starts; the owner starts the audit workflow by adding factory/audit/audit. An open
+# issue of the same kind (and the same repository for per-repository kinds) blocks a new one.
+# Per-repository kinds get audit/<repo>, not target/<repo>: the audit runs on the meta target and
+# only reads the repository.
 #
 #   security      one target repository per run, in rotation by day
 #   performance   one service or library repository per run, two slots per week (Mon-Thu, Fri-Sun)
@@ -58,7 +60,7 @@ fi
 
 R="$GITHUB_REPOSITORY"
 # Every page: an open audit can sit behind 100 other issues with the same labels.
-open="$(gh api --paginate "repos/$R/issues?state=open&labels=$kind${target:+,target/$target}&per_page=100" \
+open="$(gh api --paginate "repos/$R/issues?state=open&labels=$kind${target:+,audit/$target}&per_page=100" \
   --jq ".[] | select(.pull_request == null) | select(.title | startswith(\"$title:\")) | .number")"
 open="${open%%$'\n'*}"
 if [[ -n "$open" ]]; then
@@ -69,11 +71,16 @@ if ! gh api "repos/$R/labels/$kind" --silent 2> /dev/null; then
   gh api "repos/$R/labels" -f name="$kind" -f color="$color" -f description="$description" --silent
   echo "Created the label $kind."
 fi
+if [[ -n "$target" ]] && ! gh api "repos/$R/labels/audit%2F$target" --silent 2> /dev/null; then
+  gh api "repos/$R/labels" -f name="audit/$target" -f color=c5def5 \
+    -f description="Audit of lorenzh/pulse-$target, run on the meta target" --silent
+  echo "Created the label audit/$target."
+fi
 
 body="$(< "$here/$kind.md")"
 body="${body//\{repo\}/$target}"
 args=(-f "labels[]=$kind")
-[[ -n "$target" ]] && args+=(-f "labels[]=target/$target")
+[[ -n "$target" ]] && args+=(-f "labels[]=audit/$target")
 url="$(gh api "repos/$R/issues" -f title="$title: pulse${target:+-$target} ($today)" -f body="$body" \
   "${args[@]}" --jq .html_url)"
 echo "Opened $url"
