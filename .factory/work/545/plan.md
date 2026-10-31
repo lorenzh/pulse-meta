@@ -145,7 +145,7 @@ Behavior change: yes. Reload retries a failed apply and counts a new metric valu
 1. **`src/config-reload.ts`**
    - Restructure `load`/`apply` so the stamp is recorded as in decision 1, and a failed `onApply` sets `lastKey = undefined`.
    - On a failed apply, log the decision 4 line through `deps.log` (already wired to `logger.warn`) and call `recordConfigReload("error")`.
-   - Add a small helper for the safe message (Error check, newline collapse, 200-unit cap).
+   - Add a small helper for the safe message (decision 4: name and code only, both checked against their patterns).
    - Keep the `reject` path (`invalid`, `config reload rejected: ...`) for parse and read failures.
 2. **`src/metrics.ts`:** `CONFIG_RELOAD_RESULTS = ["ok", "invalid", "error"]`.
 3. **Runners**
@@ -169,7 +169,7 @@ Behavior change: yes. Reload retries a failed apply and counts a new metric valu
     - a read failure over two polls gives one line and one read;
     - the line holds no header or secret sentinel and no newline;
     - a non-`Error` throw gives `unknown error`;
-    - a 1000-character message is cut to 200.
+    - an error whose message holds the sentinels gives only `Error SQLITE_CONSTRAINT_CHECK`, and a code that fails the pattern is left out.
 - **Runner tests.** In `src/retention.test.ts`, `src/latency.test.ts` and `src/uptime-rollup.test.ts`, add one test each with a sink that records `(message, level)`. A failing run gives `[<name> failed: boom, "warn"]`, and a success or progress line gives `"info"`.
 - **`src/start.test.ts`.** One test starts the API with `PULSE_LOG_LEVEL=warn` and a captured `write`. It makes the retention delete fail, for example by creating a SQLite trigger through the `openDb` dependency: `CREATE TRIGGER ... BEFORE DELETE ON results BEGIN SELECT RAISE(FAIL, 'boom'); END`, with an expired row inserted. Assert that a line with level `warn` containing `retention failed: boom` is written.
 - **`src/server.validation.test.ts`.** Replace the imported bounds with the literals from required behavior 4 and the at/past pairs from Counterexamples. Remove the `MAX_*` imports. Leave the other tests in the file unchanged.
