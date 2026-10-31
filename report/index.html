@@ -5,49 +5,226 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pulse Factory-Report</title>
 <meta name="description" content="Kosten, Dauer und Qualität der Paragon-Factory-Läufe, die pulse bauen.">
+<script>
+  // Light/dark theme as on losoft.dev (src/lib/theme.ts): follows prefers-color-scheme until the
+  // visitor picks a theme with the toggle; the choice stays in localStorage ("theme") on this device.
+  (function (w, d) {
+    var root = d.documentElement, key = 'theme', media = w.matchMedia('(prefers-color-scheme: dark)');
+    try { var stored = w.localStorage.getItem(key); if (stored === 'light' || stored === 'dark') root.dataset.theme = stored; } catch (e) { /* storage blocked: follow the system */ }
+    root.classList.add('js');
+    var effective = function () { return root.dataset.theme || (media.matches ? 'dark' : 'light'); };
+    var sync = function () {
+      var b = d.querySelectorAll('[data-theme-toggle]');
+      for (var i = 0; i < b.length; i++) b[i].setAttribute('aria-pressed', effective() === 'dark' ? 'true' : 'false');
+    };
+    d.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || typeof t.closest !== 'function' || !t.closest('[data-theme-toggle]')) return;
+      var next = effective() === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { w.localStorage.setItem(key, next); } catch (e) { /* not persisted; applies to this view */ }
+      sync();
+    });
+    d.addEventListener('DOMContentLoaded', sync);
+    if (media.addEventListener) media.addEventListener('change', sync);
+  })(window, document);
+</script>
 <style>
+  /* Design tokens copied from the losoft design system, lorenzh/losoft.dev src/styles/tokens.css at
+   * bfef6f7f4d4d60389d6fc0e87d8e75f32f9e415b: same names, same values, only the ones this page uses.
+   * The web fonts are not loaded (no runtime import from losoft.dev); the stacks fall back to system fonts. */
   :root {
-    color-scheme: light;
-    --color-bg: #f7f7f5; --color-panel: #ffffff; --color-fg: #1f1e1c; --color-fg-muted: #6b6862;
-    --color-border-line: #e3e1dc; --color-ok: #2f7a3e; --color-warn: #9a6200; --color-bad: #b42b2b;
-    --cds-chart-muted: #c9c5bc; --cds-chart-grid: #ecebe7; --cds-chart-axis: #b8b4ab; --cds-chart-reference: #9a958b;
-    --cds-surface-popover: #ffffff; --cds-border: #dcd9d2; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.10); --cds-text-secondary: #6b6862;
-    --dash-color-0: #c2562f;
-    --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-anthropic-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-    --cds-font-size-caption: 0.8125rem; --cds-font-size-body: 0.9375rem; --cds-font-size-heading: 1.0625rem; --cds-font-size-title: 1.875rem;
-    --cds-font-weight-medium: 560;
-    --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-lg: 24px; --cds-gap-xl: 40px;
-    --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 16px;
-    --cds-radius: 8px; --cds-dur-slow: 300ms;
+    color-scheme: light dark;
+    --bg: #f2eeec;
+    --surface: #e6dfdc;
+    --rule: #dfd7d4;
+    --line-strong: #c4b8b3;
+    --field-line: #93847e;
+    --text: #271b32;
+    --lead: #4a3f52;
+    --muted: #6a5850;
+    --accent: #8a4f9f;
+    --accent-text: #7a4290;
+    --accent2: #56619a;
+    --strong: #271b32;
+    --on-strong: #f2eeec;
+    --tint: #e6dbe3;
+    --tint-line: #d6c4d6;
+    --field: #faf8f7;
+    --error: #a4262c;
+    --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --fs-h1: clamp(2.5rem, 1.9rem + 2.5vw, 4rem);
+    --fs-h2: clamp(2rem, 1.8rem + 0.8vw, 2.5rem);
+    --fs-h3: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem);
+    --fs-lead: clamp(1.125rem, 1.05rem + 0.3vw, 1.375rem);
+    --fs-body: 1.125rem;
+    --fs-ui: 0.9375rem;
+    --fs-small: 0.875rem;
+    --fs-label: 0.8125rem;
+    --fs-tag: 0.75rem;
+    --content-max: 1120px;
+    --prose-max: 720px;
+    --radius-sm: 6px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-pill: 999px;
+    --touch: 44px;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --dur: 150ms;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #271b32; --surface: #33263f; --rule: #3e3049; --line-strong: #5a4b66; --field-line: #766877;
+    --text: #dfd7d4; --lead: #c9bfc4; --muted: #a89b95; --accent: #c29bd3; --accent-text: #c29bd3; --accent2: #9da7d4;
+    --strong: #dfd7d4; --on-strong: #271b32; --tint: #3d2d48; --tint-line: #54406a; --field: #1f1529; --error: #f2a7ab;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --color-bg: #1a1918; --color-panel: #232220; --color-fg: #eceae5; --color-fg-muted: #a29e95;
-      --color-border-line: #383631; --color-ok: #74c286; --color-warn: #e0a84a; --color-bad: #f07a7a;
-      --cds-chart-muted: #57534b; --cds-chart-grid: #2f2d2a; --cds-chart-axis: #5d5950; --cds-chart-reference: #807b70;
-      --cds-surface-popover: #2b2a27; --cds-border: #45423c; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.45); --cds-text-secondary: #a29e95;
-      --dash-color-0: #e8825b;
+    :root:not([data-theme="light"]) {
+      --bg: #271b32; --surface: #33263f; --rule: #3e3049; --line-strong: #5a4b66; --field-line: #766877;
+      --text: #dfd7d4; --lead: #c9bfc4; --muted: #a89b95; --accent: #c29bd3; --accent-text: #c29bd3; --accent2: #9da7d4;
+      --strong: #dfd7d4; --on-strong: #271b32; --tint: #3d2d48; --tint-line: #54406a; --field: #1f1529; --error: #f2a7ab;
     }
   }
-  body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); font-size: 14px; }
-  #dash-root { padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-  .fr-fail::before { content: ""; }
+  :root[data-theme="light"] { color-scheme: light; }
+
+  /* Chart roles, all from the tokens (validated with the dataviz checks, see the PR):
+   * marks on --bg pass 3:1 in both themes; the muted mark is the de-emphasis next to the accent. */
+  :root {
+    --chart-1: var(--accent);
+    --chart-muted: var(--field-line);
+    --chart-grid: var(--rule);
+    --chart-axis: var(--line-strong);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  .fr-source { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
-  .fr-source a { color: inherit; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: var(--fs-ui); line-height: 1.55; -webkit-font-smoothing: antialiased; overflow-x: clip; }
+  h1, h2, h3, p, ul, ol { margin: 0; }
+  a { color: var(--accent-text); text-underline-offset: 2px; }
+  a:hover { color: var(--text); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  code { font-family: var(--font-mono); font-size: 0.9em; }
+
+  .wrap { max-width: var(--content-max); margin-inline: auto; padding: 32px max(16px, env(safe-area-inset-left, 0px)) 64px; display: grid; gap: 48px; }
+  .eyebrow { font-family: var(--font-mono); font-size: var(--fs-tag); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .label { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--muted); }
+  .muted { color: var(--muted); }
+
+  .top { display: grid; gap: 16px; }
+  .top__bar { display: flex; align-items: flex-start; gap: 16px; }
+  .top__titles { display: grid; gap: 8px; margin-right: auto; }
+  .top h1 { font-size: var(--fs-h1); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; text-wrap: balance; }
+  .lead { font-size: var(--fs-lead); line-height: 1.5; color: var(--lead); max-width: var(--prose-max); }
+  .lead b, .prose b { color: var(--text); font-weight: 600; }
+
+  .theme-toggle { display: none; flex-shrink: 0; align-items: center; justify-content: center; width: var(--touch); height: var(--touch); padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text); cursor: pointer; }
+  .js .theme-toggle { display: inline-flex; }
+  .theme-toggle:hover { background: var(--surface); }
+  .theme-toggle__sun, .theme-toggle[aria-pressed="true"] .theme-toggle__moon { display: none; }
+  .theme-toggle[aria-pressed="true"] .theme-toggle__sun { display: block; }
+
+  .section { display: grid; gap: 16px; min-width: 0; }
+  .section > h2 { font-size: var(--fs-h3); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+  .section__head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+  .section__head h2 { font-size: var(--fs-h3); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+
+  /* Stat tiles: label, value, delta. Proportional figures for the big value. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 12px; }
+  .tiles--small { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
+  .tile { background: var(--surface); border-radius: var(--radius-lg); padding: 16px 18px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+  .tile__value { font-size: 2rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+  .tiles--small .tile__value { font-size: 1.375rem; }
+  .tile__note { font-size: var(--fs-small); color: var(--muted); }
+  .delta { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--muted); }
+  .delta.is-bad { color: var(--error); }
+
+  .card { border: 1px solid var(--line-strong); border-radius: var(--radius-lg); padding: 20px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .card h3 { font-size: 1.0625rem; font-weight: 600; line-height: 1.3; }
+  .card__note { font-size: var(--fs-small); color: var(--muted); max-width: var(--prose-max); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 16px; }
+
+  /* Segmented control (losoft pill control). */
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line-strong); border-radius: var(--radius-pill); }
+  .seg button { all: unset; box-sizing: border-box; min-height: 36px; padding: 0 14px; display: inline-flex; align-items: center; border-radius: var(--radius-pill); font-size: var(--fs-label); font-weight: 500; color: var(--text); cursor: pointer; transition: background-color var(--dur) var(--ease); }
+  .seg button:hover { background: var(--surface); }
+  .seg button[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .search { font: inherit; font-size: var(--fs-label); min-height: 40px; padding: 0 14px; border: 1px solid var(--field-line); border-radius: var(--radius-pill); background: var(--field); color: var(--text); width: min(100%, 14rem); }
+
+  .chart { position: relative; min-height: 120px; }
+  .chart svg { display: block; overflow: visible; }
+  .chart .mark { cursor: default; }
+  .chart .mark:hover, .chart .mark:focus { opacity: 0.8; outline: none; }
+  .tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 6px 10px; font-size: var(--fs-label); white-space: nowrap; z-index: 2; display: grid; gap: 2px; }
+  .tip__head { color: var(--muted); }
+  .tip__row b { font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--fs-label); color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .fail { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-label); min-height: 120px; justify-content: center; }
+  .fail::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--error); }
+
+  details.tview summary { cursor: pointer; font-size: var(--fs-label); color: var(--accent-text); width: max-content; }
+  details.tview[open] summary { margin-bottom: 8px; }
+  .scroll { overflow: auto; max-height: 32rem; border-radius: var(--radius-sm); }
+  .scroll.short { max-height: 22rem; }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--bg); font-family: var(--font-mono); font-size: var(--fs-tag); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); z-index: 1; white-space: nowrap; }
+  th.num, td.num { text-align: right; }
+  th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+  th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  th[aria-sort="ascending"] button::after { content: "▲"; font-size: 0.8em; }
+  th[aria-sort="descending"] button::after { content: "▼"; font-size: 0.8em; }
+  .bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+  .bar i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--chart-1); min-width: 1px; }
+  td.is-bad { color: var(--error); font-weight: 600; }
+  .mono { font-family: var(--font-mono); }
+
+  /* Tag (losoft): mono pill, outline in its colour. */
+  .tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: var(--radius-pill); border: 1px solid currentColor; font-family: var(--font-mono); font-size: var(--fs-tag); font-weight: 500; line-height: 1; white-space: nowrap; color: var(--accent-text); }
+  .tag--neutral { color: var(--muted); }
+  .tag--bad { color: var(--error); }
+
+  .prose { display: grid; gap: 12px; max-width: var(--prose-max); font-size: var(--fs-body); line-height: 1.65; }
+  .prose ul, .prose ol { padding-left: 1.2em; display: grid; gap: 10px; }
+  .findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 12px; list-style: none; padding: 0; }
+  .finding { background: var(--surface); border-radius: var(--radius-lg); padding: 18px 20px; display: grid; gap: 8px; align-content: start; font-size: var(--fs-ui); line-height: 1.55; }
+  .finding b { font-size: 1.0625rem; font-weight: 600; line-height: 1.3; }
+  .recs { display: grid; gap: 12px; padding-left: 1.4em; max-width: var(--prose-max); font-size: var(--fs-body); line-height: 1.6; }
+  .recs .tag { margin-left: 6px; text-decoration: none; vertical-align: 2px; }
+  .changes { display: grid; gap: 8px; padding-left: 1.2em; max-width: var(--prose-max); font-size: var(--fs-body); }
+  .method { display: grid; gap: 8px; padding-left: 1.2em; max-width: var(--prose-max); font-size: var(--fs-small); color: var(--lead); }
+  .foot { font-size: var(--fs-label); color: var(--muted); }
+  .foot a { color: inherit; }
+  [data-dash-state="loading"] { opacity: 0.5; }
+
+  @media (max-width: 720px) {
+    .wrap { gap: 40px; padding-top: 20px; }
+    .tiles, .tiles--small { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .tile { padding: 12px 14px; }
+    .tile__value { font-size: 1.5rem; }
+    .tiles--small .tile__value { font-size: 1.25rem; }
+    .card { padding: 16px; }
+  }
+  @media (forced-colors: active) {
+    .chart .mark { forced-color-adjust: none; }
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i" crossorigin="anonymous"></script>
 <script>
-  // A small stand-in for the dashboard runtime the page was first written for:
-  // it serves data.json and redraws every data-draw element on load and resize.
+  // A small stand-in for a dashboard runtime: loads data.json (numbers) and narrative.json (the
+  // agent's text) and redraws every data-draw element on load and resize.
   window.dash = (() => {
     let data = null, failed = false;
     const fns = new Map();
     const run = (name) => {
       const fn = fns.get(name);
-      if (fn) document.querySelectorAll(`[data-draw="${name}"]`).forEach((el) => fn(el));
+      // One failing drawer must not stop the others.
+      if (fn) document.querySelectorAll(`[data-draw="${name}"]`).forEach((el) => { try { fn(el); } catch (err) { console.error(name, err); } });
     };
     const runAll = () => fns.forEach((_, name) => run(name));
     const get = (f) => fetch(f).then((r) => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
@@ -64,204 +241,177 @@
         return id in data ? {status: 'ok', data: data[id]} : {status: 'missing', data: []};
       },
       draw(name, fn) { if (fn) { fns.set(name, fn); if (data || failed) run(name); } else run(name); },
-      get colors() { return [getComputedStyle(document.documentElement).getPropertyValue('--dash-color-0').trim() || '#c2562f']; },
     };
   })();
 </script>
 </head>
 <body>
-<main id="dash-root">
-<style>
-  .fr { max-width: 72rem; margin-inline: auto; display: grid; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); font-variant-numeric: tabular-nums; }
-  .fr-head { display: grid; gap: var(--cds-gap-sm); }
-  .fr-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
-  .fr-sub { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; }
-  .fr-lead { font-size: var(--cds-font-size-body); max-width: 68ch; margin: 0; line-height: 1.55; }
-  .fr .fr-lead b, .fr .fr-prose b { font-weight: 600; }
-  .fr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr)); gap: var(--cds-gap-md); }
-  .fr-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); display: grid; gap: var(--cds-gap-xs); align-content: start; }
-  .fr-tile-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
-  .fr-tile-value { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; }
-  .fr-tile-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
-  .fr-section { display: grid; gap: var(--cds-gap-md); }
-  .fr-h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
-  .fr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
-  .fr-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); align-content: start; min-width: 0; }
-  .fr-card h3 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
-  .fr-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0; line-height: 1.45; }
-  .fr-chart { position: relative; min-height: 240px; }
-  .fr-chart.tall { min-height: 300px; }
-  .fr-chart svg { display: block; overflow: visible; }
-  .fr-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
-  .fr-tip .k { color: var(--cds-text-secondary); }
-  .fr-scroll { overflow: auto; max-height: 34rem; }
-  .fr-scroll.short { max-height: 24rem; }
-  .fr table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); }
-  .fr th, .fr td { text-align: left; padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
-  .fr th { position: sticky; top: 0; background: var(--color-panel); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); z-index: 1; }
-  .fr th.num, .fr td.num { text-align: right; }
-  .fr th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
-  .fr th button:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; border-radius: 2px; }
-  .fr th[aria-sort="ascending"] button::after { content: "▲"; font-size: 0.7em; }
-  .fr th[aria-sort="descending"] button::after { content: "▼"; font-size: 0.7em; }
-  .fr .bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
-  .fr .bar i { display: block; height: 8px; border-radius: 2px; background: var(--cds-chart-muted); min-width: 1px; }
-  .fr .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--color-border-line); white-space: nowrap; }
-  .fr .pill.ok { color: var(--color-ok); }
-  .fr .pill.warn { color: var(--color-warn); }
-  .fr .pill.bad { color: var(--color-bad); }
-  .fr .muted { color: var(--color-fg-muted); }
-  .fr-search { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); width: min(100%, 20rem); min-height: 36px; box-sizing: border-box; }
-  .fr-prose { display: grid; gap: var(--cds-gap-sm); max-width: 72ch; }
-  .fr-prose p, .fr-prose li { margin: 0; line-height: 1.55; font-size: var(--cds-font-size-body); }
-  .fr-prose ol, .fr-prose ul { margin: 0; padding-left: 1.3em; display: grid; gap: var(--cds-gap-sm); }
-  .fr code { font-size: 0.92em; }
-  .fr-fail { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-  .fr-fail::before { content: ""; width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--color-bad); }
-  .fr [data-dash-source-state=empty] { color: transparent; }
-  .fr [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
-</style>
-
-<div class="fr">
-  <header class="fr-head" id="top">
-    <h1 class="fr-title">pulse Factory-Report</h1>
-    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den <span data-draw="sum" data-fmt="int" data-source="summary" data-field="targets" data-row="0">—</span> Target-Repositories. Zeitraum: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>. Detailtabellen und Diagramme zeigen die letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage.</p>
-    <p class="fr-lead" data-draw="narrative" data-slot="lead">—</p>
+<main class="wrap">
+  <header class="top" id="top">
+    <div class="top__bar">
+      <div class="top__titles">
+        <p class="eyebrow">pulse · Paragon Factory</p>
+        <h1>Factory-Report</h1>
+        <p class="label">Stand <span data-draw="meta" data-field="as_of">—</span> · Läufe seit <span data-draw="sum" data-field="period">—</span> · Diagramme und Tabellen: letzte <span data-draw="sum" data-fmt="int" data-field="win_days">—</span> Tage</p>
+      </div>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="Dunkles Farbschema">
+        <svg class="theme-toggle__moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="theme-toggle__sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+    <p class="lead" data-draw="narrative" data-slot="lead">—</p>
   </header>
 
-  <section class="fr-tiles" aria-label="Kennzahlen">
-    <div class="fr-tile">
-      <span class="fr-tile-label">Kosten gesamt</span>
-      <span class="fr-tile-value" data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</span>
-      <span class="fr-tile-note">API-Listenpreis laut CLI; <span data-draw="sum" data-fmt="int" data-source="summary" data-field="runs_cost_unknown" data-row="0">—</span> Läufe ohne Kostenangabe</span>
+  <section class="section" aria-labelledby="kpi-h">
+    <h2 id="kpi-h">Kennzahlen</h2>
+    <div class="tiles">
+      <div class="tile">
+        <span class="eyebrow">Features fertig</span>
+        <span class="tile__value" data-draw="sum" data-fmt="int" data-field="features_done">—</span>
+        <span class="tile__note">von <span data-draw="sum" data-fmt="int" data-field="features">—</span> gebauten Features</span>
+        <span class="delta" data-draw="delta" data-field="d_features_done" data-fmt="int" data-good="up"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Factory-Läufe</span>
+        <span class="tile__value" data-draw="sum" data-fmt="int" data-field="runs">—</span>
+        <span class="tile__note"><span data-draw="sum" data-fmt="int" data-field="win_runs">—</span> in den letzten <span data-draw="sum" data-fmt="int" data-field="win_days">—</span> Tagen</span>
+        <span class="delta" data-draw="delta" data-field="d_runs" data-fmt="int"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Kosten, bekannt</span>
+        <span class="tile__value" data-draw="sum" data-fmt="usd" data-field="usd">—</span>
+        <span class="tile__note">API-Listenpreis der Claude-Läufe</span>
+        <span class="delta" data-draw="delta" data-field="d_usd" data-fmt="usd"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Läufe ohne Kosten</span>
+        <span class="tile__value" data-draw="sum" data-fmt="int" data-field="runs_cost_unknown">—</span>
+        <span class="tile__note">Codex meldet keine Kosten · <span data-draw="sum" data-fmt="dec1" data-field="tokens_m_codex">—</span> M Tokens</span>
+        <span class="delta" data-draw="delta" data-field="d_runs_cost_unknown" data-fmt="int"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">PRs mit Handarbeit</span>
+        <span class="tile__value" data-draw="sum" data-fmt="int" data-field="prs_human">—</span>
+        <span class="tile__note"><span data-draw="sum" data-fmt="pct" data-field="human_share">—</span> von <span data-draw="sum" data-fmt="int" data-field="prs">—</span> Target-PRs</span>
+        <span class="delta" data-draw="delta" data-field="d_prs_human" data-fmt="int" data-good="down"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Holds (needs-input)</span>
+        <span class="tile__value" data-draw="sum" data-fmt="int" data-field="holds">—</span>
+        <span class="tile__note">Agent wartet auf eine Person</span>
+        <span class="delta" data-draw="delta" data-field="d_holds" data-fmt="int" data-good="down"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Review schickt zurück</span>
+        <span class="tile__value" data-draw="sum" data-fmt="pct" data-field="review_back_rate">—</span>
+        <span class="tile__note"><span data-draw="sum" data-fmt="int" data-field="review_back">—</span> von <span data-draw="sum" data-fmt="int" data-field="review_runs">—</span> Build-Reviews</span>
+        <span class="delta" data-draw="delta" data-field="d_review_back" data-fmt="int" data-unit="Rückläufer"></span>
+      </div>
+      <div class="tile">
+        <span class="eyebrow">Plan-Review schickt zurück</span>
+        <span class="tile__value" data-draw="sum" data-fmt="pct" data-field="plan_back_rate">—</span>
+        <span class="tile__note"><span data-draw="sum" data-fmt="int" data-field="plan_back">—</span> von <span data-draw="sum" data-fmt="int" data-field="plan_review_runs">—</span> Plan-Reviews</span>
+        <span class="delta" data-draw="delta" data-field="d_plan_back" data-fmt="int" data-unit="Rückläufer"></span>
+      </div>
     </div>
-    <div class="fr-tile">
-      <span class="fr-tile-label">Factory-Läufe</span>
-      <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="runs" data-row="0">—</span>
-      <span class="fr-tile-note">Ein Lauf ist ein Zustand, z. B. implement</span>
+    <div class="tiles tiles--small">
+      <div class="tile"><span class="eyebrow">Durchlauf, Median</span><span class="tile__value" data-draw="sum" data-fmt="hm" data-field="lead_h_median">—</span><span class="tile__note">erster Lauf bis letzter Merge</span></div>
+      <div class="tile"><span class="eyebrow">Durchlauf, p90</span><span class="tile__value" data-draw="sum" data-fmt="hm" data-field="lead_h_p90">—</span><span class="tile__note">neun von zehn waren schneller</span></div>
+      <div class="tile"><span class="eyebrow">PR offen bis Merge</span><span class="tile__value"><span data-draw="sum" data-fmt="int" data-field="pr_merge_min_median">—</span> min</span><span class="tile__note">Median, Prüfung durch eine Person</span></div>
+      <div class="tile"><span class="eyebrow">Feature, Median</span><span class="tile__value" data-draw="sum" data-fmt="usd" data-field="feature_usd_median">—</span><span class="tile__note">bekannte Kosten je Feature</span></div>
+      <div class="tile"><span class="eyebrow">Tokens</span><span class="tile__value"><span data-draw="sum" data-fmt="dec1" data-field="tokens_m">—</span> M</span><span class="tile__note"><span data-draw="sum" data-fmt="pct0" data-field="cached_share">—</span> aus dem Cache</span></div>
+      <div class="tile"><span class="eyebrow">Actions fehlgeschlagen</span><span class="tile__value"><span data-draw="sum" data-fmt="int" data-field="actions_failed">—</span> / <span data-draw="sum" data-fmt="int" data-field="actions_total">—</span></span><span class="tile__note">Workflow factory-run.yml</span></div>
     </div>
-    <div class="fr-tile">
-      <span class="fr-tile-label">Laufzeit aller Läufe</span>
-      <span class="fr-tile-value"><span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="factory_h" data-row="0">—</span> h</span>
-      <span class="fr-tile-note">Summe der GitHub-Actions-Läufe</span>
+    <p class="card__note" data-draw="narrative" data-slot="notes.duration"></p>
+  </section>
+
+  <section class="section" aria-labelledby="flow-h">
+    <div class="section__head">
+      <h2 id="flow-h">Wohin Zeit und Geld gingen</h2>
+      <div class="seg" role="group" aria-label="Messgröße der Diagramme" data-metric-group>
+        <button type="button" data-metric="usd" aria-pressed="true">Kosten</button>
+        <button type="button" data-metric="runs" aria-pressed="false">Läufe</button>
+        <button type="button" data-metric="tokens" aria-pressed="false">Tokens</button>
+      </div>
     </div>
-    <div class="fr-tile">
-      <span class="fr-tile-label">Tokens</span>
-      <span class="fr-tile-value"><span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="tokens_m" data-row="0">—</span> M</span>
-      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct0" data-source="summary" data-field="cached_share" data-row="0">—</span> aus dem Cache, <span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="tokens_m_codex" data-row="0">—</span> M bei Codex</span>
+    <div class="grid2">
+      <div class="card">
+        <h3>Je Schritt</h3>
+        <p class="card__note"><span data-draw="metricNote"></span> je Workflow-Zustand. <span data-draw="narrative" data-slot="notes.steps"></span></p>
+        <div class="chart" data-draw="steps" data-source="by_step"></div>
+        <details class="tview">
+          <summary>Als Tabelle</summary>
+          <div class="scroll short">
+            <table data-source="by_step">
+              <thead><tr>
+                <th>Schritt</th><th>Profile</th><th class="num">Läufe</th><th class="num">ohne Kosten</th><th class="num">USD</th><th class="num">USD Median</th><th class="num">Min. Median</th><th class="num">Min. p90</th><th class="num">Tokens (M)</th>
+              </tr></thead>
+              <tbody data-draw="steptable"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+      <div class="card">
+        <h3>Je Repository</h3>
+        <p class="card__note"><span data-draw="metricNote"></span> je Target; Spec-Läufe zählen zu meta. <span data-draw="narrative" data-slot="notes.targets"></span></p>
+        <div class="chart" data-draw="targets" data-source="by_target"></div>
+        <details class="tview">
+          <summary>Als Tabelle</summary>
+          <div class="scroll short">
+            <table data-source="by_target">
+              <thead><tr>
+                <th>Repository</th><th class="num">Issues</th><th class="num">Läufe</th><th class="num">ohne Kosten</th><th class="num">USD</th><th class="num">USD je Issue</th><th class="num">Tokens (M)</th><th class="num">PRs gemergt</th><th class="num">mit Handarbeit</th>
+              </tr></thead>
+              <tbody data-draw="targettable"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
     </div>
-    <div class="fr-tile">
-      <span class="fr-tile-label">Target-PRs gemergt</span>
-      <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_merged" data-row="0">—</span> / <span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs" data-row="0">—</span></span>
-      <span class="fr-tile-note"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_open" data-row="0">—</span> noch offen</span>
-    </div>
-    <div class="fr-tile">
-      <span class="fr-tile-label">PRs mit Handarbeit</span>
-      <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="prs_human" data-row="0">—</span>
-      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct" data-source="summary" data-field="human_share" data-row="0">—</span> aller Target-PRs</span>
+    <div class="card">
+      <h3>Je Tag</h3>
+      <p class="card__note"><span data-draw="metricNote"></span> je Tag (UTC), nach Startzeit des Laufs. <span data-draw="narrative" data-slot="notes.days"></span></p>
+      <div class="chart" data-draw="days" data-source="by_day"></div>
+      <details class="tview">
+        <summary>Als Tabelle</summary>
+        <div class="scroll short">
+          <table data-source="by_day">
+            <thead><tr><th>Tag</th><th class="num">Läufe</th><th class="num">ohne Kosten</th><th class="num">USD</th><th class="num">Tokens (M)</th></tr></thead>
+            <tbody data-draw="daytable"></tbody>
+          </table>
+        </div>
+      </details>
     </div>
   </section>
 
-  <section class="fr-section" id="zeit">
-    <h2 class="fr-h2">Dauer</h2>
-    <div class="fr-tiles">
-      <div class="fr-tile">
-        <span class="fr-tile-label">Durchlaufzeit pro Feature, Median</span>
-        <span class="fr-tile-value"><span data-draw="sum" data-fmt="hm" data-source="summary" data-field="lead_h_median" data-row="0">—</span></span>
-        <span class="fr-tile-note">Erster Lauf bis letzter Merge</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Durchlaufzeit, 90. Perzentil</span>
-        <span class="fr-tile-value"><span data-draw="sum" data-fmt="hm" data-source="summary" data-field="lead_h_p90" data-row="0">—</span></span>
-        <span class="fr-tile-note">Neun von zehn Features waren schneller</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">PR offen bis Merge, Median</span>
-        <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="pr_merge_min_median" data-row="0">—</span> min</span>
-        <span class="fr-tile-note">Prüfung durch eine Person</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Kosten pro Target-PR</span>
-        <span class="fr-tile-value" data-draw="sum" data-fmt="usd" data-source="summary" data-field="pr_usd" data-row="0">—</span>
-        <span class="fr-tile-note">Alle Kosten geteilt durch alle PRs</span>
+  <section class="section" aria-labelledby="features-h">
+    <div class="section__head">
+      <h2 id="features-h">Features</h2>
+      <div class="filters">
+        <div class="seg" role="group" aria-label="Status" data-status-group>
+          <button type="button" data-status="" aria-pressed="true">Alle</button>
+          <button type="button" data-status="offen" aria-pressed="false">Offen</button>
+          <button type="button" data-status="abgeschlossen" aria-pressed="false">Fertig</button>
+        </div>
+        <input class="search" id="fr-search" type="search" inputmode="numeric" placeholder="Issue-Nummer" aria-label="Feature nach Issue-Nummer suchen">
       </div>
     </div>
-    <p class="fr-note" data-draw="narrative" data-slot="notes.duration"></p>
-  </section>
-
-  <section class="fr-section" id="kosten">
-    <h2 class="fr-h2">Wofür das Geld ging</h2>
-    <div class="fr-grid">
-      <div class="fr-card">
-        <h3>Kosten nach Schritt</h3>
-        <p class="fr-note">Bekannte Kosten in USD je Workflow-Zustand, letzte <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. <span data-draw="narrative" data-slot="notes.steps"></span></p>
-        <div class="fr-chart" data-draw="steps" data-source="by_step"></div>
-      </div>
-      <div class="fr-card">
-        <h3>Kosten über die Zeit</h3>
-        <p class="fr-note">Bekannte Kosten in USD je Tag (UTC), nach Startzeit des Laufs. <span data-draw="narrative" data-slot="notes.days"></span></p>
-        <div class="fr-chart" data-draw="days" data-source="by_day"></div>
-      </div>
-    </div>
-    <div class="fr-card">
-      <h3>Schritte im Detail</h3>
-      <p class="fr-note">Dauer ist die Wandzeit des GitHub-Actions-Laufs, einschließlich Checkout und Installation.</p>
-      <div class="fr-scroll short">
-        <table data-source="by_step" data-row-key="step">
+    <div class="card">
+      <p class="card__note">Ein Feature ist ein Eltern-Issue mit seinen Children, hier jedes mit einem Lauf in den letzten <span data-draw="sum" data-fmt="int" data-field="win_days">—</span> Tagen. Factory-Minuten sind die Summe der Läufe, Durchlauf reicht vom ersten Lauf bis zum letzten Merge. Ein Klick auf eine Spalte sortiert; der Titel steht im verlinkten Issue. <span data-draw="ftableCount"></span></p>
+      <div class="scroll">
+        <table id="fr-ftable" data-source="features">
           <thead><tr>
-            <th data-field="step">Schritt</th>
-            <th data-field="profiles">Profile</th>
-            <th class="num" data-field="runs">Läufe</th>
-            <th class="num" data-field="usd">USD gesamt</th>
-            <th class="num" data-field="usd_median">USD Median</th>
-            <th class="num" data-field="usd_max">USD max.</th>
-            <th class="num" data-field="min_median">Min. Median</th>
-            <th class="num" data-field="min_p90">Min. p90</th>
-            <th class="num" data-field="tokens_m">Tokens (M)</th>
-          </tr></thead>
-          <tbody data-draw="steptable"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="fr-card">
-      <h3>Kosten nach Repository</h3>
-      <p class="fr-note">Spec-Läufe zählen zu meta, letzte <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. <span data-draw="narrative" data-slot="notes.targets"></span></p>
-      <div class="fr-scroll short">
-        <table data-source="by_target" data-row-key="target">
-          <thead><tr>
-            <th data-field="target">Repository</th>
-            <th class="num" data-field="issues">Issues</th>
-            <th class="num" data-field="runs">Läufe</th>
-            <th class="num" data-field="usd">USD</th>
-            <th class="num" data-field="usd_per_issue">USD pro Issue</th>
-            <th class="num" data-field="prs_merged">PRs gemergt</th>
-            <th class="num" data-field="prs_human">PRs mit Handarbeit</th>
-          </tr></thead>
-          <tbody data-draw="targettable"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <section class="fr-section" id="features">
-    <h2 class="fr-h2">Alle Features</h2>
-    <div class="fr-card">
-      <h3>Kosten, Laufzeit und Handarbeit je Feature</h3>
-      <p class="fr-note">Ein Feature ist ein Eltern-Issue mit seinen Children, hier jedes mit einem Lauf in den letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tagen. Factory-Minuten sind die Summe der Läufe, Durchlaufzeit reicht vom ersten Lauf bis zum letzten Merge. Klick auf eine Spalte sortiert; der Titel steht im verlinkten Issue.</p>
-      <input class="fr-search" id="fr-search" type="search" inputmode="numeric" placeholder="Issue-Nummer" aria-label="Feature nach Issue-Nummer suchen">
-      <div class="fr-scroll">
-        <table data-source="features" data-row-key="issue" id="fr-ftable">
-          <thead><tr>
-            <th data-field="issue" data-sort="issue"><button type="button">Issue</button></th>
-            <th class="num" data-field="targets" data-sort="targets"><button type="button">Targets</button></th>
-            <th class="num" data-field="runs" data-sort="runs"><button type="button">Läufe</button></th>
-            <th class="num" data-field="spec_usd" data-sort="spec_usd"><button type="button">Spec USD</button></th>
-            <th class="num" data-field="build_usd" data-sort="build_usd"><button type="button">Build USD</button></th>
-            <th class="num" data-field="total_usd" data-sort="total_usd"><button type="button">Gesamt USD</button></th>
-            <th class="num" data-field="factory_min" data-sort="factory_min"><button type="button">Factory-Min.</button></th>
-            <th class="num" data-field="lead_h" data-sort="lead_h"><button type="button">Durchlauf</button></th>
-            <th class="num" data-field="human_fixes" data-sort="human_fixes"><button type="button">Hand-Commits</button></th>
-            <th data-field="status" data-sort="status"><button type="button">Status</button></th>
+            <th data-sort="issue"><button type="button">Issue</button></th>
+            <th class="num" data-sort="targets"><button type="button">Targets</button></th>
+            <th class="num" data-sort="runs"><button type="button">Läufe</button></th>
+            <th class="num" data-sort="spec_usd"><button type="button">Spec USD</button></th>
+            <th class="num" data-sort="build_usd"><button type="button">Build USD</button></th>
+            <th class="num" data-sort="total_usd"><button type="button">Gesamt USD</button></th>
+            <th class="num" data-sort="runs_cost_unknown"><button type="button">ohne Kosten</button></th>
+            <th class="num" data-sort="factory_min"><button type="button">Factory-Min.</button></th>
+            <th class="num" data-sort="lead_h"><button type="button">Durchlauf</button></th>
+            <th class="num" data-sort="human_fixes"><button type="button">Hand-Commits</button></th>
+            <th data-sort="status"><button type="button">Status</button></th>
           </tr></thead>
           <tbody data-draw="ftable"></tbody>
         </table>
@@ -269,62 +419,25 @@
     </div>
   </section>
 
-  <section class="fr-section" id="qualitaet">
-    <h2 class="fr-h2">Qualität</h2>
-    <div class="fr-tiles">
-      <div class="fr-tile">
-        <span class="fr-tile-label">Review schickt zurück</span>
-        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="review_back" data-row="0">—</span>
-        <span class="fr-tile-note">bei allen build/review-Läufen</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Plan-Review schickt zurück</span>
-        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="plan_back" data-row="0">—</span>
-        <span class="fr-tile-note">bei allen spec/plan-review-Läufen</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Holds (needs-input)</span>
-        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="holds" data-row="0">—</span>
-        <span class="fr-tile-note">Implementer brach ab, Spec nicht umsetzbar</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Merge-Läufe</span>
-        <span class="fr-tile-value" data-draw="sum" data-fmt="int" data-source="summary" data-field="merge_runs" data-row="0">—</span>
-        <span class="fr-tile-note">resolve und review bei Konflikten</span>
-      </div>
-      <div class="fr-tile">
-        <span class="fr-tile-label">Fehlgeschlagene Actions-Läufe</span>
-        <span class="fr-tile-value"><span data-draw="sum" data-fmt="int" data-source="summary" data-field="actions_failed" data-row="0">—</span> / <span data-draw="sum" data-fmt="int" data-source="summary" data-field="actions_total" data-row="0">—</span></span>
-        <span class="fr-tile-note">Workflow factory-run.yml</span>
-      </div>
-    </div>
-    <div class="fr-grid">
-      <div class="fr-card">
+  <section class="section" aria-labelledby="quality-h">
+    <h2 id="quality-h">Qualität</h2>
+    <div class="grid2">
+      <div class="card">
         <h3>Was Personen nachbessern mussten</h3>
-        <p class="fr-note">Commits auf Factory-PRs, die nicht vom Factory-Bot stammen. <span data-draw="narrative" data-slot="notes.human_fixes"></span></p>
-        <div class="fr-scroll short">
-          <table data-source="human_fixes" data-row-key="key">
-            <thead><tr>
-              <th data-field="pr">PR</th>
-              <th data-field="sha">Commit</th>
-              <th data-field="feature">Feature</th>
-              <th data-field="date">Datum</th>
-            </tr></thead>
+        <p class="card__note">Commits auf Factory-PRs, die nicht vom Factory-Bot stammen. <span data-draw="narrative" data-slot="notes.human_fixes"></span></p>
+        <div class="scroll short">
+          <table data-source="human_fixes">
+            <thead><tr><th>PR</th><th>Commit</th><th>Feature</th><th>Datum</th></tr></thead>
             <tbody data-draw="humantable"></tbody>
           </table>
         </div>
       </div>
-      <div class="fr-card">
+      <div class="card">
         <h3>Rückläufer, Holds und Konflikte</h3>
-        <p class="fr-note">Jede Stelle, an der die Factory nicht geradeaus durchlief.</p>
-        <div class="fr-scroll short">
-          <table data-source="events" data-row-key="key">
-            <thead><tr>
-              <th data-field="issue">Issue</th>
-              <th data-field="kind">Ereignis</th>
-              <th data-field="step">Schritt</th>
-              <th data-field="at">Zeit (UTC)</th>
-            </tr></thead>
+        <p class="card__note">Jede Stelle, an der die Factory nicht geradeaus durchlief.</p>
+        <div class="scroll short">
+          <table data-source="events">
+            <thead><tr><th>Issue</th><th>Ereignis</th><th>Schritt</th><th>Zeit (UTC)</th></tr></thead>
             <tbody data-draw="eventtable"></tbody>
           </table>
         </div>
@@ -332,15 +445,16 @@
     </div>
   </section>
 
-  <section class="fr-section" id="fallstudie" data-draw="hasCase" hidden>
-    <h2 class="fr-h2">Fallstudie: <span data-draw="caseRef">—</span></h2>
-    <div class="fr-grid">
-      <div class="fr-card">
+  <section class="section" id="fallstudie" aria-labelledby="case-h" data-draw="hasCase" hidden>
+    <h2 id="case-h">Fallstudie: <span data-draw="caseRef">—</span></h2>
+    <div class="grid2">
+      <div class="card">
         <h3>Läufe des Features und seiner Children</h3>
-        <p class="fr-note">Das teuerste Feature, das in den letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tagen fertig wurde. Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="case_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="case_tokens_m" data-row="0">—</b> M Tokens. Links die Spec-Läufe, rechts der Build nach dem Merge der Spec, je Target eine Spur.</p>
-        <div class="fr-chart tall" data-draw="case" data-source="case"></div>
+        <p class="card__note">Das teuerste Feature, das in den letzten <span data-draw="sum" data-fmt="int" data-field="win_days">—</span> Tagen fertig wurde: <span data-draw="sum" data-fmt="usd" data-field="case_usd">—</span> bekannte Kosten, <span data-draw="sum" data-fmt="dec2" data-field="case_tokens_m">—</span> M Tokens, <span data-draw="sum" data-fmt="int" data-field="case_runs">—</span> Läufe. Links die Spec, rechts der Build, je Target eine Spur.</p>
+        <div class="legend" aria-hidden="true"><span><i style="background: var(--chart-1)"></i>schreibt (plan, implement)</span><span><i style="background: var(--chart-muted)"></i>prüft (Reviews, security)</span></div>
+        <div class="chart" data-draw="case" data-source="case"></div>
       </div>
-      <div class="fr-card fr-prose">
+      <div class="card prose">
         <h3>Was dabei auffiel</h3>
         <p data-draw="narrative" data-slot="case_study.note"></p>
         <ul data-draw="narrative" data-slot="case_study.items"></ul>
@@ -348,39 +462,33 @@
     </div>
   </section>
 
-  <section class="fr-section" id="aenderungen" hidden>
-    <h2 class="fr-h2">Seit dem letzten Report</h2>
-    <div class="fr-prose">
-      <ul data-draw="narrative" data-slot="changes"></ul>
-    </div>
+  <section class="section" id="aenderungen" aria-labelledby="changes-h" hidden>
+    <h2 id="changes-h">Seit dem letzten Report</h2>
+    <ul class="changes" data-draw="narrative" data-slot="changes"></ul>
   </section>
 
-  <section class="fr-section" id="befunde">
-    <h2 class="fr-h2">Befunde (Stand <span data-draw="meta" data-field="as_of">—</span>)</h2>
-    <div class="fr-prose">
-      <ol data-draw="narrative" data-slot="findings"></ol>
-    </div>
+  <section class="section" id="befunde" aria-labelledby="findings-h">
+    <h2 id="findings-h">Befunde</h2>
+    <ol class="findings" data-draw="narrative" data-slot="findings"></ol>
   </section>
 
-  <section class="fr-section" id="empfehlungen">
-    <h2 class="fr-h2">Empfehlungen (Stand <span data-draw="meta" data-field="as_of">—</span>)</h2>
-    <div class="fr-prose">
-      <ol data-draw="narrative" data-slot="recommendations"></ol>
-    </div>
+  <section class="section" id="empfehlungen" aria-labelledby="recs-h">
+    <h2 id="recs-h">Empfehlungen</h2>
+    <ol class="recs" data-draw="narrative" data-slot="recommendations"></ol>
   </section>
 
-  <section class="fr-section" id="methode">
-    <h2 class="fr-h2">Methode und Grenzen</h2>
-    <div class="fr-prose">
-      <ul>
-        <li>Quelle sind die Kommentare des Factory-Bots (<code>lorenzh-factory-bot</code>) auf allen Issues in pulse-meta; Kommentare anderer Konten zählen nicht. Jeder Lauf schreibt einen Datensatz mit Zustand, Profil, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories. Läufe und Issues des Report-Workflows zählen nicht mit.</li>
-        <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. Codex-Läufe melden keine Kosten: Sie zählen in allen USD-Werten nicht mit, ihre Tokens schon. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
-        <li>Handarbeit heißt: ein Commit auf einem Factory-PR, den ein GitHub-Konto außer dem Factory-Bot geschrieben oder committet hat. Die Git-Identität der Factory gehört zu keinem Konto. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
-        <li>Die Zahlen erzeugt <code>report/data.mjs</code>. Die Kacheln oben zählen alle Läufe seit Beginn, Tabellen und Diagramme die letzten <span data-draw="sum" data-fmt="int" data-source="summary" data-field="win_days" data-row="0">—</span> Tage. Den Text schreibt der Factory-Workflow <code>report</code>: Er sieht nur Zahlen und Verweise, keine Titel, und jede Zahl im Text ist ein Platzhalter für einen Wert aus <code>data.json</code>. <code>report/check.mjs</code> prüft das, ein Review-Agent prüft die Aussagen, und die Seite zeigt einen Stand erst nach dem Merge.</li>
-      </ul>
-    </div>
+  <section class="section" id="methode" aria-labelledby="method-h">
+    <h2 id="method-h">Methode und Grenzen</h2>
+    <ul class="method">
+      <li>Quelle sind die Kommentare des Factory-Bots (<code>lorenzh-factory-bot</code>) auf allen Issues in pulse-meta; Kommentare anderer Konten zählen nicht. Jeder Lauf schreibt einen Datensatz mit Zustand, Profil, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories. Läufe und Issues des Report-Workflows zählen nicht mit.</li>
+      <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. Codex-Läufe melden keine Kosten: Sie zählen in allen USD-Werten nicht mit, ihre Tokens schon. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
+      <li>Handarbeit heißt: ein Commit auf einem Factory-PR, den ein GitHub-Konto außer dem Factory-Bot geschrieben oder committet hat. Die Git-Identität der Factory gehört zu keinem Konto. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
+      <li>Die Zahlen erzeugt <code>report/data.mjs</code>. Die Kennzahlen oben zählen alle Läufe seit Beginn, Diagramme und Tabellen die letzten <span data-draw="sum" data-fmt="int" data-field="win_days">—</span> Tage. Den Text schreibt der Factory-Workflow <code>report</code>: Er sieht nur Zahlen und Verweise, keine Titel, und jede Zahl im Text ist ein Platzhalter für einen Wert aus <code>data.json</code>. <code>report/check.mjs</code> prüft das, ein Review-Agent prüft die Aussagen, und die Seite zeigt einen Stand erst nach dem Merge.</li>
+    </ul>
   </section>
-</div>
+
+  <p class="foot">Zahlen von <a href="https://github.com/lorenzh/pulse-meta/tree/main/report">report/data.mjs</a> aus den öffentlichen Issues, Actions-Läufen und Pull Requests der pulse-Repositories; Text vom Factory-Workflow <code>report</code>, gemergt nach Review. Gestaltung nach dem losoft-Designsystem.</p>
+</main>
 
 <script>
   window.frFmt = (v, kind) => {
@@ -396,34 +504,57 @@
       default: return String(v);
     }
   };
-  window.frFail = (el) => { const d = document.createElement('div'); d.className = 'fr-fail'; d.textContent = 'Failed to load'; el.replaceChildren(d); };
+  window.frFail = (el) => { const d = document.createElement('div'); d.className = 'fail'; d.textContent = 'Daten konnten nicht geladen werden'; el.replaceChildren(d); };
+
+  // The metric of the three charts: one control above them scopes all three.
+  window.frMetric = 'usd';
+  window.frMetrics = {
+    usd: {note: 'Bekannte Kosten in USD', fmt: (v) => window.frFmt(v, 'usd'), axis: (v) => '$' + v},
+    runs: {note: 'Läufe', fmt: (v) => window.frFmt(v, 'int'), axis: (v) => window.frFmt(v, 'int')},
+    tokens: {note: 'Tokens in Millionen', fmt: (v) => v === null || v === undefined ? '—' : window.frFmt(v, 'dec1') + ' M', axis: (v) => v + ' M'},
+  };
+  window.frValue = (r) => window.frMetric === 'usd' ? (r.usd ?? null) : window.frMetric === 'runs' ? Number(r.runs) : (r.tokens_m ?? null);
+
+  // Tooltip: value first, label second; same content on hover and keyboard focus.
   window.frTip = (box) => {
-    let t = box.querySelector('.fr-tip');
-    if (!t) { t = document.createElement('div'); t.className = 'fr-tip'; t.hidden = true; box.appendChild(t); }
+    let t = box.querySelector('.tip');
+    if (!t) { t = document.createElement('div'); t.className = 'tip'; t.hidden = true; box.appendChild(t); }
+    const place = (cx, cy) => {
+      const r = box.getBoundingClientRect(); const w = t.offsetWidth, h = t.offsetHeight;
+      let x = cx - r.left + 12, y = cy - r.top - h - 8;
+      if (x + w > r.width) x = Math.max(0, cx - r.left - w - 12);
+      if (y < 0) y = cy - r.top + 16;
+      t.style.left = x + 'px'; t.style.top = y + 'px';
+    };
     return {
-      show(ev, lines) {
-        t.replaceChildren(...lines.map(([k, v], i) => { const p = document.createElement('div'); if (i === 0) { p.className = 'k'; p.textContent = k; } else { p.textContent = k + ': ' + v; } return p; }));
+      show(ev, head, rows) {
+        const hd = document.createElement('div'); hd.className = 'tip__head'; hd.textContent = head;
+        t.replaceChildren(hd, ...rows.map(([k, v]) => { const p = document.createElement('div'); p.className = 'tip__row'; const b = document.createElement('b'); b.textContent = v; p.append(b, ' ' + k); return p; }));
         t.hidden = false;
-        const r = box.getBoundingClientRect(); const w = t.offsetWidth, h = t.offsetHeight;
-        let x = ev.clientX - r.left + 12, y = ev.clientY - r.top - h - 8;
-        if (x + w > r.width) x = Math.max(0, ev.clientX - r.left - w - 12);
-        if (y < 0) y = ev.clientY - r.top + 16;
-        t.style.left = x + 'px'; t.style.top = y + 'px';
+        if (ev.type === 'focus') { const r = ev.target.getBoundingClientRect(); place(r.left + r.width / 2, r.top); } else place(ev.clientX, ev.clientY);
       },
-      hide() { t.hidden = true; }
+      hide() { t.hidden = true; },
     };
   };
-  // Tooltip lines of one case-study run. A Codex run reports no cost: its cost is unknown, not 0.
-  window.frCaseTip = (r, start) => [['#' + r.issue + ' ' + r.step], ['Start', start + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', r.usd === null || r.usd === undefined ? 'unbekannt' : window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]];
-  window.frLinkCell = (tr, a) => { const td = document.createElement('td'); td.appendChild(a); tr.appendChild(td); return td; };
+  // Marks: 4px rounded data end, square at the baseline.
+  window.frHBar = (x0, y, len, h) => { const r = Math.min(4, len, h / 2); return `M${x0},${y}H${x0 + len - r}Q${x0 + len},${y} ${x0 + len},${y + r}V${y + h - r}Q${x0 + len},${y + h} ${x0 + len - r},${y + h}H${x0}Z`; };
+  window.frVBar = (x, base, w, h) => { const r = Math.min(4, h, w / 2); return `M${x},${base}V${base - h + r}Q${x},${base - h} ${x + r},${base - h}H${x + w - r}Q${x + w},${base - h} ${x + w},${base - h + r}V${base}Z`; };
+  window.frMarks = (sel, tip, head, rows) => sel.attr('class', 'mark').attr('tabindex', 0).attr('role', 'img')
+    .attr('aria-label', (r) => head(r) + ': ' + rows(r).map(([k, v]) => v + ' ' + k).join(', '))
+    .on('pointermove focus', (ev, r) => tip.show(ev, head(r), rows(r))).on('pointerleave blur', () => tip.hide());
+
+  // Tooltip lines of one case-study run: value, then label. A Codex run reports no cost: unknown, not 0.
+  window.frCaseTip = (r, start) => [['UTC Start', start], ['min', window.frFmt(r.minutes, 'dec1')], ['Kosten', r.usd === null || r.usd === undefined ? 'unbekannt' : window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]];
   window.frCell = (tr, text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
+  window.frLinkCell = (tr, a) => { const td = document.createElement('td'); td.appendChild(a); tr.appendChild(td); return td; };
   window.frBarCell = (tr, value, max, kind) => {
     const td = document.createElement('td'); td.className = 'num';
     const wrap = document.createElement('span'); wrap.className = 'bar';
     const s = document.createElement('span'); s.textContent = window.frFmt(value, kind);
-    const i = document.createElement('i'); i.style.width = (max > 0 ? Math.max(1, 56 * Number(value) / max) : 1) + 'px';
+    const i = document.createElement('i'); i.style.width = (max > 0 && value !== null ? Math.max(1, 48 * Number(value) / max) : 0) + 'px';
     wrap.append(s, i); td.appendChild(wrap); tr.appendChild(td); return td;
   };
+  window.frTag = (text, cls) => { const s = document.createElement('span'); s.className = 'tag' + (cls ? ' ' + cls : ''); s.textContent = text; return s; };
 </script>
 
 <script>
@@ -434,8 +565,19 @@
   });
   dash.draw('meta', (el) => {
     const m = dash.data('meta');
-    el.textContent = m.status === 'ok' && m.data[el.dataset.field] ? String(m.data[el.dataset.field]).slice(0, 10) : '—';
+    el.textContent = m.status === 'ok' && m.data[el.dataset.field] ? String(m.data[el.dataset.field]).slice(0, 16).replace('T', ' ') + ' UTC' : '—';
   });
+  // Change since the last merged report: signed, with an arrow; red only where up (or down) is bad.
+  dash.draw('delta', (el) => {
+    const s = dash.data('summary');
+    const v = s.status === 'ok' ? s.data[0]?.[el.dataset.field] : null;
+    el.classList.remove('is-bad');
+    if (v === null || v === undefined) { el.textContent = ''; return; }
+    const mag = window.frFmt(Math.abs(v), el.dataset.fmt);
+    el.textContent = (v > 0 ? '▲ +' : v < 0 ? '▼ −' : '± ') + mag + (el.dataset.unit ? ' ' + el.dataset.unit : '') + ' seit dem letzten Report';
+    if ((el.dataset.good === 'down' && v > 0) || (el.dataset.good === 'up' && v < 0)) el.classList.add('is-bad');
+  });
+  dash.draw('metricNote', (el) => { el.textContent = window.frMetrics[window.frMetric].note; });
   dash.draw('hasCase', (el) => {
     const s = dash.data('summary');
     el.hidden = s.status !== 'ok' || s.data[0]?.case_issue == null;
@@ -443,7 +585,7 @@
   dash.draw('caseRef', (el) => {
     const s = dash.data('summary');
     el.replaceChildren();
-    if (s.status === 'ok' && s.data[0]?.case_issue != null) window.frInline(el, '#' + s.data[0].case_issue, s.data[0]);
+    if (s.status === 'ok' && s.data[0]?.case_issue != null) el.append(window.frRef('pulse-meta', s.data[0].case_issue));
   });
 
   // The agent's text: narrative.json slots, rendered with textContent only. Inline syntax (checked
@@ -471,22 +613,25 @@
   dash.draw('narrative', (el) => {
     const n = dash.data('narrative'), s = dash.data('summary');
     if (n.status !== 'ok' || s.status !== 'ok') return;
-    const sum = s.data[0];
-    const val = el.dataset.slot.split('.').reduce((o, k) => o?.[k], n.data);
+    const sum = s.data[0], slot = el.dataset.slot;
+    const val = slot.split('.').reduce((o, k) => o?.[k], n.data);
     el.replaceChildren();
     if (!Array.isArray(val)) { window.frInline(el, val ?? '', sum); return; }
-    if (el.dataset.slot === 'changes') document.getElementById('aenderungen').hidden = !val.length;
+    if (slot === 'changes') document.getElementById('aenderungen').hidden = !val.length;
     for (const it of val) {
       const li = document.createElement('li');
-      if (it.id) li.id = 'befund-' + it.id;
-      const b = document.createElement('b');
-      window.frInline(b, (it.title ?? it.label) + (el.dataset.slot === 'findings' || el.dataset.slot === 'recommendations' ? '.' : ':'), sum);
-      li.append(b, ' ');
-      window.frInline(li, it.text, sum);
-      if (it.findings) {
-        const span = document.createElement('span'); span.className = 'muted'; span.append(' (zu ');
-        it.findings.forEach((id, i) => { const a = document.createElement('a'); a.href = '#befund-' + id; a.textContent = id; span.append(...(i ? [', ', a] : [a])); });
-        span.append(')'); li.append(span);
+      if (slot === 'findings') {
+        li.className = 'finding'; li.id = 'befund-' + it.id;
+        const id = document.createElement('span'); id.className = 'eyebrow'; id.textContent = 'Befund ' + it.id.slice(1);
+        const b = document.createElement('b'); window.frInline(b, it.title, sum);
+        const p = document.createElement('span'); window.frInline(p, it.text, sum);
+        li.append(id, b, p);
+      } else {
+        const b = document.createElement('b');
+        window.frInline(b, (it.title ?? it.label) + (slot === 'recommendations' ? '.' : ':'), sum);
+        li.append(b, ' ');
+        window.frInline(li, it.text, sum);
+        for (const id of it.findings ?? []) { const a = window.frTag('Befund ' + id.slice(1)); const link = document.createElement('a'); link.href = '#befund-' + id; link.className = 'tag'; link.textContent = a.textContent; li.append(link); }
       }
       el.append(li);
     }
@@ -494,85 +639,102 @@
 </script>
 
 <script>
-  dash.draw('steps', (el) => {
-    const d = dash.data('by_step');
+  // Horizontal bars, one series in --chart-1; the value label sits at the bar end in text colour.
+  window.frHBars = (el, source, labelOf) => {
+    const d = dash.data(source);
     if (d.status === 'error') { window.frFail(el); return; }
     if (d.status !== 'ok') { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({...r, usd: r.usd === null ? null : Number(r.usd), runs: Number(r.runs)})).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
+    const M = window.frMetrics[window.frMetric];
+    const rows = d.data.map((r) => ({r, label: labelOf(r), v: window.frValue(r)})).sort((a, b) => (b.v ?? -1) - (a.v ?? -1));
     el.replaceChildren();
-    const W = el.clientWidth || 360, rowH = 30, H = rows.length * rowH + 8;
+    const W = el.clientWidth || 360, rowH = 30, thick = 18, H = rows.length * rowH;
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
     const probe = svg.append('text').attr('font-size', 12);
-    let lw = 0; rows.forEach((r) => { probe.text(r.step); lw = Math.max(lw, probe.node().getComputedTextLength()); });
-    probe.text(window.frFmt(d3.max(rows, (r) => r.usd), 'usd')); const vw = probe.node().getComputedTextLength(); probe.remove();
-    const x = d3.scaleLinear([0, d3.max(rows, (r) => r.usd)], [lw + 12, W - vw - 10]);
-    const y = d3.scaleBand(rows.map((r) => r.step), [4, H - 4]).padding(0.28);
+    let lw = 0; rows.forEach((x) => { probe.text(x.label); lw = Math.max(lw, probe.node().getComputedTextLength()); });
+    probe.text(M.fmt(d3.max(rows, (x) => x.v))); const vw = Math.max(probe.node().getComputedTextLength(), 60); probe.remove();
+    lw = Math.min(lw, W * 0.42);
+    const sx = d3.scaleLinear([0, d3.max(rows, (x) => x.v) || 1], [0, Math.max(10, W - lw - 16 - vw - 8)]);
+    const x0 = lw + 12;
     const tip = window.frTip(el);
-    const g = svg.selectAll('g.r').data(rows).join('g').attr('class', 'r');
-    g.append('text').attr('x', 0).attr('y', (r) => y(r.step) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg-muted)').text((r) => r.step);
-    g.append('rect').attr('x', x(0)).attr('y', (r) => y(r.step)).attr('height', y.bandwidth()).attr('width', (r) => Math.max(1, x(r.usd) - x(0))).attr('rx', 3)
-      .attr('fill', (r, i) => i === 0 ? dash.colors[0] : 'var(--cds-chart-muted)')
-      .on('pointermove', (ev, r) => tip.show(ev, [[r.step], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')], ['Median pro Lauf', window.frFmt(r.usd_median, 'usd')]]))
-      .on('pointerleave', () => tip.hide());
-    g.append('text').attr('x', (r) => x(r.usd) + 6).attr('y', (r) => y(r.step) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg)').text((r) => window.frFmt(r.usd, 'usd'));
-  });
+    const g = svg.selectAll('g').data(rows).join('g').attr('transform', (_, i) => `translate(0,${i * rowH})`);
+    g.append('text').attr('x', 0).attr('y', rowH / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--muted)').text((x) => x.label);
+    g.append('line').attr('x1', x0).attr('x2', x0).attr('y1', 4).attr('y2', rowH - 4).attr('stroke', 'var(--chart-axis)');
+    window.frMarks(g.filter((x) => x.v !== null && x.v > 0).append('path').attr('d', (x) => window.frHBar(x0, (rowH - thick) / 2, Math.max(2, sx(x.v)), thick)).attr('fill', 'var(--chart-1)'),
+      tip, (x) => x.label, (x) => [['Läufe', window.frFmt(x.r.runs, 'int')], ['bekannt', window.frFmt(x.r.usd, 'usd')], ['ohne Kosten', window.frFmt(x.r.runs_cost_unknown, 'int') + ' Läufe'], ['Tokens', window.frMetrics.tokens.fmt(x.r.tokens_m)]]);
+    g.append('text').attr('x', (x) => x0 + (x.v ? sx(x.v) : 0) + 6).attr('y', rowH / 2).attr('dy', '0.35em').attr('font-size', 12)
+      .attr('fill', (x) => x.v === null ? 'var(--muted)' : 'var(--text)').text((x) => x.v === null ? 'unbekannt' : M.fmt(x.v));
+  };
+  dash.draw('steps', (el) => window.frHBars(el, 'by_step', (r) => r.step));
+  dash.draw('targets', (el) => window.frHBars(el, 'by_target', (r) => r.target));
 
+  // Columns per day; solid hairline grid; the highest day carries a direct label.
   dash.draw('days', (el) => {
     const d = dash.data('by_day');
     if (d.status === 'error') { window.frFail(el); return; }
     if (d.status !== 'ok' || !d.data.length) { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({t: new Date(r.day + 'T00:00:00Z'), usd: Number(r.usd), runs: Number(r.runs), unknown: Number(r.runs_cost_unknown)}));
+    const M = window.frMetrics[window.frMetric];
+    const rows = d.data.map((r) => ({r, t: new Date(r.day + 'T00:00:00Z'), v: window.frValue(r) ?? 0}));
     el.replaceChildren();
-    const W = el.clientWidth || 360, H = 240, m = {t: 10, r: 8, b: 26, l: 44};
+    const W = el.clientWidth || 360, H = 220, m = {t: 18, r: 4, b: 24, l: 48};
     const t0 = d3.utcDay.floor(d3.min(rows, (r) => r.t)), t1 = d3.utcDay.offset(d3.max(rows, (r) => r.t), 1);
-    const x = d3.scaleUtc([t0, t1], [m.l, W - m.r]);
-    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.usd) || 1], [H - m.b, m.t]).nice();
+    const days = d3.utcDay.range(t0, t1);
+    const x = d3.scaleBand(days.map(Number), [m.l, W - m.r]).paddingInner(0.2).paddingOuter(0.1);
+    const bw = Math.min(24, x.bandwidth());
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.v) || 1], [H - m.b, m.t]).nice();
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
     const yt = y.ticks(4);
-    svg.append('g').selectAll('line').data(yt).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
-    svg.append('g').selectAll('text').data(yt).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text((v) => '$' + v);
-    const days = d3.utcDay.range(t0, t1);
-    const every = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor((W - m.l) / 56))));
-    const bw = Math.max(2, (x(d3.utcDay.offset(t0, 1)) - x(t0)) * 0.78);
-    svg.append('g').selectAll('text').data(days.filter((_, i) => i % every === 0)).join('text').attr('x', (t) => x(t) + bw / 2).attr('y', H - 8).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)')
-      .text((t) => d3.utcFormat('%-d.%-m.')(t));
-    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', H - m.b).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-axis)');
+    svg.append('g').selectAll('line').data(yt).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--chart-grid)');
+    svg.append('g').selectAll('text').data(yt).join('text').attr('x', m.l - 6).attr('y', y).attr('dy', '0.35em').attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--muted)').text(M.axis);
+    const every = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor((W - m.l) / 52))));
+    svg.append('g').selectAll('text').data(days.filter((_, i) => i % every === 0)).join('text').attr('x', (t) => x(+t) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--muted)').text((t) => d3.utcFormat('%-d.%-m.')(t));
     const tip = window.frTip(el);
-    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => x(r.t) + 0.5).attr('width', bw).attr('y', (r) => y(r.usd)).attr('height', (r) => Math.max(1, y(0) - y(r.usd))).attr('rx', 2).attr('fill', dash.colors[0])
-      .on('pointermove', (ev, r) => tip.show(ev, [[d3.utcFormat('%-d.%-m.%Y')(r.t)], ['Kosten', window.frFmt(r.usd, 'usd')], ['Läufe', window.frFmt(r.runs, 'int')], ['ohne Kosten', window.frFmt(r.unknown, 'int')]]))
-      .on('pointerleave', () => tip.hide());
+    const cx = (r) => x(+r.t) + (x.bandwidth() - bw) / 2;
+    window.frMarks(svg.append('g').selectAll('path').data(rows.filter((r) => r.v > 0)).join('path').attr('d', (r) => window.frVBar(cx(r), y(0), bw, Math.max(2, y(0) - y(r.v)))).attr('fill', 'var(--chart-1)'),
+      tip, (r) => d3.utcFormat('%-d.%-m.%Y')(r.t), (r) => [['Läufe', window.frFmt(r.r.runs, 'int')], ['bekannt', window.frFmt(r.r.usd, 'usd')], ['ohne Kosten', window.frFmt(r.r.runs_cost_unknown, 'int') + ' Läufe'], ['Tokens', window.frMetrics.tokens.fmt(r.r.tokens_m)]]);
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--chart-axis)');
+    const top = rows.reduce((a, b) => (b.v > a.v ? b : a), rows[0]);
+    if (top.v > 0) svg.append('text').attr('x', cx(top) + bw / 2).attr('y', y(top.v) - 5).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', 'var(--text)').text(M.fmt(top.v));
   });
 
+  // Case study: one lane per target, spec runs left and build runs right of a hairline.
   dash.draw('case', (el) => {
     const d = dash.data('case');
     if (d.status === 'error') { window.frFail(el); return; }
-    if (d.status !== 'ok') { el.replaceChildren(); return; }
+    if (d.status !== 'ok' || !d.data.length) { el.replaceChildren(); return; }
     const rows = d.data.map((r) => ({...r, s: new Date(r.start), minutes: Number(r.minutes)}));
-    rows.forEach((r) => { r.e = new Date(r.s.getTime() + r.minutes * 60000); });
+    rows.forEach((r) => { r.e = new Date(r.s.getTime() + Math.max(r.minutes, 0.5) * 60000); });
     const lanes = ['Spec', ...new Set(rows.map((r) => r.target).filter((l) => l !== 'Spec'))].filter((l) => rows.some((r) => r.target === l));
     el.replaceChildren();
-    const W = el.clientWidth || 360, rowH = 34, m = {t: 8, r: 10, b: 26, l: 64}, H = m.t + lanes.length * rowH + m.b;
+    const W = el.clientWidth || 360, rowH = 36, m = {t: 4, r: 4, b: 22, l: 64}, H = m.t + lanes.length * rowH + m.b;
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
-    const y = d3.scaleBand(lanes, [m.t, H - m.b]).padding(0.3);
+    const y = d3.scaleBand(lanes, [m.t, H - m.b]).paddingInner(0.33);
+    const thick = Math.min(24, y.bandwidth());
     const spec = rows.filter((r) => r.target === 'Spec'), build = rows.filter((r) => r.target !== 'Spec');
-    const gap = 26, mid = m.l + (W - m.l - m.r) * 0.32;
-    const xs = d3.scaleUtc([d3.min(spec, (r) => r.s), d3.max(spec, (r) => r.e)], [m.l, mid - gap / 2]);
-    const xb = d3.scaleUtc([d3.min(build, (r) => r.s), d3.max(build, (r) => r.e)], [mid + gap / 2, W - m.r]);
+    const gap = 18, mid = spec.length && build.length ? m.l + (W - m.l - m.r) * 0.32 : (spec.length ? W - m.r + gap : m.l - gap);
+    const scale = (rs, a, b) => d3.scaleUtc([d3.min(rs, (r) => r.s), d3.max(rs, (r) => r.e)], [a, b]);
+    const xs = spec.length ? scale(spec, m.l, mid - gap / 2) : null, xb = build.length ? scale(build, mid + gap / 2, W - m.r) : null;
     const X = (r, t) => r.target === 'Spec' ? xs(t) : xb(t);
-    svg.append('g').selectAll('text').data(lanes).join('text').attr('x', 0).attr('y', (l) => y(l) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--color-fg-muted)').text((l) => l);
-    svg.append('line').attr('x1', mid).attr('x2', mid).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '3 3');
+    svg.append('g').selectAll('text').data(lanes).join('text').attr('x', 0).attr('y', (l) => y(l) + y.bandwidth() / 2).attr('dy', '0.35em').attr('font-size', 12).attr('fill', 'var(--muted)').text((l) => l);
+    if (xs && xb) svg.append('line').attr('x1', mid).attr('x2', mid).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--chart-axis)');
     const fmt = d3.utcFormat('%H:%M');
-    [[xs, spec], [xb, build]].forEach(([sc, rs]) => {
+    [[xs, spec], [xb, build]].filter(([sc]) => sc).forEach(([sc, rs]) => {
       const a = d3.min(rs, (r) => r.s), b = d3.max(rs, (r) => r.e);
-      svg.append('text').attr('x', sc(a)).attr('y', H - 8).attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text(fmt(a));
-      svg.append('text').attr('x', sc(b)).attr('y', H - 8).attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--color-fg-muted)').text(fmt(b));
+      svg.append('text').attr('x', sc(a)).attr('y', H - 6).attr('font-size', 11).attr('fill', 'var(--muted)').text(fmt(a));
+      svg.append('text').attr('x', sc(b)).attr('y', H - 6).attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--muted)').text(fmt(b));
     });
     const tip = window.frTip(el);
-    const colorOf = (r) => /review/.test(r.step) ? 'var(--cds-chart-muted)' : dash.colors[0];
-    svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => X(r, r.s)).attr('width', (r) => Math.max(2, X(r, r.e) - X(r, r.s) - 1)).attr('y', (r) => y(r.target)).attr('height', y.bandwidth()).attr('rx', 3).attr('fill', colorOf)
-      .on('pointermove', (ev, r) => tip.show(ev, window.frCaseTip(r, fmt(r.s))))
-      .on('pointerleave', () => tip.hide());
+    const isCheck = (r) => /review|security/.test(r.step);
+    // 2px surface gap between touching runs of one lane.
+    window.frMarks(svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => X(r, r.s)).attr('width', (r) => Math.max(2, X(r, r.e) - X(r, r.s) - 2))
+      .attr('y', (r) => y(r.target) + (y.bandwidth() - thick) / 2).attr('height', thick).attr('rx', 3).attr('fill', (r) => isCheck(r) ? 'var(--chart-muted)' : 'var(--chart-1)'),
+      tip, (r) => '#' + r.issue + ' ' + r.step, (r) => window.frCaseTip(r, fmt(r.s)));
   });
+
+  document.querySelectorAll('[data-metric-group] button').forEach((b) => b.addEventListener('click', () => {
+    window.frMetric = b.dataset.metric;
+    document.querySelectorAll('[data-metric-group] button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    ['metricNote', 'steps', 'targets', 'days'].forEach((n) => dash.draw(n));
+  }));
 </script>
 
 <script>
@@ -581,28 +743,38 @@
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     const max = d3.max(d.data, (r) => Number(r.usd));
     tb.replaceChildren(...d.data.map((r) => {
-      const tr = document.createElement('tr'); tr.dataset.key = r.step;
-      window.frCell(tr, r.step); window.frCell(tr, (r.profiles ?? []).join(', '), 'muted'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
-      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_median, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.usd_max, 'usd'), 'num');
+      const tr = document.createElement('tr');
+      window.frCell(tr, r.step); window.frCell(tr, (r.profiles ?? []).join(', '), 'muted'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs_cost_unknown, 'int'), 'num');
+      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_median, 'usd'), 'num');
       window.frCell(tr, window.frFmt(r.min_median, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.min_p90, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.tokens_m, 'dec1'), 'num');
       return tr;
     }));
   });
-
   dash.draw('targettable', (tb) => {
     const d = dash.data('by_target');
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     const max = d3.max(d.data, (r) => Number(r.usd));
     tb.replaceChildren(...d.data.map((r) => {
-      const tr = document.createElement('tr'); tr.dataset.key = r.target;
-      window.frCell(tr, r.target); window.frCell(tr, window.frFmt(r.issues, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
-      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_per_issue, 'usd'), 'num');
+      const tr = document.createElement('tr');
+      window.frCell(tr, r.target); window.frCell(tr, window.frFmt(r.issues, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs_cost_unknown, 'int'), 'num');
+      window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_per_issue, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.tokens_m, 'dec1'), 'num');
       window.frCell(tr, window.frFmt(r.prs_merged, 'int'), 'num'); window.frCell(tr, window.frFmt(r.prs_human, 'int'), 'num');
+      return tr;
+    }));
+  });
+  dash.draw('daytable', (tb) => {
+    const d = dash.data('by_day');
+    if (d.status !== 'ok') { tb.replaceChildren(); return; }
+    tb.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr');
+      window.frCell(tr, r.day, 'mono'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs_cost_unknown, 'int'), 'num');
+      window.frCell(tr, window.frFmt(r.usd, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.tokens_m, 'dec1'), 'num');
       return tr;
     }));
   });
 
   window.frSort = {key: 'total_usd', dir: -1};
+  window.frStatus = '';
   document.querySelectorAll('#fr-ftable th[data-sort] button').forEach((b) => {
     b.addEventListener('click', () => {
       const k = b.parentElement.dataset.sort;
@@ -610,29 +782,41 @@
       dash.draw('ftable');
     });
   });
-  document.querySelectorAll('#fr-search').forEach((i) => i.addEventListener('input', () => dash.draw('ftable')));
-
+  document.querySelectorAll('[data-status-group] button').forEach((b) => b.addEventListener('click', () => {
+    window.frStatus = b.dataset.status;
+    document.querySelectorAll('[data-status-group] button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    dash.draw('ftable'); dash.draw('ftableCount');
+  }));
+  document.querySelectorAll('#fr-search').forEach((i) => i.addEventListener('input', () => { dash.draw('ftable'); dash.draw('ftableCount'); }));
+  window.frFeatureRows = () => {
+    const d = dash.data('features');
+    if (d.status !== 'ok') return [];
+    let q = ''; document.querySelectorAll('#fr-search').forEach((i) => { q = i.value.trim().replace(/^#/, ''); });
+    return d.data.filter((r) => (!window.frStatus || r.status === window.frStatus) && (!q || String(r.issue).includes(q) || (r.children ?? []).some((c) => String(c).includes(q))));
+  };
+  dash.draw('ftableCount', (el) => {
+    const d = dash.data('features');
+    el.textContent = d.status === 'ok' ? window.frFmt(window.frFeatureRows().length, 'int') + ' von ' + window.frFmt(d.data.length, 'int') + ' Features angezeigt.' : '';
+  });
   dash.draw('ftable', (tb) => {
     const d = dash.data('features');
     document.querySelectorAll('#fr-ftable th[data-sort]').forEach((th) => {
       th.setAttribute('aria-sort', th.dataset.sort === window.frSort.key ? (window.frSort.dir > 0 ? 'ascending' : 'descending') : 'none');
     });
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
-    let q = ''; document.querySelectorAll('#fr-search').forEach((i) => { q = i.value.trim().replace(/^#/, ''); });
     const {key, dir} = window.frSort;
     const val = (r) => key === 'status' ? String(r[key]) : (r[key] === null ? -Infinity : Number(r[key]));
-    const rows = d.data.filter((r) => !q || String(r.issue).includes(q) || (r.children ?? []).some((c) => String(c).includes(q)))
-      .slice().sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+    const rows = window.frFeatureRows().slice().sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
     const max = d3.max(d.data, (r) => Number(r.total_usd));
     tb.replaceChildren(...rows.map((r) => {
-      const tr = document.createElement('tr'); tr.dataset.key = String(r.issue);
+      const tr = document.createElement('tr');
       window.frLinkCell(tr, window.frRef('pulse-meta', r.issue));
       window.frCell(tr, window.frFmt(r.targets, 'int'), 'num'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
       window.frCell(tr, window.frFmt(r.spec_usd, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.build_usd, 'usd'), 'num');
-      window.frBarCell(tr, r.total_usd, max, 'usd'); window.frCell(tr, window.frFmt(r.factory_min, 'dec1'), 'num');
-      const lt = window.frCell(tr, r.lead_h === null ? 'läuft' : window.frFmt(r.lead_h, 'hm'), 'num'); if (r.lead_h === null) lt.classList.add('muted');
-      const hf = window.frCell(tr, window.frFmt(r.human_fixes, 'int'), 'num'); if (Number(r.human_fixes) > 0) hf.style.color = 'var(--color-warn)';
-      const st = document.createElement('td'); const p = document.createElement('span'); p.className = 'pill ' + (r.status === 'abgeschlossen' ? 'ok' : 'warn'); p.textContent = r.status; st.appendChild(p); tr.appendChild(st);
+      window.frBarCell(tr, r.total_usd, max, 'usd'); window.frCell(tr, window.frFmt(r.runs_cost_unknown, 'int'), 'num'); window.frCell(tr, window.frFmt(r.factory_min, 'dec1'), 'num');
+      window.frCell(tr, r.lead_h === null ? 'läuft' : window.frFmt(r.lead_h, 'hm'), r.lead_h === null ? 'num muted' : 'num');
+      window.frCell(tr, window.frFmt(r.human_fixes, 'int'), Number(r.human_fixes) > 0 ? 'num is-bad' : 'num');
+      const st = document.createElement('td'); st.appendChild(window.frTag(r.status, r.status === 'abgeschlossen' ? 'tag--neutral' : '')); tr.appendChild(st);
       return tr;
     }));
   });
@@ -641,31 +825,26 @@
     const d = dash.data('human_fixes');
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     tb.replaceChildren(...d.data.map((r) => {
-      const tr = document.createElement('tr'); tr.dataset.key = r.key;
+      const tr = document.createElement('tr');
       const [repo, num] = r.pr.split('#');
       window.frLinkCell(tr, window.frRef(repo, num));
-      const a = document.createElement('a'); a.href = `https://github.com/lorenzh/${repo}/pull/${num}/commits/${r.sha}`; a.textContent = r.sha; const c = window.frLinkCell(tr, a); c.querySelector('a').style.fontFamily = 'ui-monospace, monospace';
+      const a = document.createElement('a'); a.className = 'mono'; a.href = `https://github.com/lorenzh/${repo}/pull/${num}/commits/${r.sha}`; a.textContent = r.sha; window.frLinkCell(tr, a);
       if (r.feature === null) window.frCell(tr, '—', 'muted'); else window.frLinkCell(tr, window.frRef('pulse-meta', r.feature));
-      window.frCell(tr, r.date, 'muted');
+      window.frCell(tr, r.date, 'muted mono');
       return tr;
     }));
   });
-
   dash.draw('eventtable', (tb) => {
     const d = dash.data('events');
     if (d.status !== 'ok') { tb.replaceChildren(); return; }
     tb.replaceChildren(...d.data.map((r) => {
-      const tr = document.createElement('tr'); tr.dataset.key = r.key;
+      const tr = document.createElement('tr');
       window.frLinkCell(tr, window.frRef('pulse-meta', r.issue));
-      const k = document.createElement('td'); const p = document.createElement('span');
-      p.className = 'pill ' + (/Hold|fehlgeschlagen/.test(r.kind) ? 'bad' : 'warn'); p.textContent = r.kind; k.appendChild(p); tr.appendChild(k);
-      window.frCell(tr, r.step, 'muted'); window.frCell(tr, r.at, 'muted');
+      const k = document.createElement('td'); k.appendChild(window.frTag(r.kind, /Hold|fehlgeschlagen/.test(r.kind) ? 'tag--bad' : 'tag--neutral')); tr.appendChild(k);
+      window.frCell(tr, r.step, 'muted'); window.frCell(tr, r.at, 'muted mono');
       return tr;
     }));
   });
 </script>
-
-<p class="fr-source" style="max-width:72rem;margin:32px auto 0">Zahlen von <a href="https://github.com/lorenzh/pulse-meta/tree/main/report">report/data.mjs</a> aus den öffentlichen Issues, Actions-Läufen und Pull Requests der pulse-Repositories; Text vom Factory-Workflow <code>report</code>, gemergt nach Review.</p>
-</main>
 </body>
 </html>
