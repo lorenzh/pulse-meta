@@ -12,7 +12,7 @@ pulse has four services and three shared libraries.
 | pulse-kit | Shared runtime helpers: env settings, shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, metrics and the JSON logger. Used by api, probe, status and notify. |
 | pulse-config | Shared Biome, tsconfig, ESLint and Lefthook configuration and the reusable CI workflow `check.yml`. |
 
-The four services and three libraries run on Bun 1.4.0 (`packageManager: bun@1.4.0`, `bun.lock`). Install with `bun install --frozen-lockfile`, test with `bun test` (`bun:test`), and run scripts with `bun run <script>`; the services start with `bun start`. The Docker images build on `oven/bun:1.4.0-alpine`, pinned by digest. pulse-api versions its SQLite schema with `PRAGMA user_version` and runs numbered migration steps at start; a newer file is refused ([schema](https://github.com/lorenzh/pulse-api/blob/main/docs/operation.md#schema)). pulse-website still runs on Node 24 until [#367](https://github.com/lorenzh/pulse-meta/issues/367) moves it to Bun.
+The four services and three libraries run on Bun 1.4.0 (`packageManager: bun@1.4.0`, `bun.lock`). Install with `bun install --frozen-lockfile`, test with `bun test` (`bun:test`), and run scripts with `bun run <script>`; the services start with `bun start`. The Docker images build on `oven/bun:1.4.0-alpine`, pinned by digest. pulse-api versions its SQLite schema with `PRAGMA user_version` and runs numbered migration steps at start; a newer file is refused ([schema](https://github.com/lorenzh/pulse-api/blob/main/docs/operation.md#schema)). pulse-website runs on Bun 1.4.0 too, since [#367](https://github.com/lorenzh/pulse-meta/issues/367).
 
 ## Data flow
 
