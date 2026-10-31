@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const OWNER = 'lorenzh';
 const META = 'pulse-meta';
-const TARGETS = ['contract', 'probe', 'api', 'status', 'notify', 'config', 'kit', 'website'];
+const TARGETS = ['contract', 'probe', 'api', 'status', 'notify', 'config', 'kit', 'website', 'console'];
 const out = process.argv[2] ?? '_site';
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 

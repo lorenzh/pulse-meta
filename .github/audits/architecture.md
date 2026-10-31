@@ -1,6 +1,6 @@
 Periodic architecture audit of the whole pulse system. Opened by `factory-audit.yml`, which starts the `audit` workflow at once (label `factory/audit/audit`). To stop it, cancel its `Factory run` workflow run and remove the `factory/audit/` label.
 
-Repositories: [pulse-meta](https://github.com/lorenzh/pulse-meta), [pulse-contract](https://github.com/lorenzh/pulse-contract), [pulse-probe](https://github.com/lorenzh/pulse-probe), [pulse-api](https://github.com/lorenzh/pulse-api), [pulse-status](https://github.com/lorenzh/pulse-status), [pulse-notify](https://github.com/lorenzh/pulse-notify), [pulse-config](https://github.com/lorenzh/pulse-config), [pulse-kit](https://github.com/lorenzh/pulse-kit), [pulse-website](https://github.com/lorenzh/pulse-website).
+Repositories: [pulse-meta](https://github.com/lorenzh/pulse-meta), [pulse-contract](https://github.com/lorenzh/pulse-contract), [pulse-probe](https://github.com/lorenzh/pulse-probe), [pulse-api](https://github.com/lorenzh/pulse-api), [pulse-status](https://github.com/lorenzh/pulse-status), [pulse-notify](https://github.com/lorenzh/pulse-notify), [pulse-config](https://github.com/lorenzh/pulse-config), [pulse-kit](https://github.com/lorenzh/pulse-kit), [pulse-website](https://github.com/lorenzh/pulse-website), [pulse-console](https://github.com/lorenzh/pulse-console).
 
 ## Task
 
