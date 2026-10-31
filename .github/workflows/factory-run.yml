@@ -133,8 +133,8 @@ jobs:
         run: npm ci
 
       # Claude Code defaults to the version of the green runs on 2026-10-30 when the variable is
-      # unset; the variable is `latest` by owner decision. Codex defaults to `skip`: no model
-      # in the loop uses it. A repository variable overrides either default with an exact
+      # unset; the variable is `latest` by owner decision. Codex defaults to `skip`; the review
+      # profiles need it, so the repository variable pins it. A repository variable overrides either default with an exact
       # MAJOR.MINOR.PATCH, `latest` or `skip`; anything else (a range, another tag) fails here.
       - name: Install agent CLIs
         env:
@@ -181,6 +181,18 @@ jobs:
           --issue "$FACTORY_ISSUE" --cancel-interruption --apply
           --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR"
 
+      # Stopgap until the self-hosted runner arrives: Codex refreshes this subscription login after ~8 days, and then the secret stops working.
+      - name: Write the Codex login
+        if: ${{ inputs.admission != 'cancel' }}
+        env:
+          FACTORY_CODEX_AUTH_JSON: ${{ secrets.FACTORY_CODEX_AUTH_JSON }}
+        run: |
+          [[ -n "$FACTORY_CODEX_AUTH_JSON" ]] || echo "::warning::The repository secret FACTORY_CODEX_AUTH_JSON is empty; the Codex review states will fail to log in."
+          umask 077
+          mkdir -p "$RUNNER_TEMP/codex"
+          printf '%s' "$FACTORY_CODEX_AUTH_JSON" > "$RUNNER_TEMP/codex/auth.json"
+          chmod 0600 "$RUNNER_TEMP/codex/auth.json"
+
       - name: Run one factory state
         if: ${{ inputs.admission != 'cancel' }}
         id: run
@@ -188,6 +200,7 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
           GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
+          CODEX_HOME: ${{ runner.temp }}/codex
         run: >-
           node ./node_modules/@paragondata/factory-cli/dist/bin.js run
           --issue "$FACTORY_ISSUE" --detect-workflow --workspace multigit --apply
