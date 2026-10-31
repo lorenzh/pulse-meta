@@ -1,0 +1,56 @@
+name: Audit issues
+
+# Opens audit issues: security (one target repository per run), performance (one service or
+# library repository per run) and architecture (one issue for the whole system). It only creates the
+# issue: it adds no factory/ label, so no workflow starts. The lead decides how the audit runs. An
+# open issue of the same kind and repository blocks a new one, which also caps the issue volume.
+# .github/audits/open-issue.sh holds the rules, and <kind>.md next to it the issue text.
+on:
+  # Fast-development schedule; relax to weekly/monthly/monthly later. Each line maps to one kind in
+  # .github/audits/open-issue.sh and in the concurrency group below: change all three together.
+  schedule:
+    - cron: '17 6 * * *'    # security, daily
+    - cron: '17 6 * * 2,5'  # performance, Tuesday and Friday
+    - cron: '17 6 * * 4'    # architecture, Thursday
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Audit kind
+        required: true
+        default: security
+        type: choice
+        options: [security, performance, architecture]
+      target:
+        description: Target repository, or rotation for this period's one (architecture ignores it)
+        required: false
+        default: rotation
+        type: choice
+        options: [rotation, contract, probe, api, status, notify, config, kit, website]
+
+# One group per kind, for scheduled and manual runs alike, so two runs of one kind cannot both pass
+# the dedupe. The schedule-to-kind pairs repeat the cron lines above (test.sh checks them).
+concurrency:
+  group: factory-audit-${{ inputs.kind || (github.event.schedule == '17 6 * * *' && 'security') || (github.event.schedule == '17 6 * * 2,5' && 'performance') || (github.event.schedule == '17 6 * * 4' && 'architecture') || github.event.schedule }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  open-issue:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/audits
+
+      - name: Open the audit issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_KIND: ${{ inputs.kind }}
+          AUDIT_TARGET: ${{ inputs.target }}
+          AUDIT_SCHEDULE: ${{ github.event.schedule }}
+        run: .github/audits/open-issue.sh

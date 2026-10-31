@@ -30,9 +30,17 @@ The security checklist covers secrets and server texts in errors, logs and respo
 
 **Sweeper.** `factory-sweep.yml` runs every 30 minutes. It comments once on each open issue that has a `factory/<workflow>/<state>` label, no open blocker, no hold, no active run, and no change for 60 minutes (repository variable `FACTORY_STALL_MINUTES`). An active run is any `factory-run.yml` run in status `in_progress`, `queued`, `waiting`, `requested`, or `pending`, found through every page of each status. It changes no labels and no claims. It does not comment again while its own or a failure comment is the last comment on the issue.
 
-**Security audit issues.** `factory-security-audit.yml` opens one issue every Monday, for one target repository in rotation by ISO week (or the one picked on a manual run). The issue is labelled `security` and `target/<repo>` and asks for an audit of `main` with hostile inputs. It gets no `factory/` label, so nothing starts it; the lead decides how it runs. An open audit issue of the same repository blocks a new one.
+**Audit issues.** `factory-audit.yml` opens audit issues of three kinds. `.github/audits/open-issue.sh` holds the rules, and `.github/audits/<kind>.md` the issue text:
 
-**Workflow script tests.** `.github/workflow-tests/test.sh` runs the scripts of the sweeper and the audit workflow against fixtures with a stub `gh` (needs bash, jq, python3 with PyYAML).
+- `security`: daily, one target repository per run in rotation. The issue asks for an audit of `main` with hostile inputs along the security checklist.
+- `performance`: Tuesday and Friday, one service or library repository per run in rotation (every target except config). The issue asks for measurements with numbers and commands: `EXPLAIN QUERY PLAN` for the request path and startup, a startup CPU profile, costs that grow with data, memory over a long run, test CPU per file, and for the website the JS/CSS budget and Lighthouse; compared with `bench/budgets.json` where it applies.
+- `architecture`: Thursday, one issue for the whole system, naming every repository. The issue asks for machine checks: pin drift of contract, kit and config, the largest files and functions, duplicated helpers that belong in kit, docs that no longer match the code, earlier findings that are still true, and the dependency direction.
+
+Each issue gets the label of its kind (created with a description when it is missing) and, for security and performance, `target/<repo>`. It gets no `factory/` label, so nothing starts it; the lead decides how it runs. An open issue of the same kind (and the same repository) blocks a new one, which also caps the number of issues. A manual run (`gh workflow run factory-audit.yml -f kind=<kind> [-f target=<repo>]`) picks the kind and, optionally, the repository.
+
+*Changing the schedule.* These are fast-development intervals, to be relaxed to weekly, monthly and monthly later. Each `cron` line at the top of `factory-audit.yml` maps to one kind in the `case` on `AUDIT_SCHEDULE` in `open-issue.sh` and in the `concurrency` group of the workflow, which puts scheduled and manual runs of one kind in one group. Change the line, its `case` pattern and its group pair together; `test.sh` fails when a cron line maps to no kind or to another group than its kind. The rotation does not depend on the interval: security takes the next repository each day, performance each half week (Monday to Thursday, Friday to Sunday).
+
+**Workflow script tests.** `.github/workflow-tests/test.sh` runs the scripts of the sweeper and the audit workflow against fixtures with a stub `gh` (needs bash, jq, python3 with PyYAML). It covers the rotation of each kind, dedupe, label creation, the dispatch inputs and the mapping of every cron line to a kind.
 
 ## Prompt injection and credentials
 
