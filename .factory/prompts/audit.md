@@ -96,13 +96,15 @@ work as an attack on a running instance.
 
 ## Output
 
-Write two files in the meta repository, `<kind>` and `<scope>` as above and `<date>` today in UTC
-(`date -u +%F`):
+Write two files in the meta repository, `<kind>` and `<scope>` as above. The file names carry no
+date: each path always holds the current audit of its scope, and git history keeps the older ones.
+`<date>` is today in UTC (`date -u +%F`); it goes into the report body and the finding ids.
 
-- `audits/<kind>/<date>-<scope>.md`: the report. Sections: `## Scope` (issue number, repositories
-  and examined commit SHAs), `## Checklist` (every item of the issue body with
+- `audits/<kind>/<scope>.md`: the report. Title `# <Kind> audit: pulse-<repo> (<date>)`, or
+  `# Architecture audit: pulse (<date>)`. Sections: `## Scope` (audit date, issue number,
+  repositories and examined commit SHAs), `## Checklist` (every item of the issue body with
   `checked` / `not applicable` / `blocked` and its evidence or reason), `## Issue candidates`, `## Notes`.
-- `audits/<kind>/<date>-<scope>.json`: the same findings, machine-readable:
+- `audits/<kind>/<scope>.json`: the same findings, machine-readable:
 
 ```json
 {
@@ -132,9 +134,10 @@ Write two files in the meta repository, `<kind>` and `<scope>` as above and `<da
 
 `status` is `checked`, `not applicable`, or `blocked`. Performance findings add `value`, `unit`,
 `repetitions`, `baseline`, and `budget`. Security `P1` and `P2` findings add `impact` and
-`fixDirection`. At most 5 findings have `"candidate": true`. If a report of this issue exists
-from an earlier run (`grep -l '"issue": {{issue.id}},' audits/<kind>/*.json`), update it and keep its
-file names and date instead of adding new files.
+`fixDirection`. At most 5 findings have `"candidate": true`. If a report already exists at
+these paths, from an earlier audit or an earlier run of this issue, this run replaces both files. You
+may read the old report for context, but verify every finding again on the examined commits; never
+copy a finding or its evidence without your own check.
 
 Then transition to `audit-review`. Your outcome message lists the report path, the number of
 findings per severity, the issue candidates by id and title, and every `blocked` item. It follows

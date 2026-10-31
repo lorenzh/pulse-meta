@@ -1,7 +1,9 @@
 # Review the audit report
 
 The state `audit` wrote a report of this audit issue under `audits/<kind>/` in the meta repository at
-`{{project.root}}`: `<date>-<scope>.md` and `<date>-<scope>.json`. Find it with
+`{{project.root}}`: `<scope>.md` and `<scope>.json`, without a date in the name (`<scope>` is the
+repository or `system`). The report states its audit date and examined commit SHAs in its body, and
+it replaces any older report at that path. Find it with
 `grep -l '"issue": {{issue.id}},' {{project.root}}/audits/*/*.json`.
 Read the issue body (the checklist) and the issue comments, including the outcome of the audit run.
 
