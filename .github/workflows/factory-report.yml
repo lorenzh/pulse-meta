@@ -38,6 +38,7 @@ jobs:
       - name: Build the report
         env:
           GH_TOKEN: ${{ github.token }}
+          FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
         run: node report/generate.mjs _site
 
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0

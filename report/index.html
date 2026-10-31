@@ -34,6 +34,7 @@
   body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); font-size: 14px; }
   #dash-root { padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .fr-fail::before { content: ""; }
+  [hidden] { display: none !important; }
   .fr-source { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
   .fr-source a { color: inherit; }
 </style>
@@ -122,7 +123,7 @@
 <div class="fr">
   <header class="fr-head" id="top">
     <h1 class="fr-title">pulse Factory-Report</h1>
-    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den acht Target-Repositories. Stand: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>.</p>
+    <p class="fr-sub">Alle Issues in lorenzh/pulse-meta, offene und geschlossene, mit allen Factory-Läufen und allen Factory-PRs in den <span data-draw="sum" data-fmt="int" data-source="summary" data-field="targets" data-row="0">—</span> Target-Repositories. Stand: <span data-draw="sum" data-source="summary" data-field="period" data-row="0">—</span>.</p>
     <p class="fr-lead">Die Factory hat in <b data-draw="sum" data-fmt="int" data-source="summary" data-field="runs" data-row="0">—</b> Läufen <b data-draw="sum" data-fmt="int" data-source="summary" data-field="features_done" data-row="0">—</b> Features gebaut und dafür <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</b> verbraucht, im Median <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="feature_usd_median" data-row="0">—</b> pro Feature. <b data-draw="sum" data-fmt="pct" data-source="summary" data-field="first_pass" data-row="0">—</b> der Target-PRs wurden ohne Handarbeit gemergt. Der Rest zeigt die eigentliche Schwäche: Die Review-Stufe ist billig und prüft kaum selbst. Sie hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.</p>
   </header>
 
@@ -130,7 +131,7 @@
     <div class="fr-tile">
       <span class="fr-tile-label">Kosten gesamt</span>
       <span class="fr-tile-value" data-draw="sum" data-fmt="usd" data-source="summary" data-field="usd" data-row="0">—</span>
-      <span class="fr-tile-note">API-Listenpreis laut CLI</span>
+      <span class="fr-tile-note">API-Listenpreis laut CLI; <span data-draw="sum" data-fmt="int" data-source="summary" data-field="runs_cost_unknown" data-row="0">—</span> Läufe ohne Kostenangabe</span>
     </div>
     <div class="fr-tile">
       <span class="fr-tile-label">Factory-Läufe</span>
@@ -145,7 +146,7 @@
     <div class="fr-tile">
       <span class="fr-tile-label">Tokens</span>
       <span class="fr-tile-value"><span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="tokens_m" data-row="0">—</span> M</span>
-      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct0" data-source="summary" data-field="cached_share" data-row="0">—</span> davon aus dem Cache</span>
+      <span class="fr-tile-note"><span data-draw="sum" data-fmt="pct0" data-source="summary" data-field="cached_share" data-row="0">—</span> aus dem Cache, <span data-draw="sum" data-fmt="dec1" data-source="summary" data-field="tokens_m_codex" data-row="0">—</span> M bei Codex</span>
     </div>
     <div class="fr-tile">
       <span class="fr-tile-label">Target-PRs gemergt</span>
@@ -207,7 +208,7 @@
         <table data-source="by_step" data-row-key="step">
           <thead><tr>
             <th data-field="step">Schritt</th>
-            <th data-field="role">Rolle</th>
+            <th data-field="profiles">Profile</th>
             <th class="num" data-field="runs">Läufe</th>
             <th class="num" data-field="usd">USD gesamt</th>
             <th class="num" data-field="usd_median">USD Median</th>
@@ -329,16 +330,16 @@
     </div>
   </section>
 
-  <section class="fr-section" id="fall-324">
-    <h2 class="fr-h2">Fallstudie: #324, Small review leftovers (P3), round 3</h2>
+  <section class="fr-section" id="fallstudie">
+    <h2 class="fr-h2">Fallstudie: #<span data-draw="sum" data-source="summary" data-field="case_issue" data-row="0">—</span>, <span data-draw="sum" data-source="summary" data-field="case_title" data-row="0">—</span></h2>
     <div class="fr-grid">
       <div class="fr-card">
-        <h3>Läufe von #324 und seinen Children</h3>
-        <p class="fr-note">Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="c324_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="c324_tokens_m" data-row="0">—</b> M Tokens. Die Spec lief vormittags, der Build nach dem Merge der Spec parallel in allen Targets.</p>
-        <div class="fr-chart tall" data-draw="case" data-source="case324"></div>
+        <h3>Läufe des Features und seiner Children</h3>
+        <p class="fr-note">Das teuerste abgeschlossene Feature. Gesamt <b data-draw="sum" data-fmt="usd" data-source="summary" data-field="case_usd" data-row="0">—</b> und <b data-draw="sum" data-fmt="dec2" data-source="summary" data-field="case_tokens_m" data-row="0">—</b> M Tokens. Links die Spec-Läufe, rechts der Build nach dem Merge der Spec, je Target eine Spur.</p>
+        <div class="fr-chart tall" data-draw="case" data-source="case"></div>
       </div>
-      <div class="fr-card fr-prose">
-        <h3>Was dabei auffiel</h3>
+      <div class="fr-card fr-prose" data-case="324" data-draw="casenote" hidden>
+        <h3>Was dabei auffiel (#324)</h3>
         <ul>
           <li><b>api #372:</b> Die Spec verlangt leere Manual-Incident-Reads ohne Admin-Tokens. Der Implementer fand „keinen Bug“ und schrieb Tests und Doku für das Gegenteil. Der Reviewer bestätigte das. Eine Person korrigierte es auf pulse-api#48.</li>
           <li><b>Fehler in der Spec:</b> Der Plan ließ die erwartete Service-Liste aus <code>compose.yaml</code> lesen, also aus der Datei, die geprüft wird. Die Prüfung konnte nie fehlschlagen. Eine Person ersetzte sie durch eine feste Liste.</li>
@@ -381,9 +382,9 @@
     <h2 class="fr-h2">Methode und Grenzen</h2>
     <div class="fr-prose">
       <ul>
-        <li>Quelle sind die Kommentare des Factory-Bots auf allen Issues in pulse-meta. Jeder Lauf schreibt einen Datensatz mit Zustand, Rolle, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories.</li>
-        <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
-        <li>Handarbeit heißt: ein Commit auf einem Factory-PR, dessen Autor nicht der Factory-Bot ist. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
+        <li>Quelle sind die Kommentare des Factory-Bots (<code>lorenzh-factory-bot</code>) auf allen Issues in pulse-meta; Kommentare anderer Konten zählen nicht. Jeder Lauf schreibt einen Datensatz mit Zustand, Rolle, Token-Verbrauch und Kosten. Dazu kommen die Actions-Läufe von <code>factory-run.yml</code> und alle PRs auf <code>factory/*</code>-Branches in den Target-Repositories.</li>
+        <li>Die Kosten-Angaben rechnet die CLI zum API-Listenpreis aus. Der Runner meldet sich mit einem Claude-Abo-Token an. Die tatsächliche Abrechnung kann daher abweichen. Codex-Läufe melden keine Kosten: Sie zählen in allen USD-Werten nicht mit, ihre Tokens schon. GitHub-Actions-Minuten sind nicht eingerechnet.</li>
+        <li>Handarbeit heißt: ein Commit auf einem Factory-PR, den ein GitHub-Konto außer dem Factory-Bot geschrieben oder committet hat. Die Git-Identität der Factory gehört zu keinem Konto. Änderungen, die eine Person nach dem Merge in einem eigenen PR machte, sind nicht erfasst.</li>
         <li>Die Zahlen erzeugt <code>report/generate.mjs</code> täglich neu. Laufende Features zählen nur mit den Läufen bis zum Stand oben. Befunde, Empfehlungen und die Fallstudie sind Text vom 30.10.2026 und werden nicht neu geschrieben.</li>
       </ul>
     </div>
@@ -421,6 +422,8 @@
       hide() { t.hidden = true; }
     };
   };
+  // Tooltip lines of one case-study run. A Codex run reports no cost: its cost is unknown, not 0.
+  window.frCaseTip = (r, start) => [['#' + r.issue + ' ' + r.step], ['Start', start + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', r.usd === null || r.usd === undefined ? 'unbekannt' : window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]];
   window.frCell = (tr, text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
   window.frBarCell = (tr, value, max, kind) => {
     const td = document.createElement('td'); td.className = 'num';
@@ -437,6 +440,11 @@
     if (s.status !== 'ok' || !s.data.length) { el.textContent = '—'; return; }
     el.textContent = window.frFmt(s.data[0][el.dataset.field], el.dataset.fmt || 'text');
   });
+  // Fixed prose about one case study shows only while that feature is the case.
+  dash.draw('casenote', (el) => {
+    const s = dash.data('summary');
+    el.hidden = s.status !== 'ok' || String(s.data[0]?.case_issue) !== el.dataset.case;
+  });
 </script>
 
 <script>
@@ -444,7 +452,7 @@
     const d = dash.data('by_step');
     if (d.status === 'error') { window.frFail(el); return; }
     if (d.status !== 'ok') { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({...r, usd: Number(r.usd), runs: Number(r.runs)})).sort((a, b) => b.usd - a.usd);
+    const rows = d.data.map((r) => ({...r, usd: r.usd === null ? null : Number(r.usd), runs: Number(r.runs)})).sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
     el.replaceChildren();
     const W = el.clientWidth || 360, rowH = 30, H = rows.length * rowH + 8;
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
@@ -492,12 +500,12 @@
   });
 
   dash.draw('case', (el) => {
-    const d = dash.data('case324');
+    const d = dash.data('case');
     if (d.status === 'error') { window.frFail(el); return; }
     if (d.status !== 'ok') { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({...r, s: new Date(r.start), usd: Number(r.usd), minutes: Number(r.minutes)}));
+    const rows = d.data.map((r) => ({...r, s: new Date(r.start), minutes: Number(r.minutes)}));
     rows.forEach((r) => { r.e = new Date(r.s.getTime() + r.minutes * 60000); });
-    const lanes = ['Spec', 'contract', 'probe', 'api', 'status', 'notify', 'config'].filter((l) => rows.some((r) => r.target === l));
+    const lanes = ['Spec', ...new Set(rows.map((r) => r.target).filter((l) => l !== 'Spec'))].filter((l) => rows.some((r) => r.target === l));
     el.replaceChildren();
     const W = el.clientWidth || 360, rowH = 34, m = {t: 8, r: 10, b: 26, l: 64}, H = m.t + lanes.length * rowH + m.b;
     const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
@@ -518,7 +526,7 @@
     const tip = window.frTip(el);
     const colorOf = (r) => /review/.test(r.step) ? 'var(--cds-chart-muted)' : dash.colors[0];
     svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => X(r, r.s)).attr('width', (r) => Math.max(2, X(r, r.e) - X(r, r.s) - 1)).attr('y', (r) => y(r.target)).attr('height', y.bandwidth()).attr('rx', 3).attr('fill', colorOf)
-      .on('pointermove', (ev, r) => tip.show(ev, [['#' + r.issue + ' ' + r.step], ['Start', fmt(r.s) + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]]))
+      .on('pointermove', (ev, r) => tip.show(ev, window.frCaseTip(r, fmt(r.s))))
       .on('pointerleave', () => tip.hide());
   });
 </script>
@@ -530,7 +538,7 @@
     const max = d3.max(d.data, (r) => Number(r.usd));
     tb.replaceChildren(...d.data.map((r) => {
       const tr = document.createElement('tr'); tr.dataset.key = r.step;
-      window.frCell(tr, r.step); window.frCell(tr, r.role, 'muted'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
+      window.frCell(tr, r.step); window.frCell(tr, (r.profiles ?? []).join(', '), 'muted'); window.frCell(tr, window.frFmt(r.runs, 'int'), 'num');
       window.frBarCell(tr, r.usd, max, 'usd'); window.frCell(tr, window.frFmt(r.usd_median, 'usd'), 'num'); window.frCell(tr, window.frFmt(r.usd_max, 'usd'), 'num');
       window.frCell(tr, window.frFmt(r.min_median, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.min_p90, 'dec1'), 'num'); window.frCell(tr, window.frFmt(r.tokens_m, 'dec1'), 'num');
       return tr;
