@@ -7,7 +7,7 @@ name: Audit issues
 # .github/audits/open-issue.sh holds the rules, and <kind>.md next to it the issue text.
 on:
   # Fast-development schedule; relax to weekly/monthly/monthly later. Each line maps to one kind in
-  # .github/audits/open-issue.sh: change both together.
+  # .github/audits/open-issue.sh and in the concurrency group below: change all three together.
   schedule:
     - cron: '17 6 * * *'    # security, daily
     - cron: '17 6 * * 2,5'  # performance, Tuesday and Friday
@@ -27,8 +27,10 @@ on:
         type: choice
         options: [rotation, contract, probe, api, status, notify, config, kit, website]
 
+# One group per kind, for scheduled and manual runs alike, so two runs of one kind cannot both pass
+# the dedupe. The schedule-to-kind pairs repeat the cron lines above (test.sh checks them).
 concurrency:
-  group: factory-audit-${{ inputs.kind || github.event.schedule }}
+  group: factory-audit-${{ inputs.kind || (github.event.schedule == '17 6 * * *' && 'security') || (github.event.schedule == '17 6 * * 2,5' && 'performance') || (github.event.schedule == '17 6 * * 4' && 'architecture') || github.event.schedule }}
   cancel-in-progress: false
 
 permissions: {}

@@ -18,7 +18,7 @@ today="${AUDIT_TODAY:-$(date -u +%Y-%m-%d)}"
 
 kind="${AUDIT_KIND:-}"
 if [[ -z "$kind" ]]; then
-  # Keep these in step with the cron lines of factory-audit.yml.
+  # Keep these in step with the cron lines and the concurrency group of factory-audit.yml.
   case "${AUDIT_SCHEDULE:-}" in
     '17 6 * * *') kind=security ;;
     '17 6 * * 2,5') kind=performance ;;
@@ -57,8 +57,10 @@ else
 fi
 
 R="$GITHUB_REPOSITORY"
-open="$(gh api "repos/$R/issues?state=open&labels=$kind${target:+,target/$target}&per_page=100" \
-  --jq "[.[] | select(.pull_request == null) | select(.title | startswith(\"$title:\"))][0].number // empty")"
+# Every page: an open audit can sit behind 100 other issues with the same labels.
+open="$(gh api --paginate "repos/$R/issues?state=open&labels=$kind${target:+,target/$target}&per_page=100" \
+  --jq ".[] | select(.pull_request == null) | select(.title | startswith(\"$title:\")) | .number")"
+open="${open%%$'\n'*}"
 if [[ -n "$open" ]]; then
   echo "#$open is still open for ${target:-the whole system}. No new issue."; exit 0
 fi

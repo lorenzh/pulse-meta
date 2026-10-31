@@ -53,7 +53,8 @@ key() { printf '%s' "$1" | tr -c 'A-Za-z0-9=_.-' '_'; }
 
 check() { # <name> <expected> <actual>
   if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; diff <(printf '%s\n' "$2") <(printf '%s\n' "$3") | sed 's/^/     /'; fail=1; fi
+    # diff exits 1 on a difference; keep going so that every check reports.
+    echo "FAIL $1"; diff <(printf '%s\n' "$2") <(printf '%s\n' "$3") | sed 's/^/     /' || true; fail=1; fi
 }
 
 # --- factory-sweep.yml --------------------------------------------------------------------------
@@ -109,8 +110,10 @@ audit() { # <kind input> <target input> <schedule> <today> -> output; writes go 
     AUDIT_TODAY="$4" bash "$here/../audits/open-issue.sh" 2>&1
 }
 writes() { cat "$FIXTURES/writes.log" 2> /dev/null || true; }
-open_issues() { # <labels> <json>
-  echo "$2" > "$FIXTURES/$(key "repos/$R/issues?state=open&labels=$1&per_page=100").json"
+open_issues() { # <labels> <page 1 json> [<page 2 json>]: a plain read sees page 1 only
+  local k; k="$(key "repos/$R/issues?state=open&labels=$1&per_page=100")"
+  echo "$2" > "$FIXTURES/$k.json"; echo "$2" > "$FIXTURES/$k.0.json"
+  [[ -z "${3:-}" ]] || echo "$3" > "$FIXTURES/$k.1.json"
 }
 export FIXTURES="$tmp/audit"; mkdir -p "$FIXTURES"
 for label in security performance; do echo "{\"name\":\"$label\"}" > "$FIXTURES/$(key "repos/$R/labels/$label").json"; done
@@ -162,6 +165,26 @@ while read -r cron; do
   kinds+="$(writes | sed -n 's/^  labels\[\]=\([a-z]*\)$/\1/p' | head -1) "
 done <<< "$crons"
 check "schedule: the workflow's cron lines map to security, performance, architecture" "security performance architecture " "$kinds"
+# Scheduled and manual runs of one kind share one concurrency group, so they cannot both pass the
+# dedupe. The group expression is evaluated with Python (|| -> or, && -> and).
+groups="$(python3 - "$workflows/factory-audit.yml" "$crons" <<'PY'
+import re, sys, yaml
+w = yaml.safe_load(open(sys.argv[1]))
+expr = re.fullmatch(r"factory-audit-\$\{\{(.*)\}\}", w["concurrency"]["group"]).group(1)
+py = expr.replace("||", " or ").replace("&&", " and ").replace("inputs.kind", "kind").replace("github.event.schedule", "schedule")
+group = lambda kind, schedule: "factory-audit-" + str(eval(py, {"__builtins__": {}}, {"kind": kind, "schedule": schedule}))
+for cron in sys.argv[2].splitlines():
+    print(group("", cron))
+for kind in ("security", "performance", "architecture"):
+    print(group(kind, ""))
+PY
+)"
+check "concurrency: scheduled runs use the group of their kind" "factory-audit-security
+factory-audit-performance
+factory-audit-architecture
+factory-audit-security
+factory-audit-performance
+factory-audit-architecture" "$groups"
 check "schedule: an unknown cron fails" "::error::No audit kind for the schedule '0 0 * * *'." "$(audit "" "" '0 0 * * *' 2026-11-11 || true)"
 check "dispatch: an unknown kind fails" "::error::Unknown audit kind: style" "$(audit style "" "" 2026-11-11 || true)"
 
@@ -179,6 +202,10 @@ WRITE repos/$R/issues
 echo '{"name":"architecture"}' > "$FIXTURES/$(key "repos/$R/labels/architecture").json"
 check "architecture: a dispatch target is ignored" "::notice::The architecture audit covers the whole system; target api is ignored.
 Opened https://example.test/new-issue" "$(audit architecture api "" 2026-11-05)"
+# 100 other architecture issues fill page 1; the open audit is on page 2.
+page1="$(python3 -c 'import json; print(json.dumps([{"number": 200 + i, "title": "Split the probe scheduler"} for i in range(100)]))')"
+open_issues architecture "$page1" '[{"number":60,"title":"Architecture audit: pulse (2026-10-21)"}]'
+check "architecture: an open audit on page 2 blocks" "#60 is still open for the whole system. No new issue." "$(audit architecture "" "" 2026-11-05)"
 open_issues architecture '[{"number":60,"title":"Architecture audit: pulse (2026-10-21)"}]'
 check "architecture: an open architecture audit blocks" "#60 is still open for the whole system. No new issue." "$(audit architecture "" "" 2026-11-05)"
 
