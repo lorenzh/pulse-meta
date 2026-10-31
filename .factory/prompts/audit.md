@@ -1,8 +1,9 @@
 # Audit main
 
 This is a periodic audit of `main`, not of one change. The issue title names the kind and the
-scope: `Security audit: pulse-<repo> (<date>)`, `Performance audit: pulse-<repo> (<date>)`, or
-`Architecture audit: pulse (<date>)`. The kind is `security`, `performance`, or `architecture`.
+scope: `Security audit: pulse-<repo> (<date>)`, `Performance audit: pulse-<repo> (<date>)`,
+`Quality audit: pulse-<repo> (<date>)`, or `Architecture audit: pulse (<date>)`. The kind is
+`security`, `performance`, `quality`, or `architecture`.
 The scope is the repository name without `pulse-` (`notify`), or `system` for an architecture
 audit. The issue body holds the checklist.
 Read the issue comments for decisions and feedback from earlier runs, including a review that sent
@@ -83,6 +84,14 @@ A measurement that does not fit the budget, or that `timeout` stopped (exit 124)
 the reason and the command that would measure it; never keep measuring until the deadline. Every
 performance finding gives the value, its unit, the number of repetitions, the baseline it is
 compared with, and the budget. Name the bench run you read.
+
+**Quality audits.** Measure with the target's own scripts (`lint`, `typecheck`, `test`, `check` in
+its `package.json`) and the shared configuration of pulse-config, in a copy installed with the
+repository's own command (for example `npm ci`). Install no other tool or dependency: find dead
+code with `grep` and `tsc`, duplication by reading and `grep` across the clones. Every finding
+cites file and line. A lint or typecheck error, a swallowed error, or a risky branch without a test
+can be a finding; an item that only concerns style (formatting, naming taste) is a note, never an
+issue candidate. Run each script under `timeout`, at most 10 minutes each.
 
 **Security audits: disclosure.** The pulse repositories and this report are public. For a `P1` or
 `P2` security finding the committed report names the location (file and line), the class (for

@@ -10,6 +10,7 @@
 #   security      one target repository per run, in rotation by day
 #   performance   one service or library repository per run, two slots per week (Mon-Thu, Fri-Sun)
 #   architecture  one issue for the whole system
+#   quality       one target repository per run, in rotation by week
 #
 # The schedules in factory-audit.yml decide how often each kind runs; each cron line maps to one kind.
 #
@@ -27,6 +28,7 @@ if [[ -z "$kind" ]]; then
     '17 6 * * *') kind=security ;;
     '17 6 * * 2,5') kind=performance ;;
     '17 6 * * 4') kind=architecture ;;
+    '17 6 * * 1') kind=quality ;;
     *) echo "::error::No audit kind for the schedule '${AUDIT_SCHEDULE:-}'." >&2; exit 1 ;;
   esac
 fi
@@ -48,6 +50,10 @@ case "$kind" in
   architecture)
     targets=() slot=0 title="Architecture audit"
     color=5319e7 description="Structure across repositories: pins, size, duplication, docs, dependency direction" ;;
+  quality)
+    targets=(contract probe api status notify config kit website)
+    slot=$weeks title="Quality audit"
+    color=0e8a16 description="Code quality: lint, complexity, duplication, dead code, tests, error handling" ;;
   *) echo "::error::Unknown audit kind: $kind" >&2; exit 1 ;;
 esac
 

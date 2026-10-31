@@ -128,7 +128,7 @@ open_issues security,audit/api '[{"number":51,"title":"Probe leaks a header","pu
 open_issues performance,audit/api '[{"number":52,"title":"Performance audit: pulse-api (2026-10-07)"}]'
 # The old target/<repo> label no longer counts: the audit runs on the meta target.
 open_issues security,target/status '[{"number":53,"title":"Security audit: pulse-status (2026-10-20)"}]'
-DAILY='17 6 * * *' TUEFRI='17 6 * * 2,5' THU='17 6 * * 4'
+DAILY='17 6 * * *' TUEFRI='17 6 * * 2,5' THU='17 6 * * 4' MON='17 6 * * 1'
 
 # Security, daily: 2026-11-02 is day 20759 since 1970-01-01; 20759 % 8 = 7 -> website.
 # 2026-11-03 is day 20760; 20760 % 8 = 0 -> contract.
@@ -188,7 +188,37 @@ check "performance: an open security audit does not block" "Opened https://examp
 Started the audit run of #77." "$(audit performance probe "" 2026-11-03)"
 check "performance: config is not a performance target" "::error::Unknown target: config" "$(audit performance config "" 2026-11-03 || true)"
 
-for k in security performance architecture; do
+# Quality, Monday: slot = week, week = (day + 3) / 7, over the security list.
+# Mon 2026-11-02: week 2966 % 8 = 6 -> kit. Mon 2026-11-09: 2967 % 8 = 7 -> website.
+check "quality: the Monday schedule creates the label and the issue" "Created the label quality.
+Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit "" "" "$MON" 2026-11-02)"
+check "quality: label with description, title and labels, then the dispatch" "WRITE repos/$R/labels
+  name=quality
+  color=0e8a16
+  description=Code quality: lint, complexity, duplication, dead code, tests, error handling
+WRITE repos/$R/issues
+  title=Quality audit: pulse-kit (2026-11-02)
+  body
+  labels[]=quality
+  labels[]=factory/audit/audit
+  labels[]=audit/kit
+DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
+check "quality: the issue text names the repository and the report" "0 1" \
+  "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true) $(grep -c 'audits/quality/kit\.md' "$FIXTURES/last-body.md" || true)"
+audit "" "" "$MON" 2026-11-09 > /dev/null
+check "quality: the next Monday takes the next repository" "  title=Quality audit: pulse-website (2026-11-09)" "$(grep title= "$FIXTURES/writes.log")"
+audit quality rotation "" 2026-11-05 > /dev/null
+check "quality: dispatch rotation picks the week's target" "  title=Quality audit: pulse-kit (2026-11-05)" "$(grep title= "$FIXTURES/writes.log")"
+audit quality config "" 2026-11-02 > /dev/null
+check "quality: config is a quality target" "  title=Quality audit: pulse-config (2026-11-02)" "$(grep title= "$FIXTURES/writes.log")"
+open_issues quality,audit/api '[{"number":54,"title":"Quality audit: pulse-api (2026-10-26)"}]'
+check "quality: an open quality audit of the repository blocks" "#54 is still open for api. No new issue." "$(audit quality api "" 2026-11-02)"
+check "quality: an open security or performance audit does not block" "Created the label quality.
+Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit quality probe "" 2026-11-02)"
+
+for k in security performance architecture quality; do
   check "$k: the issue text names the start label and the report, not one issue per finding" "1 1 0" \
     "$(grep -c 'factory/audit/audit' "$here/../audits/$k.md" || true) $(grep -c "audits/$k/" "$here/../audits/$k.md" || true) $(grep -c 'becomes its own issue' "$here/../audits/$k.md" || true)"
 done
@@ -200,7 +230,7 @@ while read -r cron; do
   audit "" "" "$cron" 2026-11-05 > /dev/null || true
   kinds+="$(writes | sed -n 's/^  labels\[\]=\([a-z]*\)$/\1/p' | head -1) "
 done <<< "$crons"
-check "schedule: the workflow's cron lines map to security, performance, architecture" "security performance architecture " "$kinds"
+check "schedule: the workflow's cron lines map to security, performance, architecture, quality" "security performance architecture quality " "$kinds"
 # Scheduled and manual runs of one kind share one concurrency group, so they cannot both pass the
 # dedupe. The group expression is evaluated with Python (|| -> or, && -> and).
 groups="$(python3 - "$workflows/factory-audit.yml" "$crons" <<'PY'
@@ -211,16 +241,18 @@ py = expr.replace("||", " or ").replace("&&", " and ").replace("inputs.kind", "k
 group = lambda kind, schedule: "factory-audit-" + str(eval(py, {"__builtins__": {}}, {"kind": kind, "schedule": schedule}))
 for cron in sys.argv[2].splitlines():
     print(group("", cron))
-for kind in ("security", "performance", "architecture"):
+for kind in ("security", "performance", "architecture", "quality"):
     print(group(kind, ""))
 PY
 )"
 check "concurrency: scheduled runs use the group of their kind" "factory-audit-security
 factory-audit-performance
 factory-audit-architecture
+factory-audit-quality
 factory-audit-security
 factory-audit-performance
-factory-audit-architecture" "$groups"
+factory-audit-architecture
+factory-audit-quality" "$groups"
 # The job token dispatches factory-run.yml, so the job needs actions: write; nothing more.
 check "permissions: the audit job may dispatch workflows" "{'actions': 'write', 'contents': 'read', 'issues': 'write'}" \
   "$(python3 -c 'import sys, yaml; print(dict(sorted(yaml.safe_load(open(sys.argv[1]))["jobs"]["open-issue"]["permissions"].items())))' "$workflows/factory-audit.yml")"
