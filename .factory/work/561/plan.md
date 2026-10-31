@@ -10,6 +10,11 @@ Revision after plan-review (the six corrections of the plan-review comment on #5
 5. Clock-dependent expiry rules are the api's; the contract checks only the clock-free form and its tests accept `expiresAt: 1` (`## Counterexamples`, contract section).
 6. The collision search covers all 49 new names, and every tool fact cites file and line, including the pinned config files read with `gh api`.
 
+Second revision after plan-review (the two D8 corrections of the second plan-review comment on #561):
+1. The temp file's directory entry is made durable (`fsyncDir` after `writeTemp`) before the pending row is inserted, so a power loss before the rename cannot leave a durable pending row without its temp name (D8 step 3).
+2. Every delete of a pending row on an abort or a resolver drop runs as a durable statement (`synchronous = FULL`), and the temp file is removed only after that delete returned without error. A failed delete keeps the temp file as evidence (D8 "Rule for removing a temp file", "Durable abort").
+3. A crash-model fault-injection suite checks both windows: every crash point, with the file system's un-synced changes either kept or dropped, and un-synced SQLite commits dropped (`## Counterexamples` "Power loss", api `src/config-write.crash.test.ts`). The guarantee and `## Risks` follow the corrected protocol.
+
 ## Goal
 
 The api keeps every admin and probe credential in its SQLite database as a SHA-256 digest only. Each credential has a name, scopes, a creation time, a last-used time, an optional expiry and a revocation time. Admins create, list, rotate and revoke credentials over HTTP. Rotation keeps the old credential valid for a fixed 10-minute overlap, so a probe or a script can switch without downtime. Every admin write is stored as a secret-free audit entry, and the entries can be queried and exported as JSON lines. The token files are read only once: they import the existing credentials on upgrade and seed the first admin on a fresh install.
@@ -172,24 +177,37 @@ All of these routes answer with `cache-control: no-store`. Request bodies are li
 ### D8. Durability
 
 - **Database-only writes** (manual incidents, tokens): the change and its audit insert run in one SQLite transaction. The HTTP response is written only after the commit. For manual incidents this moves `sendJson`/`writeHead` out of `applyManualWrite` to after the transaction. If the audit insert throws, the whole change rolls back and the client gets `500`. Its logging stays as today's "request failed".
-- **Config writes** (file-backed). Today's `store` in api `src/config-write.ts` lines 358-372 runs: write the temp file `${path}.${tempSuffix()}.tmp` (exclusive create and fsync), the second revision check, `rename`, `fsyncDir`. The new sequence runs inside the writer's existing lock (`apply` chains on `tail`, lines 401-405):
+- **Config writes** (file-backed). Today's `store` in api `src/config-write.ts` lines 358-372 runs: write the temp file `${path}.${tempSuffix()}.tmp` (exclusive create and fsync), the second revision check, `rename`, `fsyncDir`. The new sequence runs inside the writer's existing lock (`apply` chains on `tail`, lines 403-408):
   1. Resolve pending entries (below).
   2. Read the file, check `If-Match`, build the new bytes and `revisionOf(data)`, as today.
-  3. `fs.writeTemp(temp, ...)`, as today.
-  4. Insert one `audit_pending` row with `revision = revisionOf(data)` and `temp_path = temp`. This single statement runs with `PRAGMA synchronous = FULL`, set just before it and set back to `NORMAL` just after, both outside any transaction. The WAL frame is then on disk before the rename, also across a power loss (api `src/db.ts` line 162 sets `NORMAL` for everything else). If the insert fails: remove the temp file, answer `500 {"error":"audit log could not be written"}`, and leave the checks file untouched (metric result `error`).
-  5. The second revision check and `rename`, as today. If either fails: first delete the `audit_pending` row, then remove the temp file, then map the error as today. This order matters: a row may only exist without its temp file once the rename happened.
-  6. `fsyncDir`. If it fails, the row stays pending and the error is mapped as today.
-  7. Promote: in one SQLite transaction, insert the entry into `audit_log` (new id, `at` from the pending row) and delete the `audit_pending` row.
+  3. Make the temp file durable, name included:
+     - `fs.writeTemp(temp, ...)`, as today. It fsyncs only the file's data (api `src/config-fs.ts` lines 31-51: `openSync(path, "wx")` at line 33, `fsyncSync(fd)` at line 47). The new directory entry is not yet on disk.
+     - New: `fs.fsyncDir(dir)` right after it (the temp file sits in the checks file's directory, `${path}.<suffix>.tmp`, `src/config-write.ts` line 359, so the same `dir` of line 338 covers it). After this call a power loss can no longer lose the temp name.
+     - If either call fails: remove the temp file quietly and map the error as today. No pending row exists yet.
+  4. Durably insert one `audit_pending` row with `revision = revisionOf(data)` and `temp_path = temp` (the "durable statement" rule below). Its WAL frame is on disk before the rename, also across a power loss. If the insert throws: run the durable abort (below) and answer `500 {"error":"audit log could not be written"}`. The checks file stays untouched (metric result `error`).
+  5. The second revision check and `rename`, as today. If either throws: run the durable abort, then map the original error as today.
+  6. `fsyncDir(dir)`, as today. If it fails, the row stays pending and the error is mapped as today.
+  7. Promote: in one SQLite transaction, insert the entry into `audit_log` (new id, `at` from the pending row) and delete the `audit_pending` row. This transaction runs under the connection's normal setting (`NORMAL` on a WAL file). It needs no forced sync: a promote lost in a power loss loses its insert and its delete together, so the durable pending row comes back, its temp file is still absent, and the resolver promotes it again.
   8. `reloader.adopt`, as today.
 
   If step 7 fails, or the process dies after step 4, the row stays in `audit_pending`. When step 7 fails the response is `500 {"error":"checks file stored; its audit entry is pending and is resolved at the next write or restart"}`.
+- **Durable statement.** A new helper `withFullSync(db, fn)` in api `src/db.ts`. It is called only outside a transaction (it throws when `db.inTransaction` is true, because SQLite ignores a `synchronous` change inside one). It reads `PRAGMA synchronous`, sets `PRAGMA synchronous = FULL` when the value is lower, runs `fn` (one statement in autocommit), and restores the value it read in a `finally`, also when `fn` throws. On a WAL database, `FULL` syncs the WAL file at the commit, so the statement is on disk when `fn` returns without error ([SQLite `synchronous`](https://www.sqlite.org/pragma.html#pragma_synchronous)). A database without WAL already runs `FULL` (api `src/db.ts` lines 150-163: `NORMAL` is set at line 162 only when WAL is on), so the helper changes nothing there. The pending insert, the abort delete and the resolver's drop delete all go through it.
+- **Rule for removing a temp file.** The api removes a temp file of a config write only after a durable statement that names that `temp_path` returned without error, or when it knows that no pending row was ever inserted for it (the step-3 failure). A temp file named by a pending row is the only evidence that the rename did not happen, so it stays on disk until the database durably says that no row needs it. Without this rule, a power loss can keep the unlink (the file system may write it out at any time) and lose a `NORMAL` delete, and the resolver would then promote a row for a rejected write.
+- **Durable abort** (steps 4 and 5, and the resolver's drop):
+  1. Durably run `DELETE FROM audit_pending WHERE temp_path = ?` with the stored temp path. It is keyed by `temp_path`, which is unique per write (`tempSuffix` is pid plus 6 random bytes, api `src/start.ts` line 246), so it also removes a row whose insert reported an error but was committed anyway, for example an I/O error after the WAL write.
+  2. Only when that delete returned without error: remove the temp file. A failed removal logs `"config temp file not removed (<code>)"` at warn (code only, no path). The orphan file has no row, so it never changes the audit, as today's leftovers after a crash between `writeTemp` and `rename`.
+  3. When the delete throws: keep the temp file and log `"audit pending entry kept (<code>)"` at warn (code only, no path). The row, if one exists, stays pending with its temp file on disk, and the next resolution drops both. The response is the one the step would give without this failure.
 - **Resolving pending entries** happens at startup once the database is open and migrated (D5 step 2), before `listen`, and at step 1 of each config write. The rows are taken in ascending pending id. The evidence is the temp file, not the checks file content:
-  - `temp_path` exists (`lstat` succeeds) → the rename never happened. Delete the row, then remove the temp file.
-  - `temp_path` does not exist (`ENOENT`) → the rename happened, because the row is written only after the temp file and is deleted before the temp file on every failure path. Promote the row as in step 7.
+  - `temp_path` exists (`lstat` succeeds) → the rename never happened. Run the durable abort for it: durable delete first, then the removal.
+  - `temp_path` does not exist (`ENOENT`) → the rename happened. A row exists only after its temp name was on disk (step 3 before step 4). On every failure path the row was durably deleted before its temp file was removed. And a rename that a power loss undid brings the temp name back. Promote the row as in step 7.
   - Any other `lstat` error → leave the row pending, log `"audit pending entry unresolved (<code>)"` at warn (code only, no path), and continue. A config write then still proceeds.
   - The checks file content is not compared. An external writer that restores the old bytes after a stored write (A → B by the api, then A by someone else) does not erase the api's entry: the temp file is gone, so the entry is promoted. This is the conservative answer: a change that landed is never removed from the trail.
-  - A power loss that undoes an un-synced rename leaves the temp file in place, so the entry is dropped together with the change that did not survive.
-- Query and export read only `audit_log`. This protocol does not make the file and SQLite atomic together. It guarantees, for a process crash at any point and for a power loss after step 4: an acknowledged config write always has an entry in `audit_log`, and a rename that landed always ends in `audit_log` at the latest at the next write or restart. A third party deleting the api's temp file between steps 3 and 5 while the api crashes can produce an entry for a write that did not land. That is accepted and documented.
+- **Guarantee.** Query and export read only `audit_log`. This protocol does not make the file and SQLite atomic together. It guarantees, for a process crash and for a power loss at any point of the sequence, the abort and the resolver:
+  - an acknowledged config write always has an entry in `audit_log`;
+  - a rename that is on disk after the restart ends in `audit_log`, at the latest at the next write or restart;
+  - a write whose rename is not on disk after the restart (rejected, aborted, or undone by the power loss) never gets an entry.
+
+  This holds on a local file system where `fsync` of a file and of its directory persists what it reports and where `rename` is atomic across a crash (ext4, xfs, btrfs), which the current writer already assumes ([fsync(2)](https://man7.org/linux/man-pages/man2/fsync.2.html)). It also needs SQLite's own durability with `synchronous = FULL`. Not covered, and documented: a disk or a network file system that acknowledges `fsync` without persisting, and a third party that deletes the api's temp file between steps 3 and 5 while the api crashes (that gives an entry for a write that did not land).
 
 ### D9. Audit query and export
 
@@ -216,6 +234,7 @@ Metrics of api `bench/budgets.json` that this change can move:
 - `idle_rss_mib` and `peak_rss_mib` (gating): under 1 MiB more. The index holds a few entries.
 - `test_cpu_s` (gating, 4.1): up. The new HTTP suites (tokens, scopes, rotation, audit, import, recovery) may add about 0.3-0.8 s. The suites must stay lean: shared servers per file, no sleeps, injected clocks.
 - `cold_read_cpu_ms` (gating): unchanged. The cold reads are public routes.
+- Config writes gain one directory fsync and one WAL fsync (D8), and an abort gains one more WAL fsync. No bench key measures config writes (`grep -rln "admin/checks\|admin/config" bench` in api finds no file), so no key moves. The new crash-model suite runs on in-memory fakes without real fsyncs, so its share of `test_cpu_s` is small.
 - Reported metrics:
   - `p95_post_results_ms`: flat or slightly down.
   - `p95_get_checks_ms`, `p95_get_latency_ms`, `p95_get_check_latency_ms`, `rps`: unchanged (public routes).
@@ -247,7 +266,7 @@ Checklist items that apply:
 - **Body and size limits.** 4096 bytes on the token routes. The existing `ADMIN_MAX_BODY_BYTES` and `MANUAL_INCIDENT_MAX_BODY_BYTES` stay. `limit` at most 1000. `targetId` has no own maximum (it must match unbounded check ids); the request line limit of the server bounds it, and it is only used as a bound SQL parameter. The export runs in bounded batches.
 - **Input validation.** Contract strict schemas for `TokenCreateInput`. The api checks `expiresAt` against the clock. Query parameters are checked one by one. Unknown scopes, mixed `probe` scopes, and a missing or extra `location` are refused.
 - **Accessor execution.** The contract validators read own data properties only, as the existing validators do with `ownValue` in `src/validate.ts`. A getter on an input object never runs.
-- **Atomic, path-safe writes.** The config write keeps its temp-file + rename + `fsyncDir` sequence and adds the pending/promote protocol of D8. No new file paths are written. The resolver only `lstat`s and removes a `temp_path` that the api itself stored; the value never comes from a request.
+- **Atomic, path-safe writes.** The config write keeps its temp-file + rename + `fsyncDir` sequence. It adds an `fsyncDir` of the temp name before the durable pending insert, and the pending/promote protocol of D8 with durable deletes before any temp removal. No new file paths are written. The resolver only `lstat`s and removes a `temp_path` that the api itself stored; the value never comes from a request.
 - **Dependency pins.** The api moves its contract pin to the merged contract SHA. No new package. `randomBytes`, `createHash` and `timingSafeEqual` come from `node:crypto`.
 - **CI.** `scripts/compose-e2e.sh` changes assertions only. The job and its pins in `.github/workflows/ci.yml` stay.
 
@@ -335,8 +354,38 @@ Not applicable: SSRF and redirects (the probe HTTP client is unchanged), Dockerf
   - The reviewer's ambiguity case: the api writes A → B, the promote fails, then a test writes the original bytes A back to the checks file directly. On restart the entry is promoted, not deleted: `GET /admin/audit` shows it with `revision` = revision of B. An implementation that compares file revisions and drops rows whose "before" revision matches fails.
   - A crash before the rename: the test builds that state as a fixture (a version-4 database with one `audit_pending` row whose `temp_path` names a temp file that the test created next to the checks file, the checks file still at A). Start → the row is deleted, the temp file is removed, `audit_log` has no entry, and the checks file is still A.
   - A crash after the rename: the same fixture without the temp file and with the checks file at B → start promotes the row; `audit_log` has one entry with `revision` = revision of B.
-  - The failure-path order: a fake `WriteFs` whose second revision check fails → the `audit_pending` row is gone before `remove(temp)` is called (the fake records the call order and the row count at the time of `remove`: `0`).
+  - The failure-path order: a fake `WriteFs` whose `rename` throws `EIO` → the call log from `writeTemp` on is exactly `writeTemp(temp)`, `fsyncDir(dir)`, `pending.insert(durable)`, `readFile(path)` (second revision check), `rename`, `pending.deleteByTemp(durable)`, `remove(temp)`. The row count at the time of `remove` is `0`.
+  - The success order: the call log from `writeTemp` on is exactly `writeTemp(temp)`, `fsyncDir(dir)`, `pending.insert(durable)`, `readFile(path)`, `rename(temp, path)`, `fsyncDir(dir)`, `pending.promote`. An implementation that inserts before the first `fsyncDir` fails.
+  - The abort delete throws: the fake `PendingAudit` throws `SQLITE_IOERR` on `deleteByTemp` after a forced `rename` failure → the response maps the `rename` error as today, `remove(temp)` is never called, the temp file and the row are both still there, and one warn line `audit pending entry kept (SQLITE_IOERR)` is logged. The next config write's step 1 drops both (row count `0`, no temp file), and `audit_log` has no entry for the failed write.
+  - The pending insert throws after committing (a fake that commits the row and then throws `SQLITE_IOERR`) → `500 {"error":"audit log could not be written"}`, the abort deletes the row by `temp_path`, then the temp file is removed. `audit_pending` and `audit_log` are empty and the checks file is still A. An implementation that removes the temp file without the keyed delete leaves a row without temp file, which a restart promotes: this case fails it.
   - A pending row whose temp path `lstat` fails with `EACCES` → stays pending, the warn line carries `EACCES` and no path, and the config write proceeds (`200`).
+  - `withFullSync` on a file database opened with `openDb` (WAL): `PRAGMA synchronous` reads `2` inside `fn` and `1` after it, also after `fn` throws. Called inside `db.transaction(...)` it throws. On `:memory:` it reads `2` inside and `2` after. An implementation that hardcodes `NORMAL` afterwards fails the `:memory:` case.
+- **Power loss (crash-model fault injection, `src/config-write.crash.test.ts`):**
+  - Model. `CrashFs` implements `WriteFs` for one directory with a live view and a durable view of the directory entries. `writeTemp` adds the name to the live view with its data (the data counts as synced, since `writeTemp` fsyncs it). `fsyncDir` copies the live view to the durable view. `rename` and `remove` change only the live view. `powerLoss("drop")` resets the live view to the durable view: every un-synced create, rename and unlink is lost. `powerLoss("keep")` copies the live view to the durable view: the file system happened to write every un-synced change. `CrashPendingAudit` implements the `PendingAudit` port with a log of committed operations, each marked durable or not. `powerLoss()` drops every operation after the last durable one, as an un-synced WAL tail is lost.
+  - Run. Start state: checks file A (durable), no rows. A config write to B runs with an injected fault hook that throws a `PowerLoss` sentinel right after the named point. Then `CrashFs.powerLoss(mode)` and `CrashPendingAudit.powerLoss()`, and a new writer over the same fakes runs the startup resolution (the restart).
+  - Expected after the restart, in every case: `audit_pending` has `0` rows, `audit_log` has at most `1` entry, and the checks file is B exactly when `audit_log` has an entry with the revision of B. The literal outcomes per crash point, for both `mode = "drop"` and `mode = "keep"` unless one is named:
+
+    | Crash right after | File | `audit_log` entries |
+    |---|---|---|
+    | `writeTemp` | A | 0 |
+    | first `fsyncDir` (temp name) | A | 0 |
+    | pending insert | A | 0 |
+    | `rename`, `mode = "drop"` | A | 0 |
+    | `rename`, `mode = "keep"` | B | 1 |
+    | second `fsyncDir` | B | 1 |
+    | promote (the non-durable promote is lost) | B | 1 |
+    | no crash, response `200`, then power loss | B | 1 |
+    | abort after forced `rename` `EIO`: the durable delete | A | 0 |
+    | abort after forced `rename` `EIO`: `remove(temp)` | A | 0 |
+    | resolver drop (fixture: row and durable temp, file A): the durable delete | A | 0 |
+    | resolver drop: `remove(temp)` | A | 0 |
+    | resolver promote (fixture: row, no temp, file B): the promote | B | 1 |
+
+  - What each window catches:
+    - Window of plan-review point 1: an implementation without the `fsyncDir` before the insert gets File A with 1 entry at "pending insert", `mode = "drop"`. The temp name is lost, the row is durable, and the resolver promotes it.
+    - Window of plan-review point 2: an implementation whose abort delete is not durable gets File A with 1 entry at "abort: `remove(temp)`", `mode = "keep"`. The unlink is kept, the delete is lost, and the resolver promotes the row.
+    - An implementation that removes the temp file before the delete gets 1 entry when it crashes between the two, `mode = "keep"`.
+  - The implementer applies each of these three mutations once by hand, runs the suite, and quotes the red output in the PR. The fixed table values above are the expected values. They come from this spec, not from the code under test.
 - **Last used:**
   - Authentications at `T` and `T + 59 999` → one persisted `UPDATE` (value `T`). At `T + 60 000` → a second one. `GET` shows `T + 59 999` in between.
   - A failed authentication never changes `lastUsedAt`.
@@ -474,20 +523,21 @@ Files:
 - `src/token-scopes.ts` (new): the pure D1 matrix, grant rule and last-admin check.
 - `src/token-import.ts` (new): the D5 bootstrap import.
 - `src/token-routes.ts` (new): `/admin/tokens*`.
-- `src/audit-log.ts` (new): record in a transaction, pending insert (with `synchronous = FULL`), promote, delete, query, batch iteration for export.
+- `src/audit-log.ts` (new): record in a transaction, query, batch iteration for export, and the `PendingAudit` port with its SQLite implementation: `insert` and `deleteByTemp` as durable statements through `withFullSync`, `promote` in one normal transaction, `list` in ascending id.
+- `src/db.ts`: `withFullSync(db, fn)` (D8 "Durable statement").
 - `src/audit-routes.ts` (new): `/admin/audit`, `/admin/audit/export`.
 - `src/admin-routes.ts`: store-based auth, scopes, dispatch of the new sections, audit of config writes.
 - `src/admin-auth-failures.ts`: kinds of D2.
 - `src/admin-tokens.ts`: keeps the parser for import, plus digest-based distinctness.
 - `src/tokens.ts`: keeps `parseTokens` and the token rules, plus digest helper; drops the list-based `authenticate`/`findByToken` once unused.
-- `src/config-write.ts`: the D8 protocol and pending resolution; `WriteFs` gains `lstat(path): void` (throws with a Node `code`).
+- `src/config-write.ts`: the D8 protocol (the `fsyncDir` after `writeTemp`, the durable abort, the rule for removing a temp file) and pending resolution. `WriteFs` gains `lstat(path): void` (throws with a Node `code`). `WriterDeps` gains `pending: PendingAudit` and an optional test-only `fault?: (point: string) => void` hook, called after each named step of D8 (a no-op in production).
 - `src/config-fs.ts`: the real `lstat` for `WriteFs`.
 - `src/manual-incidents.ts`: writes run inside a transaction with the audit insert.
 - `src/server.ts`: probe-route and manual-write auth through the store; respond after commit; route patterns for metrics.
 - `src/start.ts`: the D5 order (open the database, read bootstrap rows, then read only the files of pending imports); import; resolve pending audit entries once the database is open, before `listen`; feature gate; startup line; flush last-used on close.
 - Tests:
-  - new: `src/token-store.test.ts`, `src/token-scopes.test.ts`, `src/start.token-import.test.ts`, `src/server.tokens.test.ts`, `src/server.scopes.test.ts`, `src/server.rotation.test.ts`, `src/server.audit.test.ts`, `src/config-write.audit.test.ts`
-  - updated: `src/db.migrations.test.ts`, `src/server.auth.test.ts`, `src/server.manual-incidents.test.ts`, `src/server.manual-incidents.audit.test.ts`, `src/config-admin.test.ts`, `src/admin-tokens.test.ts`, `src/tokens.test.ts`, `src/start.test.ts`, `src/start.audit-log.test.ts`, `src/admin-auth-failures.test.ts`, `src/docs-claims.test.ts` if its claims change, and any other test that builds `createApiServer` with `adminTokens`.
+  - new: `src/token-store.test.ts`, `src/token-scopes.test.ts`, `src/start.token-import.test.ts`, `src/server.tokens.test.ts`, `src/server.scopes.test.ts`, `src/server.rotation.test.ts`, `src/server.audit.test.ts`, `src/config-write.audit.test.ts`, `src/config-write.crash.test.ts`, `src/audit-log.test.ts`
+  - updated: `src/db.test.ts` (`withFullSync`), `src/db.migrations.test.ts`, `src/server.auth.test.ts`, `src/server.manual-incidents.test.ts`, `src/server.manual-incidents.audit.test.ts`, `src/config-admin.test.ts`, `src/admin-tokens.test.ts`, `src/tokens.test.ts`, `src/start.test.ts`, `src/start.audit-log.test.ts`, `src/admin-auth-failures.test.ts`, `src/docs-claims.test.ts` if its claims change, and any other test that builds `createApiServer` with `adminTokens`.
   - fixture: `test/fixtures/pulse-v3.db` (new, binary, a version-3 database made with api `main` `c00a375`).
 - `scripts/compose-e2e.sh`.
 - `compose.yaml` (comment only), `compose.e2e.yaml` (comment only, if needed).
@@ -515,7 +565,7 @@ Behavior:
 - Docs:
   - `docs/rest-api.md` documents the routes, shapes, statuses, scopes table, overlap, paging and export.
   - `docs/configuration.md` states that both token files are imported once and then ignored.
-  - `docs/operation.md` covers rotating a probe token (create the overlap, restart the probe with the new `PULSE_PROBE_TOKEN` within 10 minutes), backup before upgrade, lockout recovery by restore, audit growth, and the advice to rotate imported tokens.
+  - `docs/operation.md` covers rotating a probe token (create the overlap, restart the probe with the new `PULSE_PROBE_TOKEN` within 10 minutes), backup before upgrade, lockout recovery by restore, audit growth, the advice to rotate imported tokens, the D8 guarantee with its storage assumptions, and that an orphan `<checks>.<suffix>.tmp` file can be deleted while the api is stopped.
   - `README.md` summarizes all of it.
 - `scripts/compose-e2e.sh`:
   - Line 469 expects `403` for the probe token on a manual-incident write, and the echo text says so.
@@ -560,7 +610,9 @@ Checks:
   - The fixture from `## Counterexamples`. All 5 credentials work.
   - Restart without files. Revoke and restart with the files still mounted: no resurrection. The malformed-file rollback, the probe-only then admin bootstrap, and the duplicate-digest refusal.
 - Bootstrap order tests in `start.token-import.test.ts`, one per case of the `## Counterexamples` import list: after import with missing paths, with `{not json` files, with directories in place of the files (each → start succeeds and stored credentials work), and the fresh install with a missing probe file (→ start fails, no `token_bootstrap` row).
-- Durability tests in `config-write.audit.test.ts` and `server.manual-incidents.audit.test.ts`: every D8 case of `## Counterexamples` (pending insert failure, promote failure, the A → B → A restore, the crash-before-rename and crash-after-rename fixtures, the delete-row-before-remove order, the `EACCES` `lstat`), with a fake `WriteFs` and a throwing audit recorder.
+- Durability tests in `config-write.audit.test.ts` and `server.manual-incidents.audit.test.ts`: every D8 case of `## Counterexamples` "Durability" (pending insert failure, insert that commits and then throws, promote failure, the A → B → A restore, the crash-before-rename and crash-after-rename fixtures, the success and failure call orders, the abort delete that throws, the `EACCES` `lstat`), with a fake `WriteFs`, a fake `PendingAudit` and a throwing audit recorder.
+- Power-loss tests in `config-write.crash.test.ts`: the `CrashFs` and `CrashPendingAudit` model of `## Counterexamples` "Power loss", one table test over every row of its table with the literal outcomes. The PR quotes the red runs of the three named mutations (no `fsyncDir` before the insert, a non-durable abort delete, removal before the delete).
+- `db.test.ts`: the `withFullSync` cases of `## Counterexamples`. `audit-log.test.ts`: the SQLite `PendingAudit` runs `insert` and `deleteByTemp` through the injected `durable` wrapper exactly once each (a recording spy), and `promote` not at all. With the real `withFullSync` on a WAL file database, `PRAGMA synchronous` reads `2` from inside the spy-wrapped statement of `insert` and of `deleteByTemp`.
 - `token-store.test.ts`: last-used coalescing with the literal times `T`, `T + 59 999`, `T + 60 000`, and the flush on close.
 - `db.migrations.test.ts`: a version-3 file migrates to 4. A version-5 file is refused.
 
@@ -592,8 +644,11 @@ Completion evidence:
 
 - **Unsalted SHA-256 of legacy secrets:** a leaked database lets an attacker brute-force short imported secrets offline (the minimum is 16 characters). Generated secrets have 256 bits. The docs advise rotating imported tokens after the upgrade. A slow KDF would cost one scrypt per probe request and rules out the digest lookup.
 - **Lockout through expiry:** the last-admin rule covers revocation only. An expiring last admin locks the api, and recovery is a backup restore. The docs state this. No automatic re-bootstrap happens, because that would revive file credentials.
-- **File-plus-SQLite gap:** D8 can leave an `audit_pending` row after a crash or a failed promote. That entry is invisible until the next config write or restart resolves it. Resolution uses only the temp file's existence, so a later external edit of the checks file (even back to the old bytes) never removes the entry. The one wrong outcome left is an entry for a write that did not land, when a third party deletes the api's temp file while the api crashes before its rename; it is documented and accepted.
-- **`synchronous = FULL` on the pending insert:** one extra WAL fsync per config write. Config writes are rare operator actions; ingest and reads keep `NORMAL`.
+- **File-plus-SQLite gap:** D8 can leave an `audit_pending` row after a crash, a power loss, a failed promote or a failed abort delete. That entry is invisible until the next config write or restart resolves it. Resolution uses only the temp file's existence. The temp name is on disk before the row (step 3), and it is removed only after a durable delete of the row. So a power loss at any point gives the outcome of the D8 guarantee, and a later external edit of the checks file (even back to the old bytes) never removes the entry. Wrong outcomes are left only outside the stated assumptions, and they are documented and accepted:
+  - storage that acknowledges `fsync` without persisting (a volatile disk cache, some network file systems) can lose the temp name or the row;
+  - a third party that deletes the api's temp file while the api crashes before its rename gives an entry for a write that did not land.
+- **Orphan temp files:** an abort or a resolver drop whose `remove` fails, or a power loss that undoes the unlink after a durable delete, leaves a `<checks>.<suffix>.tmp` file without a row. It never changes the audit, and nothing reads it. Today's writer leaves the same file after a crash between `writeTemp` and `rename`. `docs/operation.md` says such files can be deleted while the api is stopped.
+- **Extra syncs per config write:** one directory fsync (the temp name) and one WAL fsync (the durable pending insert) on the success path, plus one WAL fsync on an abort. Config writes are rare operator actions. Ingest, reads, the promote and every other statement keep `NORMAL`.
 - **Audit growth:** about 200 bytes per entry and no retention. 100 admin writes a day give about 7 MB a year. The docs name this.
 - **Probe rotation needs an operator:** a probe restarted after the 10-minute overlap with the old token gets `401` until it is restarted with the new token. Its result buffer (probe) keeps results across the gap, as in the existing outage test.
 - **Order of ids and `at`:** `audit_log` ids follow commit order (D9). A config entry promoted late keeps the `at` of its request, so `at` is not strictly monotonic in `id`, and a `since`/`until` window can gain an older-`at` entry after it was read. Ordering and the cursor use `id` only. This is documented in `docs/rest-api.md`.
@@ -605,5 +660,6 @@ Completion evidence:
 - api PR:
   - CI `check`, `bench-selftest`, `docker` and `compose-e2e` are green.
   - The PR body quotes the failing run on `c00a375` and the passing run for the four issue tests and the upgrade test.
+  - The power-loss table of `## Counterexamples` passes, and the PR quotes its red run under each of the three named mutations.
   - The A/B bench medians for `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s` and `cold_read_cpu_ms` are under the literal budgets of `bench/budgets.json` (325, 28.1, 88, 115, 4.1, 390).
   - The expected values of every check are the literals written in `## Counterexamples` and above, or digests computed in the test from the HTTP response. None is read back from the code under test.
