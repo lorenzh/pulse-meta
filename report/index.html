@@ -422,6 +422,8 @@
       hide() { t.hidden = true; }
     };
   };
+  // Tooltip lines of one case-study run. A Codex run reports no cost: its cost is unknown, not 0.
+  window.frCaseTip = (r, start) => [['#' + r.issue + ' ' + r.step], ['Start', start + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', r.usd === null || r.usd === undefined ? 'unbekannt' : window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]];
   window.frCell = (tr, text, cls) => { const td = document.createElement('td'); if (cls) td.className = cls; td.textContent = text; tr.appendChild(td); return td; };
   window.frBarCell = (tr, value, max, kind) => {
     const td = document.createElement('td'); td.className = 'num';
@@ -501,7 +503,7 @@
     const d = dash.data('case');
     if (d.status === 'error') { window.frFail(el); return; }
     if (d.status !== 'ok') { el.replaceChildren(); return; }
-    const rows = d.data.map((r) => ({...r, s: new Date(r.start), usd: Number(r.usd), minutes: Number(r.minutes)}));
+    const rows = d.data.map((r) => ({...r, s: new Date(r.start), minutes: Number(r.minutes)}));
     rows.forEach((r) => { r.e = new Date(r.s.getTime() + r.minutes * 60000); });
     const lanes = ['Spec', ...new Set(rows.map((r) => r.target).filter((l) => l !== 'Spec'))].filter((l) => rows.some((r) => r.target === l));
     el.replaceChildren();
@@ -524,7 +526,7 @@
     const tip = window.frTip(el);
     const colorOf = (r) => /review/.test(r.step) ? 'var(--cds-chart-muted)' : dash.colors[0];
     svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (r) => X(r, r.s)).attr('width', (r) => Math.max(2, X(r, r.e) - X(r, r.s) - 1)).attr('y', (r) => y(r.target)).attr('height', y.bandwidth()).attr('rx', 3).attr('fill', colorOf)
-      .on('pointermove', (ev, r) => tip.show(ev, [['#' + r.issue + ' ' + r.step], ['Start', fmt(r.s) + ' UTC'], ['Dauer', window.frFmt(r.minutes, 'dec1') + ' min'], ['Kosten', window.frFmt(r.usd, 'usd')], ['Tokens', window.frFmt(r.tokens, 'int')]]))
+      .on('pointermove', (ev, r) => tip.show(ev, window.frCaseTip(r, fmt(r.s))))
       .on('pointerleave', () => tip.hide());
   });
 </script>
