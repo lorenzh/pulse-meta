@@ -1,0 +1,149 @@
+{
+  "issue": 539,
+  "kind": "security",
+  "scope": "website",
+  "date": "2026-10-31",
+  "commits": {
+    "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6",
+    "meta": "eda99640c61e5d33031664d8d384d797faf40c1d",
+    "config": "86896e9ff02e6458e431aa3417ee81d3b1cbc335",
+    "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933",
+    "contract": "ebcbbb613328494185833f7133f1242910986948",
+    "kit": "6a06ec25d26d90be12eba133972b59077dd0e17d",
+    "api": "a72baee04dd415c82e1a48079475690957c8b166",
+    "probe": "85720d384a7e146c47d4436b14b3e85379e3deb4",
+    "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0"
+  },
+  "checklist": [
+    {
+      "item": "Secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) in errors, logs and responses.",
+      "status": "checked",
+      "evidence": "loadDocFile with a fake fetch answering 500 with a marker body: 'DocsFetchError: fetching https://raw.githubusercontent.com/lorenzh/pulse-kit/<sha>/docs/index.md answered 500, expected 200', marker in message false; a throwing fetch keeps the marker only in cause. bun run build with an uncached file and a proxy URL with user and password: exit 1, output names the raw URL and ConnectionRefused, user and password 0 times. docs:bump kit with a fake git, GITHUB_TOKEN set and a local stand-in proxy answering with a marker body: 'error: https://api.github.com/repos/lorenzh/pulse-kit/git/trees/<sha>?recursive=1 answered 502', token 0 times, proxy body 0 times; the CONNECT line has no token and no proxy-authorization. The build reads no secret; ci.yml uses none. Note N4: a response.json() parse error in docs:bump can carry a token of the GitHub answer body."
+    },
+    {
+      "item": "Authentication before any other check; status codes and their order on admin routes.",
+      "status": "not applicable",
+      "evidence": "No authenticated or admin routes and no deployment. The only server is the loopback static server of check:a11y (src/build/static-server.ts), unauthenticated by design: GET / 200, unknown or escaping paths 404 with 404.html, every method answers like GET."
+    },
+    {
+      "item": "Body and size limits on every method, also before any write.",
+      "status": "checked",
+      "evidence": "Static server: POST, PUT, PATCH / with a 50 MB body -> '200 text/html; charset=utf-8 25022 bytes'; DELETE and OPTIONS with 50 MB -> ECONNRESET on the client; the server reads no body and writes nothing. Outbound: loadDocFile reads the doc whole with response.text(); a 400 MB fake body was accepted and cached ('400000010 chars'). docs:bump reads GitHub answers with response.json() without a cap. Both upstreams are fixed GitHub hosts at pinned SHAs (note N3)."
+    },
+    {
+      "item": "Input validation at every trust boundary; validators never throw on any input type.",
+      "status": "checked",
+      "evidence": "parseDocsConfig with 21 hostile values: 17 DocsConfigError, 2 accepted (key constructor, repo ../.., note N5), 2 other errors (SEC-5). docFilesFromTree, commitDate, parseLsRemote reject null, wrong types, truncated trees and ../ paths with BumpError. renderMarkdown with 15 raw-HTML vectors (block and inline HTML, comment, CDATA, processing instruction, code span, table, link title, image alt, heading, task item, callout): all escaped. Title, description and TOC escaped in the built page. Findings: a code-block language naming an inherited Object.prototype member bypasses the escaping (SEC-1) or throws (SEC-2); a malformed percent-escape stops the static server (SEC-4); docs:bump accepts prototype member names as keys (SEC-6). isSafeUrl throws TypeError on non-strings (note N7)."
+    },
+    {
+      "item": "No accessor or getter of untrusted input runs.",
+      "status": "checked",
+      "evidence": "Untrusted data enters as text: docs.config.json and GitHub answers through JSON.parse / response.json() (data properties only), Markdown as a string tokenized by marked; no input-defined accessor can exist. But LANGUAGES[language] (src/docs/highlight.ts:92) and LANGUAGE_LABEL[lang] (src/docs/markdown.ts:52) index plain objects with the code-block language of fetched Markdown: the __proto__ name runs the inherited __proto__ getter, and other names return built-in functions that highlight calls with the code text (SEC-1, SEC-2). DOC_REPOS[key] (scripts/bump-docs.ts:38) does the same with a CLI argument (SEC-6)."
+    },
+    {
+      "item": "SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers.",
+      "status": "checked",
+      "evidence": "Targets: the build fetches only https://raw.githubusercontent.com/<repo>/<sha>/<path> (src/docs/fetch.ts:18) from validated config; docs:bump only github.com and api.github.com for the six fixed DOC_REPOS. A repo ../.. passes but the host stays fixed (note N5). Environment: Bun fetch uses HTTPS_PROXY; a local listener saw 'CONNECT raw.githubusercontent.com:443 HTTP/1.1' (note N2). Redirects: default redirect follow; on loopback, Bun 1.4.0 drops authorization on a redirect to another port and to another host name ('target authorization=absent') and keeps it on a same-origin redirect, so GITHUB_TOKEN does not cross origins. https to http not tested: the redirect sources are GitHub hosts only. Forwarded headers: the static server reads only req.url (static-server.ts:26)."
+    },
+    {
+      "item": "File writes atomic and path-safe.",
+      "status": "checked",
+      "evidence": "Path safety: cache path .cache/docs/<owner>__<name>/<sha>/<docs path> from validated values; '../..' becomes the single segment '..__..'; 'docs/../../etc.md' and '/etc/passwd' rejected; dist paths from ^[a-z]+$ keys and the docs/*.md pattern; the static server gives 404 for ../, %2f, %2e%2e, %5c, %00. Atomicity: strace of a cache miss: 'openat(.../docs/index.md, O_WRONLY|O_CREAT|O_LARGEFILE, 0666) = 7', 'rename calls: 0'; kill -9 during a 400 MB write left 6 of 10 files torn, and the next loadDocFile returned one with 'fetch calls 0' (SEC-3). scripts/build.ts:36 to :45 removes dist/ and writes pages in place (note N8)."
+    },
+    {
+      "item": "Dependencies, Docker base images and CI actions pinned and approved (docs/approved-packages.md).",
+      "status": "checked",
+      "evidence": "Runtime: @fontsource-variable/jetbrains-mono 5.3.0, @fontsource-variable/space-grotesk 5.3.0, marked 18.1.2, preact 11.1.0, react 19.3.1, react-dom 19.3.1. Dev: @axe-core/playwright 4.14.0, @biomejs/biome 2.6.3, pulse-config by full SHA, @playwright/test 1.64.1, @types/bun 1.4.0, @types/node 26.6.6, @types/react and @types/react-dom 19.3.0, esbuild 0.28.2, lefthook 2.2.2, typescript7 npm:typescript@7.0.2. All exact and approved. Production install (--frozen-lockfile --production --ignore-scripts): 7 packages, the 6 runtime ones and scheduler (approved dependency of react-dom). bun audit: exit 1, 1 moderate, dev only (note N6). Docker: not applicable, no Dockerfile or compose file. CI: check uses pulse-config check.yml at 86896e9..., which pins actions/checkout@3d3c42e... (v7.0.1) with persist-credentials: false and oven-sh/setup-bun@0c5077e... (v2.2.0); the site job pins the same SHAs with persist-credentials: false; permissions contents: read; trigger pull_request. All pins approved. bunx playwright resolves to the locked 1.64.1 bin; the browser download is not pinned by hash (note N9)."
+    }
+  ],
+  "findings": [
+    {
+      "id": "security-website-2026-10-31-1",
+      "repos": ["website"],
+      "location": "src/docs/highlight.ts:92",
+      "severity": "P2",
+      "candidate": true,
+      "title": "HTML injection through the code-block highlighter: an Object.prototype member name as language skips escaping",
+      "class": "Stored HTML injection at build time via a prototype-chain lookup with an untrusted key (LANGUAGES[language], then tokenize(code); called from src/docs/markdown.ts:100)",
+      "command": "Render a fenced block whose language names an inherited Object.prototype member, with markup as body, through renderMarkdown; then add the same block to one cached doc, run bun run build, bun run check:links, bun run check:a11y, and query the page in Chromium",
+      "exitCode": 0,
+      "excerpt": "rawMarkupInOutput=true (json, yaml, bash, html: false); Chromium: {\"paragraphElement\":true,\"insideCodeElement\":true,\"linkElement\":true,\"linkHref\":\"https://pulse.invalid/login\"}; check:links: 'links ok, csp ok on 39 pages' exit 0; check:a11y: 'a11y ok' exit 0",
+      "impact": "Whoever lands a Markdown change in a published docs/*.md of one of the six docs repositories can put arbitrary non-script HTML (off-site links, fake text or notices) into the website, and every CI gate passes. The source is an ordinary fenced code block, so a docs reviewer reads it as code, and docs:bump pulls it in. The CSP meta tag blocks inline script; check:links fails on an extra script and axe fails on a meta refresh. No pinned doc uses such a language today.",
+      "fixDirection": "Look up tokenizers and labels in a Map or an Object.create(null) object, or check Object.hasOwn first; always escape output that does not come from an own tokenizer; add a test over every Object.prototype member name.",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "security-website-2026-10-31-3",
+      "repos": ["website"],
+      "location": "src/docs/fetch.ts:48",
+      "severity": "P3",
+      "candidate": true,
+      "title": "Docs cache written in place; a torn cache file is trusted by every later build",
+      "command": "strace -f -e trace=openat,rename,renameat,renameat2 of a cache miss with a fake fetch; 10 runs that kill -9 a 400 MB cache write; then loadDocFile on the same cache directory",
+      "exitCode": 0,
+      "excerpt": "openat(.../lorenzh__pulse-kit/<sha>/docs/index.md, O_WRONLY|O_CREAT|O_LARGEFILE, 0666) = 7; rename calls: 0; run 5: size 400000010, x bytes 29360119 of 400000000, last byte '\\0'; incomplete: 6 of 10; next read: 400000010 chars, fetch calls 0, ends with newline false",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "security-website-2026-10-31-4",
+      "repos": ["website"],
+      "location": "src/build/static-server.ts:17",
+      "severity": "P3",
+      "candidate": true,
+      "title": "One malformed percent-escape in a request path stops the check:a11y static server",
+      "command": "Start startStaticServer(dist) and send one GET whose path has a malformed percent-escape (decodeURIComponent at :17, called at :26 outside the try, handle started as void at :43)",
+      "exitCode": 1,
+      "excerpt": "URIError: URI error at fileForUrl (src/build/static-server.ts:17:17) ... exit=1; with an unhandledRejection handler: 'no answer within 2 s', 'unhandledRejection: URIError: URI error'",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "security-website-2026-10-31-5",
+      "repos": ["website"],
+      "location": "src/docs/config.ts:41",
+      "severity": "P3",
+      "candidate": true,
+      "title": "parseDocsConfig throws RangeError or TypeError instead of DocsConfigError for some files entries",
+      "command": "parseDocsConfig(JSON.parse(config text)) with a files entry nested 1,000, 10,000 and 100,000 arrays deep, and with a prototype-less object through the API",
+      "exitCode": 0,
+      "excerpt": "depth 1000: DocsConfigError: repos.kit.files: \"x\" is not a docs/*.md path; depth 10000: RangeError: Maximum call stack size exceeded.; depth 100000: RangeError: Maximum call stack size exceeded.; file null-proto object: TypeError: No default value",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "security-website-2026-10-31-2",
+      "repos": ["website"],
+      "location": "src/docs/markdown.ts:52",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Other Object.prototype member names as code-block language throw out of renderMarkdown or put native function text into aria-label",
+      "command": "renderMarkdown on a fenced block for each of 10 Object.prototype member names as language",
+      "exitCode": 0,
+      "excerpt": "7 names: TypeError: undefined is not an object (evaluating 'highlight(text, language)') or TypeError: tokenize is not a function; lang=toString: ariaLabel=\"function toString() {\\n    [native code]\\n}\"",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "security-website-2026-10-31-6",
+      "repos": ["website"],
+      "location": "scripts/bump-docs.ts:38",
+      "severity": "P3",
+      "candidate": false,
+      "title": "docs:bump accepts Object.prototype member names as repository keys and runs git with a bogus URL",
+      "command": "bun scripts/bump-docs.ts <key> with an unknown key and three Object.prototype member names, with a fake git on PATH",
+      "exitCode": 1,
+      "excerpt": "nope: error: unknown repo \"nope\", expected one of api, probe, status, notify, contract, kit; member names: fake git called with: ls-remote https://github.com/<native function text>.git refs/heads/main, or https://github.com/[object Object].git",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    }
+  ],
+  "notes": [
+    "N1: unsafeRefs (src/build/html-refs.ts:126) reads only href, src, action, poster and srcset, as documented; javascript: in xlink:href, formaction and object data is not flagged, nor srcdoc. CSP blocks them. isSafeUrl fuzz against the WHATWG URL parser: 2,548 variants, 0 judged safe that parse to another scheme.",
+    "N2: Bun fetch in scripts/build.ts:21 and scripts/bump-docs.ts:19 uses HTTPS_PROXY/HTTP_PROXY (CONNECT seen at a local listener); TLS stays end to end; no token in the CONNECT head.",
+    "N3: src/docs/fetch.ts:45 (response.text()) and scripts/bump-docs.ts:25 (response.json()) read bodies without a size cap; a 400 MB fake body was accepted; hosts fixed, docs pinned by SHA.",
+    "N4: scripts/bump-docs.ts:25 passes response.json() parse errors through; Bun can quote a body token in that message (notify audit); not reproduced here, URL fixed to api.github.com.",
+    "N5: REPO (src/docs/config.ts:15) accepts . and .. segments ('../..' passes; host stays raw.githubusercontent.com; cache folder '..__..'); KEY accepts 'constructor', which stays an own property and is rejected by the nav check.",
+    "N6: bun audit exit 1: minimatch@10.2.6 moderate GHSA-g3hv-75wg-m249, via @eslint/config-array from eslint 10.13.0 of pulse-config, dev only.",
+    "N7: isSafeUrl throws TypeError on undefined, null, number, object, symbol and bigint; typed string, all callers pass strings.",
+    "N8: scripts/build.ts:36 to :45 removes dist/ and writes pages in place; a stopped build leaves a partial dist/; no deployment yet; not reproduced with a kill test.",
+    "N9: CI site job runs bunx playwright install --with-deps chromium; Playwright pinned 1.64.1 by the lockfile, the browser download is not pinned by hash in the repository.",
+    "N10: renderMarkdown on a list nested 2,000 deep (about 4 MB) took 133,878 ms; 5,000 nested blockquotes 481 ms; build time only, site job timeout 20 minutes.",
+    "N11: the static server answers POST, PUT and PATCH like GET, reads no body and writes nothing."
+  ]
+}
