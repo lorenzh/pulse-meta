@@ -41,7 +41,7 @@ A SemVer tag `vX.Y.Z` on api, probe, status, notify or console runs the repo's e
 - Workflow-level `permissions: {}`; each job declares its own, and none declares more than listed here:
   - `version`: `contents: read`.
   - `build-amd64`, `build-arm64`: `contents: read`, `packages: write`.
-  - `publish`: `packages: write`, `id-token: write`, `attestations: write`.
+  - `publish`: `contents: read` (checkout for the alias recomputation), `packages: write`, `id-token: write`, `attestations: write`.
 - Every `uses:` is pinned by a 40-hex commit SHA with a version comment. Every `actions/checkout` sets `persist-credentials: false`. No secret other than `github.token` is referenced. `${{ github.ref_name }}` and other event values are never interpolated into a `run:` script; they reach scripts only through `env:`.
 - **Job `version`** (`ubuntu-24.04`, `timeout-minutes: 5`): checkout with `fetch-depth: 0` (all tags and `origin/main`). A step with `id: version` reads `TAG` (= `github.ref_name`), `SHA` (= `github.sha`) and `REPOSITORY` (= `github.repository`) from `env`, and the git tags and `refs/remotes/origin/main` of the working directory. It:
   - accepts only `^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`; any other tag fails the step with a message that names the expected form;
