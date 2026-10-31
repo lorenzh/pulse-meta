@@ -64,7 +64,8 @@ None expected. The change is in the pulse-website build tooling and its static d
 
 ## Security impact
 
-Security impact: yes. The change touches the validator of `docs.config.json` (a trust boundary), the renderer of fetched Markdown, file writes (docs cache), and error texts that carry external data.
+Security impact: yes
+The change touches the validator of `docs.config.json` (a trust boundary), the renderer of fetched Markdown, file writes (docs cache), and error texts that carry external data.
 
 Checklist items that apply:
 - **Input validation:** own-key lookups for code-fence languages and `docs:bump` keys; `parseDocsConfig` throws only `DocsConfigError` on hostile `files` entries.
@@ -114,7 +115,8 @@ Files:
 - `src/docs/config.test.ts`
 - `README.md`
 
-Behavior change: yes. Unknown languages, bump keys, cache writes, malformed URLs and bad config entries get new, safe handling. If the code already behaves this way, request a hold instead of a review.
+Behavior change: yes
+Unknown languages, bump keys, cache writes, malformed URLs and bad config entries get new, safe handling. If the code already behaves this way, request a hold instead of a review.
 
 ### Changes
 
@@ -141,11 +143,11 @@ Existing tests stay unchanged in intent and green.
 
 ### Checks (tool facts, cited)
 
-- `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json:24`). Lint is `biome check . && pulse-eslint .` (`package.json:22`). Typecheck is `tsc --noEmit` from `typescript7` (`package.json:20`, pinned `npm:typescript@7.0.2` at `package.json:46`). Biome is `@biomejs/biome` `2.6.3` (`package.json:36`).
-- `biome.json:2` extends `@lorenzh/pulse-config/biome.json` and `biome.json:4` excludes `.build`, `.cache`, `.repos` and `src/styles/tokens.css`. The pinned config is at `86896e9ff02e6458e431aa3417ee81d3b1cbc335` (`package.json:37`). Its `biome.json` includes `**` minus `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures` (lines 8-17). It is identical to the config clone.
+- `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json:25`). Lint is `biome check . && pulse-eslint .` (`package.json:22`). Typecheck is `tsc --noEmit` from `typescript7` (`package.json:20`, pinned `npm:typescript@7.0.2` at `package.json:47`). Biome is `@biomejs/biome` `2.6.3` (`package.json:38`).
+- `biome.json:2` extends `@lorenzh/pulse-config/biome.json` and `biome.json:4` excludes `.build`, `.cache`, `.repos` and `src/styles/tokens.css`. The pinned config is at `86896e9ff02e6458e431aa3417ee81d3b1cbc335` (`package.json:39`). Its `biome.json` includes `**` minus `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures` (lines 8-17). It is identical to the config clone.
 - `bunfig.toml:3-4`: `bun test` runs with coverage on and a line threshold of 0.8. `bunfig.toml:5` ignores `*.test.ts`, `test/**`, `.build/**` and `dist/**`.
 - CI (`.github/workflows/ci.yml:16-17`): job `check` uses `lorenzh/pulse-config/.github/workflows/check.yml@86896e9ff02e6458e431aa3417ee81d3b1cbc335`. At that ref (read with `gh api`, identical to the clone), it runs on Bun `1.4.0` (lines 22-24): `bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck`, `bun run test` (lines 25-38). The build steps are off because `build` defaults to false.
-- CI job `site` (`ci.yml:19-37`): Bun `1.4.0`, then `bun run build`, `check:links`, `check:budget`, `check:a11y` (lines 34-37). `check:site` runs the same four locally (`package.json:19`).
+- CI job `site` (`ci.yml:19-35`): Bun `1.4.0` (line 28), then `bun run build`, `check:links`, `check:budget`, `check:a11y` (lines 32-35). `check:site` runs the same four locally (`package.json:19`).
 - Runtime: Bun `1.4.0` (`package.json:8-11`). `Object.hasOwn` and `Map` are available.
 
 ### Completion evidence
