@@ -1,4 +1,4 @@
-Periodic architecture audit of the whole pulse system. Opened by `factory-audit.yml`. Nothing starts it: the lead decides how it runs.
+Periodic architecture audit of the whole pulse system. Opened by `factory-audit.yml`. The owner starts it by adding the label `factory/audit/audit`.
 
 Repositories: [pulse-meta](https://github.com/lorenzh/pulse-meta), [pulse-contract](https://github.com/lorenzh/pulse-contract), [pulse-probe](https://github.com/lorenzh/pulse-probe), [pulse-api](https://github.com/lorenzh/pulse-api), [pulse-status](https://github.com/lorenzh/pulse-status), [pulse-notify](https://github.com/lorenzh/pulse-notify), [pulse-config](https://github.com/lorenzh/pulse-config), [pulse-kit](https://github.com/lorenzh/pulse-kit), [pulse-website](https://github.com/lorenzh/pulse-website).
 
@@ -15,4 +15,4 @@ Check the current `main` of every repository with machine checks. For every item
 
 ## Result
 
-One comment here with every item and its evidence. Each finding becomes its own issue with the label `architecture`, the affected repositories, the command and its output. Do not fix findings in this issue.
+The `audit` workflow writes `audits/architecture/<date>-system.md` and `.json` in pulse-meta and opens one report pull request. Every checklist item is `checked`, `not applicable` or `blocked` with its reason. Each finding names the affected repositories and has a severity (P1-P3), the command, its exit code and output, and the examined commits; at most 5 are marked as issue candidates. `audit-review` reproduces every P1 and P2 finding. Merging the pull request accepts the report; the owner then decides which candidates become issues. The agent opens no issues and fixes nothing.

@@ -56,7 +56,7 @@ workspaces:
         meta:
           url: https://github.com/lorenzh/pulse-meta.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
-          workflows: [ spec, merge ]
+          workflows: [ spec, audit, merge ]
           context: [ contract, probe, api, status, notify, config, kit, website ]
         contract:
           url: https://github.com/lorenzh/pulse-contract.git
@@ -128,6 +128,13 @@ models:
     options:
       model: claude-opus-5-5
       effort: high
+  # Owner decision: both audit states run at effort xhigh; an audit reads whole repositories, not
+  # one diff.
+  auditor:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: xhigh
 
 statuses:
   needs-input:
@@ -183,6 +190,24 @@ workflows:
           - to: implement
         terminal: true
         description: Attack the change with hostile inputs when the spec flags a security impact.
+  # Audits of main on the meta target: the report pull request is the result, and merging it
+  # accepts the report. No gates; the owner turns findings into issues after the merge.
+  audit:
+    initial: audit
+    states:
+      audit:
+        prompt: ../.factory/prompts/audit.md
+        model: auditor
+        transitions:
+          - to: audit-review
+        description: Audit main of the named repositories and write the report under audits/.
+      audit-review:
+        prompt: ../.factory/prompts/audit-review.md
+        model: auditor
+        transitions:
+          - to: audit
+        terminal: true
+        description: Reproduce every P1 and P2 finding and drop what the evidence does not prove.
   merge:
     interrupt: true
     initial: resolve

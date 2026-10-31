@@ -1,4 +1,4 @@
-Periodic performance audit of `main` in [pulse-{repo}](https://github.com/lorenzh/pulse-{repo}). Opened by `factory-audit.yml`. Nothing starts it: the lead decides how it runs.
+Periodic performance audit of `main` in [pulse-{repo}](https://github.com/lorenzh/pulse-{repo}). Opened by `factory-audit.yml`. The owner starts it by adding the label `factory/audit/audit`.
 
 ## Task
 
@@ -13,4 +13,4 @@ Measure the current `main` of pulse-{repo}, not one change. Report evidence, not
 
 ## Result
 
-One comment here with every item, its command and its numbers. Each finding becomes its own issue with the label `performance`, the command, the measured numbers, and the budget or baseline it misses. Do not fix findings in this issue.
+The `audit` workflow writes `audits/performance/<date>-{repo}.md` and `.json` in pulse-meta and opens one report pull request. It reads the latest nightly bench of pulse-api first and measures anew only on a suspected deviation. Every checklist item is `checked`, `not applicable` or `blocked` with its reason. Each finding has a severity (P1-P3), the command, its exit code and output, the examined commit, and the value, unit, repetitions, baseline and budget; at most 5 are marked as issue candidates. `audit-review` reproduces every P1 and P2 finding. Merging the pull request accepts the report; the owner then decides which candidates become issues. The agent opens no issues and fixes nothing.

@@ -1,4 +1,4 @@
-Periodic security audit of `main` in [pulse-{repo}](https://github.com/lorenzh/pulse-{repo}). Opened by `factory-audit.yml`. Nothing starts it: the lead decides how it runs.
+Periodic security audit of `main` in [pulse-{repo}](https://github.com/lorenzh/pulse-{repo}). Opened by `factory-audit.yml`. The owner starts it by adding the label `factory/audit/audit`.
 
 ## Task
 
@@ -15,4 +15,4 @@ Audit the current `main` of pulse-{repo}, not one change. Run the service or the
 
 ## Result
 
-One comment here with the checked items and their evidence. Each finding becomes its own issue with the label `security`, a reproduction (failing test or command with output) and a severity. Do not fix findings in this issue.
+The `audit` workflow writes `audits/security/<date>-{repo}.md` and `.json` in pulse-meta and opens one report pull request. Every checklist item is `checked`, `not applicable` or `blocked` with its reason. Each finding has a severity (P1-P3), the command, its exit code and output, and the examined commit; at most 5 are marked as issue candidates. The repositories are public: a P1 or P2 finding names location, class, impact and fix direction, but no exploit or payload. `audit-review` reproduces every P1 and P2 finding. Merging the pull request accepts the report; the owner then decides which candidates become issues. The agent opens no issues and fixes nothing.

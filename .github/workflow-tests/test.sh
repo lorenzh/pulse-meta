@@ -117,20 +117,29 @@ open_issues() { # <labels> <page 1 json> [<page 2 json>]: a plain read sees page
 }
 export FIXTURES="$tmp/audit"; mkdir -p "$FIXTURES"
 for label in security performance; do echo "{\"name\":\"$label\"}" > "$FIXTURES/$(key "repos/$R/labels/$label").json"; done
-open_issues security,target/probe '[{"number":50,"title":"Security audit: pulse-probe (2026-10-26)"}]'
-open_issues security,target/api '[{"number":51,"title":"Probe leaks a header","pull_request":null}]'
-open_issues performance,target/api '[{"number":52,"title":"Performance audit: pulse-api (2026-10-07)"}]'
+# Every audit/<repo> label exists except audit/website, which the first run creates.
+for t in contract probe api status notify config kit; do echo "{\"name\":\"audit/$t\"}" > "$FIXTURES/$(key "repos/$R/labels/audit%2F$t").json"; done
+open_issues security,audit/probe '[{"number":50,"title":"Security audit: pulse-probe (2026-10-26)"}]'
+open_issues security,audit/api '[{"number":51,"title":"Probe leaks a header","pull_request":null}]'
+open_issues performance,audit/api '[{"number":52,"title":"Performance audit: pulse-api (2026-10-07)"}]'
+# The old target/<repo> label no longer counts: the audit runs on the meta target.
+open_issues security,target/status '[{"number":53,"title":"Security audit: pulse-status (2026-10-20)"}]'
 DAILY='17 6 * * *' TUEFRI='17 6 * * 2,5' THU='17 6 * * 4'
 
 # Security, daily: 2026-11-02 is day 20759 since 1970-01-01; 20759 % 8 = 7 -> website.
 # 2026-11-03 is day 20760; 20760 % 8 = 0 -> contract.
-check "security: the daily schedule rotates by day" "Opened https://example.test/new-issue" "$(audit "" "" "$DAILY" 2026-11-02)"
-check "security: title and labels" "WRITE repos/$R/issues
+check "security: the daily schedule rotates by day, creating a missing audit/<repo> label" "Created the label audit/website.
+Opened https://example.test/new-issue" "$(audit "" "" "$DAILY" 2026-11-02)"
+check "security: title, audit/<repo> label with a description, no target/<repo>" "WRITE repos/$R/labels
+  name=audit/website
+  color=c5def5
+  description=Audit of lorenzh/pulse-website, run on the meta target
+WRITE repos/$R/issues
   title=Security audit: pulse-website (2026-11-02)
   body
   labels[]=security
-  labels[]=target/website" "$(writes)"
-check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-website](https://github.com/lorenzh/pulse-website). Opened by \`factory-audit.yml\`. Nothing starts it: the lead decides how it runs." "$(head -1 "$FIXTURES/last-body.md")"
+  labels[]=audit/website" "$(writes)"
+check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-website](https://github.com/lorenzh/pulse-website). Opened by \`factory-audit.yml\`. The owner starts it by adding the label \`factory/audit/audit\`." "$(head -1 "$FIXTURES/last-body.md")"
 check "security: no placeholder is left" "0" "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true)"
 audit "" "" "$DAILY" 2026-11-03 > /dev/null
 check "security: the next day takes the next repository" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
@@ -138,6 +147,7 @@ audit security rotation "" 2026-11-03 > /dev/null
 check "security: dispatch rotation picks the same target" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
 check "security: an open audit issue blocks a second one" "#50 is still open for probe. No new issue." "$(audit security probe "" 2026-11-02)"
 check "security: another security issue does not block" "Opened https://example.test/new-issue" "$(audit security api "" 2026-11-02)"
+check "security: an open issue with only target/<repo> does not block" "Opened https://example.test/new-issue" "$(audit security status "" 2026-11-02)"
 check "security: an unknown target fails" "::error::Unknown target: nope" "$(audit security nope "" 2026-11-02 || true)"
 
 # Performance, Tuesday and Friday: slot = 2 * week + (Friday or later), week = (day + 3) / 7.
@@ -148,7 +158,7 @@ check "performance: Tuesday, title and labels, no new label" "WRITE repos/$R/iss
   title=Performance audit: pulse-status (2026-11-03)
   body
   labels[]=performance
-  labels[]=target/status" "$(writes)"
+  labels[]=audit/status" "$(writes)"
 audit "" "" "$TUEFRI" 2026-11-06 > /dev/null
 check "performance: Friday takes the next repository" "  title=Performance audit: pulse-notify (2026-11-06)" "$(grep title= "$FIXTURES/writes.log")"
 audit "" "" "$TUEFRI" 2026-11-10 > /dev/null
@@ -156,6 +166,11 @@ check "performance: the next Tuesday takes the one after" "  title=Performance a
 check "performance: an open performance audit of the repository blocks" "#52 is still open for api. No new issue." "$(audit performance api "" 2026-11-03)"
 check "performance: an open security audit does not block" "Opened https://example.test/new-issue" "$(audit performance probe "" 2026-11-03)"
 check "performance: config is not a performance target" "::error::Unknown target: config" "$(audit performance config "" 2026-11-03 || true)"
+
+for k in security performance architecture; do
+  check "$k: the issue text names the start label and the report, not one issue per finding" "1 1 0" \
+    "$(grep -c 'factory/audit/audit' "$here/../audits/$k.md" || true) $(grep -c "audits/$k/" "$here/../audits/$k.md" || true) $(grep -c 'becomes its own issue' "$here/../audits/$k.md" || true)"
+done
 
 # Every cron line of the workflow maps to a kind in the script.
 crons="$(python3 -c 'import sys, yaml; w = yaml.safe_load(open(sys.argv[1])); print("\n".join(c["cron"] for c in w[True]["schedule"]))' "$workflows/factory-audit.yml")"

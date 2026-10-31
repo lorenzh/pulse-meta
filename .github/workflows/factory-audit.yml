@@ -2,8 +2,9 @@ name: Audit issues
 
 # Opens audit issues: security (one target repository per run), performance (one service or
 # library repository per run) and architecture (one issue for the whole system). It only creates the
-# issue: it adds no factory/ label, so no workflow starts. The lead decides how the audit runs. An
-# open issue of the same kind and repository blocks a new one, which also caps the issue volume.
+# issue: it adds no factory/ label, so no workflow starts; the owner starts the audit workflow with
+# factory/audit/audit. An open issue of the same kind and repository blocks a new one, which also
+# caps the issue volume.
 # .github/audits/open-issue.sh holds the rules, and <kind>.md next to it the issue text.
 on:
   # Fast-development schedule; relax to weekly/monthly/monthly later. Each line maps to one kind in
