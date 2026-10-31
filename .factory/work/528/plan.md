@@ -101,7 +101,7 @@ Sources: the issue, the lead's decision in the issue comments (A is done, with f
 12. **deploy base files:**
     - No pulse-config `check.yml` and no `package.json`. deploy has no TypeScript.
     - Checks:
-      - `shellcheck` and `bash -n` on every `*.sh`;
+      - `shellcheck -x` and `bash -n` on every `*.sh`;
       - `node --check` on every `*.mjs`;
       - `jq empty` on every `*.json`;
       - `docker compose -f <setup>/compose.yaml config --quiet` per setup.
@@ -279,7 +279,7 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
     - `configs: [{source: admin-tokens, target: /run/pulse-admin/admin-tokens.json}]`;
     - `PULSE_API_ADMIN_TOKENS_FILE: /run/pulse-admin/admin-tokens.json` (the api setting read at `api/src/start.ts:134`).
   - Rule for every setup and override: no mount, config or secret targets a path inside `/run/pulse/`, which belongs to the secrets volume alone.
-  - `source scripts/outage-history.sh` becomes `source e2e/outage-history.sh`.
+  - `source scripts/outage-history.sh` becomes `source e2e/outage-history.sh`, and the directive above it (`# shellcheck source=scripts/outage-history.sh`, pulse-api `scripts/compose-e2e.sh:544`) becomes `# shellcheck source=e2e/outage-history.sh` in the same edit, so shellcheck in the `lint` job (run from the repository root) can follow the source.
 - `e2e/outage-history.test.sh`:
   - It ports the five cases of `api/src/outage-history.test.ts` with the same constants (start 100000, end 135000, interval 10000) and the same inputs.
   - Expected results: steady 85000..175000 passes; no result inside the outage fails; a gap above 1.5× inside the window fails; a history that stops before the window end fails; a repeated timestamp fails.
@@ -294,7 +294,7 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
 
   | Job | Steps |
   | --- | --- |
-  | `lint` | `docker compose version`; fail if older than 2.23; `shellcheck` + `bash -n` on `**/*.sh`; `node --check` on `**/*.mjs`; `jq empty` on `**/*.json`; `bash e2e/outage-history.test.sh`; `scripts/check-setup.sh` (static checks below) |
+  | `lint` | `docker compose version`; fail if older than 2.23; `shellcheck -x` (run from the repository root, so `source=` paths resolve) + `bash -n` on `**/*.sh`; `node --check` on `**/*.mjs`; `jq empty` on `**/*.json`; `bash e2e/outage-history.test.sh`; `scripts/check-setup.sh` (static checks below) |
   | `pins` | `scripts/bump-images.sh --verify` (anonymous ghcr.io, no login) |
   | `minimal` | `init-secrets.sh`; `docker compose -f minimal/compose.yaml pull`; `measure.sh minimal` (runs `up -d`, `wait-ready.sh` with 300 s, records the numbers); then the check `api-health` has a state other than `unknown` within 90 s via `curl 127.0.0.1:3000/checks` |
   | `full` | `init-secrets.sh`; pull; `measure.sh full`; `down -v`; then `bash e2e/compose-e2e.sh` (timeout 30 min) |
@@ -507,17 +507,18 @@ Dropped: `PULSE_PROBE_TOKEN` as a Compose `.env` variable, replaced by `secrets/
 
 ## Repository: deploy
 
-Files:
+Files (every file below is new, except `README.md`, which exists and is rewritten, and `LICENSE`, which exists and is kept unchanged; `ls -a .repos/deploy` shows only `LICENSE`, `README.md` and `.git`):
 
-- `README.md` (rewrite), `AGENTS.md`, `CLAUDE.md`, `.gitignore` (new); `LICENSE` kept
-- `common/services.yaml`
-- `minimal/compose.yaml`, `minimal/.env.example`, `minimal/README.md`, `minimal/config/checks.json`
-- `full/compose.yaml`, `full/.env.example`, `full/README.md`, `full/config/checks.json`, `full/config/notify.json`
-- `demo/compose.yaml`, `demo/.env.example`, `demo/README.md`, `demo/init.mjs`, `demo/targets.mjs`, `demo/tls.sh`, `demo/notify.json`, `demo/theme-white-label.json`
-- `dev/compose.yaml`, `dev/.env.example`, `dev/README.md`
-- `e2e/compose.e2e.yaml`, `e2e/compose-e2e.sh`, `e2e/outage-history.sh`, `e2e/outage-history.test.sh`, `e2e/notify.json`, `e2e/target.mjs`, `e2e/ro/checks.json`
-- `scripts/init-secrets.sh`, `scripts/secrets-init.mjs`, `scripts/wait-ready.sh`, `scripts/bump-images.sh`, `scripts/check-setup.sh`, `scripts/measure.sh`
-- `.github/workflows/ci.yml`
+- `README.md` (rewrite); `LICENSE` (kept, unchanged)
+- `AGENTS.md`, `CLAUDE.md`, `.gitignore` (new)
+- `common/services.yaml` (new)
+- `minimal/compose.yaml`, `minimal/.env.example`, `minimal/README.md`, `minimal/config/checks.json` (new)
+- `full/compose.yaml`, `full/.env.example`, `full/README.md`, `full/config/checks.json`, `full/config/notify.json` (new)
+- `demo/compose.yaml`, `demo/.env.example`, `demo/README.md`, `demo/init.mjs`, `demo/targets.mjs`, `demo/tls.sh`, `demo/notify.json`, `demo/theme-white-label.json` (new)
+- `dev/compose.yaml`, `dev/.env.example`, `dev/README.md` (new)
+- `e2e/compose.e2e.yaml`, `e2e/compose-e2e.sh`, `e2e/outage-history.sh`, `e2e/outage-history.test.sh`, `e2e/notify.json`, `e2e/target.mjs`, `e2e/ro/checks.json` (new)
+- `scripts/init-secrets.sh`, `scripts/secrets-init.mjs`, `scripts/wait-ready.sh`, `scripts/bump-images.sh`, `scripts/check-setup.sh`, `scripts/measure.sh` (new)
+- `.github/workflows/ci.yml` (new)
 
 Behavior change: yes. A new repository content: runnable Compose setups, scripts and CI.
 
@@ -627,7 +628,7 @@ Checks and completion evidence:
 
 1. CI is green on the PR with exactly the jobs `check`, `bench-selftest` and `docker` (both legs). No `compose-e2e` job.
 2. `git ls-files | grep -E '^(compose|compose\.e2e\.yaml|compose\.yaml|\.env\.example|scripts/compose-e2e\.sh|scripts/outage-history\.sh|src/outage-history\.test\.ts)'` prints nothing.
-3. `grep -rnE 'compose\.yaml|compose\.e2e|compose/|compose-e2e|\.env\.example|--profile demo' README.md docs src .github scripts .gitignore .dockerignore | grep -v 'https://github\.com/lorenzh/pulse-deploy'` prints nothing. Hits in `bench/` are allowed only for `compose.bench.yaml`.
+3. `grep -rnE 'compose\.yaml|compose\.e2e|compose/|compose-e2e|\.env\.example|--profile demo' README.md docs src .github .gitignore .dockerignore | grep -v 'https://github\.com/lorenzh/pulse-deploy'` prints nothing. `scripts` is not in the path list: required change 1 deletes both files in it (`ls .repos/api/scripts` shows only `compose-e2e.sh` and `outage-history.sh`), so grep would exit 2 on the missing directory; check 2 covers that deletion. Hits in `bench/` are allowed only for `compose.bench.yaml`.
    - Allowed link form for a pulse-deploy file: a full URL `https://github.com/lorenzh/pulse-deploy/...` (for example `https://github.com/lorenzh/pulse-deploy/blob/main/full/compose.yaml`). A line holding such a URL is excluded from the grep, whatever else it holds.
    - Command examples in api docs never name a setup file path (`-f full/compose.yaml` is not used). They are plain `docker compose …` commands, introduced once per page with "run inside your pulse-deploy setup directory, for example `cd pulse-deploy/full`". This works because each setup sets its project `name:` (see "Project names and volumes").
 4. `grep -rn 'pulse-deploy' README.md docs/install.md docs/configuration.md docs/development.md` finds at least one link in each of those four files.
