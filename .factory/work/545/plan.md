@@ -44,7 +44,7 @@ Only `pulse-api`: `src/config-reload.ts`, `src/metrics.ts`, `src/start.ts`, `src
 2. **Background failures.** `retention failed: <message>`, `latency rollup failed: <message>` and `uptime rollup failed: <message>` log at `warn`. All other lines of these runners stay at `info`.
 3. **Router.** `handle` in `src/server.ts` is split into functions that each have a cognitive complexity of 15 or less. One possible split: a function per route family (POST `/results`, `/probe/checks`, the plain GET reads, `/incidents`, `/maintenance`, `/checks/:id/results`, `/checks/:id/latency`) plus a small dispatcher. The `eslint-disable-next-line sonarjs/cognitive-complexity` comment at `server.ts:526` is removed. No `sonarjs/cognitive-complexity` disable may remain anywhere in `src/`. Every route keeps its status codes, bodies, check order and metric label.
 4. **Bound tests.** `src/server.validation.test.ts` uses the literal values from `docs/rest-api.md:43-50`: future skew `60000`, age `604800000` (7 days), reason `1000`, attempts `100`, latencyMs `86400000`, certDaysLeft `3000000` (and `-3000000`). For each bound there is a test at the limit (accepted, `204`) and one past it (`400`). Raising any of these constants in `server.ts` makes a test fail.
-5. **`Allow`.** Every `405` answer carries the `Allow` value from decision 8, with the body `{"error":"method not allowed"}`.
+5. **`Allow`.** Every `405` answer carries the `Allow` value from decision 8, with the body `{"error":"method not allowed"}` (a `HEAD` answer has an empty body).
 6. **Docs.**
    - `docs/operation.md:161`: name the apply failure (the `config reload failed` line, `result="error"`, retried at the next look).
    - `:208`: `retention failed` becomes `(warn)`.
@@ -80,7 +80,7 @@ One repository: only pulse-api changes. No contract, kit or config pin moves. St
 
 ## Counterexamples
 - **Reload retry.** `onApply` throws `new Error("SQLITE_BUSY: database is locked")` on the first call and succeeds on the second. The stamp stays the same between polls.
-  - Correct: poll 1 logs one `warn` line `config reload failed: <path>: cannot apply the configuration: SQLITE_BUSY: database is locked`, `error`=1, `invalid`=0, `revision()` unchanged. Poll 2 applies, `ok`=1, `revision()` = `revisionOf(new bytes)`.
+  - Correct: poll 1 logs one `warn` line `config reload failed: <path>: cannot apply the configuration: Error` (the fixture error has no `code`), `error`=1, `invalid`=0, `revision()` unchanged. Poll 2 applies, `ok`=1, `revision()` = `revisionOf(new bytes)`.
   - Wrong (today): poll 2 does nothing, so `revision()` stays old, and the counter shows `invalid`=1.
 - **Over-eager retry.** An invalid file (`url: "file:///x"`) polled three times with the same stamp logs exactly one `config reload rejected` line and counts `invalid`=1. An implementation that records the stamp only after success logs three lines.
 - **Unreadable file.** `readFile` throws `EACCES` with the same stamp across two polls. Exactly one `rejected` line, `invalid`=1, and `readFile` is called once.
@@ -161,7 +161,7 @@ Behavior change: yes. Reload retries a failed apply and counts a new metric valu
 ### Tests (each must fail on `c00a375` and pass after the change)
 - **`src/config-reload.test.ts` (new)**
   - Fixture: `createConfigReloader` with a hand-written fake `fs` (fixed stamp, bytes of a valid changed file) and a fake `onApply` that throws once.
-  - Poll 1: assert exactly one log line matching `^config reload failed: <path>: cannot apply the configuration: SQLITE_BUSY: database is locked$`. Assert `recordConfigReload` was called with `"error"` and never with `"invalid"`, and `revision()` is still the initial value.
+  - Poll 1: assert exactly one log line matching `^config reload failed: <path>: cannot apply the configuration: Error$`. Assert `recordConfigReload` was called with `"error"` and never with `"invalid"`, and `revision()` is still the initial value.
   - Poll 2, same stamp: assert `onApply` ran a second time, `recordConfigReload("ok")` was called, and `revision()` equals `revisionOf(bytes)`. The expected revision comes from the hash of the fixture bytes, which is independent of the reloader state.
   - Poll 3: assert `readFile` was not called again.
   - Also cover the counterexamples:
