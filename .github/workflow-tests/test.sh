@@ -432,5 +432,7 @@ check "pr check: a template change by a person (not a Factory branch) is not loc
 mv "$base/report/check.mjs" "$tmp/check.mjs.bak"
 check "pr check: a base without check.mjs checks nothing" "::notice::The base commit has no report/check.mjs. Nothing to check." "$(prcheck $F)"
 mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
+# The task loop: scripts/factory-tasks.mjs and the timeout restart of factory-run.yml.
+source "$here/task-loop.sh"
 
 exit "$fail"

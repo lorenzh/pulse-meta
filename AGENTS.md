@@ -11,9 +11,9 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 
 ## How a feature flows
 1. A person opens a feature issue here.
-2. `factory start --issue <n> --workflow spec --apply` runs `issue-review`, `plan`, `plan-review`; the result is a spec PR here.
+2. `factory start --issue <n> --workflow spec --apply` runs `issue-review`, `plan`, `breakdown`, `plan-review`; the result is a spec PR here.
 3. Merging the spec PR approves the spec. `factory-fan-out.yml` opens one child issue per target in `targets.json`, linked as "blocked by" along `dependsOn`, and starts those that wait for nothing.
-4. Each child runs `build` (`implement`, `review`) in its target and opens a PR with `Closes lorenzh/pulse-meta#<child>`.
+4. Each child runs `build` (`implement` and `task-review` per task, then `review`) in its target and opens a PR with `Closes lorenzh/pulse-meta#<child>`.
 5. A person merges the target PRs. `factory-unblock.yml` starts the waiting children and closes the feature when all are done.
 - Merge conflict on a child: a person runs `factory start --issue <child> --workflow merge --apply`.
 - A `needs-input` hold means the agent waits for a decision from a person in the issue comments.
