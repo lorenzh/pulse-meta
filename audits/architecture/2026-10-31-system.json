@@ -1,0 +1,314 @@
+{
+  "issue": 501,
+  "kind": "architecture",
+  "scope": "system",
+  "commits": {
+    "meta": "96504d36ac3d5c627888c640a186d88fe498bfcd",
+    "contract": "ebcbbb613328494185833f7133f1242910986948",
+    "kit": "6a06ec25d26d90be12eba133972b59077dd0e17d",
+    "config": "01a57a7e3f7c61aaa2a65f54d8b780a51efe58dc",
+    "api": "11f555598831ef61f13de40bef5f2da620230c97",
+    "probe": "9674e518f9d60db4a816e8c694b782a616b30dff",
+    "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0",
+    "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933",
+    "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6"
+  },
+  "checklist": [
+    {
+      "item": "Pin drift",
+      "status": "checked",
+      "evidence": "grep -rnoE 'github:lorenzh/pulse-[a-z]+#[0-9a-f]{7}' .repos/*/package.json; grep -rnoE 'check.yml@[0-9a-f]{7}' .repos/*/.github/workflows/ci.yml; gh api repos/lorenzh/pulse-<name>/compare/<pin>...main; gh api repos/lorenzh/pulse-contract/contents/src/schema.ts?ref=<pin> | grep -c 'must be an http: or https: URL' (all exit 0). contract: api and probe pin ebcbbb6 (identical to main); notify pins 61f7bf8 (ahead_by=2, misses #42: check url must be http/https, src/schema.ts); status pins 9fe5e80 (ahead_by=6, misses #40 test-only, #41 admin own-property checks, #42). The http rule is present only at ebcbbb6 (1 vs 0); version 1.6.0 and WIRE_VERSION 1 at all three pins. kit: all four services pin fa79ba8 (ahead_by=2; bun.lock and package.json devDependency pins only). config: contract, kit, api, probe, status, notify pin 51e95b0 for the package and check.yml@ (ahead_by=4); website pins 86896e9 (ahead_by=2); the missing commits change bun.lock, package.json and tests only, no rule file (git diff --stat 51e95b0 origin/main -- .github/workflows/check.yml biome.json eslint.config.js tsconfig.base.json lefthook.yml bin/pulse-eslint.js is empty). Wire-relevant drift: finding 4."
+    },
+    {
+      "item": "Size",
+      "status": "checked",
+      "evidence": "Files over 800 lines (git ls-files | xargs wc -l over every repository, exit 0): api/src/service.ts 1122, status/src/poller.test.ts 1046, website/src/styles/components.css 1005, contract/src/schema.ts 993, meta package-lock.json 1910 (generated, not counted). Functions over the budget: sonarjs/cognitive-complexity 15 (config eslint.config.js:16), run with the ESLint and eslint-plugin-sonarjs of a pulse-config 01a57a7 copy, TypeScript parser with JSX and noInlineConfig: true, over copies of 414 tracked *.ts/*.tsx/*.js/*.mjs/*.jsx files outside dist/ of the eight code repositories (19 .tsx). ESLint exit 1: api/src/server.ts:527 cognitive complexity 52; total over budget 1; parse errors 0. Longest functions (TypeScript AST, first run at the same commits): api/src/service.ts:352 createService 771 lines, status/src/poller.ts:155 createPoller 261, api/src/start.ts:122 run 240, website/src/content/hosted.tsx:223 HostedContent 202, status/src/server.ts:539 createStatusServer 194, api/src/server.ts:527 handle 174. Findings 1, 7, 8, 9, 10, 11."
+    },
+    {
+      "item": "Duplicated helpers",
+      "status": "checked",
+      "evidence": "Every named function of the non-test source (1134) listed with a normalized body hash (functions.mjs, first run at the same commits); names in two or more repositories and equal bodies across repositories compared, then read. Greps for findings 2 and 6 re-run in this run (11 isObject/isRecord lines; no safeSetTimeout consumer, exit 1). Helpers for pulse-kit: isObject/isRecord x11 (finding 2), atomic file write x4 in three variants (finding 3), PULSE_API_URL parsing (finding 5), timer cap x5 with kit safeSetTimeout unused (finding 6), bounded body-stream read x3 (finding 12), JSON config-file read x3 (finding 13), isHttpUrl and messageOf (finding 14). Different jobs, not counted: readBody (probe vs kit), isHostName (api vs notify)."
+    },
+    {
+      "item": "Docs against code",
+      "status": "checked",
+      "evidence": "Compared claim by claim: meta README.md and docs/architecture.md; README.md of contract, kit, config, api, probe, status, notify, website; docs/development.md of api, probe, status, notify. Not applicable (files do not exist, ls): meta docs/development.md, docs/architecture.md of every code repository, docs/development.md of contract, kit, config, website. Commands: grep of packageManager, Dockerfile FROM, the env names each service reads (grep -rhoE '\"(PULSE_[A-Z0-9_]+|PORT|POLL_MS)\"' per service), defaults (fallback/DEFAULT_ in api start.ts, probe and status settings.ts, notify config.ts), CI job names (awk over ci.yml), compose.yaml services, ports and HEALTHCHECK lines (all exit 0). Matching: every line of meta docs/architecture.md; the meta README settings table (names equal the read set, every default equal), Compose section, quorum and Factory context paragraph; the READMEs of kit, config, probe, notify, website and docs/development.md of probe and notify. Contradictions (all P3): api docs/development.md:57 three CI jobs vs four (finding 17); api docs/development.md:47 build CPU of all seven repositories vs bench/run.ts:31 contract and kit (finding 18); api docs/development.md:22,26 main.ts reads env and db.ts current schema only vs start.ts:129-132 and db.ts:4 plus migrations.ts (finding 19); status docs/development.md:26 names missing src/validate.ts and a types-only import rule vs poller.ts:1-22 and render.ts:19-20 runtime imports (finding 20); status README.md:55 five served contract files vs eight in server.ts:188-197 (finding 21); contract README.md:7 depends on no other pulse repository vs package.json:32 and ci.yml:17 pulse-config (finding 22)."
+    },
+    {
+      "item": "Earlier findings",
+      "status": "checked",
+      "evidence": "gh issue list --repo lorenzh/pulse-meta --state all --label architecture (exit 0): only #501; gh issue list --search 'Architecture audit in:title' (exit 0): only #501; ls audits/*; git log --diff-filter=A -- 'audits/architecture/*': only this report, added by the first run of #501 (e56da3f). No earlier architecture audit exists. Nearest predecessor: shared-code plan step S4 of #166 (#298, .factory/work/298/plan.md:3: probe, status, notify and api adopt the kit helpers and delete their copies). Still true: kit safeSetTimeout unused, with local timer caps in api and probe (finding 6); status's own PULSE_API_URL parser (finding 5). The open items of #166 (#369, #380, #408) are closed."
+    },
+    {
+      "item": "Dependency direction",
+      "status": "checked",
+      "evidence": "python3 -I deps.py .repos (first run at the same commits, exit 0): graph from package.json, workflow uses:, compose build: URLs, api/bench/refs.ts REPOS, website/docs.config.json and PULSE_API_URL reads; the pins and compose build: lines re-checked in this run. Library layer matches docs/architecture.md: services -> contract, kit, config; contract, kit -> config; config -> nothing; no library depends on a service; contract and kit do not depend on each other. Cycles over code+dev+ci: 0; with runtime: 0; over all kinds: 3 (api -> probe|status|notify -> api), from api/compose.yaml building probe, status and notify from main (finding 15) and from the documented api bench. probe's Factory context lacks api although probe calls the API (finding 16)."
+    }
+  ],
+  "findings": [
+    {
+      "id": "architecture-system-2026-10-31-1",
+      "repos": ["api"],
+      "location": "src/server.ts:527",
+      "severity": "P3",
+      "candidate": true,
+      "title": "handle in api src/server.ts has cognitive complexity 52 against a budget of 15, hidden by an inline disable",
+      "command": "eslint --config scan.config.js --no-warn-ignored --format json . over copies of all 414 tracked *.ts/*.tsx/*.js/*.mjs/*.jsx files of the eight code repositories (pulse-config 01a57a7 ESLint and eslint-plugin-sonarjs, sonarjs/cognitive-complexity 15, noInlineConfig: true); grep -rn 'eslint-disable-next-line sonarjs/cognitive-complexity' .repos/*/src",
+      "exitCode": 1,
+      "excerpt": "api/src/server.ts:527 Refactor this function to reduce its Cognitive Complexity from 52 to the 15 allowed.\nfiles scanned: 414\ntotal over budget: 1\nparse errors: 0\n.repos/api/src/server.ts:526:// eslint-disable-next-line sonarjs/cognitive-complexity -- splitting this validator/handler would be a behaviour-risking refactor",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97", "config": "01a57a7e3f7c61aaa2a65f54d8b780a51efe58dc" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-4",
+      "repos": ["status", "notify", "contract"],
+      "location": "status/package.json:34",
+      "severity": "P3",
+      "candidate": true,
+      "title": "status and notify pin an older contract that still accepts non-http check URLs; all three pins say version 1.6.0",
+      "command": "gh api repos/lorenzh/pulse-contract/contents/src/schema.ts?ref=<pin> | base64 -d | grep -c 'must be an http: or https: URL'; gh api repos/lorenzh/pulse-contract/compare/<pin>...main; first run: bun pin-wire.ts <copies> (validateCheck from each service's installed contract on {id, name, url: 'ftp://files.example/', intervalMs: 60000, timeoutMs: 5000})",
+      "exitCode": 0,
+      "excerpt": "contract 9fe5e80: version=1.6.0 http-rule-lines=0 (ahead_by=6)\ncontract 61f7bf8: version=1.6.0 http-rule-lines=0 (ahead_by=2)\ncontract ebcbbb6: version=1.6.0 http-rule-lines=1 (identical)\nprobe (contract 1.6.0 ebcbbb6): rejected: {\"ok\":false,\"error\":\"check.url: must be an http: or https: URL\"}\nstatus (contract 1.6.0 9fe5e80): accepted\nnotify (contract 1.6.0 61f7bf8): accepted",
+      "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff", "contract": "ebcbbb613328494185833f7133f1242910986948" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-15",
+      "repos": ["api", "probe", "status", "notify"],
+      "location": "compose.yaml:28",
+      "severity": "P3",
+      "candidate": true,
+      "title": "api's Compose file builds probe, status and notify from unpinned main: a repository cycle outside the SHA-pin rule",
+      "command": "grep -nE 'build: https://github.com/lorenzh/pulse-[a-z]+\\.git#[a-z0-9]+' .repos/api/compose*.yaml; python3 -I deps.py .repos",
+      "exitCode": 0,
+      "excerpt": "compose.yaml:28:    build: https://github.com/lorenzh/pulse-probe.git#main\ncompose.yaml:41:    build: https://github.com/lorenzh/pulse-status.git#main\ncompose.yaml:56:    build: https://github.com/lorenzh/pulse-notify.git#main\ncompose.yaml:113, :131 (pulse-probe.git#main), :149 (pulse-status.git#main)\ncycles over all kinds: 3\n  api -> notify -> api\n  api -> probe -> api\n  api -> status -> api",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-3",
+      "repos": ["api", "notify"],
+      "location": "notify/src/ledger-lock.ts:108",
+      "severity": "P3",
+      "candidate": true,
+      "title": "Atomic file write implemented four times in api and notify with three different durability guarantees",
+      "command": "grep -rnE '\\b(writeFileSync|writeTemp)\\(|\\brename(Sync)?\\(|fsync(Sync)?\\(|\\.sync\\(\\)' .repos/{api,notify}/src --include=*.ts | grep -v '\\.test\\.ts'",
+      "exitCode": 0,
+      "excerpt": ".repos/api/src/config-fs.ts:47:      fsyncSync(fd);\n.repos/api/src/config-fs.ts:56:      fsyncSync(fd);\n.repos/api/src/config-write.ts:362:      fs.writeTemp(temp, data, path);\n.repos/api/src/config-write.ts:365:      fs.rename(temp, path);\n.repos/notify/src/ledger-lock.ts:111:    writeFileSync(tmp, JSON.stringify(this.#content));\n.repos/notify/src/ledger-lock.ts:112:    renameSync(tmp, this.#path);\n.repos/notify/src/ledger.ts:181:      fsyncSync(fd);\n.repos/notify/src/ledger.ts:185:    renameSync(tmp, this.#path);\n.repos/notify/src/ledger.ts:230:        await file.sync();\n.repos/notify/src/ledger.ts:240:      await rename(tmp, this.#path);",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-20",
+      "repos": ["status"],
+      "location": "docs/development.md:26",
+      "severity": "P3",
+      "candidate": true,
+      "title": "status docs/development.md names a missing src/validate.ts and a browser import rule that the code no longer follows",
+      "command": "grep -n 'src/validate.ts' .repos/status/docs/development.md; ls .repos/status/src/validate.ts; sed -n 19,20p .repos/status/src/render.ts; sed -n 1,22p .repos/status/src/poller.ts",
+      "exitCode": 2,
+      "excerpt": "26:- `src/poller.ts`, `src/render.ts`, `src/theme.ts` and `src/validate.ts` run in the browser. ... They import only types, with one exception: `poller.ts` imports `validate.ts`.\nls: cannot access '.repos/status/src/validate.ts': No such file or directory\nimport { escapeHtml } from \"@lorenzh/pulse-kit/escape\";\nimport { formatDuration } from \"@lorenzh/pulse-kit/format-duration\";\n  fetchJson, ... validateUptimeResponse, WIRE_VERSION_HEADER, } from \"@lorenzh/pulse-contract\";\nimport { type PollerErrorKind, RESOLVED_WINDOW_MS } from \"./render.ts\";",
+      "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-2",
+      "repos": ["api", "probe", "status", "notify", "contract"],
+      "location": "api/src/config.ts:31",
+      "severity": "P3",
+      "candidate": false,
+      "title": "isObject/isRecord type guard copied 11 times across four services",
+      "command": "grep -rnE 'function (isObject|isRecord)\\(' .repos/{api,probe,status,notify}/src --include=*.ts | grep -v '\\.test\\.ts'",
+      "exitCode": 0,
+      "excerpt": ".repos/api/src/config-write.ts:94\n.repos/api/src/tokens.ts:58\n.repos/api/src/config.ts:31\n.repos/probe/src/check-domain.ts:73\n.repos/probe/src/check.ts:237\n.repos/status/src/api-filter.ts:49\n.repos/status/src/poller.ts:106\n.repos/notify/src/ledger.ts:43\n.repos/notify/src/config.ts:34\n.repos/status/src/syndication.ts:50\n.repos/status/src/hidden-checks.ts:14\n(each: typeof value === \"object\" && value !== null && !Array.isArray(value); contract src/validate.ts:57 has the same, not exported)",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff", "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-5",
+      "repos": ["status", "probe", "notify", "kit"],
+      "location": "status/src/settings.ts:48",
+      "severity": "P3",
+      "candidate": false,
+      "title": "PULSE_API_URL parsed three ways: status has its own reader instead of kit readUrl",
+      "command": "bun api-url.ts <copies>: the same PULSE_API_URL values through status readSettings, probe loadSettings and notify loadSettings",
+      "exitCode": 0,
+      "excerpt": "PULSE_API_URL=ftp://api.example:21/\n  status readSettings: accepted apiUrl=ftp://api.example:21/\n  probe  loadSettings: rejected (PULSE_API_URL: must be an http(s) URL without credentials, query or fragment)\n  notify loadSettings: rejected (PULSE_API_URL: must be a valid http(s) url)\nPULSE_API_URL=http://user:secret@api.example:3000\n  status readSettings: accepted\n  probe  loadSettings: rejected\n  notify loadSettings: accepted",
+      "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-6",
+      "repos": ["kit", "contract", "api", "probe"],
+      "location": "kit/src/timer.ts:5",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Timer cap 2^31-1 defined five times; kit safeSetTimeout and MAX_TIMER_DELAY_MS have no consumer",
+      "command": "grep -rnE 'MAX_TIMER_MS\\s*=|MAX_TIMER_DELAY_MS\\s*=|MAX_RELOAD_MS\\s*=' .repos --include=*.ts --exclude-dir=node_modules --exclude-dir=dist; grep -rn 'safeSetTimeout\\|MAX_TIMER_DELAY_MS' .repos/{api,probe,status,notify}/src",
+      "exitCode": 1,
+      "excerpt": "probe/src/settings.ts:20:const MAX_TIMER_MS = 2_147_483_647;\napi/src/location-silence.ts:3:const MAX_TIMER_MS = 2 ** 31 - 1;\nprobe/src/reload-interval.ts:3:export const MAX_RELOAD_MS = 2_147_483_647;\nkit/src/timer.ts:5:export const MAX_TIMER_DELAY_MS = 2_147_483_647;\ncontract/src/schema.ts:7:export const MAX_TIMER_MS = 2_147_483_647;\n(second grep: no output, exit 1)",
+      "commits": { "kit": "6a06ec25d26d90be12eba133972b59077dd0e17d", "contract": "ebcbbb613328494185833f7133f1242910986948", "api": "11f555598831ef61f13de40bef5f2da620230c97", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-7",
+      "repos": ["api"],
+      "location": "src/service.ts:352",
+      "severity": "P3",
+      "candidate": false,
+      "title": "api src/service.ts has 1122 lines; createService spans 771 lines",
+      "command": "cd .repos/api && git ls-files -z | xargs -0 wc -l | awk '$2!=\"total\" && $1>800'",
+      "exitCode": 0,
+      "excerpt": "1122 src/service.ts\n(TypeScript AST: api/src/service.ts:352 createService 771 lines)",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-8",
+      "repos": ["contract"],
+      "location": "src/schema.ts:1",
+      "severity": "P3",
+      "candidate": false,
+      "title": "contract src/schema.ts has 993 lines",
+      "command": "cd .repos/contract && git ls-files -z | xargs -0 wc -l | awk '$2!=\"total\" && $1>800'",
+      "exitCode": 0,
+      "excerpt": "993 src/schema.ts",
+      "commits": { "contract": "ebcbbb613328494185833f7133f1242910986948" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-9",
+      "repos": ["status"],
+      "location": "src/poller.test.ts:1",
+      "severity": "P3",
+      "candidate": false,
+      "title": "status src/poller.test.ts has 1046 lines",
+      "command": "cd .repos/status && git ls-files -z | xargs -0 wc -l | awk '$2!=\"total\" && $1>800'",
+      "exitCode": 0,
+      "excerpt": "1046 src/poller.test.ts",
+      "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-10",
+      "repos": ["website"],
+      "location": "src/styles/components.css:1",
+      "severity": "P3",
+      "candidate": false,
+      "title": "website src/styles/components.css has 1005 lines",
+      "command": "cd .repos/website && git ls-files -z | xargs -0 wc -l | awk '$2!=\"total\" && $1>800'",
+      "exitCode": 0,
+      "excerpt": "1005 src/styles/components.css",
+      "commits": { "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-11",
+      "repos": ["config", "website"],
+      "location": "config/eslint.config.js:11",
+      "severity": "P3",
+      "candidate": false,
+      "title": "The shared ESLint config does not cover .tsx: the website's 19 TSX files get no SonarJS or type-aware rules",
+      "command": "in a copy of website: <config copy>/node_modules/.bin/eslint --config <config copy>/eslint.config.js --print-config src/site.tsx",
+      "exitCode": 0,
+      "excerpt": "undefined\n(the same command on src/lib/commands.ts prints a config with sonarjs/cognitive-complexity; config/eslint.config.js:11 files: [\"**/*.ts\", \"**/*.js\"]; 19 .tsx files, 1643 lines)",
+      "commits": { "config": "01a57a7e3f7c61aaa2a65f54d8b780a51efe58dc", "website": "dcb616275ef3ed87c2ff8588d00b98d46b8294d6" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-12",
+      "repos": ["contract", "probe"],
+      "location": "probe/src/check-domain.ts:47",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Bounded reading of a response body stream implemented three times",
+      "command": "grep -rnE 'getReader\\(\\)' .repos/{api,probe,status,notify,contract,kit}/src --include=*.ts | grep -v '\\.test\\.ts'",
+      "exitCode": 0,
+      "excerpt": "probe/src/check.ts:195:  const reader = body.getReader();\nprobe/src/check-domain.ts:50:  const reader = body.getReader();\ncontract/src/client.ts:88:  const reader = response.body.getReader();",
+      "commits": { "contract": "ebcbbb613328494185833f7133f1242910986948", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-13",
+      "repos": ["api", "status", "notify"],
+      "location": "status/src/theme-config.ts:107",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Reading a JSON config file with read and parse error mapping implemented three times",
+      "command": "sed -n 466,474p .repos/api/src/config.ts; sed -n 107,121p .repos/status/src/theme-config.ts; sed -n 295,309p .repos/notify/src/config.ts",
+      "exitCode": 0,
+      "excerpt": "api: function readJson(path) { try { text = readFileSync(path, \"utf8\") } catch { throw new ConfigError(`cannot read checks file ...`) } return parseJsonText(path, text) }\nstatus: function readJson(file) { try { readFileSync(file, \"utf8\") } catch { throw new Error(`theme file ${file}: cannot read: ...`) } try { JSON.parse(text) } catch { throw new Error(`theme file ${file}: invalid JSON: ...`) } }\nnotify: loadConfigFile(path) { try { readFileSync(path, \"utf8\") } catch { throw new ConfigError(`cannot read config file ...`) } try { JSON.parse(text) } catch { throw new ConfigError(`config file ${path} is not valid JSON: ...`) } }",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97", "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-14",
+      "repos": ["contract", "kit", "notify"],
+      "location": "notify/src/channel-schema.ts:7",
+      "severity": "P3",
+      "candidate": false,
+      "title": "isHttpUrl (contract private, notify) and messageOf (kit private, notify) copied",
+      "command": "functions.mjs: named functions of the non-test source with a whitespace-normalized body hash; sed -n 13,21p .repos/contract/src/schema.ts; sed -n 7,15p .repos/notify/src/channel-schema.ts",
+      "exitCode": 0,
+      "excerpt": "kit src/run-service.ts:24 messageOf 0270766a9d\nnotify src/errors.ts:40 messageOf 0270766a9d\ncontract src/schema.ts:13 isHttpUrl: new URL(value).protocol === \"http:\" || \"https:\", catch -> false\nnotify src/channel-schema.ts:7 isHttpUrl: the same logic",
+      "commits": { "contract": "ebcbbb613328494185833f7133f1242910986948", "kit": "6a06ec25d26d90be12eba133972b59077dd0e17d", "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-16",
+      "repos": ["meta", "probe"],
+      "location": ".factory/config.yaml:72",
+      "severity": "P3",
+      "candidate": false,
+      "title": "probe's Factory context lacks api although probe calls the API",
+      "command": "grep -n 'context' .factory/config.yaml; grep -n '/probe/checks\\|/results' .repos/probe/src/client.ts",
+      "exitCode": 0,
+      "excerpt": "72:          context: [ meta, contract, config, kit ]   (target probe)\n219:  const res = await fetchJson(join(baseUrl, \"/probe/checks\"), {\n311:    const res = await deps.fetch(join(baseUrl, \"/results\"), {",
+      "commits": { "meta": "96504d36ac3d5c627888c640a186d88fe498bfcd", "probe": "9674e518f9d60db4a816e8c694b782a616b30dff" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-17",
+      "repos": ["api"],
+      "location": "docs/development.md:57",
+      "severity": "P3",
+      "candidate": false,
+      "title": "api docs/development.md says ci.yml has three jobs; it has four (bench-selftest is missing)",
+      "command": "grep -n 'has three jobs' .repos/api/docs/development.md; awk '/^jobs:/{f=1;next} f && /^  [a-zA-Z0-9_-]+:/{print NR\": \"$0}' .repos/api/.github/workflows/ci.yml",
+      "exitCode": 0,
+      "excerpt": "57:`.github/workflows/ci.yml` has three jobs:\n16:   check:\n19:   bench-selftest:\n32:   docker:\n48:   compose-e2e:",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-18",
+      "repos": ["api"],
+      "location": "docs/development.md:47",
+      "severity": "P3",
+      "candidate": false,
+      "title": "api docs/development.md says the bench measures build CPU of all seven repositories; it builds only contract and kit",
+      "command": "grep -n 'build CPU time of all seven' .repos/api/docs/development.md; grep -n 'BUILD_REPOS' .repos/api/bench/run.ts",
+      "exitCode": 0,
+      "excerpt": "47:`bench/` measures CPU time and memory of api, probe, status and notify under a fixed load, and the test and build CPU time of all seven repositories.\n31:const BUILD_REPOS: readonly RepoName[] = [\"contract\", \"kit\"];\n(bench/budgets.json: build_cpu_s only under contract and kit)",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-19",
+      "repos": ["api"],
+      "location": "docs/development.md:22",
+      "severity": "P3",
+      "candidate": false,
+      "title": "api docs/development.md code layout: main.ts does not read the environment, db.ts is not the current schema, 16 of 26 modules unlisted",
+      "command": "grep -nE '^\\| `src/(main|db)\\.ts`' .repos/api/docs/development.md; sed -n 4p .repos/api/src/db.ts; grep -n 'readString(env' .repos/api/src/start.ts; ls .repos/api/src | grep -v test | wc -l",
+      "exitCode": 0,
+      "excerpt": "22:| `src/main.ts`             | Reads the environment, wires the parts and starts the server. |\n26:| `src/db.ts`               | Schema (current version only). |\n/** The schema at `user_version` 0, as the first release created it. Later changes are migrations. */\n130:  const dbPath = readString(env, \"PULSE_DB\") ?? \"./pulse.db\";\n131:  const checksFile = readString(env, \"PULSE_CHECKS_FILE\") ?? \"./checks.json\";\n132:  const tokensFile = readString(env, \"PULSE_TOKENS_FILE\") ?? \"./tokens.json\";\n26",
+      "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-21",
+      "repos": ["status"],
+      "location": "README.md:55",
+      "severity": "P3",
+      "candidate": false,
+      "title": "status README lists five contract runtime files served under /pulse-contract/; the server serves eight",
+      "command": "sed -n 55p .repos/status/README.md | grep -o 'runtime files ([^)]*)'; sed -n 188,197p .repos/status/src/server.ts",
+      "exitCode": 0,
+      "excerpt": "runtime files (`index.js`, `schema.js`, `validate.js`, `version.js`, `client.js`)\nconst contractModules = new Set([ \"index.js\", \"schema.js\", \"validate.js\", \"version.js\", \"client.js\", \"components.js\", \"admin.js\", \"validate-admin.js\",",
+      "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0" }
+    },
+    {
+      "id": "architecture-system-2026-10-31-22",
+      "repos": ["contract"],
+      "location": "README.md:7",
+      "severity": "P3",
+      "candidate": false,
+      "title": "contract README says it depends on no other pulse repository; it pins pulse-config as a devDependency and CI workflow",
+      "command": "grep -n 'depends on no other pulse repository' .repos/contract/README.md; grep -n 'pulse-config' .repos/contract/package.json .repos/contract/.github/workflows/ci.yml",
+      "exitCode": 0,
+      "excerpt": "7:pulse-contract depends on no other pulse repository. It is consumed by [pulse-\ncontract/package.json:32:    \"@lorenzh/pulse-config\": \"github:lorenzh/pulse-config#51e95b0eb463b27a196a33b428607bd92443e4f0\",\ncontract/.github/workflows/ci.yml:17:    uses: lorenzh/pulse-config/.github/workflows/check.yml@51e95b0eb463b27a196a33b428607bd92443e4f0",
+      "commits": { "contract": "ebcbbb613328494185833f7133f1242910986948" }
+    }
+  ]
+}
