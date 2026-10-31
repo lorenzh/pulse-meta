@@ -1,0 +1,378 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Migration step 4, withDurableCommit and the audit-log store with its PendingAudit port exist",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/migrations.ts",
+        "src/db.ts",
+        "src/audit-log.ts",
+        "src/db.test.ts",
+        "src/db.migrations.test.ts",
+        "src/audit-log.test.ts",
+        "withDurableCommit",
+        "EXTRA",
+        "setJournal",
+        "delete",
+        ":memory:",
+        "PendingAudit",
+        "insert",
+        "deleteByTemp",
+        "promote",
+        "list"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Files `package.json`/`bun.lock` (contract pin to the merged contract SHA), `src/migrations.ts` (D4 tables), `src/db.ts` (D8 \"Durable statement\"), `src/audit-log.ts` (record in a transaction, query with the D9 filters and id cursor, batch iteration for export, the PendingAudit port: insert and deleteByTemp through withDurableCommit, promote in one normal transaction, list in ascending id); Checks bullets `db.test.ts`, `audit-log.test.ts` and `db.migrations.test.ts`; `## Counterexamples` \"Durability\" withDurableCommit cases. Nothing is wired into the server yet. Note: entries without a path (withDurableCommit, EXTRA, ...) are listed only because the section's Files: list names them.",
+      "acceptance": [
+        {
+          "command": "bun test src/db.test.ts",
+          "expected": "exit 0; PRAGMA synchronous read inside / after withDurableCommit (also after fn throws): WAL file from openDb 3 / 1; a `delete`-mode file database (new Database(file) with PRAGMA journal_mode = DELETE) 3 / 2; :memory: from openDb 3 / 2; called inside db.transaction it throws and synchronous is unchanged"
+        },
+        {
+          "command": "bun test src/db.migrations.test.ts",
+          "expected": "exit 0; a version-3 file migrates to version 4 and then has the tables api_tokens, token_secrets, token_bootstrap, audit_log and audit_pending; a version-5 file is refused"
+        },
+        {
+          "command": "bun test src/audit-log.test.ts",
+          "expected": "exit 0; with a recording spy as the durable wrapper, insert and deleteByTemp each call it exactly 1 time and promote 0 times; with the real withDurableCommit PRAGMA synchronous reads 3 inside insert and inside deleteByTemp on a WAL file and on a `delete`-mode file; promote assigns the next audit_log id and removes the pending row; with 250 recorded entries a query with limit 100 returns ids 250..151 and nextBefore 151, before=151 returns 150..51 and nextBefore 51, before=51 returns 50..1 and nextBefore null"
+        },
+        {
+          "command": "edit src/db.ts by hand so that withDurableCommit raises synchronous only to FULL (2), run bun test src/db.test.ts src/audit-log.test.ts, then revert",
+          "expected": "exit 1 under the mutation (the WAL and `delete` cases read 2 instead of 3); the red output is kept for the final PR body"
+        },
+        {
+          "command": "grep pulse-contract package.json",
+          "expected": "the pin is github:lorenzh/pulse-contract#<sha> where <sha> is the merge commit of the contract PR of #561 on contract main (gh api repos/lorenzh/pulse-contract/pulls/<n> --jq .merge_commit_sha)"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "The token store and the pure scope rules work on their own",
+      "files": [
+        "src/token-store.ts",
+        "src/token-scopes.ts",
+        "src/tokens.ts",
+        "src/token-store.test.ts",
+        "src/token-scopes.test.ts",
+        "src/tokens.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Files `src/token-store.ts` (store, in-memory index, create/rotate/revoke/authenticate/list, last-used coalescing, flush; each token write commits with its audit entry in one transaction, D8 \"Database-only writes\"), `src/token-scopes.ts` (the pure D1 matrix, grant rule and last-admin check), `src/tokens.ts` (digest helper); D1, D4, D6 (store side of rotate/revoke rules) and Checks bullet `token-store.test.ts`; `## Counterexamples` \"Rotation\" (store level), \"Grant rule\", \"Last admin\", \"Last used\". Not yet used by the server.",
+      "acceptance": [
+        {
+          "command": "bun test src/token-store.test.ts",
+          "expected": "exit 0; a generated secret matches ^pulse_[A-Za-z0-9_-]{43}$ (49 characters) and an id matches ^tok_[0-9a-f]{24}$; the stored secret_sha256 equals createHash(\"sha256\").update(secret).digest(\"hex\") computed in the test; no column holds the secret"
+        },
+        {
+          "command": "bun test src/token-store.test.ts",
+          "expected": "exit 0; rotation at T = 1800000000000: at T + 599999 the old and new credential authenticate, at T + 600000 only the new one; a reopened store on the same file keeps that deadline; with expiresAt T + 120000 both fail at T + 120000; a second rotate at T + 1 is refused as \"a rotation is still in its overlap\" and allowed at T + 600000; revoke at T + 1 rejects both credentials"
+        },
+        {
+          "command": "bun test src/token-store.test.ts",
+          "expected": "exit 0; authentications at T and T + 59999 cause exactly 1 persisted UPDATE with value T, one at T + 60000 a second; the in-memory lastUsedAt reads T + 59999 in between; a failed authentication never changes lastUsedAt; close flushes the unpersisted value; an audit recorder that throws rolls the token write back"
+        },
+        {
+          "command": "bun test src/token-scopes.test.ts",
+          "expected": "exit 0; the D1 matrix as a table: [\"read\",\"checks\"] and [\"admin\"] cannot write checks, [\"admin\",\"checks\"] can; [\"admin\",\"checks\"] cannot write manual incidents; [\"incidents\"] cannot read /admin/config, [\"admin\",\"checks\"] can; grant rule: caller [\"admin\",\"incidents\"] may not grant [\"checks\"] nor [\"probe\"]; caller [\"admin\",\"checks\"] may not revoke [\"read\",\"checks\",\"incidents\",\"admin\"]; revoking the only active admin is refused, with two admins the first revoke passes and the second is refused"
+        },
+        {
+          "command": "bun test src/tokens.test.ts",
+          "expected": "exit 0; the digest helper returns the lower-case hex SHA-256 written out in the test for a fixed input"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Probe and admin auth run through the token store with scopes, after a one-time file import",
+      "files": [
+        "src/token-import.ts",
+        "src/admin-tokens.ts",
+        "src/admin-tokens.test.ts",
+        "src/tokens.ts",
+        "src/tokens.test.ts",
+        "src/admin-auth-failures.ts",
+        "src/admin-auth-failures.test.ts",
+        "src/admin-routes.ts",
+        "src/server.ts",
+        "src/start.ts",
+        "src/start.test.ts",
+        "src/start.audit-log.test.ts",
+        "src/start.token-import.test.ts",
+        "src/server.scopes.test.ts",
+        "src/server.auth.test.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "src/config-admin.test.ts",
+        "test/fixtures/pulse-v3.db",
+        "src/degraded.test.ts",
+        "src/keyword.test.ts",
+        "src/latency.test.ts",
+        "src/retention.test.ts",
+        "src/server.components.test.ts",
+        "src/server.headers.test.ts",
+        "src/server.heartbeat.test.ts",
+        "src/server.locations.test.ts",
+        "src/server.ops.test.ts",
+        "src/server.probe-checks.test.ts",
+        "src/server.reads.test.ts",
+        "src/server.test.ts",
+        "src/server.validation.test.ts",
+        "src/service.idempotent.test.ts",
+        "src/service.maintenance.test.ts",
+        "src/uptime-rollup.test.ts",
+        "src/uptime.test.ts",
+        "scripts/compose-e2e.sh",
+        "parseTokens",
+        "authenticate",
+        "findByToken",
+        "listen",
+        "createApiServer",
+        "adminTokens",
+        "main",
+        "c00a375"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, D2, D3, D5 and the D1 matrix on existing routes: Files `src/token-import.ts`, `src/admin-tokens.ts` (digest-based distinctness), `src/tokens.ts` (drop the list-based authenticate/findByToken), `src/admin-auth-failures.ts` (kinds missing|unknown|inactive|probe|scope), `src/admin-routes.ts` and `src/server.ts` (store-based auth and scopes), `src/start.ts` (D5 order, import, feature gate, startup line with tokenStore \"database\", flush last-used on close), Behavior bullet \"createApiServer options change\" (every test that passes token lists builds a store on a temp database), the upgrade fixture `test/fixtures/pulse-v3.db`; Checks bullets \"Upgrade test\" and \"Bootstrap order tests\"; the D1 matrix table test in `server.scopes.test.ts`; `## Counterexamples` \"Scopes\", \"Import\", \"Status order\" (first and third bullet). `scripts/compose-e2e.sh`: only the probe-token manual-write assertion (spec cites line 469; on api main eb9d64a it is line 477) now expects 403, with its echo text. Token routes come in T4. Note: entries without a path are listed only because the section's Files: list names them.",
+      "acceptance": [
+        {
+          "command": "bun test src/start.token-import.test.ts -t \"upgrade from file tokens keeps existing tokens working\"",
+          "expected": "exit 0; on a copy of test/fixtures/pulse-v3.db with 2 admin entries and probe entries eu (2 credentials) and us (1): all 5 credentials work after the first start, a probe-file token on GET /admin/config answers 403; a restart without both files works and the credentials and the 2 fixture manual incidents still work; a revoked imported admin answers 401 after a restart with the unchanged admin file mounted; a new entry added to tokens.json after the import answers 401 and the line \"PULSE_TOKENS_FILE ignored: tokens are stored in the database\" is logged"
+        },
+        {
+          "command": "bun test src/start.token-import.test.ts",
+          "expected": "exit 0; a malformed admin file (second entry without name) on a fresh start fails the start and leaves 0 api_tokens rows, 0 token_bootstrap rows and 0 token.import entries; an admin entry equal to a probe token fails with \"admin tokens[0] is also a probe token: use a separate token\"; probe-only then a restart with PULSE_API_ADMIN_TOKENS_FILE turns GET /admin/config with the imported admin token from 404 into 200; after both imports, missing paths, files containing `{not json` and directories in place of the files each give a successful start with working credentials and unchanged file bytes; a fresh database with a missing probe file fails the start with today's message and 0 token_bootstrap rows"
+        },
+        {
+          "command": "bun test src/server.scopes.test.ts",
+          "expected": "exit 0; the D1 matrix with the literal statuses of `## Counterexamples` \"Scopes\": [\"read\",\"checks\"] POST /admin/checks with a valid If-Match 403 and the checks file bytes unchanged; [\"read\"] PUT /admin/checks/x 403; [\"admin\"] POST /admin/checks 403; [\"admin\",\"checks\"] POST /manual-incidents 403; an admin-side token on GET /probe/checks 403; [\"incidents\"] GET /admin/config 403; [\"admin\",\"checks\"] GET /admin/config 200; a probe token on a manual-incident write 403; a revoked token 401 with the same body as an unknown one; admin not bootstrapped answers 404 before 401"
+        },
+        {
+          "command": "bun test src/server.auth.test.ts src/admin-auth-failures.test.ts",
+          "expected": "exit 0; 401 carries www-authenticate: Bearer and {\"error\":\"unauthorized\"}; the auth-failure log labels are missing, unknown, inactive, probe and scope; no captured line holds a token, its digest, its id or its name"
+        },
+        {
+          "command": "git worktree add /tmp/api-c00a375 c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e, copy src/start.token-import.test.ts and test/fixtures/pulse-v3.db into it, then run bun install and bun test src/start.token-import.test.ts -t \"upgrade from file tokens keeps existing tokens working\" there",
+          "expected": "exit 1; the upgrade test fails on main c00a375 (the baseline the spec names); the red output is kept for the final PR body. The same run on the api main commit the branch starts from may be added as extra evidence, it does not replace the c00a375 run"
+        },
+        {
+          "command": "bun test src/compose-e2e-keys.test.ts && grep -n 'probe token write' scripts/compose-e2e.sh",
+          "expected": "exit 0; the assertion line expects \"403\" for the probe token on POST /manual-incidents"
+        },
+        {
+          "command": "grep -rn 'findByToken' src",
+          "expected": "no output (exit 1)"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Admins create, list, rotate and revoke tokens over /admin/tokens",
+      "files": [
+        "src/token-routes.ts",
+        "src/admin-routes.ts",
+        "src/server.ts",
+        "src/server.tokens.test.ts",
+        "src/server.rotation.test.ts",
+        "src/server.scopes.test.ts",
+        "/admin/tokens*"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, File `src/token-routes.ts` (`/admin/tokens*`, D6) and its dispatch in `src/admin-routes.ts`, route patterns for metrics in `src/server.ts`; Checks issue tests 1 (\"a stored token is not readable in clear\"), 2 (\"a token without admin cannot write checks\", the token created over HTTP) and 3 (\"both tokens work during rotation and only the new one after the overlap\"); `## Counterexamples` \"Hash-only storage\", \"One-time disclosure\", \"Grant rule\" over HTTP, \"Create validation, clock-dependent\", \"Rotation\", \"Status order\" second bullet, \"Last admin\" over HTTP.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.tokens.test.ts -t \"a stored token is not readable in clear\"",
+          "expected": "exit 0; POST /admin/tokens answers 201 with a secret that authenticates GET /admin/tokens; the bytes of the db, -wal and -shm files hold 0 occurrences of the secret; token_secrets.secret_sha256 equals createHash(\"sha256\").update(secret).digest(\"hex\") computed from the HTTP response; a restart on the same file still authenticates it; GET /admin/tokens/:id has no secret key"
+        },
+        {
+          "command": "bun test src/server.tokens.test.ts",
+          "expected": "exit 0; with the clock at T = 1800000000000: expiresAt 1800000000000 400, 1799999999999 400, 1800000000001 201, 1800000000000 + 315360000000 201, one more millisecond 400; every clock-independent create counterexample 400; caller [\"admin\",\"incidents\"] creating [\"checks\"] 403 and [\"probe\"] with location \"eu\" 403; a wrong token with an oversized body 401, not 413; a body over 4096 bytes with a valid token 413; revoking the only active admin 409 {\"error\":\"cannot revoke the last active admin token\"}; responses carry cache-control: no-store"
+        },
+        {
+          "command": "bun test src/server.scopes.test.ts -t \"a token without admin cannot write checks\"",
+          "expected": "exit 0; a [\"read\",\"checks\"] token created over POST /admin/tokens gets 403 on POST /admin/checks with a valid If-Match; the checks file bytes are equal before and after and the audit_log row count is unchanged"
+        },
+        {
+          "command": "bun test src/server.rotation.test.ts -t \"both tokens work during rotation and only the new one after the overlap\"",
+          "expected": "exit 0; rotate at T answers 200 with previousValidUntil T + 600000; at T + 599999 both credentials 200, at T + 600000 the old one 401 and the new one 200; after a restart at T + 300000 the old one still works at T + 599999 and fails at T + 600000; with expiresAt T + 120000 both fail at T + 120000; a second rotate at T + 1 409, at T + 600000 200; revoke at T + 1 gives 401 for both; a rotated probe token works on GET /probe/checks and POST /results with both credentials, and a result for another location answers 403 location does not match token for both"
+        },
+        {
+          "command": "git worktree add /tmp/api-c00a375 c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e (or reuse it), copy src/server.tokens.test.ts, src/server.scopes.test.ts and src/server.rotation.test.ts into it, then run bun install and the three named issue tests there with -t",
+          "expected": "exit 1; each of the three named tests fails on main c00a375 (the baseline the spec names) because POST /admin/tokens answers 404; the red output is kept for the final PR body. A run on the api main commit the branch starts from may be added, it does not replace the c00a375 run"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "step",
+      "title": "Config writes record their audit entry durably through the pending protocol of D8",
+      "files": [
+        "src/config-write.ts",
+        "src/config-fs.ts",
+        "src/admin-routes.ts",
+        "src/start.ts",
+        "src/audit-log.ts",
+        "src/config-write.audit.test.ts",
+        "src/config-write.crash.test.ts",
+        "src/config-admin.test.ts",
+        "src/start.test.ts",
+        "fsyncDir",
+        "writeTemp",
+        "lstat",
+        "rename",
+        "WriteFs",
+        "code",
+        "WriterDeps"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, D8 \"Config writes\" steps 1-8, \"Rule for removing a temp file\", \"Rule for promoting\", \"Durable abort\", \"Resolving pending entries\" (also at startup before listen, in `src/start.ts`), Files `src/config-write.ts` (WriteFs gains lstat, WriterDeps gains pending and the test-only fault hook), `src/config-fs.ts` (real lstat), `src/admin-routes.ts` (actor passed to the writer, the two 500 messages); Checks bullets \"Durability tests\" (config-write part) and \"Power-loss tests\"; `## Counterexamples` \"Durability\" (config cases) and \"Power loss\" with its table, window explanations and negative control. Note: entries without a path are listed only because the section's Files: list names them.",
+      "acceptance": [
+        {
+          "command": "bun test src/config-write.audit.test.ts",
+          "expected": "exit 0; success call log from writeTemp on is exactly writeTemp(temp), fsyncDir(dir), pending.insert(durable), readFile(path), rename(temp, path), fsyncDir(dir), pending.promote; failure call log with rename throwing EIO is exactly writeTemp(temp), fsyncDir(dir), pending.insert(durable), readFile(path), rename, lstat(temp), pending.deleteByTemp(durable), remove(temp) with 0 rows at remove; resolver with one missing temp: pending.list, lstat(temp), fsyncDir(dir), pending.promote; two candidates: lstat, lstat, fsyncDir, promote, promote; an existing temp: lstat, pending.deleteByTemp(durable), remove(temp) and no fsyncDir"
+        },
+        {
+          "command": "bun test src/config-write.audit.test.ts",
+          "expected": "exit 0; pending insert failure 500 {\"error\":\"audit log could not be written\"}, file bytes unchanged, 0 temp files left; insert that commits then throws: 0 pending rows, 0 entries, file A; promote failure 500 {\"error\":\"checks file stored; its audit entry is pending and is resolved at the next write or restart\"}, then restart 1 entry (revision of B) or next write B -> C 2 entries in id order B, C; A -> B -> A restore keeps exactly 1 entry with the revision of B; crash-before-rename fixture: 0 entries, temp removed, file A; crash-after-rename fixture: 1 entry revision B; rename that moves then throws EIO: deleteByTemp and remove never called, then B -> C gives 2 entries; resolver sync fails: warn \"audit pending entry unresolved (EIO)\", 1 entry (C) and 1 pending row, then C -> D gives 3 entries in id order C, B, D; abort delete throws SQLITE_IOERR: warn \"audit pending entry kept (SQLITE_IOERR)\", remove never called, then A -> C gives 1 entry (C); lstat EACCES: row stays, warn carries EACCES and no path, write 200; interleaving write 2 call log pending.list, lstat(temp), fsyncDir(dir), pending.promote, readFile(path) and 412"
+        },
+        {
+          "command": "bun test src/config-write.audit.test.ts -t \"other working directory\"",
+          "expected": "exit 0; a pending row written with a relative checks path, then a crash before rename, then a restart with a different process.cwd() and the same database: the stored temp_path is absolute, recovery finds the temp file, runs the durable abort, and ends with 0 audit_log entries, 0 pending rows and the checks file unchanged (A); the same case with the stored path made relative fails this test"
+        },
+        {
+          "command": "bun test src/config-write.crash.test.ts",
+          "expected": "exit 0; every row of the `## Counterexamples` \"Power loss\" table, in journal modes \"wal\" and \"delete\", for every subset of un-synced directory changes and every kept tail length k, gives the row's literal file (A or B) and audit_log count (0 or 1), with 0 pending rows and the file B exactly when an entry with the revision of B exists"
+        },
+        {
+          "command": "bun test src/config-write.crash.test.ts -t \"negative control\"",
+          "expected": "exit 0; with { journal: \"delete\", durableLevel: 2 } the abort remove(temp) row reports exactly 1 failing cell: mode \"delete\", subset with the unlink, k = 1, file A with 1 entry; the other 5 cells give file A with 0 entries"
+        },
+        {
+          "command": "apply by hand, one at a time, the four mutations of `## Counterexamples` \"Power loss\" (no fsyncDir before the insert; abort delete not durable; temp removed before the delete; resolver promote without its fsyncDir), run bun test src/config-write.crash.test.ts, revert",
+          "expected": "exit 1 under each mutation, failing the cells the spec names: \"pending insert\" subset drop -> file A with 1 entry; \"abort: remove(temp)\" subset with the unlink k = 0 -> file A with 1 entry; the crash between remove and delete with the unlink -> 1 entry; \"I1 ... crash right after write 2's 412\" subset drop k = 1 -> file A with 1 entry; the red output is kept for the final PR body"
+        },
+        {
+          "command": "bun test src/config-admin.test.ts src/start.test.ts",
+          "expected": "exit 0; startup resolves a pending row before listen (fixture row with missing temp and checks file B -> 1 entry after start)"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "kind": "final",
+      "title": "Manual-incident writes are audited, /admin/audit and its export serve the entries, compose e2e and docs cover tokens and audit, and the PR carries the evidence",
+      "files": [
+        "src/manual-incidents.ts",
+        "src/server.ts",
+        "src/audit-routes.ts",
+        "src/admin-routes.ts",
+        "src/audit-log.ts",
+        "src/server.audit.test.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "scripts/compose-e2e.sh",
+        "compose.yaml",
+        "compose.e2e.yaml",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "src/docs-claims.test.ts",
+        "/admin/audit",
+        "/admin/audit/export"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api (Behavior change: yes), D7, D8 \"Database-only writes\" for manual incidents (respond after commit), D9; Files `src/manual-incidents.ts`, `src/server.ts`, `src/audit-routes.ts`; Checks issue test 4 (\"an admin write appears in the audit query without secret values\"), \"an audit walk never skips an entry committed later\", \"audit entries keep check ids of any length\", the manual-incident durability case; `## Counterexamples` \"Audit secrecy\", \"Audit target ids\", \"Audit paging\", \"Durability\" first bullet, and \"Scopes\" (a probe token on GET /admin/audit). As the final task also: Behavior bullets \"Docs\" and \"scripts/compose-e2e.sh\" (the step \"Tokens and audit\" and the extra assertions in \"Persistence across down and up\"), Files `compose.yaml`/`compose.e2e.yaml` (comments only), Completion evidence, `## Performance impact`, `## Security impact` checklist and `## Acceptance evidence` (api PR). The red runs and the bench A/B use the baseline the spec names, api main `c00a375`; runs against the api main commit the branch starts from may be added but do not replace them. Note: entries without a path are listed only because the section's Files: list names them.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.audit.test.ts -t \"an admin write appears in the audit query without secret values\"",
+          "expected": "exit 0; after POST /admin/checks with audit-sentinel-header-0001, audit-sentinel-body-0002, https://audit-sentinel-url-0003.invalid/ and a heartbeat secret audit-sentinel-hb-0004, GET /admin/audit holds an entry with action \"check.create\", target.id equal to the posted id and actor.name equal to the creating token's name, valid under validateAuditEntry; none of the four sentinels, the Bearer value or its SHA-256 (computed in the test) appears in the query, the export, the audit_log cells or any captured log line; a probe token and a [\"read\",\"checks\"] token on GET /admin/audit get 403"
+        },
+        {
+          "command": "bun test src/server.audit.test.ts -t \"an audit walk never skips an entry committed later\"",
+          "expected": "exit 0; pages [5,4] nextBefore 4, [3,2] nextBefore 2, [1] nextBefore null, a fresh first page [7,6]; every one of 7 entries seen exactly once; an export started at largest id 5 with batch size 2 returns exactly ids 1-5"
+        },
+        {
+          "command": "bun test src/server.audit.test.ts -t \"audit entries keep check ids of any length\"",
+          "expected": "exit 0; create and delete of a check whose id is 300 x characters give 2 entries with that target.id; GET /admin/audit?targetId=<the 300 characters> answers 200 with exactly those 2 entries"
+        },
+        {
+          "command": "bun test src/server.audit.test.ts",
+          "expected": "exit 0; with 250 entries limit=100 gives ids 250..151 nextBefore 151, before=151 gives 150..51 nextBefore 51, before=51 gives 50..1 nextBefore null; limit=0, limit=1001, limit=1.5, before=0, since=10&until=10, action=check.drop and foo=1 each 400; the export has 250 lines in ascending id, content-type application/x-ndjson; charset=utf-8, each line valid under validateAuditEntry; limit on the export 400; the export after a restart reads the same lines"
+        },
+        {
+          "command": "bun test src/server.manual-incidents.audit.test.ts src/server.manual-incidents.test.ts",
+          "expected": "exit 0; an audit recorder that throws on a manual-incident create gives 500 and GET /manual-incidents is unchanged; a successful create, update, resolve and delete each add 1 entry with the actions manual-incident.create, manual-incident.update, manual-incident.resolve and manual-incident.delete"
+        },
+        {
+          "command": "git worktree add /tmp/api-c00a375 c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e (or reuse it), copy src/server.audit.test.ts into it, then run bun install and bun test src/server.audit.test.ts -t \"an admin write appears in the audit query without secret values\" there",
+          "expected": "exit 1; the test fails on main c00a375 (the baseline the spec names) because GET /admin/audit answers 404; the red output is kept for the PR body. A run on the api main commit the branch starts from may be added, it does not replace the c00a375 run"
+        },
+        {
+          "command": "bash scripts/compose-e2e.sh",
+          "expected": "exit 0; the step \"Tokens and audit\" passes: a [\"read\",\"checks\"] token on POST /admin/checks 403; a probe token for e2e-rotated on GET /probe/checks 200; after rotate both credentials 200; after revoke both 401; GET /admin/audit?action=check.create holds target.id \"e2e-api\" with actor.name \"e2e\"; the export parses line by line with jq; no returned secret and not the e2e admin token appear in the audit output or in docker compose logs; after down and up the e2e admin token answers 200 on /admin/config and the audit entry is still there"
+        },
+        {
+          "command": "bun test src/docs-claims.test.ts src/compose-e2e-keys.test.ts",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun bench/run.ts --a c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e --b <implementation sha> --rounds 3 --out .bench/561",
+          "expected": "the A/B the spec names; side B medians under the budgets of bench/budgets.json, budgets unchanged: startup_cpu_ms < 325, load_cpu_s < 28.1, idle_rss_mib < 88, peak_rss_mib < 115, test_cpu_s < 4.1, cold_read_cpu_ms < 390, eod_read_cpu_ms < 598 (gating key added on main after the spec); the harness on the branch measures both sides with its own bench files and always adds eod_read_cpu_ms (bench/run.ts lines 215 and 244-248), so table.json has a numeric side A and side B median for every gating key, eod_read_cpu_ms included, and none of them is reported as missing on side A; reported in the PR body"
+        },
+        {
+          "command": "bun bench/run.ts --a <api main commit the branch starts from> --b <implementation sha> --rounds 3 --out .bench/561-main",
+          "expected": "extra evidence, in addition to the c00a375 run: the same budgets hold, including eod_read_cpu_ms < 598 on both sides; reported in the PR body"
+        },
+        {
+          "command": "bun start with copies of tokens.example.json and admin-tokens.example.json (placeholders replaced), then curl POST /admin/tokens, GET /admin/audit, restart without the files and reuse the secret",
+          "expected": "201 with a secret; 200 with token.import and token.create entries; 200 after the restart; commands and statuses reported in the PR body"
+        },
+        {
+          "command": "gh pr checks <pr> --watch",
+          "expected": "CI jobs check, bench-selftest, docker (both runners) and compose-e2e are green"
+        },
+        {
+          "command": "gh pr view <pr> --json body",
+          "expected": "the body quotes the red runs on main c00a375 and green runs of the four issue tests and the upgrade test (kept from T3, T4, T6), the red runs of the five named mutations (T1 and T5), the power-loss table and negative control passing in both journal modes, the bench medians, and one test or command per applicable item of the `## Security impact` checklist"
+        }
+      ]
+    }
+  ]
+}

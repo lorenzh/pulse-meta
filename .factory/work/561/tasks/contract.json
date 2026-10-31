@@ -1,0 +1,34 @@
+{"version": 1, "target": "contract", "tasks": [
+  {"id": "T1", "kind": "step",
+   "title": "Token constants, schemas, types and validators are exported",
+   "files": ["src/tokens.ts", "src/validate-admin.ts", "src/index.ts", "test/tokens.test.ts", "test/smoke.test.ts", "test/types.fixture.ts",
+             "dist/tokens.*", "dist/validate-admin.*", "dist/index.*",
+             "validateTokenMetadata", "validateTokensResponse", "validateTokenCreateInput", "validateTokenSecretResponse"],
+   "behaviorChange": true,
+   "spec": "## Repository: contract, Behavior bullets 1-3 (the token rows of the `## Contract fields` table: TOKEN_SCOPES, TokenScope, TOKEN_ROTATION_OVERLAP_MS, TOKEN_NAME_MAX, TOKEN_MAX_BODY_BYTES, TOKEN_SECRET_PREFIX, TOKEN_ID_PREFIX, TokenMetadata, TokensResponse, TokenCreateInput, TokenSecretResponse with their schemas and validators; tokenCreateInputSchema and tokenMetadataSchema rules) and Checks bullets 1, 4 and 5 for these names. Note: `src/tokens.ts`, `src/validate-admin.ts` and `src/index.ts` are file paths; the four validator names are listed only because the section's Files: list names them.",
+   "acceptance": [
+     {"command": "bun test test/tokens.test.ts", "expected": "exit 0; validateTokenCreateInput rejects every clock-independent case of plan.md `## Counterexamples` \"Create validation, clock-independent\": scopes [], [\"owner\"], [\"read\",\"read\"], [\"probe\",\"read\"]; [\"probe\"] without location; [\"read\"] with location \"eu\"; a location of 65 characters after trim; name \"   \", a name of 101 characters, name \"a\\u0000b\"; expiresAt 1.5, 0, -1, \"1\"; the extra key secret"},
+     {"command": "bun test test/tokens.test.ts", "expected": "exit 0; validateTokenCreateInput accepts {\"name\":\"ci\",\"scopes\":[\"read\",\"checks\"]}, {\"name\":\"probe eu\",\"scopes\":[\"probe\"],\"location\":\"eu\"}, a name of exactly 100 characters, expiresAt 1 and expiresAt 9007199254740991; validateTokenMetadata rejects {...metadata, secret: \"x\"} and {...metadata, secretSha256: \"...\"}; a getter on an input object is never called (a counter in the test stays 0)"},
+     {"command": "bun test test/tokens.test.ts", "expected": "exit 0; the constants equal the literals of the `## Contract fields` table: TOKEN_SCOPES [\"read\",\"checks\",\"incidents\",\"admin\",\"probe\"], TOKEN_ROTATION_OVERLAP_MS 600000, TOKEN_NAME_MAX 100, TOKEN_MAX_BODY_BYTES 4096, TOKEN_SECRET_PREFIX \"pulse_\", TOKEN_ID_PREFIX \"tok_\""},
+     {"command": "bun test test/smoke.test.ts", "expected": "exit 0; the package entry exports the new token names and the type fixture assigns a literal of each new token type"},
+     {"command": "bun run build && git diff --exit-code -- dist", "expected": "exit 0 after the commit: the committed dist equals a fresh build"},
+     {"command": "bun run check", "expected": "exit 0"}
+   ]},
+  {"id": "T2", "kind": "final",
+   "title": "Audit types and validators, new ADMIN_STATUS_ORDER texts, version 1.7.0 and docs",
+   "files": ["src/audit.ts", "src/validate-admin.ts", "src/admin.ts", "src/index.ts", "test/audit.test.ts", "test/admin.test.ts", "test/smoke.test.ts", "test/types.fixture.ts",
+             "dist/*", "dist/audit.*", "dist/admin.*", "dist/validate-admin.*", "dist/index.*",
+             "validateAuditEntry", "validateAuditPage", "ADMIN_STATUS_ORDER", "package.json", "1.7.0", "README.md", "docs/index.md"],
+   "behaviorChange": true,
+   "spec": "## Repository: contract, Behavior bullets 1, 4-6 (the audit rows of the `## Contract fields` table: AUDIT_ACTIONS, AuditAction, AUDIT_TARGET_KINDS, AuditTargetKind, AuditEntry, AuditPage with their schemas and validators, AUDIT_DEFAULT_LIMIT, AUDIT_MAX_LIMIT, AUDIT_EXPORT_CONTENT_TYPE; the auditEntrySchema rules; the ADMIN_STATUS_ORDER texts; WIRE_VERSION stays 1), Checks bullets 2-4, Files `package.json` (version 1.7.0), `README.md`, `docs/index.md`, Completion evidence and `## Rollout order` item 1. Note: `ADMIN_STATUS_ORDER`, `1.7.0` and the two validator names are listed only because the section's Files: list names them.",
+   "acceptance": [
+     {"command": "bun test test/audit.test.ts", "expected": "exit 0; validateAuditEntry accepts an entry whose target.id has 10000 characters and an entry with actor.tokenId null; it rejects target.id \"\", an extra key, {action:\"token.revoke\", target:{kind:\"check\",...}} and revision \"abc\"; validateAuditPage rejects nextBefore 0 and accepts nextBefore null"},
+     {"command": "bun test test/audit.test.ts", "expected": "exit 0; AUDIT_ACTIONS has exactly the 17 actions of plan.md D7 in that order, AUDIT_TARGET_KINDS is [\"check\",\"component\",\"maintenance\",\"manual-incident\",\"token\"], AUDIT_DEFAULT_LIMIT 100, AUDIT_MAX_LIMIT 1000, AUDIT_EXPORT_CONTENT_TYPE \"application/x-ndjson\""},
+     {"command": "bun test test/admin.test.ts", "expected": "exit 0; the 401 entry of ADMIN_STATUS_ORDER means \"missing, unknown, expired, revoked or retired token\" and the 403 entry \"a valid token without the needed scope\"; the statuses and their order are unchanged (404, 401, 403, 413, 400, 428, 503, 412, 422, 409, 404)"},
+     {"command": "bun test test/smoke.test.ts test/version.test.ts", "expected": "exit 0; the package entry exports every name of the `## Contract fields` table; WIRE_VERSION is 1"},
+     {"command": "node -p \"require('./package.json').version\"", "expected": "1.7.0"},
+     {"command": "bun run build && git diff --exit-code -- dist", "expected": "exit 0 after the commit: the committed dist equals a fresh build"},
+     {"command": "bun run check", "expected": "exit 0"},
+     {"command": "gh pr checks <pr> --watch", "expected": "the CI job check is green; the PR body lists the new exports and the counterexamples covered"}
+   ]}
+]}
