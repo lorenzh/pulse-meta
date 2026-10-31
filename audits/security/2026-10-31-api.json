@@ -90,10 +90,10 @@
       "severity": "P3",
       "candidate": false,
       "title": "validateResult runs getters of the optional fields location, attempts and certDaysLeft (not reachable over HTTP)",
-      "command": "bun getter-check.ts <api copy>: imports validateResult from src/server.ts and calls it with a result body whose field is an accessor; counts the getter runs.",
+      "command": "bun getter-check.ts <api copy>: imports validateResult from src/server.ts and calls it with a result body whose field is an accessor (the getters of attempts and certDaysLeft return undefined); counts the getter runs.",
       "exitCode": 0,
       "excerpt": "validateResult accessor checkId: getter runs=0 result=result.checkId: is required\nvalidateResult accessor location: getter runs=1 result=accepted\nvalidateResult accessor attempts: getter runs=2 result=accepted\nvalidateResult accessor certDaysLeft: getter runs=2 result=accepted\nJSON.parse makes accessors? false",
-      "impact": "A direct caller's getter runs, up to twice, so a checked value and the stored value can differ. HTTP bodies come from JSON.parse, so the server is not affected.",
+      "impact": "A direct caller's getter runs more than once: twice when it returns undefined, up to 5 times when it returns a valid value (attempts 3, certDaysLeft 5, found in the review). A checked value and the stored value can therefore differ. HTTP bodies come from JSON.parse, so the server is not affected.",
       "fixDirection": "Build the Result from the validated value of the contract, or read the optional fields as own data properties.",
       "commits": { "api": "11f555598831ef61f13de40bef5f2da620230c97" }
     }
