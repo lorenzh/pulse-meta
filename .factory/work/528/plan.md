@@ -54,6 +54,8 @@ Sources: the issue, the lead's decision in the issue comments (A is done, with f
      - A long-syntax bind with `bind.create_host_path: false` and a missing source fails `up` with `bind source path does not exist`.
 2. **One place to bump versions:**
    - `common/services.yaml` holds every `image:` line of the non-dev setups. That covers the five pulse images and the third-party images: `oven/bun`, `alpine/openssl`, `axllent/mailpit`.
+   - No other file in the repository holds a version or digest of these images: not `check-setup.sh`, not `bump-images.sh`, not CI. The static checks test the *shape* of a pin (regex plus an allowed image name), never its value. So a bump edits exactly one file and every check stays green without a second edit.
+   - The check that the first pins equal the lead's five literals is a one-time check of the deploy PR (completion evidence 6), not a permanent rule.
    - No setup file has an `image:` line, except `dev` with its local `pulse-<svc>:dev` tags.
    - This needs no `--env-file` or extra flag.
    - `common/services.yaml` has no host paths, so its relative-path resolution never matters.
@@ -133,13 +135,13 @@ README.md, AGENTS.md, CLAUDE.md, .gitignore, LICENSE (kept)
 
 ### Images (`common/services.yaml`)
 
-- The first pins are the lead's literals. Each one appears exactly once in the repository, in `common/services.yaml`:
+- The first pins are the lead's literals. Each one appears exactly once in the repository, in `common/services.yaml` (no script, test or workflow repeats it):
   - `ghcr.io/lorenzh/pulse-api:0.1.0@sha256:71d623fb9e51bccdfd1f235882c69c48908960ec39e1c9b565fa700777009b18`
   - `ghcr.io/lorenzh/pulse-probe:0.1.0@sha256:c5cb30ec6efecd34e37a6047ba165e2eba57b95bbb2e8775c9c77753c6736871`
   - `ghcr.io/lorenzh/pulse-status:0.1.0@sha256:0347481776e1d511dd3bffc7c21d646b6661192e11f08997ffe54eb745e84fa4`
   - `ghcr.io/lorenzh/pulse-notify:0.1.0@sha256:a63964aa2a2b728849f76b416ac5cc90b5a95306a375c028c3d4d11afe1c9e78`
   - `ghcr.io/lorenzh/pulse-console:0.1.0@sha256:ddadc5e1eef198861731b334bee3a593e1ef29700252212a7dba9ac81087bce3`
-- Third-party pins, also only in `common/services.yaml`:
+- Third-party pins, also only in `common/services.yaml`. A third-party bump is a hand edit of that one line, using a digest from the approved list (`docs/approved-packages.md` in pulse-meta, updated first):
   - `oven/bun:1.4.0-alpine@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb`
   - `alpine/openssl@sha256:1c361a204e9791bec6202bccbd1065eafaa65cb5a1a9a06ae000238569fba6a2`
   - `axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498`
@@ -204,6 +206,7 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
 | `dev` | `pulse-dev` | its own |
 | e2e | `pulse-e2e` (forced by the script, as today) | its own |
 
+- Each setup's `compose.yaml` sets its project name with a top-level `name:`, so `docker compose …` run inside the setup directory (`cd full && docker compose ps`) and `docker compose -f full/compose.yaml …` from the root address the same project.
 - An existing pulse-api Compose user who switches to `full` keeps the database and the notify ledger.
 - The demo's documented reset is `docker compose -f demo/compose.yaml down -v`. It touches only `pulse-demo_*`.
 
@@ -272,6 +275,10 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
     - the script fails if `docker compose config --format json` has a `build` key in any service.
   - `docker compose --profile demo …` calls become plain `docker compose …` (ps, logs, down).
   - The overlay publishes the api on loopback and adds `e2e-target` (extends `bun-tools`). It keeps the admin-token `configs.content` (throwaway), `PULSE_CHECKS_RELOAD_INTERVAL_MS`, `PULSE_STATUS_PUBLIC_URL` and `PULSE_HEADER_SVC_TOKEN`, as today.
+  - The admin-token config moves out of `/run/pulse`. In `full`, `/run/pulse` is the read-only `api-secrets` volume, and Docker cannot place a config file inside a read-only mount (`open /run/pulse/admin.json: read-only file system`, reproduced by the plan review on Docker 28.0.4; today's pulse-api overlay uses `target: /run/pulse/admin-tokens.json`, `compose.e2e.yaml` lines 7 and 15). The overlay uses:
+    - `configs: [{source: admin-tokens, target: /run/pulse-admin/admin-tokens.json}]`;
+    - `PULSE_API_ADMIN_TOKENS_FILE: /run/pulse-admin/admin-tokens.json` (the api setting read at `api/src/start.ts:134`).
+  - Rule for every setup and override: no mount, config or secret targets a path inside `/run/pulse/`, which belongs to the secrets volume alone.
   - `source scripts/outage-history.sh` becomes `source e2e/outage-history.sh`.
 - `e2e/outage-history.test.sh`:
   - It ports the five cases of `api/src/outage-history.test.ts` with the same constants (start 100000, end 135000, interval 10000) and the same inputs.
@@ -300,12 +307,17 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
   - on failure, prints `ps --all` and `logs --no-color` first.
 - `scripts/check-setup.sh` (static, no containers):
   1. `grep -rnE 'build:|git#' common minimal full demo` finds nothing.
-  2. Every `image:` value in `common/services.yaml` matches `^ghcr\.io/lorenzh/pulse-(api|probe|status|notify|console):[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$`, or is one of the three third-party pins written literally in the script.
+  2. Every `image:` value in `common/services.yaml` matches one of two regexes, and nothing else:
+     - pulse: `^ghcr\.io/lorenzh/pulse-(api|probe|status|notify|console):[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$`;
+     - third-party: `^(oven/bun|alpine/openssl|axllent/mailpit)(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$`.
+
+     The script holds image *names* only (the approved ones), never a version or digest. Each of the five pulse names occurs exactly once. The digest values are checked against the registry by `bump-images.sh --verify` (pulse images) and by `docker compose pull`, which verifies the content of a digest reference (all images).
   3. `grep -rn 'image:' minimal full demo e2e` finds nothing. In `dev`, only `image: pulse-<svc>:dev`.
   4. `ghcr.io/lorenzh/pulse-` appears in no `*.yaml` outside `common/services.yaml`.
   5. For each setup, `docker compose -f <setup>/compose.yaml config --format json` gives exactly the host-port set of the table above. The script writes the expected `(service, host_ip, published, target)` tuples literally.
   6. `secrets/` is listed in `.gitignore` (`git check-ignore -q secrets/probe-token`).
   7. After `init-secrets.sh --dir <tmp>`, `stat -c %a` reads `700` for the directory and `600` for `probe-token`. A second run leaves the file's content unchanged (compare `sha256sum` before and after).
+  8. In `docker compose -f full/compose.yaml -f e2e/compose.e2e.yaml config --format json` and in each setup's own config, the only mount of any service whose target is `/run/pulse` or starts with `/run/pulse/` is the secrets volume mounted exactly at `/run/pulse`. A config, secret or volume targeting `/run/pulse/<file>` fails.
 - Demo assertions:
   - (a) Within 300 s of `up`:
     - `docker compose exec -T api bun -e "…fetch('http://127.0.0.1:3000/incidents')…"` returns at least one incident with `resolvedAt == null`;
@@ -327,14 +339,14 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
   - an answer whose media type is not an OCI index or a Docker manifest list.
 
   On a refusal it changes no file.
-- `--verify`: for each pinned image, the registry digest of its tag must equal the pinned digest.
+- `--verify`: for each of the five pulse images in `common/services.yaml`, the ghcr.io digest of its tag must equal the pinned digest. It reads the pins from `common/services.yaml` and the expected digest from ghcr.io (independent source); it holds no pin itself. Third-party images are not covered (`alpine/openssl` has no tag); `docker compose pull` verifies their digest content.
 - `--check-latest`: reads `/v2/.../tags/list`, keeps the tags matching `^[0-9]+\.[0-9]+\.[0-9]+$`, compares them by SemVer, and fails when the highest is above the pin. It prints `svc pinned → available`.
 
 ### Docs in deploy
 
 - `README.md`: what pulse-deploy is, the four setups, prerequisites (Docker Engine with Compose ≥ 2.23), a quick start for each, the secrets model, host ports, how to bump images, migrating from pulse-api's `compose.yaml` (same project name and volumes in `full`), and the e2e test.
 - One `README.md` per setup: services, ports, config files with every key explained, the variables of its `.env.example`, start, stop and reset.
-  - The full README also covers opting in to admin tokens with a `compose.override.yaml`.
+  - The full README also covers opting in to admin tokens with a `compose.override.yaml`. Its example mounts a host directory `../secrets/admin` read-only at `/run/pulse-admin`. The file `admin-tokens.json` (`{"tokens":[{"name":…,"token":…}]}`) must be readable by the container user `bun` (uid 1000) and by nobody else, so the README tells the reader to make it with `umask 077`, then `sudo chown 1000:1000` on the file and the directory (mode `0400` file, `0500` directory), and explains why: the host owner and mode survive a bind mount (decision 4) and sets `PULSE_API_ADMIN_TOKENS_FILE=/run/pulse-admin/admin-tokens.json`. It never targets `/run/pulse`, and it shows no literal token (the README tells the reader to generate one with `openssl rand -hex 32`).
   - The demo README covers the demo checks table and the white-label theme.
 - `.env.example` per setup: every variable that the setup's compose file reads, each with a comment line, all commented out with the default value.
 - `AGENTS.md`:
@@ -449,7 +461,7 @@ The security state after the review should try:
   - `ghcr.io/lorenzh/pulse-api:latest@sha256:…`;
   - `ghcr.io/lorenzh/pulse-api:0.1.0@sha256:ABC…` (upper-case or short digest);
   - a `build: https://github.com/lorenzh/pulse-probe.git#main` in `full`.
-- **One place:** a copy of the api pin in `demo/compose.yaml` fails rule 4, even though the value is identical.
+- **One place:** a copy of the api pin in `demo/compose.yaml` fails rule 4, even though the value is identical. A `check-setup.sh` (or any other file) that holds a literal `sha256:` digest of a pinned image is wrong: after `bump-images.sh api=0.1.1` the checks must still pass with only `common/services.yaml` changed. A third-party image not in the allowed names (for example `busybox@sha256:…`) fails rule 2, and so does `axllent/mailpit:latest` (no digest).
 - **`bump-images.sh --verify`:** if `common/services.yaml` pins `pulse-api:0.1.0@sha256:<probe's digest>`, verify fails, because the registry's `0.1.0` digest for pulse-api is `71d623fb…`.
 - **`--check-latest`:** tags `0.1.0`, `0.1`, `0`, `0.2.0-rc.1` and `sha256-…` give "up to date" for a `0.1.0` pin. Prerelease, floating and attestation tags are ignored. A `0.10.0` tag beats `0.9.0`, since the comparison is numeric, not string.
 - **Ports:** `check-setup.sh` must fail for each of these:
@@ -457,6 +469,7 @@ The security state after the review should try:
   - `"8080:8080"` on status in demo (all interfaces instead of `127.0.0.1`);
   - mailpit published in full (mailpit is not in full at all);
   - console on all interfaces in any setup.
+- **Mount under the secrets volume:** an e2e overlay or override with `target: /run/pulse/admin-tokens.json` (today's pulse-api value) makes the api container fail to start with `read-only file system`. The `full` e2e job then fails at "Start the regular stack". `/run/pulse-admin/admin-tokens.json` is correct.
 - **Readiness:** `/healthz` is not `/readyz`. A wait that accepts the image's `healthy` state alone passes while the api answers `503 database unavailable` on `/readyz`. Both are required.
 - **Demo incident:**
   - The `flaky-service` incident resolves about 150 s after start. An implementation without `down-on-purpose` can pass "≥1 open incident" at 60 s and still show none at 5 min. That is why assertion (a) also requires the open `down-on-purpose` incident.
@@ -469,6 +482,8 @@ The security state after the review should try:
   - The clock starts at `up -d`, not at `pull`. A measurement that includes the pull is wrong.
   - It stops at the last `/readyz` 200 across all services, not the first.
 - **Total RSS:** a single sample 30 s after readiness, summed over containers. Not an average over time, not a maximum, not including the exited `secrets-init`. `1.5GiB` converts to 1536.0 MiB, `512KiB` to 0.5 MiB.
+- **api docs token scan:** keeping `assert.ok(checked > 0)` fails once the Compose section is gone (0 counted tokens). Dropping it without the self-check is also wrong: a broken pattern (for example `/Bearer ([A-Z]{16,})/g`) would then pass on any docs. With the self-check, that broken pattern fails because it does not capture `0123456789abcdef0123` from the literal sample.
+- **api docs grep:** a line `See [full](https://github.com/lorenzh/pulse-deploy/blob/main/full/compose.yaml)` passes check 3. A line `docker compose -f full/compose.yaml ps` fails it, and so does a leftover `cp .env.example .env`.
 - **Outage gate:** the five cases above, with the expected results written in the test. A replayed history `85000, 95000, …, 175000` plus a repeated `115000` fails.
 
 ## Contract fields
@@ -543,10 +558,11 @@ Checks and completion evidence (all in the deploy PR's CI, green):
 5. `dev`: all five `/readyz` answer 200 on images built from the sibling checkouts.
 6. `check-setup.sh` passes:
    - no `build:` or `git#` in `common`, `minimal`, `full` or `demo`;
-   - every pin matches the regex;
-   - the five pulse pins in `common/services.yaml` equal, character for character, the five literals in this spec. The expected values are the lead's comment, not the file;
+   - every pin matches one of the two regexes of rule 2;
    - the host-port sets equal the literal table above;
    - the secret modes are `700`/`600`.
+
+   One-time check in the deploy PR (not part of `check-setup.sh`, so a later bump does not break CI): the PR description pastes the output of `grep -n 'ghcr.io/lorenzh/pulse-' common/services.yaml`. Its five lines must equal, character for character, the five literals in "Images" above. The expected values come from the lead's comment in the issue, not from the file. The reviewer compares them.
 7. `pins` passes. The registry's digest for each `0.1.0` tag equals the pin. The expected value comes from ghcr.io, an independent source.
 8. The PR description:
    - pastes `grep -rnE 'build:|git#' common minimal full demo` with no output;
@@ -576,7 +592,7 @@ Tool facts, cited:
   - `compose-e2e` (lines 66–76) is not a release gate.
 - **package.json:** `test` is `bun test` (line 15), `lint` is `biome check . && pulse-eslint .` (line 16), `packageManager` is `bun@1.4.0` (line 35).
 - **`bunfig.toml`** `[test]`: coverage threshold `lines = 0.8` (line 3). It is unaffected: the removed test covers a shell script, not TS lines.
-- **`src/tokens.test.ts`:** the test "docs and .env.example only show tokens that the API accepts" (line 105) lists `.env.example` (line 107). It would fail with `ENOENT` once the file is deleted.
+- **`src/tokens.test.ts`:** the test "docs and .env.example only show tokens that the API accepts" (line 105) lists `.env.example` (line 107). It would fail with `ENOENT` once the file is deleted. It ends with `assert.ok(checked > 0)` (line 134). Today exactly one match is counted, on `docs/install.md:38` inside "With Docker Compose" (lines 31–94), which this task replaces; the `.env.example` placeholder is skipped (plan review, checked with the test's own regexes). After the change no `docs/*.md` line is counted, so the assert as written would fail.
 
 Required changes:
 
@@ -585,7 +601,11 @@ Required changes:
    - remove the `compose-e2e` job (lines 66–76);
    - remove lines 44 and 49–54 from `docker`;
    - keep `docker build`, the "Image holds no test files" step, `check`, `bench-selftest` and `release` (still `needs: [check, docker, bench-selftest]`).
-3. In `src/tokens.test.ts`, drop `.env.example` from the file list and rename the test to "docs only show tokens that the API accepts". The `assert.ok(checked > 0)` must still hold from `docs/*.md`.
+3. In `src/tokens.test.ts`:
+   - drop `.env.example` from the file list and rename the test to "docs only show tokens that the API accepts";
+   - remove `assert.ok(checked > 0)`. The docs must not be required to show a literal token: a copyable working token in public docs is what the security model avoids;
+   - so the scan cannot silently match nothing, add an in-test self-check before the docs loop: run the same `patterns` over a fixed string written in the test, `"Authorization: Bearer 0123456789abcdef0123 and PULSE_PROBE_TOKEN=replace-with-x"`, and assert that the Bearer pattern captures `0123456789abcdef0123` and that the `PULSE_PROBE_TOKEN=` capture is skipped by the placeholder rule. The expected values are these literals in the test, not the docs.
+   - The rest of the test (every counted doc token must pass `parseTokens`) stays unchanged.
 4. In `.gitignore`, remove `!compose/checks.json`, `!compose/e2e/ro/checks.json` and `compose/e2e/rw/`. In `.dockerignore`, remove `compose` and `compose.yaml` (no longer present). `.env*` stays.
 5. In `bench/compose.bench.yaml` line 3 and the `bench/README.md` text "Keep `compose.bench.yaml` in step with the environment names of `compose.yaml`", name pulse-deploy's `common/services.yaml` (`https://github.com/lorenzh/pulse-deploy/blob/main/common/services.yaml`) instead.
 6. Docs:
@@ -607,9 +627,11 @@ Checks and completion evidence:
 
 1. CI is green on the PR with exactly the jobs `check`, `bench-selftest` and `docker` (both legs). No `compose-e2e` job.
 2. `git ls-files | grep -E '^(compose|compose\.e2e\.yaml|compose\.yaml|\.env\.example|scripts/compose-e2e\.sh|scripts/outage-history\.sh|src/outage-history\.test\.ts)'` prints nothing.
-3. `grep -rnE 'compose\.yaml|compose\.e2e|compose/|compose-e2e|\.env\.example|--profile demo' README.md docs src .github scripts .gitignore .dockerignore` prints nothing. Hits in `bench/` are allowed only for `compose.bench.yaml`.
+3. `grep -rnE 'compose\.yaml|compose\.e2e|compose/|compose-e2e|\.env\.example|--profile demo' README.md docs src .github scripts .gitignore .dockerignore | grep -v 'https://github\.com/lorenzh/pulse-deploy'` prints nothing. Hits in `bench/` are allowed only for `compose.bench.yaml`.
+   - Allowed link form for a pulse-deploy file: a full URL `https://github.com/lorenzh/pulse-deploy/...` (for example `https://github.com/lorenzh/pulse-deploy/blob/main/full/compose.yaml`). A line holding such a URL is excluded from the grep, whatever else it holds.
+   - Command examples in api docs never name a setup file path (`-f full/compose.yaml` is not used). They are plain `docker compose …` commands, introduced once per page with "run inside your pulse-deploy setup directory, for example `cd pulse-deploy/full`". This works because each setup sets its project `name:` (see "Project names and volumes").
 4. `grep -rn 'pulse-deploy' README.md docs/install.md docs/configuration.md docs/development.md` finds at least one link in each of those four files.
-5. `bun run check` passes locally, and `src/tokens.test.ts` still checks at least one token.
+5. `bun run check` passes locally (CI `check` job). `src/tokens.test.ts` holds no `checked > 0` assert and holds the self-check with the literal sample of required change 3.
 
 ## Meta (this spec PR, no child issue)
 
