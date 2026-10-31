@@ -152,7 +152,7 @@
     {
       "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
       "status": "checked",
-      "evidence": "Bench A/B (A 8ea397c, B main, 2 rounds): every api gating metric ok; p95_get_latency_ms 129 ms and p95_get_check_latency_ms 127 ms are over the reported budgets 53 and 55 ms (finding 1). Local growth script: fresh copy of the seeded database per run, start, wait for the backfill, then 30 x (POST /results; timed GET route) per route; 3 runs per data set; exit 0. Medians at 1x / 10x (8.64 M rows) / end-of-day density contiguous / end-of-day interleaved (25,920 results per check today, as 3 locations at 10 s give in a full day): GET /checks 3.1 / 18.6 / 195.5 / 344.7 ms; GET /uptime 2.6 / 17.9 / 193.9 / 341.4 ms; GET /latency 3.8 / 26.2 / 266.3 / 424.0 ms; GET /components/uptime 2.4 / 17.7 / 194.0 / 341.0 ms; GET /checks/c0/latency 0.4 / 1.4 / 13.2 ms; GET /components 2.5 / 17.8 / 194.1 ms; GET /checks/c0/results 0.3 / 0.3 / 0.3 ms. First (cold) GET /checks after start 206.7 / 2,354.4 / 455.2 / 608-612 ms; first GET /uptime 211.0 / 2,412.2 / 461.8 / 615-619 ms. Latency backfill (1780 days) CPU about 0.78 s at 1x and 3.6 s at 10x, with a yield per (check, day). Startup CPU and RSS do not grow (RSS at ready 60 MiB at 1x and 10x). 1x + 100,000 incidents: /incidents?status=resolved 0.2 to 8.2 ms, ?status=open 0.2 to 3.7 ms, /components 2.5 to 6.5 ms. Read routes grow linearly with today's results (finding 2), first reads with the 30/90-day history (finding 3), incident reads with all incidents (finding 4)."
+      "evidence": "Bench A/B (A 8ea397c, B main, 2 rounds): every api gating metric ok; p95_get_latency_ms 129 ms and p95_get_check_latency_ms 127 ms are over the reported budgets 53 and 55 ms on A and B; their cause is not established (the review measured 19-24 ms at the same rates without Docker; see review.removedFindings). Local growth script: fresh copy of the seeded database per run, start, wait for the backfill, then 30 x (POST /results; timed GET route) per route; 3 runs per data set; exit 0. Medians at 1x / 10x (8.64 M rows) / end-of-day density contiguous / end-of-day interleaved (25,920 results per check today, as 3 locations at 10 s give in a full day): GET /checks 3.1 / 18.6 / 195.5 / 344.7 ms; GET /uptime 2.6 / 17.9 / 193.9 / 341.4 ms; GET /latency 3.8 / 26.2 / 266.3 / 424.0 ms; GET /components/uptime 2.4 / 17.7 / 194.0 / 341.0 ms; GET /checks/c0/latency 0.4 / 1.4 / 13.2 ms; GET /components 2.5 / 17.8 / 194.1 ms; GET /checks/c0/results 0.3 / 0.3 / 0.3 ms. First (cold) GET /checks after start 206.7 / 2,354.4 / 455.2 / 608-612 ms; first GET /uptime 211.0 / 2,412.2 / 461.8 / 615-619 ms. Latency backfill (1780 days) CPU about 0.78 s at 1x and 3.6 s at 10x, with a yield per (check, day). Startup CPU and RSS do not grow (RSS at ready 60 MiB at 1x and 10x). 1x + 100,000 incidents: /incidents?status=resolved 0.2 to 8.2 ms, ?status=open 0.2 to 3.7 ms, /components 2.5 to 6.5 ms. Read routes grow linearly with today's results (finding 2), first reads with the 30/90-day history (finding 3), incident reads with all incidents (finding 4)."
     },
     {
       "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
@@ -171,28 +171,6 @@
     }
   ],
   "findings": [
-    {
-      "id": "performance-api-2026-10-31-1",
-      "repos": [
-        "api"
-      ],
-      "location": "src/service.ts:704",
-      "severity": "P2",
-      "candidate": true,
-      "title": "Each ingest commits with a synchronous disk flush on the event loop (rollback journal, default synchronous); every route's p95 is about 180-250 ms at the bench rates",
-      "command": "bun mem.ts (bench/load.ts rates: 30 POST /results, 10 GET /checks, 1 GET /uptime, 1 GET /latency, 1 GET /checks/:id/latency per second, open loop) against bun src/main.ts on a copy of the 1x bench seed: 5 min on disk, then 1 min each with the file on disk, on /dev/shm (tmpfs) and switched to WAL (sqlite3 db 'PRAGMA journal_mode=WAL'); sqlite3 mem.db 'PRAGMA journal_mode;' and grep -n PRAGMA src/*.ts (only user_version, foreign_keys, foreign_key_check); and timeout 30m bun bench/run.ts --a 8ea397c --b 11f5555 --rounds 2",
-      "exitCode": 0,
-      "excerpt": "journal_mode: delete\ndisk:  /results p50 5.3 ms p95 219.6 ms | /checks p95 249.7 ms | /latency p95 353.1 ms (cpu 6.29 s)\ntmpfs: /results p50 1.3 ms p95 1.9 ms | /checks p95 7.0 ms | /latency p95 15.3 ms (cpu 6.00 s)\nWAL:   /results p50 1.7 ms p95 45.4 ms | /checks p95 70.0 ms | /latency p95 94.0 ms (cpu 5.42 s)\n5 min on disk: /results p95 182.2 ms, /checks p95 200.9 ms, /uptime p95 193.2 ms, /latency p95 198.8 ms\nbench B: p95_get_latency_ms 129 ms (74.58, 183.27), p95_get_check_latency_ms 127 ms; budgets 53 and 55 ms",
-      "value": 198.8,
-      "unit": "ms (p95 GET /latency, 5 min at the bench rates, database on disk)",
-      "repetitions": "1 run of 5 min (n=300 GET /latency, n=8985 POST /results); 1 run of 1 min per storage variant; 2 bench rounds per side",
-      "baseline": "Same load and data with the database on tmpfs: p95 GET /latency 15.3 ms, POST /results 1.9 ms, at nearly the same CPU time (6.00 s against 6.29 s per minute)",
-      "budget": "p95_get_latency_ms 53 ms and p95_get_check_latency_ms 55 ms (reported, not gating), exceeded on A and B; p95_post_results_ms 312 ms and p95_get_checks_ms 392 ms not exceeded",
-      "fixDirection": "Avoid a flush per ingest, for example WAL with synchronous=NORMAL or several results per transaction; check with the bench p95 metrics",
-      "commits": {
-        "api": "11f555598831ef61f13de40bef5f2da620230c97"
-      }
-    },
     {
       "id": "performance-api-2026-10-31-2",
       "repos": [
@@ -213,6 +191,16 @@
       "fixDirection": "Keep running per-day aggregates (today's good/total count and latency percentiles from an incremental or bounded structure) instead of reading all of today's results again, or invalidate only what an ingest changes; add today's density to the bench seed",
       "commits": {
         "api": "11f555598831ef61f13de40bef5f2da620230c97"
+      },
+      "review": {
+        "result": "reproduced",
+        "commit": "11f555598831ef61f13de40bef5f2da620230c97",
+        "command": "bun bench/seed.ts . <dir>/pulse.db; sqlite3 <dir>/pulse.db < eod.sql (the SQL of the report, unchanged; 26,323 results for c0 today, rows interleaved across checks); bench fixture checks plus two components of 10 checks; timeout 280 bun reads.ts <api copy> <db> <cfg> 3995 30 (start, wait for 'backfill done', then 30 x (POST /results; timed GET) per route); 3 server runs; 1x seed as baseline, 2 runs",
+        "exitCode": 0,
+        "excerpt": "end of day, medians of runs 1/2/3: GET /checks 417.1/417.4/418.5 ms; /uptime 418.7/415.2/416.8 ms; /latency 528.8/529.1/522.5 ms; /components 417.9/418.3/418.9 ms; /components/uptime 417.2/419.9/418.1 ms\n1x (613 results per check today), runs 1/2: /checks 4.0/4.1 ms; /latency 5.4/5.5 ms; /components/uptime 3.4/3.5 ms",
+        "value": 529.1,
+        "unit": "ms (median GET /latency after an ingest; GET /checks 417.4 ms)",
+        "note": "About 20 % above the audit's values on this runner (whole test suite 3.45 s CPU here, against 2.5 s). One unloaded GET /checks at this density is over p95_get_checks_ms (392 ms). Severity P2 kept: the case is the bench's own load (3 locations, 10 s interval, 20 checks)."
       }
     },
     {
@@ -235,6 +223,12 @@
       "fixDirection": "Build the closed-day tallies after the start in yielding batches, as the latency backfill does, or store them per day like latency_daily",
       "commits": {
         "api": "11f555598831ef61f13de40bef5f2da620230c97"
+      },
+      "review": {
+        "result": "spot-checked, holds",
+        "command": "timeout 300 bun reads.ts <api copy> <db> <cfg> <port> <n> on the 1x seed, the end-of-day database of finding 2, and a 10x database (1x seed plus 9 more results per minute via sqlite3 INSERT ... SELECT, 8,640,000 rows)",
+        "exitCode": 0,
+        "excerpt": "cold GET /checks / GET /uptime: 1x 277.4/271.2 and 284.7/275.8 ms; end of day 754.9/746.3, 759.7/753.5, 755.1/773.0 ms; 10x 3373.1/3447.4 ms (then GET /checks 29.9 ms)"
       }
     },
     {
@@ -257,7 +251,40 @@
       "fixDirection": "A partial index on open incidents and an index on opened_at for the ordered reads",
       "commits": {
         "api": "11f555598831ef61f13de40bef5f2da620230c97"
+      },
+      "review": {
+        "result": "spot-checked, holds (larger cost than reported)",
+        "command": "sqlite3 <db> 'INSERT INTO incidents ... WITH RECURSIVE' (100,000 resolved incidents on the 1x seed); EXPLAIN QUERY PLAN of the status=open and status=resolved variants; timeout 200 bun reads.ts <api copy> <db> <cfg> 3997 30; the listIncidents SQL with LIMIT 1000 directly in bun:sqlite, 5 runs",
+        "exitCode": 0,
+        "excerpt": "SCAN incidents\nUSE TEMP B-TREE FOR ORDER BY\nGET /incidents?status=resolved median 80.5 ms p95 82.5 ms (n=30); bun:sqlite query 78.8-81.6 ms; GET /components 8.4 ms (3.5 ms without the incidents)",
+        "note": "The review's value is 10 times the audit's 8.2 ms; the incident rows the two used differ. Stays P3: it needs 100,000 incidents."
       }
     }
-  ]
+  ],
+  "review": {
+    "state": "audit-review",
+    "commit": "11f555598831ef61f13de40bef5f2da620230c97",
+    "machine": "4 vCPU, 16 GB, Bun 1.4.0, SQLite 3.53.2; root ext4 mounted nobarrier,data=writeback",
+    "benchAB": "not run: a run takes longer than one foreground command may, and this state starts no background tasks; own measurements in a copy of pulse-api instead",
+    "removedFindings": [
+      {
+        "id": "performance-api-2026-10-31-1",
+        "severity": "P2",
+        "title": "Each ingest commits with a synchronous disk flush on the event loop; every route's p95 is about 180-250 ms at the bench rates",
+        "reason": "Not reproduced. At the bench rates the database on disk and on tmpfs give almost the same latencies, and every route stays far within its budget. The flush per ingest exists (4 fsync and 1 journal unlink per commit), but costs about 1 ms per POST on this disk.",
+        "command": "timeout 200 bun load.ts <api copy> <db> <seed dir> <port> 60 (bun src/main.ts on a copy of the 1x bench seed; after 'backfill done', 60 s open loop at the bench/load.ts rates: 30 POST /results, 10 GET /checks, 1 GET /uptime, 1 GET /latency, 1 GET /checks/c0/latency per second); disk twice, tmpfs (/dev/shm) once, disk with a parallel 6 GB dd once; plus a 20 s run under strace -f -c -e trace=fsync,fdatasync,unlink,unlinkat",
+        "exitCode": 0,
+        "excerpt": "PRAGMA synchronous 2, journal_mode delete\ndisk 1: POST /results p50 2.0 p95 2.9 ms | GET /checks p95 9.0 | GET /latency p95 23.2 | GET /checks/c0/latency p95 23.9 ms\ndisk 2: POST /results p50 2.1 p95 3.2 ms | GET /checks p95 9.9 | GET /latency p95 19.5 | GET /checks/c0/latency p95 20.0 ms\ntmpfs:  POST /results p50 1.0 p95 1.2 ms | GET /checks p95 7.8 | GET /latency p95 19.2 | GET /checks/c0/latency p95 19.8 ms\ndisk + parallel 6 GB writeback: POST /results p95 4.9 ms | GET /checks p95 10.7 | GET /latency p95 284.9 ms\nstrace: 9520 fsync (27 us each, 0.26 s total), 2380 unlink",
+        "note": "The cost depends on the fsync latency of the disk; this review cannot show it as a finding on a disk with a slow flush. The bench A/B p95_get_latency_ms 129 ms and p95_get_check_latency_ms 127 ms (over budget on A and B) stay in bench.localAB; their cause in the Docker bench stack is not established."
+      }
+    ],
+    "reproduced": [
+      "performance-api-2026-10-31-2"
+    ],
+    "spotChecked": [
+      "performance-api-2026-10-31-3",
+      "performance-api-2026-10-31-4"
+    ],
+    "otherChecks": "EXPLAIN QUERY PLAN of dayLatencies, dailyUptime and two listIncidents variants matches item 1; /usr/bin/time bun test exit 0, 390 pass, CPU 2.90 + 0.55 s (budget 4.1 s); src/uptime.test.ts 0.79 s, src/main.test.ts 0.75 s, src/state.test.ts 0.02 s"
+  }
 }
