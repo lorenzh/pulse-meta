@@ -1,7 +1,7 @@
 {
   "template": 1,
   "issue": null,
-  "as_of": "2026-10-31T21:40:30.229Z",
+  "as_of": "2026-10-31T21:51:36.044Z",
   "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Die Schwäche bleibt das Review: Es prüft kaum selbst und hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.",
   "notes": {
     "duration": "Ein Lauf dauert wenige Minuten, und die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es meist am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.",

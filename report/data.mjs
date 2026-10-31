@@ -231,13 +231,14 @@ export function build(raw, { bot, now, previous = null, sourceRun = null }) {
       runs_cost_unknown: v.filter((r) => r.cost === null).length,
       usd: r2(usd),
       usd_per_issue: r2(usd / n),
+      tokens_m: r1(sum(v.map((r) => r.tok)) / 1e6),
       prs_merged: prs.filter((p) => p.repo === target && mergedInWin(p)).length,
       prs_human: prs.filter((p) => p.repo === target && humanInWin(p)).length,
     };
   }).sort((a, b) => b.usd - a.usd);
 
   const byDay = [...groupBy(winRuns, (r) => r.start.slice(0, 10))]
-    .map(([day, v]) => ({ day, usd: r2(sum(known(v))), runs: v.length, runs_cost_unknown: v.filter((r) => r.cost === null).length }))
+    .map(([day, v]) => ({ day, usd: r2(sum(known(v))), runs: v.length, runs_cost_unknown: v.filter((r) => r.cost === null).length, tokens_m: r1(sum(v.map((r) => r.tok)) / 1e6) }))
     .sort((a, b) => a.day.localeCompare(b.day));
 
   // Case study: the most expensive feature finished in the window, so the pick follows the data.
