@@ -200,7 +200,7 @@ Image (each must make `scripts/image-dotenv.sh` fail):
 - `./.github/workflows/missing.yml` as a job `uses`.
 - A file with a YAML syntax error, a file whose root is a list, `jobs: {}`, `steps: "x"`.
 - A job with `container: node:22`.
-- Rule 8: a workflow whose only job is `idle: { runs-on: ubuntu-24.04 }` (no `steps`, no `uses`): exactly 1 violation (`ci.yml: job idle: job has no steps`), exit `1`. The same job with `steps: []`: exactly 1 violation, exit `1`. Adding one compliant `oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6` step to that job: 0 violations, exit `0`.
+- Rule 8: a workflow whose only job is `idle: { runs-on: ubuntu-24.04 }` (no `steps`, no `uses`): exactly 1 violation (`ci.yml: jobs.idle: job has no steps`), exit `1`. The same job with `steps: []`: exactly 1 violation, exit `1`. Adding one compliant `oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6` step to that job: 0 violations, exit `0`.
 - A comment `# persist-credentials: false` under a checkout: YAML drops comments, so it is still a violation.
 
 notify contract:
