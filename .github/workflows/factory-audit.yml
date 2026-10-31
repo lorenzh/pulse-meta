@@ -28,7 +28,7 @@ on:
         required: false
         default: rotation
         type: choice
-        options: [rotation, contract, probe, api, status, notify, config, kit, website]
+        options: [rotation, contract, probe, api, status, notify, config, kit, website, console]
 
 # One group per kind, for scheduled and manual runs alike, so two runs of one kind cannot both pass
 # the dedupe. The schedule-to-kind pairs repeat the cron lines above (test.sh checks them).
