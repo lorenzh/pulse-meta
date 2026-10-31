@@ -51,6 +51,34 @@ Each section starts with a `Files:` list of every file it creates or changes, th
 behavior, checks, and completion evidence of that repository's task. Leave out every repository that needs no change. Order the sections so that a repository
 comes after the repositories it needs.
 
+The line after the `Files:` list is exactly `Behavior change: yes` or `Behavior change: no`,
+followed by a one-line reason. Write `no` only for a pure refactor or a change of tests or docs
+alone. Every other task is `yes`, including a change of tooling or CI files. With `yes`, the
+implementer requests a hold instead of a review when it finds that the code already has the
+behavior.
+
+Before a repository section relies on a tool fact, verify it in that repository's files and cite
+file and line in the section. Tool facts are: a tool or runtime version, which linter, formatter,
+or type checker runs, the Biome include or ignore scope, a test runner flag, and a CI step. The
+files are `package.json` (`scripts`, `packageManager`, `engines`, devDependency pins such as
+`@biomejs/biome`), `biome.json`, `bunfig.toml` (`[test]`), and the CI workflow
+(`.github/workflows/ci.yml`). When the target file only points to config (a `biome.json` that
+`extends` `@lorenzh/pulse-config/biome.json`, a CI job that `uses`
+`lorenzh/pulse-config/.github/workflows/check.yml@<sha>`), cite the config file and line too, at
+the ref that the target pins in `package.json` or `ci.yml`. The config clone is `main` and can be
+newer than that pin. Read the pinned file with
+`gh api "repos/lorenzh/pulse-config/contents/<path>?ref=<sha>" --jq .content | base64 -d`, and
+say whether it differs from the clone. A tool fact without such a citation is an assumption:
+verify it or leave it out.
+
+Every acceptance check states where its expected value comes from: a literal in the check (a
+status code, a count, a hash written out), or an independent source that the spec names (a
+published hash, an upstream release, a separate build). An acceptance check never derives its
+expected value from the file it checks: an expected value that is read from, or regenerated from,
+the file or code under test in the same run makes a check that can never fail. Comparing two
+artifacts that are produced independently is allowed (for example `git diff --exit-code -- dist`
+after a build, or served bytes against the file in `public/`).
+
 Create the artifact directory if needed. Write the spec to
 `{{variables.work_directory}}/{{issue.id}}/plan.md`.
 

@@ -40,10 +40,24 @@ If the spec or the section is missing, request a hold with status `needs-input`.
    # Run only the new or changed tests in "$tmp" with the repository's test command.
    ```
 
-   A pure refactor or a docs-only change is exempt; say so and why.
-5. Read the pull request body (`gh api repos/<owner>/<repo>/pulls/<n> --jq .body`) and compare it
+   A pure refactor or a docs-only change is exempt; say so and why. This exemption never applies
+   to a section that requires a behavior change. A change with only regression tests that a person
+   allowed in an issue comment is exempt: its tests pass on the base version by design.
+5. Decide whether the section requires a behavior change: its line `Behavior change:` says `yes`,
+   or, in a section without that line, its required behavior describes new or changed behavior.
+   Then decide whether the diff changes a source file: a file that ships or runs the behavior, not
+   a test, fixture, or doc. A diff that only adds or changes tests, fixtures, or docs is no source
+   change. An earlier no-change hold is an issue comment that starts with
+   `Factory ran build/implement.`, contains "The code already has the behavior", and whose
+   `factory-record` line has `"statuses":["needs-input"]`.
+   A person allowed a change with only regression tests when a comment of a person after that hold
+   says so.
+6. For every new or changed check, find where its expected value comes from: a literal in the
+   test, or an independent source that the spec names. It must not be read from, or regenerated
+   from, the file or code that the check checks.
+7. Read the pull request body (`gh api repos/<owner>/<repo>/pulls/<n> --jq .body`) and compare it
    with the acceptance evidence that the spec section asks for.
-6. Go through the security checklist for every item the change touches:
+8. Go through the security checklist for every item the change touches:
    - secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) never
      reach errors, logs, or responses;
    - authentication runs before any other check, and status codes follow the spec order;
@@ -61,10 +75,24 @@ Transition to `implement` when any of these holds. Each one alone is enough:
 - a defect that you proved with a failing test or command;
 - a required check fails, or the pull request's CI is red, still running, or timed out (a timeout
   means not ready);
-- no new or changed test fails on the base version for a behavior change (the mutation step);
+- no new or changed test fails on the base version for a behavior change (the mutation step; a
+  change with only regression tests that a person allowed is exempt);
+- the section requires a behavior change and the diff changes no source file, and no person
+  allowed a change with only regression tests;
+- a new or changed check derives its expected value from the file or code that it checks (for
+  example a test that reads the expected hash or list from the file it validates), so it can
+  never fail. Comparing two artifacts that are produced independently is allowed (for example
+  `git diff --exit-code -- dist` after a build, or served bytes against the file in `public/`);
 - acceptance evidence that the spec asks for is missing from the pull request body, or a check that
   the spec names was not run (including the compose end-to-end test);
 - a security checklist item that the change touches has no test or command that proves it.
+
+When the diff changes no source file for a section that requires a behavior change, no person
+allowed a change with only regression tests, and an earlier no-change hold exists, request a hold
+with status `needs-input` instead of transitioning to `implement`. Its message names the hold
+comment, the section line that asks for the behavior change, what the diff contains, and the
+question for the person: close the issue, allow a change with only regression tests, or name the
+missing behavior.
 
 Include each finding with its proof (the failing test, the command and its output) and the failed
 checks in the outcome message.

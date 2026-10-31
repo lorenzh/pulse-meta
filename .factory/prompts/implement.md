@@ -18,6 +18,29 @@ If the spec or the section is missing, if a repository that the section depends 
 released its change yet, or if the work needs a material decision, request a hold with status
 `needs-input`. State what the person must resolve.
 
+## No source change
+
+The section requires a behavior change when its line `Behavior change:` says `yes`. A section
+without that line (a spec written before it existed) requires one when its required behavior
+describes new or changed behavior. A source file is a file that ships or runs the behavior: not a
+test, fixture, or doc. A diff that only adds or changes tests, fixtures, or docs is no source
+change.
+
+When the section requires a behavior change and you find no defect and change no source file, do
+not transition to `review`, and do not commit or push. Request a hold with status `needs-input`.
+Its message starts with "The code already has the behavior that the section asks for." and
+states:
+
+1. what the spec asked: the section and the line of the spec that you read;
+2. what you found: the file and line that already has the behavior;
+3. the command or test that shows the current behavior already matches, with its result line;
+4. the question for the person: close this issue because the behavior exists, allow a change with
+   only regression tests, or name the behavior that is still missing.
+
+After the person answers in the issue comments, follow the answer. For a change with only
+regression tests, add tests that pin the behavior, name the comment that allows it in the pull
+request body, and transition to `review`. For a missing behavior, implement it as usual.
+
 Keep changes within the section. Do not write `.factory/` or any other notes into this repository.
 
 ## Checks and evidence
@@ -45,7 +68,18 @@ this run.
    At least one of those tests must fail per behavior change, with an assertion about that
    behavior (not an unrelated setup error). If every test passes on the base version, the tests do
    not prove the change: fix them. A pure refactor or a docs-only change is exempt; say so and why.
-3. **Security checklist.** For every item that the change touches, name the test or the command
+   This exemption never applies to a section that requires a behavior change. A change with only
+   regression tests that a person allowed (see "No source change") is exempt: its tests pass on
+   the base version by design. Say so and name the comment.
+3. **Independent expected values.** A new or changed check never derives its expected value from
+   the file or code that it checks. Do not read the expected hash, list, count, or snapshot from
+   the file under test, and do not regenerate it from the code under test in the same run: such a
+   check can never fail. Write the expected value as a literal in the test, or take it from an
+   independent source that the spec names. Comparing two artifacts that are produced
+   independently is allowed (for example `git diff --exit-code -- dist` after a build, or served
+   bytes against the file in `public/`). The rule covers new and changed checks; it does not
+   rewrite existing tests.
+4. **Security checklist.** For every item that the change touches, name the test or the command
    that proves it holds:
    - secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) never
      reach errors, logs, or responses;
@@ -89,4 +123,6 @@ Put the changed files, behavior, check results, the pull request number, and rem
 in the outcome message.
 
 Transition to `review` when the change, its checks, and the pull request body are complete.
+Never transition to `review` without a source change for a section that requires a behavior
+change, unless a person allowed a change with only regression tests (see "No source change").
 Use `retry` only when useful work remains for another fresh run.
