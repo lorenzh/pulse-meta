@@ -1,0 +1,65 @@
+# Issue review: #479 api: SQLite WAL mode and a hot backup command
+
+Target: `api` only. No contract, status, probe or notify change. No new route.
+
+## Verified current state (`main` of pulse-api)
+
+- `src/db.ts` `openDb(path, steps, log)` does `new Database(path)` and then runs `migrate()`. It sets only `foreign_keys` and `user_version`. It sets no journal mode, `synchronous` or `busy_timeout`. No `busy_timeout` is set anywhere in `src/`.
+- `migrate()` always writes: it runs `BEGIN IMMEDIATE` and `CREATE TABLE IF NOT EXISTS ...` on every open. So `openDb` cannot open a file read-only. The backup command must not use `openDb` on the live file. Tests may use `openDb` on the backup copy.
+- `src/start.ts` reads the path from `PULSE_DB` (default `./pulse.db`). The Dockerfile sets `PULSE_DB=/data/pulse.db`, runs as user `bun`, and copies `package.json` and `src/`. A `backup` script in `package.json` plus `src/backup.ts` therefore ship in the image.
+- The api is one Bun process with one synchronous `bun:sqlite` connection. Inside the process, a write never runs at the same time as a read. WAL helps with a second connection (the backup command, or an operator's `sqlite3`). In rollback mode such a reader holds a SHARED lock and blocks the api's commits: the api has no `busy_timeout`, so it would get `SQLITE_BUSY` at once. WAL also reduces fsyncs, because `synchronous = NORMAL` does not sync on each commit.
+- `docs/operation.md`:
+  - Line 19 holds the journal text that has to be replaced.
+  - Lines 25, 56 and 60 say "back up first" and "restore the backup".
+  - A "Backup and restore" section (lines 64-73) says that the only tested method is `cp` with the api stopped, that "the API has no backup command", and "Do not copy the file while the API runs". The issue says the docs never say how to take a backup. That is not quite true, but this section has to be rewritten either way.
+- `bench/seed.ts` seeds with each side's own `openDb` and already runs `PRAGMA wal_checkpoint(TRUNCATE)` before `close()`. `bench/stack.ts` copies only `pulse.db` into the run's `api-data` directory, which has mode 0777. With WAL on side B, the bun user can create `-wal` and `-shm` there.
+- `src/docs-claims.test.ts` pins doc sentences with regexes. A doc claim about WAL or backup can be pinned the same way.
+
+## Facts measured for this review (Bun 1.4.0, bundled SQLite 3.53.2, scratch files)
+
+- `PRAGMA journal_mode = WAL` returns `{journal_mode: "wal"}`. After `PRAGMA synchronous = NORMAL`, `PRAGMA synchronous` returns `1`.
+- **Rollback journal and `BEGIN IMMEDIATE`: a second connection still reads without an error.** The RESERVED lock does not block readers. Only `BEGIN EXCLUSIVE`, the commit, or a cache spill block them (`database is locked`). In WAL mode a reader succeeds even during `BEGIN EXCLUSIVE`. **So the issue's concurrency test as worded ("an open write transaction inserting results") would pass on the current code, and the mutation check would not fail.** The test must hold the writer in `BEGIN EXCLUSIVE`, or force the commit phase, with `busy_timeout = 0` on the reader.
+- A read-only `bun:sqlite` connection (`{ readonly: true }`) to a WAL file can run `VACUUM INTO '<path>'` while another connection holds `BEGIN EXCLUSIVE`. The copy holds the last committed state.
+- A file made by `VACUUM INTO` from a WAL source reports `journal_mode = delete`. `openDb` switches it to WAL when it opens the file after a restore.
+- `close()` of the only read-write connection checkpoints and removes `-wal` and `-shm`. The directory then holds only `pulse.db`.
+- A read-only connection on a WAL file with no `-wal` or `-shm` (api stopped) creates both files and **leaves them** after `close()`, because a read-only connection cannot checkpoint or delete them. This is harmless (an empty WAL), but the docs and tests must expect it. It also needs a writable directory: running the backup with the api stopped needs write access to the directory of `PULSE_DB`.
+
+## Open points (for the plan; none blocks the spec)
+
+1. **Concurrency test design.** Use two connections on a temp file opened with `openDb`. The writer runs `BEGIN EXCLUSIVE` and inserts results. The reader sets `PRAGMA busy_timeout = 0` and runs the `GET /checks` read path (through the exported service read function on a second `createService`, or the same SQL). Assert: no error, and the elapsed time is under 50 ms. Mutation: without the WAL pragma the read throws `database is locked`. State in the plan why `BEGIN EXCLUSIVE` is needed (see the measured facts).
+2. **Backup under load needs real concurrency.** `bun:sqlite` is synchronous, so a writer loop in the same thread cannot run during `VACUUM INTO`. The test needs a writer subprocess (`Bun.spawn` of a small script in the test's temp dir, or a fixture file) or a `Worker`, plus the backup run as a subprocess (`bun src/backup.ts`) to test the exit code and the output. AGENTS.md forbids real clocks and timers in tests. This test needs real processes, so the plan must justify the exception and keep the time bounds generous and event-driven: wait until N rows exist, not a fixed sleep.
+3. **Code layout.** AGENTS.md wants I/O at the edges. Proposal: the logic lives in a module (for example `src/backup.ts` exporting `runBackup({ source, target, write })`, or `src/db-backup.ts`), and a thin entry calls it and exits. The plan picks the names and must not export a function only for a test.
+4. **Refusing an existing target without a race.** `rename` overwrites silently. Proposal: `VACUUM INTO` writes a temp file in the **same directory** as the target (for example `<target>.tmp-<pid>`; `VACUUM INTO` itself refuses a non-empty existing file). Then `link(tmp, target)` fails with `EEXIST` if the target appeared in the meantime, and the temp file is unlinked. Otherwise use `rename` after a second existence check. Delete the temp file on every error. A missing target directory is an error.
+5. **Where the printed counts come from.** Count `checks`, `results` and `incidents` and read `user_version` from the **backup file** after it is written, opened read-only. Those are the snapshot's numbers, which the backup test compares. Output format: one line each, or one JSON line in the pulse-kit logger style. The plan chooses and pins it in the docs.
+6. **Exit codes.** Exit non-zero on any error. Proposal: `2` for usage errors (missing argument, target exists), like the start's config errors, and `1` for runtime errors (open failure, `VACUUM` failure, I/O). Errors go to stderr.
+7. **Source path.** The backup reads `PULSE_DB` (default `./pulse.db`) like `start.ts`, so `docker compose exec api bun run backup /data/<name>.db` needs no extra argument. A missing source file is an error. The read-only open must not create the source (`{ readonly: true }` does not create it, but the plan should test this).
+8. **Busy handling of the backup connection.** Set a `busy_timeout` (for example 5 s) on the backup connection, so a short lock (WAL recovery, a checkpoint's wal-index lock, or a not-yet-WAL file during a commit) does not fail the backup at once. Whether the api's own connection gets a `busy_timeout` is the plan's call. It is not required, but an api start (`BEGIN IMMEDIATE` in migrate) while a backup is running is the one case where the api could meet a lock.
+9. **When the pragma does not take effect.** `PRAGMA journal_mode = WAL` returns the old mode on file systems without shared memory support (some network file systems). The plan decides between: fail the start with a clear message, or log one `warn` line and keep running in the old mode. Recommendation: log and keep running, so existing setups on such volumes do not break. The test asserts `wal` on a local temp file.
+10. **What counts as in-memory.** `:memory:` and the empty path `""` (a temporary database) both stay as they are. The pragmas are set before `migrate()`, outside any transaction (`journal_mode` cannot change inside one).
+11. **Checkpoints.** Keep the default auto-checkpoint (1000 pages) and say so in the plan and the docs. A long backup holds a read snapshot, so checkpoints cannot pass it and `-wal` grows for the length of the backup. It shrinks back at the next checkpoint once no reader holds the old snapshot (or at the api's close). Document this. Retention deletes (hourly) are the biggest write bursts; the bench run covers their effect.
+12. **Cold copy after WAL.** After WAL is on, the existing "`cp` with the API stopped" method is only safe after a clean shutdown (close checkpoints and removes `-wal`). After a crash or `SIGKILL`, committed data can sit in `pulse.db-wal`. The rewritten docs must either drop the cold-copy method in favour of the command, or say to copy `-wal` with the file. Restore must delete the stale `-wal`/`-shm` of the replaced file **before** the start. Otherwise SQLite may apply an old WAL to the new file.
+13. **Getting the file out of the container.** Document `docker compose exec api bun run backup /data/backup-<date>.db`, then `docker compose cp api:/data/backup-<date>.db ./`. Run it as the image's default user (`bun`). A `-u root` exec could create root-owned `-shm`/`-wal` files when the api is stopped. A backup inside the volume uses the volume's disk space. Restore with Compose: stop api, copy into the `api-data` volume (for example `docker compose cp` or a helper container), delete `-wal`/`-shm`, start.
+14. **compose-e2e.** The issue only requires it to stay green. Optional, as the plan sees fit: one e2e step that runs the backup command through `docker compose exec` against the live stack. That proves the documented Docker command. If it is added, it must not slow the e2e by more than a few seconds.
+15. **Bench.** Side A seeds a rollback-journal file and side B a WAL file, each with its own `openDb`. `seed.ts` already checkpoints with `TRUNCATE` and closes, so `stack.ts` can keep copying only `pulse.db`. No bench harness change is expected. The plan should confirm this and state that the PR carries the A/B numbers (startup CPU, load CPU, RSS) from `bun bench/run.ts --a <baseline> --b <branch>`.
+16. **Docs to change.** Replace line 19 with the WAL facts (journal mode, `synchronous = NORMAL` and what it can lose, the `-wal`/`-shm` files next to `pulse.db`, the auto-checkpoint, removal on a clean shutdown). Rewrite "Backup and restore" (the command, its output, Docker usage, restore steps with deleting `-wal`/`-shm`, the schema-version refusal of a newer file). Point lines 25 and 56 at it. The VACUUM section (reclaiming space with the api stopped) stays valid. `docs/index.md` already lists "backup and restore". Check `docs/troubleshooting.md` and `README.md`/`AGENTS.md` for journal or backup text. Consider pinning the new claims in `src/docs-claims.test.ts`.
+
+## Assumptions made
+
+- No admin route, no schedule, no upload (non-goals). No new runtime dependency: `bun:sqlite` and `node:fs` only.
+- The backup command never migrates and never writes to the source. It works on a source of any schema version, including one newer than the program, and prints the version it finds.
+- A restore uses the existing start rules: an older file is migrated, and a newer one is refused with exit code 2.
+- `synchronous = NORMAL` is set per connection on every `openDb` of a file database. `journal_mode = WAL` is stored in the file, but it is set on every open anyway (cheap, and it is a no-op when already WAL).
+- The Docker volume, its ownership (`bun:bun /data`) and the file modes do not change.
+
+## Derived acceptance check
+
+1. `bun test` includes:
+   - `openDb(<temp file>)`: `PRAGMA journal_mode` = `wal`, `PRAGMA synchronous` = `1`. `openDb(":memory:")` is unchanged (`memory`).
+   - A two-connection test: a writer in `BEGIN EXCLUSIVE` inserting results, and a reader with `busy_timeout = 0` running the `GET /checks` read path, without an error and in under 50 ms.
+   - Backup tests:
+     - Quiet point: the backup opens with `openDb`, `PRAGMA integrity_check` = `ok`, and the counts of `checks`, `results` and `incidents` plus `user_version` equal the source and the printed output.
+     - Under load from a writer subprocess: the command exits 0, the backup passes `integrity_check`, and its `results` count is ≥ the count before the backup started and ≤ the count after the writer stopped.
+     - Errors: an existing target is refused with a non-zero exit and left untouched; a missing source and a missing target directory give a non-zero exit; no temp file is left behind.
+   - Mutation evidence in the PR: the WAL test and the concurrency test fail with the pragmas removed.
+2. `docs/operation.md` no longer says the API sets no journal mode or has no backup command. It documents `bun run backup <file>` and `docker compose exec api bun run backup …`, and a restore that deletes `-wal`/`-shm`.
+3. CI (`bun run check`, `bench:selftest`) and `compose-e2e` are green. The bench A/B (#377) shows startup CPU, load CPU and RSS of the api within the budgets, with the numbers in the PR.
