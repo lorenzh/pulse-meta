@@ -247,14 +247,14 @@ The demo binds status to loopback: it is a throwaway with generated tokens and m
 
 ### Readiness (`scripts/wait-ready.sh <compose-file> <timeout-s>`)
 
-- For each long-running service it polls `/readyz` until it answers `200` with body `ok`. The service list and ports are hard-coded per setup in the script:
+- For each long-running pulse service it polls `/readyz` until it answers `200` with body `ok`. The service list and ports are hard-coded per setup in the script:
   - api: 3000
   - probe, probe-eu, probe-us: 9100
   - notify: 9100
   - status: 8080
   - console: 8082
 - pulse services are polled from inside the container: `docker compose exec -T <svc> bun -e "fetch('http://127.0.0.1:<port>/readyz')…"`. Their images have no curl.
-- mailpit is polled from the host at `http://127.0.0.1:${PULSE_MAILPIT_PORT:-8025}/readyz`.
+- mailpit is polled from the host at `http://127.0.0.1:${PULSE_MAILPIT_PORT:-8025}/readyz` until it answers `200`; its body is not checked (mailpit v1.32.0 answers with an empty body).
 - It also requires `State.Health.Status == healthy` for each service that has a healthcheck, and exit code `0` for `secrets-init` and `demo-init`.
 - It prints the elapsed seconds since its start.
 
