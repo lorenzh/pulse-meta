@@ -37,6 +37,18 @@ harnesses:
     structuredOutput: required
     options:
       permissionMode: auto
+  # The auto preset of factory docs codex (the counterpart of Claude's permissionMode auto) plus
+  # network access: the review prompts require dynamic checks, so the agent installs packages,
+  # runs tests and starts local servers. The login comes from CODEX_HOME (factory-run.yml).
+  codex:
+    package: "@paragondata/factory-harness-codex"
+    structuredOutput: required
+    modelDefaults:
+      sandboxMode: workspace-write
+      approvalPolicy: on-request
+      approvalsReviewer: auto_review
+      networkAccessEnabled: true
+    options: {}
 
 workspaces:
   multigit:
@@ -129,50 +141,51 @@ workspaces:
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
-# One profile per role, all on Claude (no GPT key). Effort follows the work: specs and reviews
-# decide what ships and run at high; implementation follows an approved spec and runs at low; a
-# merge conflict is mechanical. review.md and security.md frame the reviewers adversarially.
+# One profile per role. Writers (planner, implementer, resolver, auditor) run on Claude, reviewers
+# on Codex, so every review comes from the other model family. Effort follows the work: specs and
+# reviews decide what ships and run at high; implementation follows an approved spec and runs at
+# low; a merge conflict is mechanical. review.md and security.md frame the reviewers adversarially.
 models:
   spec-reviewer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: high
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
   planner:
     harness: claude
     options:
       model: claude-opus-5-5
       effort: high
   plan-reviewer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: high
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
   implementer:
     harness: claude
     options:
       model: claude-opus-5-5
       effort: low
   code-reviewer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: high
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
   security-reviewer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: high
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
   resolver:
     harness: claude
     options:
       model: claude-opus-5-5
       effort: low
   merge-reviewer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: medium
+      model: gpt-6.1-sol
+      modelReasoningEffort: medium
   # Owner decision: both audit states run at effort xhigh; an audit reads whole repositories, not
   # one diff.
   auditor:
