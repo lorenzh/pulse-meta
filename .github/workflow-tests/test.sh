@@ -15,9 +15,11 @@ step_script() { # <workflow file> <job> -> the run script of the job's first ste
 }
 
 # Stub gh: `gh api [--paginate] <url> [--jq <expr>] [-f k=v ...]`. A read returns
-# $FIXTURES/<key>.json (each page file <key>.<n>.json for --paginate); a write is logged.
+# $FIXTURES/<key>.json (each page file <key>.<n>.json for --paginate); a write is logged and answers
+# with $FIXTURES/created.json. `gh workflow run ...` is logged as DISPATCH.
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+[[ "$1" == workflow ]] && { echo "DISPATCH $*" >> "$FIXTURES/writes.log"; exit 0; }
 shift # api
 paginate=false; [[ "$1" == --paginate ]] && { paginate=true; shift; }
 url="$1"; shift
@@ -36,7 +38,7 @@ if ((${#writes[@]})); then
   { echo "WRITE $url"; for w in "${writes[@]}"; do
       if [[ "$w" == body=* ]]; then echo "  body"; printf '%s' "${w#body=}" > "$FIXTURES/last-body.md"; else echo "  $w"; fi
     done; } >> "$FIXTURES/writes.log"
-  [[ "$jq_expr" == .html_url ]] && echo "https://example.test/new-issue"
+  if [[ "$jq_expr" != empty && -e "$FIXTURES/created.json" ]]; then jq -r "$jq_expr" "$FIXTURES/created.json"; fi
   exit 0
 fi
 files=("$FIXTURES/$key.json")
@@ -116,6 +118,8 @@ open_issues() { # <labels> <page 1 json> [<page 2 json>]: a plain read sees page
   [[ -z "${3:-}" ]] || echo "$3" > "$FIXTURES/$k.1.json"
 }
 export FIXTURES="$tmp/audit"; mkdir -p "$FIXTURES"
+echo '{"number":77,"html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
+echo '{"default_branch":"main"}' > "$FIXTURES/$(key "repos/$R").json"
 for label in security performance; do echo "{\"name\":\"$label\"}" > "$FIXTURES/$(key "repos/$R/labels/$label").json"; done
 # Every audit/<repo> label exists except audit/website, which the first run creates.
 for t in contract probe api status notify config kit; do echo "{\"name\":\"audit/$t\"}" > "$FIXTURES/$(key "repos/$R/labels/audit%2F$t").json"; done
@@ -129,8 +133,9 @@ DAILY='17 6 * * *' TUEFRI='17 6 * * 2,5' THU='17 6 * * 4'
 # Security, daily: 2026-11-02 is day 20759 since 1970-01-01; 20759 % 8 = 7 -> website.
 # 2026-11-03 is day 20760; 20760 % 8 = 0 -> contract.
 check "security: the daily schedule rotates by day, creating a missing audit/<repo> label" "Created the label audit/website.
-Opened https://example.test/new-issue" "$(audit "" "" "$DAILY" 2026-11-02)"
-check "security: title, audit/<repo> label with a description, no target/<repo>" "WRITE repos/$R/labels
+Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit "" "" "$DAILY" 2026-11-02)"
+check "security: title, factory/audit/audit and audit/<repo> labels, no target/<repo>, then the dispatch" "WRITE repos/$R/labels
   name=audit/website
   color=c5def5
   description=Audit of lorenzh/pulse-website, run on the meta target
@@ -138,16 +143,29 @@ WRITE repos/$R/issues
   title=Security audit: pulse-website (2026-11-02)
   body
   labels[]=security
-  labels[]=audit/website" "$(writes)"
-check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-website](https://github.com/lorenzh/pulse-website). Opened by \`factory-audit.yml\`. The owner starts it by adding the label \`factory/audit/audit\`." "$(head -1 "$FIXTURES/last-body.md")"
+  labels[]=factory/audit/audit
+  labels[]=audit/website
+DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
+check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-website](https://github.com/lorenzh/pulse-website). Opened by \`factory-audit.yml\`, which starts the \`audit\` workflow at once (label \`factory/audit/audit\`). To stop it, cancel its \`Factory run\` workflow run and remove the \`factory/audit/\` label." "$(head -1 "$FIXTURES/last-body.md")"
 check "security: no placeholder is left" "0" "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true)"
 audit "" "" "$DAILY" 2026-11-03 > /dev/null
 check "security: the next day takes the next repository" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
 audit security rotation "" 2026-11-03 > /dev/null
 check "security: dispatch rotation picks the same target" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
 check "security: an open audit issue blocks a second one" "#50 is still open for probe. No new issue." "$(audit security probe "" 2026-11-02)"
-check "security: another security issue does not block" "Opened https://example.test/new-issue" "$(audit security api "" 2026-11-02)"
-check "security: an open issue with only target/<repo> does not block" "Opened https://example.test/new-issue" "$(audit security status "" 2026-11-02)"
+check "security: another security issue does not block" "Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit security api "" 2026-11-02)"
+check "security: an open issue with only target/<repo> does not block" "Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit security status "" 2026-11-02)"
+audit security probe "" 2026-11-02 > /dev/null; hit="$(writes | grep -c DISPATCH || true)"
+audit security api "" 2026-11-02 > /dev/null; miss="$(writes | grep -c DISPATCH || true)"
+check "security: a dedupe hit writes nothing and starts nothing; a new issue starts one run" "0 0 1" \
+  "$(audit security probe "" 2026-11-02 > /dev/null; writes | wc -l) $hit $miss"
+echo '{"number":"077","html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
+check "security: a non-canonical issue number fails before the dispatch" "Opened https://example.test/new-issue
+::error::Not a canonical issue number: 077
+no dispatch" "$(audit security api "" 2026-11-02 || true; writes | grep -q DISPATCH && echo dispatch || echo no dispatch)"
+echo '{"number":77,"html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
 check "security: an unknown target fails" "::error::Unknown target: nope" "$(audit security nope "" 2026-11-02 || true)"
 
 # Performance, Tuesday and Friday: slot = 2 * week + (Friday or later), week = (day + 3) / 7.
@@ -158,13 +176,16 @@ check "performance: Tuesday, title and labels, no new label" "WRITE repos/$R/iss
   title=Performance audit: pulse-status (2026-11-03)
   body
   labels[]=performance
-  labels[]=audit/status" "$(writes)"
+  labels[]=factory/audit/audit
+  labels[]=audit/status
+DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
 audit "" "" "$TUEFRI" 2026-11-06 > /dev/null
 check "performance: Friday takes the next repository" "  title=Performance audit: pulse-notify (2026-11-06)" "$(grep title= "$FIXTURES/writes.log")"
 audit "" "" "$TUEFRI" 2026-11-10 > /dev/null
 check "performance: the next Tuesday takes the one after" "  title=Performance audit: pulse-kit (2026-11-10)" "$(grep title= "$FIXTURES/writes.log")"
 check "performance: an open performance audit of the repository blocks" "#52 is still open for api. No new issue." "$(audit performance api "" 2026-11-03)"
-check "performance: an open security audit does not block" "Opened https://example.test/new-issue" "$(audit performance probe "" 2026-11-03)"
+check "performance: an open security audit does not block" "Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit performance probe "" 2026-11-03)"
 check "performance: config is not a performance target" "::error::Unknown target: config" "$(audit performance config "" 2026-11-03 || true)"
 
 for k in security performance architecture; do
@@ -200,12 +221,16 @@ factory-audit-architecture
 factory-audit-security
 factory-audit-performance
 factory-audit-architecture" "$groups"
+# The job token dispatches factory-run.yml, so the job needs actions: write; nothing more.
+check "permissions: the audit job may dispatch workflows" "{'actions': 'write', 'contents': 'read', 'issues': 'write'}" \
+  "$(python3 -c 'import sys, yaml; print(dict(sorted(yaml.safe_load(open(sys.argv[1]))["jobs"]["open-issue"]["permissions"].items())))' "$workflows/factory-audit.yml")"
 check "schedule: an unknown cron fails" "::error::No audit kind for the schedule '0 0 * * *'." "$(audit "" "" '0 0 * * *' 2026-11-11 || true)"
 check "dispatch: an unknown kind fails" "::error::Unknown audit kind: style" "$(audit style "" "" 2026-11-11 || true)"
 
 # Architecture, Thursday 2026-11-05: one issue, no target label; the label is created.
 check "architecture: the Thursday schedule creates the label and the issue" "Created the label architecture.
-Opened https://example.test/new-issue" "$(audit "" "" "$THU" 2026-11-05)"
+Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit "" "" "$THU" 2026-11-05)"
 check "architecture: label with description, issue without a target label" "WRITE repos/$R/labels
   name=architecture
   color=5319e7
@@ -213,10 +238,13 @@ check "architecture: label with description, issue without a target label" "WRIT
 WRITE repos/$R/issues
   title=Architecture audit: pulse (2026-11-05)
   body
-  labels[]=architecture" "$(writes)"
+  labels[]=architecture
+  labels[]=factory/audit/audit
+DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
 echo '{"name":"architecture"}' > "$FIXTURES/$(key "repos/$R/labels/architecture").json"
 check "architecture: a dispatch target is ignored" "::notice::The architecture audit covers the whole system; target api is ignored.
-Opened https://example.test/new-issue" "$(audit architecture api "" 2026-11-05)"
+Opened https://example.test/new-issue
+Started the audit run of #77." "$(audit architecture api "" 2026-11-05)"
 # 100 other architecture issues fill page 1; the open audit is on page 2.
 page1="$(python3 -c 'import json; print(json.dumps([{"number": 200 + i, "title": "Split the probe scheduler"} for i in range(100)]))')"
 open_issues architecture "$page1" '[{"number":60,"title":"Architecture audit: pulse (2026-10-21)"}]'

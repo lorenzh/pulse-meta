@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Opens one audit issue from the template <kind>.md next to this script. It adds no factory/ label,
-# so no Factory run starts; the owner starts the audit workflow by adding factory/audit/audit. An open
-# issue of the same kind (and the same repository for per-repository kinds) blocks a new one.
+# Opens one audit issue from the template <kind>.md next to this script, with the label
+# factory/audit/audit, and starts its Factory run. A label set with the job token triggers no
+# workflow (GitHub suppresses events of GITHUB_TOKEN except workflow_dispatch), so the script
+# dispatches factory-run.yml itself, as factory-fan-out.yml does. An open issue of the same kind (and
+# the same repository for per-repository kinds) blocks a new one and starts nothing.
 # Per-repository kinds get audit/<repo>, not target/<repo>: the audit runs on the meta target and
 # only reads the repository.
 #
@@ -11,7 +13,7 @@
 #
 # The schedules in factory-audit.yml decide how often each kind runs; each cron line maps to one kind.
 #
-# Environment: GITHUB_REPOSITORY and GH_TOKEN; AUDIT_KIND and AUDIT_TARGET, the dispatch inputs
+# Environment: GITHUB_REPOSITORY and GH_TOKEN (issues: write, actions: write); AUDIT_KIND and AUDIT_TARGET, the dispatch inputs
 # (empty on a scheduled run); AUDIT_SCHEDULE, the cron of a scheduled run; AUDIT_TODAY (YYYY-MM-DD,
 # for tests; default today in UTC).
 set -euo pipefail
@@ -77,10 +79,17 @@ if [[ -n "$target" ]] && ! gh api "repos/$R/labels/audit%2F$target" --silent 2> 
   echo "Created the label audit/$target."
 fi
 
+# The schedule event carries no repository object, so ask for the default branch.
+branch="$(gh api "repos/$R" --jq .default_branch)"
+
 body="$(< "$here/$kind.md")"
 body="${body//\{repo\}/$target}"
-args=(-f "labels[]=$kind")
+args=(-f "labels[]=$kind" -f "labels[]=factory/audit/audit")
 [[ -n "$target" ]] && args+=(-f "labels[]=audit/$target")
-url="$(gh api "repos/$R/issues" -f title="$title: pulse${target:+-$target} ($today)" -f body="$body" \
-  "${args[@]}" --jq .html_url)"
+created="$(gh api "repos/$R/issues" -f title="$title: pulse${target:+-$target} ($today)" -f body="$body" \
+  "${args[@]}" --jq '"\(.number) \(.html_url)"')"
+read -r number url <<< "$created"
 echo "Opened $url"
+[[ "$number" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "::error::Not a canonical issue number: $number" >&2; exit 1; }
+gh workflow run factory-run.yml --repo "$R" --ref "$branch" -f issue="$number" -f admission=label
+echo "Started the audit run of #$number."
