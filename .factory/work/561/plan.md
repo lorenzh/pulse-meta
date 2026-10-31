@@ -2,6 +2,14 @@
 
 Source: [#561](https://github.com/lorenzh/pulse-meta/issues/561), decision 6 of [#460](https://github.com/lorenzh/pulse-meta/issues/460), and the issue review in `.factory/work/561/issue-review.md`. This spec settles every open point of that review. Inspected state: api `main` `c00a375a1d78e17e9d01b8c25b5ae69b4fc3860e`, contract `main` `ebcbbb613328494185833f7133f1242910986948`, probe `main` `50ec9cabe8aebe6164eff6cf2272b0a6c6c86605`, console `main` `11a3f5f`, config `main` `dc69a12`, deploy `2b2a355` (README and license only).
 
+Revision after plan-review (the six corrections of the plan-review comment on #561):
+1. Bootstrap order: the database is opened and migrated first, the bootstrap rows decide which files are read, and a done import never opens its file (D5, with missing, malformed and directory cases in `## Counterexamples`).
+2. Audit target ids have no maximum, matching check ids; `targetId` queries too (D7, D9, regression case with a 300-character id).
+3. Pending config entries are resolved by the existence of the api's own temp file, not by comparing file revisions, so an external restore A → B → A never erases a stored write (D8).
+4. Pending entries live in a separate `audit_pending` table and get their `audit_log` id when they commit, so a cursor walk cannot skip them (D4, D9, interleaving case with literal ids).
+5. Clock-dependent expiry rules are the api's; the contract checks only the clock-free form and its tests accept `expiresAt: 1` (`## Counterexamples`, contract section).
+6. The collision search covers all 49 new names, and every tool fact cites file and line, including the pinned config files read with `gh api`.
+
 ## Goal
 
 The api keeps every admin and probe credential in its SQLite database as a SHA-256 digest only. Each credential has a name, scopes, a creation time, a last-used time, an optional expiry and a revocation time. Admins create, list, rotate and revoke credentials over HTTP. Rotation keeps the old credential valid for a fixed 10-minute overlap, so a probe or a script can switch without downtime. Every admin write is stored as a secret-free audit entry, and the entries can be queried and exported as JSON lines. The token files are read only once: they import the existing credentials on upgrade and seed the first admin on a fresh install.
@@ -76,17 +84,26 @@ Legacy admin tokens are imported with `["read","checks","incidents","admin"]`. T
   - `api_tokens (id TEXT PRIMARY KEY, name TEXT NOT NULL, scopes_json TEXT NOT NULL, location TEXT, source TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER, expires_at INTEGER, revoked_at INTEGER, rotated_at INTEGER)`.
   - `token_secrets (secret_sha256 TEXT PRIMARY KEY, token_id TEXT NOT NULL REFERENCES api_tokens(id), created_at INTEGER NOT NULL, retires_at INTEGER)`. `retires_at` is null for the current credential.
   - `token_bootstrap (kind TEXT PRIMARY KEY CHECK (kind IN ('probe','admin')), imported_at INTEGER NOT NULL, count INTEGER NOT NULL)`.
-  - `audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor_token_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, revision TEXT, before_revision TEXT, state TEXT NOT NULL CHECK (state IN ('pending','committed')))`, with an index on `(at, id)`.
+  - `audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor_token_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, revision TEXT)`, with an index on `(at, id)`. Only committed entries live here. A row's `id` is assigned in the transaction that commits it, so `id` order is commit order (D9).
+  - `audit_pending (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor_token_id TEXT, actor_name TEXT NOT NULL, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL, revision TEXT NOT NULL, temp_path TEXT NOT NULL)`. It holds the intent of a config write between its temp file and its confirmation (D8). Its ids are never shown.
 - Names are labels and need not be unique. API-created names are 1-100 characters after trim, with no control character (`\p{Cc}`). Imported names keep the legacy rule (non-empty after trim, no maximum), so upgrades never fail on a long name.
 - In-memory index: at start the api loads all non-revoked tokens and their non-retired credentials into a `Map<digest, entry>`. Every token mutation in this process updates the map after its transaction commits. A request computes one SHA-256 of the presented secret and does one map lookup, then confirms with `timingSafeEqual` against the stored digest. The map key is a digest, not the secret: a lookup timing reveals nothing usable about the secret. Expiry, revocation and `retires_at` are checked against `now()` on every request, so they act at once without a cache flush. The database is the only writer's state (one api process per database file, as today).
 - Last used: on each successful authentication the in-memory `lastUsedAt` becomes `now()`. It is persisted with `UPDATE api_tokens SET last_used_at` only when nothing is persisted yet or the persisted value is at least 60 000 ms older. Shutdown flushes unpersisted values before `db.close`. API responses show the in-memory value. After a crash the persisted value can be at most 60 000 ms behind the last real use.
 
 ### D5. Bootstrap and one-time import
 
-At startup the api parses the files first, as today. Then it opens and migrates the database. Then it runs the pending imports in one transaction, before `listen`:
+Startup order changes against `main` (api `src/start.ts` lines 142-160 read both token files before `deps.openDb` today):
+
+1. Read the settings and load the checks file, as today.
+2. Open and migrate the database (`deps.openDb`).
+3. Read the `token_bootstrap` rows. They decide which imports are pending.
+4. Open and parse only the files of pending imports: the probe file when no `probe` row exists, the admin file when no `admin` row exists and `PULSE_API_ADMIN_TOKENS_FILE` is set. A file whose import is done is never opened, read or parsed, so a missing, unreadable or malformed file after its import cannot fail the start.
+5. Run the pending imports in one transaction, before `listen`.
+
+A fresh install with a missing or invalid probe file still fails the start with today's message, but after step 2, so the database file exists (empty, version 4) afterwards. That is harmless: the next start retries the import.
 
 - **Probe import** (when no `probe` bootstrap row exists):
-  - `PULSE_TOKENS_FILE` (default `./tokens.json`) must exist and be valid under today's `parseTokens` rules. A missing or invalid file is the same `StartupError` as today.
+  - `PULSE_TOKENS_FILE` (default `./tokens.json`) must exist and be valid under today's `parseTokens` rules. A missing or invalid file is the same `StartupError` text as today.
   - Each entry becomes a probe token with `source: "file"`, `scopes: ["probe"]`, its location, `name: "probe <location> #<n>"` (n = 1-based position in the file), `createdAt = now()`, and no expiry.
   - The transaction inserts the row `probe` with the count.
 - **Admin import** (when no `admin` bootstrap row exists and `PULSE_API_ADMIN_TOKENS_FILE` is set):
@@ -96,7 +113,7 @@ At startup the api parses the files first, as today. Then it opens and migrates 
   - The transaction inserts the row `admin`.
 - Every imported token gets one `token.import` audit entry (actor `{tokenId: null, name: "bootstrap"}`).
 - Any failure rolls back the whole import transaction. The start fails, and a later start retries from scratch.
-- When a bootstrap row exists, the matching file is not opened. If the setting names an existing path, the start logs once at info: `"<setting> ignored: tokens are stored in the database"`, with the setting name only. File edits after import never add, change or revive credentials. A revoked, expired or rotated-out credential stays dead even when its old file is still mounted.
+- When a bootstrap row exists, the matching file is not opened. If the setting is set explicitly in the environment, the start logs once at info: `"<setting> ignored: tokens are stored in the database"`, with the setting name only. It does not check whether the path exists, so no file-system access happens for it. File edits after import never add, change or revive credentials. A revoked, expired or rotated-out credential stays dead even when its old file is still mounted.
 - Probe-only installs keep working: no admin file, so no `admin` row. Setting `PULSE_API_ADMIN_TOKENS_FILE` on a later start bootstraps the first admins then.
 - "Zero active admins" never reopens the admin bootstrap (D1 last-admin rule, Risks).
 - After the probe import, `PULSE_TOKENS_FILE` may be missing. New probe tokens come from `POST /admin/tokens`.
@@ -141,8 +158,8 @@ All of these routes answer with `cache-control: no-store`. Request bodies are li
   - `manual-incident.create`, `manual-incident.update`, `manual-incident.resolve`, `manual-incident.delete`
   - `token.create`, `token.rotate`, `token.revoke`, `token.import`
 - `target.kind` is one of `check`, `component`, `maintenance`, `manual-incident`, `token`.
-- `target.id`:
-  - a check or component: its id.
+- `target.id` is a non-empty string with no maximum length. Check and component ids have no maximum today (contract `src/schema.ts` line 241 `id: nonEmpty`, api `src/config.ts` line 84 `ID_NAME = { id: requiredText(), ... }`), so any id the config accepts must give a valid entry. The value is:
+  - a check or component: its id, unchanged (no trimming or truncation).
   - maintenance: the window index as decimal text.
   - a manual incident: its numeric id as text.
   - a token: its token id.
@@ -155,30 +172,35 @@ All of these routes answer with `cache-control: no-store`. Request bodies are li
 ### D8. Durability
 
 - **Database-only writes** (manual incidents, tokens): the change and its audit insert run in one SQLite transaction. The HTTP response is written only after the commit. For manual incidents this moves `sendJson`/`writeHead` out of `applyManualWrite` to after the transaction. If the audit insert throws, the whole change rolls back and the client gets `500`. Its logging stays as today's "request failed".
-- **Config writes** (file-backed), all inside the writer's existing lock (`createConfigWriter`, `src/config-write.ts`):
-  1. Resolve stale pending entries (below).
-  2. Read the file and check `If-Match`, then build the new bytes and `revisionOf(data)`.
-  3. Insert a `pending` audit row with `revision = revisionOf(data)` and `before_revision = ifMatch`. If this insert fails → `500 {"error":"audit log could not be written"}`, and the file is untouched (metric result `error`).
-  4. Run today's steps: temp file, the revision check again, rename, `fsyncDir`. If one of them fails before the rename, delete the pending row and map the error as today.
-  5. Mark the row `committed`.
-  6. `reloader.adopt` as today.
+- **Config writes** (file-backed). Today's `store` in api `src/config-write.ts` lines 358-372 runs: write the temp file `${path}.${tempSuffix()}.tmp` (exclusive create and fsync), the second revision check, `rename`, `fsyncDir`. The new sequence runs inside the writer's existing lock (`apply` chains on `tail`, lines 401-405):
+  1. Resolve pending entries (below).
+  2. Read the file, check `If-Match`, build the new bytes and `revisionOf(data)`, as today.
+  3. `fs.writeTemp(temp, ...)`, as today.
+  4. Insert one `audit_pending` row with `revision = revisionOf(data)` and `temp_path = temp`. This single statement runs with `PRAGMA synchronous = FULL`, set just before it and set back to `NORMAL` just after, both outside any transaction. The WAL frame is then on disk before the rename, also across a power loss (api `src/db.ts` line 162 sets `NORMAL` for everything else). If the insert fails: remove the temp file, answer `500 {"error":"audit log could not be written"}`, and leave the checks file untouched (metric result `error`).
+  5. The second revision check and `rename`, as today. If either fails: first delete the `audit_pending` row, then remove the temp file, then map the error as today. This order matters: a row may only exist without its temp file once the rename happened.
+  6. `fsyncDir`. If it fails, the row stays pending and the error is mapped as today.
+  7. Promote: in one SQLite transaction, insert the entry into `audit_log` (new id, `at` from the pending row) and delete the `audit_pending` row.
+  8. `reloader.adopt`, as today.
 
-  If step 5 fails, or the process dies between the rename and step 5, the row stays `pending`. Then the response is `500 {"error":"checks file stored; its audit entry is pending and is resolved at the next write or restart"}`.
-- **Resolving pending entries** happens at startup after the initial config load, and at the start of each config write. The current file revision decides:
-  - It equals the row's `revision` → `committed`.
-  - It equals the row's `before_revision` → the row is deleted, because the write never landed.
-  - Anything else → `committed`. This is conservative: a change that may have landed must not vanish.
-- Query and export return only `committed` rows. This protocol does not claim that the file and SQLite are atomic together. It guarantees that an acknowledged config write always has a committed audit row, and that a stored file change is never silently left without one.
+  If step 7 fails, or the process dies after step 4, the row stays in `audit_pending`. When step 7 fails the response is `500 {"error":"checks file stored; its audit entry is pending and is resolved at the next write or restart"}`.
+- **Resolving pending entries** happens at startup once the database is open and migrated (D5 step 2), before `listen`, and at step 1 of each config write. The rows are taken in ascending pending id. The evidence is the temp file, not the checks file content:
+  - `temp_path` exists (`lstat` succeeds) → the rename never happened. Delete the row, then remove the temp file.
+  - `temp_path` does not exist (`ENOENT`) → the rename happened, because the row is written only after the temp file and is deleted before the temp file on every failure path. Promote the row as in step 7.
+  - Any other `lstat` error → leave the row pending, log `"audit pending entry unresolved (<code>)"` at warn (code only, no path), and continue. A config write then still proceeds.
+  - The checks file content is not compared. An external writer that restores the old bytes after a stored write (A → B by the api, then A by someone else) does not erase the api's entry: the temp file is gone, so the entry is promoted. This is the conservative answer: a change that landed is never removed from the trail.
+  - A power loss that undoes an un-synced rename leaves the temp file in place, so the entry is dropped together with the change that did not survive.
+- Query and export read only `audit_log`. This protocol does not make the file and SQLite atomic together. It guarantees, for a process crash at any point and for a power loss after step 4: an acknowledged config write always has an entry in `audit_log`, and a rename that landed always ends in `audit_log` at the latest at the next write or restart. A third party deleting the api's temp file between steps 3 and 5 while the api crashes can produce an entry for a write that did not land. That is accepted and documented.
 
 ### D9. Audit query and export
 
 - `GET /admin/audit`. Query parameters, all optional:
-  - `actor` (token id), `action` (one of `AUDIT_ACTIONS`), `targetKind`, `targetId` (1-200 characters).
+  - `actor` (token id), `action` (one of `AUDIT_ACTIONS`), `targetKind`, `targetId` (non-empty, compared exactly; no own maximum, like the check ids it names, so only the server's request-line limit bounds it, as it already bounds `/admin/checks/:id`).
   - `since` (epoch ms, inclusive, applies to `at`) and `until` (exclusive).
   - `limit` (integer 1-1000, default 100) and `before` (a positive integer entry id, the cursor).
   - An unknown parameter, a malformed value or `since >= until` answers `400`, with a message that names the parameter but not its value.
   - Order: `id` descending. The response is `200 AuditPage` `{ entries, nextBefore }`. The api reads `limit + 1` rows. `nextBefore` is the id of the last returned entry when more rows match, else `null`.
-  - Newer writes during paging get larger ids, so pages already read never shift.
+  - Consistency during paging: `audit_log` ids are assigned in the transaction that commits the entry (D4, D8 step 7). There is one api process and one connection per database file, and `bun:sqlite` runs each transaction synchronously. So every entry that becomes visible after a page was read has an id larger than every id already visible then. A cursor walk (`before` descending) therefore never skips and never repeats an entry that was visible when the walk started. Entries committed during the walk, including promoted pending config writes, are not in the walk; they appear on a fresh first page. The same holds for the export (ascending, up to the largest id at its start).
+  - `at` is the time of the write request. A pending entry promoted later keeps its original `at`, so `at` is not monotonic in `id`. `since`/`until` filter on `at`. Order and cursor use `id` only.
 - `GET /admin/audit/export` takes the same filters except `limit` and `before`. Any of those two → `400`.
   - Response: `200` with `content-type: application/x-ndjson; charset=utf-8` and `cache-control: no-store`.
   - Body: one `JSON.stringify(entry)` plus `\n` per committed matching entry, ordered by `id` ascending, up to the largest id at the start of the export.
@@ -189,7 +211,7 @@ All of these routes answer with `cache-control: no-store`. Request bodies are li
 
 Metrics of api `bench/budgets.json` that this change can move:
 
-- `startup_cpu_ms` (gating, budget 325): up by under 5 ms. The first start runs migration step 4 (four small tables and one index) and imports about 4 tokens (one SHA-256 each). Every start loads the token index and resolves pending audit rows (none in the bench).
+- `startup_cpu_ms` (gating, budget 325): up by under 5 ms. The first start runs migration step 4 (five small tables and one index) and imports about 4 tokens (one SHA-256 each). Every start loads the token index and resolves pending audit rows (none in the bench). Startup no longer reads the token files after the first start, which saves two small file reads.
 - `load_cpu_s` (gating, 28.1): flat or slightly down. Each `POST /results` (30/s) now does one SHA-256 and one map lookup instead of today's `findByToken`, which hashes the presented token plus every entry (4 bench tokens, so 5 hashes). Last-used persistence adds at most one `UPDATE` per token per 60 s, so 4 per minute in the bench. Expected change within ±1 %.
 - `idle_rss_mib` and `peak_rss_mib` (gating): under 1 MiB more. The index holds a few entries.
 - `test_cpu_s` (gating, 4.1): up. The new HTTP suites (tokens, scopes, rotation, audit, import, recovery) may add about 0.3-0.8 s. The suites must stay lean: shared servers per file, no sleeps, injected clocks.
@@ -211,7 +233,8 @@ The PR reports the medians of the gating keys against their budgets. Budgets and
 
 ## Security impact
 
-Security impact: yes. The change rewrites admin and probe authentication, adds admin routes that hand out secrets, adds parsers at a trust boundary (contract validators, query parameters), and changes a file-write path and the CI e2e script.
+Security impact: yes
+The change rewrites admin and probe authentication, adds admin routes that hand out secrets, adds parsers at a trust boundary (contract validators, query parameters), and changes a file-write path and the CI e2e script.
 
 Checklist items that apply:
 
@@ -221,10 +244,10 @@ Checklist items that apply:
   - Import error messages name an index, never a value.
   - Tests use distinct sentinels and grep the responses and every captured log line.
 - **Auth order and status codes.** D2. `404` feature off before `401`. `401` for missing, unknown, expired, revoked or retired credentials. `403` for scope. Auth before body reads on `/results`. The grant rule and the last-admin rule. Revocation overrides the overlap.
-- **Body and size limits.** 4096 bytes on the token routes. The existing `ADMIN_MAX_BODY_BYTES` and `MANUAL_INCIDENT_MAX_BODY_BYTES` stay. `limit` at most 1000. `targetId` at most 200 characters. The export runs in bounded batches.
+- **Body and size limits.** 4096 bytes on the token routes. The existing `ADMIN_MAX_BODY_BYTES` and `MANUAL_INCIDENT_MAX_BODY_BYTES` stay. `limit` at most 1000. `targetId` has no own maximum (it must match unbounded check ids); the request line limit of the server bounds it, and it is only used as a bound SQL parameter. The export runs in bounded batches.
 - **Input validation.** Contract strict schemas for `TokenCreateInput`. The api checks `expiresAt` against the clock. Query parameters are checked one by one. Unknown scopes, mixed `probe` scopes, and a missing or extra `location` are refused.
 - **Accessor execution.** The contract validators read own data properties only, as the existing validators do with `ownValue` in `src/validate.ts`. A getter on an input object never runs.
-- **Atomic, path-safe writes.** The config write keeps its temp-file + rename + `fsyncDir` sequence and adds the pending/commit protocol of D8. No new file paths are written.
+- **Atomic, path-safe writes.** The config write keeps its temp-file + rename + `fsyncDir` sequence and adds the pending/promote protocol of D8. No new file paths are written. The resolver only `lstat`s and removes a `temp_path` that the api itself stored; the value never comes from a request.
 - **Dependency pins.** The api moves its contract pin to the merged contract SHA. No new package. `randomBytes`, `createHash` and `timingSafeEqual` come from `node:crypto`.
 - **CI.** `scripts/compose-e2e.sh` changes assertions only. The job and its pins in `.github/workflows/ci.yml` stay.
 
@@ -259,12 +282,17 @@ Not applicable: SSRF and redirects (the probe HTTP client is unchanged), Dockerf
   - A caller `["admin","incidents"]` creating `{"scopes":["checks"]}` → `403`.
   - The same caller creating `{"scopes":["probe"],"location":"eu"}` → `403` (`probe` counts as `checks`).
   - A caller `["admin","checks"]` revoking a token with `["read","checks","incidents","admin"]` → `403`.
-- **Create validation (`400`):**
+- **Create validation, clock-independent (rejected by contract `validateTokenCreateInput` and therefore `400` from the api):**
   - `scopes: []`, `scopes: ["owner"]`, `scopes: ["read","read"]`, `scopes: ["probe","read"]`.
   - `scopes: ["probe"]` without `location`, `scopes: ["read"]` with `location: "eu"`, `location` of 65 characters after trim.
   - `name: "   "`, `name` of 101 characters, `name: "a\u0000b"`.
-  - `expiresAt: now()` (not greater than now), `expiresAt: 1.5`, `expiresAt: now() + 3651 × 86 400 000`.
+  - `expiresAt: 1.5`, `expiresAt: 0`, `expiresAt: -1`, `expiresAt: "1"`.
   - The unknown key `{"name":"x","scopes":["read"],"secret":"chosen-by-client-0000"}`. A client never chooses its secret.
+- **Create validation, clock-dependent (accepted by contract, rejected by the api with `400`):** with the api's injected clock at `T = 1 800 000 000 000`:
+  - `expiresAt: 1 800 000 000 000` (equal to now) → `400`; `expiresAt: 1 799 999 999 999` → `400`.
+  - `expiresAt: 1 800 000 000 001` → `201`.
+  - `expiresAt: 1 800 000 000 000 + 315 360 000 000` (exactly 3650 days) → `201`; one more millisecond → `400`.
+  - The contract test asserts that `validateTokenCreateInput` accepts `expiresAt: 1` and `expiresAt: 9 007 199 254 740 991` (it has no clock), so the api is the only place that enforces the window.
 - **Status order:**
   - Admin not bootstrapped + any token on `/admin/tokens` → `404`, not `401`.
   - A wrong token with an oversized body on `POST /admin/tokens` → `401`, not `413`.
@@ -284,19 +312,31 @@ Not applicable: SSRF and redirects (the probe HTTP client is unchanged), Dockerf
   - A malformed admin file (second entry without `name`) on the first start: the start fails and no `api_tokens` row, `token_bootstrap` row or `token.import` entry exists. The probe import of the same start is rolled back too.
   - An admin file whose entry equals a probe token → start fails with `admin tokens[0] is also a probe token: use a separate token`.
   - Probe-only start, then a restart with `PULSE_API_ADMIN_TOKENS_FILE` → admins bootstrapped. The routes go from `404` to working.
+  - After both imports, a restart where `PULSE_TOKENS_FILE` and `PULSE_API_ADMIN_TOKENS_FILE` name paths that do not exist → the start succeeds, imported credentials work. An implementation that parses files before reading the bootstrap rows fails here.
+  - After both imports, a restart where both files contain `{not json` → the start succeeds, imported credentials work, and the files' bytes are unchanged. The same with a directory in place of each file (an `open` would fail with `EISDIR`).
+  - On a fresh database, `PULSE_TOKENS_FILE` naming a missing path → the start fails with today's message, and no `token_bootstrap` row exists afterwards.
 - **Last admin:** revoking the only active admin token → `409`, and it stays valid. With two admins, revoking one works, then revoking the second → `409`.
 - **Audit secrecy:**
   - A `POST /admin/checks` whose body holds the header value `audit-sentinel-header-0001`, the body `audit-sentinel-body-0002` and the URL `https://audit-sentinel-url-0003.invalid/` (and a heartbeat check with secret `audit-sentinel-hb-0004`).
   - The query, the export and the `audit_log` table cells contain none of the four sentinels, no Bearer value and no digest. A logged entry with an extra field fails `validateAuditEntry` (strict).
+- **Audit target ids:**
+  - A check with an id of 300 `x` characters (valid today, no maximum) created and then deleted over `/admin/checks` → two entries with `target.id` equal to that 300-character string, both `validateAuditEntry`-valid. `GET /admin/audit?targetId=<the 300 characters>` → `200` with exactly those 2 entries. A schema or query bound of 200 (or any bound) fails this.
+  - The contract accepts an entry whose `target.id` has 10 000 characters, and rejects `target.id: ""`.
 - **Audit paging (statistics-free, exact):**
   - With 250 committed entries (ids 1-250): `limit=100` → ids 250..151 and `nextBefore=151`. `before=151` → 150..51 and `nextBefore=51`. `before=51` → 50..1 and `nextBefore=null`.
+  - Interleaving with a pending config write (the case the previous design got wrong): manual-incident writes commit entries with ids 1, 2, 3. A config write reaches D8 step 4 and its promote is forced to fail (`audit_pending` holds it). Manual-incident writes commit ids 4 and 5. `GET /admin/audit?limit=2` → ids `[5,4]`, `nextBefore=4`. Now the next config write resolves the pending row: it is promoted with id 6 and its own entry gets id 7. `GET /admin/audit?limit=2&before=4` → `[3,2]`, `nextBefore=2`; `before=2` → `[1]`, `nextBefore=null`. A fresh `GET /admin/audit?limit=2` → `[7,6]`. Over the walk plus the fresh page, every one of the 7 entries is seen exactly once. An implementation that keeps the pending row's original id (4 in the old design) fails because a committed id would appear below a cursor already passed.
+  - An export started when the largest id is 5 returns exactly ids 1-5, even when id 6 is promoted while it streams (batch size forced to 2 in the test).
   - `limit=0`, `limit=1001`, `limit=1.5`, `before=0`, `since=10&until=10`, `action=check.drop`, `foo=1` → `400`.
   - The export of the same set has 250 lines, ids ascending, each `validateAuditEntry`-valid. `limit` on the export → `400`.
 - **Durability:**
   - An audit recorder that throws on a manual-incident create → `500`, and `GET /manual-incidents` is unchanged. An implementation that sends `201` before commit fails.
-  - An audit insert failure on a config write → `500`, and the checks file bytes are unchanged.
-  - A forced failure of the "mark committed" step after the rename → `500`. The file is stored, and the next config write (or a restart) shows the entry as committed.
-  - A pending row whose `before_revision` equals the current file → deleted on resolve, not shown.
+  - An `audit_pending` insert failure on a config write → `500 {"error":"audit log could not be written"}`. The checks file bytes are unchanged and no temp file is left in the directory.
+  - A forced failure of the promote step after the rename → `500` with the pending message. The file is stored, and the next config write (or a restart) shows the entry in `audit_log`.
+  - The reviewer's ambiguity case: the api writes A → B, the promote fails, then a test writes the original bytes A back to the checks file directly. On restart the entry is promoted, not deleted: `GET /admin/audit` shows it with `revision` = revision of B. An implementation that compares file revisions and drops rows whose "before" revision matches fails.
+  - A crash before the rename: the test builds that state as a fixture (a version-4 database with one `audit_pending` row whose `temp_path` names a temp file that the test created next to the checks file, the checks file still at A). Start → the row is deleted, the temp file is removed, `audit_log` has no entry, and the checks file is still A.
+  - A crash after the rename: the same fixture without the temp file and with the checks file at B → start promotes the row; `audit_log` has one entry with `revision` = revision of B.
+  - The failure-path order: a fake `WriteFs` whose second revision check fails → the `audit_pending` row is gone before `remove(temp)` is called (the fake records the call order and the row count at the time of `remove`: `0`).
+  - A pending row whose temp path `lstat` fails with `EACCES` → stays pending, the warn line carries `EACCES` and no path, and the config write proceeds (`200`).
 - **Last used:**
   - Authentications at `T` and `T + 59 999` → one persisted `UPDATE` (value `T`). At `T + 60 000` → a second one. `GET` shows `T + 59 999` in between.
   - A failed authentication never changes `lastUsedAt`.
@@ -306,16 +346,20 @@ Not applicable: SSRF and redirects (the probe HTTP client is unchanged), Dockerf
 Every new name, with its collision search (run in the meta checkout; `0` hits means the name is free):
 
 ```
-for n in TokenScope TOKEN_SCOPES TokenMetadata TokensResponse TokenCreateInput TokenSecretResponse \
+for n in TokenScope TOKEN_SCOPES tokenScopeSchema TokenMetadata tokenMetadataSchema validateTokenMetadata \
+  TokensResponse tokensResponseSchema validateTokensResponse TokenCreateInput tokenCreateInputSchema \
+  validateTokenCreateInput TokenSecretResponse tokenSecretResponseSchema validateTokenSecretResponse \
   TOKEN_ROTATION_OVERLAP_MS TOKEN_NAME_MAX TOKEN_MAX_BODY_BYTES TOKEN_SECRET_PREFIX TOKEN_ID_PREFIX \
-  AuditEntry AuditAction AuditTargetKind AuditPage AUDIT_ACTIONS AUDIT_TARGET_KINDS AUDIT_MAX_LIMIT \
-  AUDIT_DEFAULT_LIMIT AUDIT_EXPORT_CONTENT_TYPE validateToken validateAudit tokenScopeSchema \
-  auditEntrySchema '/admin/tokens' '/admin/audit' previousValidUntil lastUsedAt revokedAt expiresAt \
-  rotatedAt nextBefore; do
-  echo "$n: $(grep -rn -- "$n" .repos/contract/src .repos/config | grep -v node_modules | wc -l)"; done
+  AuditEntry auditEntrySchema validateAuditEntry AuditAction AUDIT_ACTIONS AuditTargetKind \
+  AUDIT_TARGET_KINDS AuditPage auditPageSchema validateAuditPage AUDIT_DEFAULT_LIMIT AUDIT_MAX_LIMIT \
+  AUDIT_EXPORT_CONTENT_TYPE '/admin/tokens' '/admin/audit' previousValidUntil lastUsedAt revokedAt \
+  expiresAt rotatedAt nextBefore tokenId targetKind targetId \
+  api_tokens token_secrets token_bootstrap audit_log audit_pending; do
+  echo "$n: $(grep -rn -- "$n" .repos/contract/src .repos/config | wc -l) | api/src: $(grep -rn -- "$n" .repos/api/src | wc -l)"
+done
 ```
 
-Result: every name above has `0` hits. `grep -rln audit .repos/contract/src .repos/config` finds no file. In api, `grep -rn 'api_tokens\|token_secrets\|audit_log\|token_bootstrap' .repos/api/src .repos/contract/src` finds nothing, and `CREATE TABLE` in `src/db.ts` and `src/migrations.ts` names only `checks`, `results`, `incidents`, `manual_incidents`, `manual_incident_updates`, `latency_daily`, `checks_new` and `uptime_daily`.
+Result (run on contract `ebcbbb6`, config `dc69a12`, api `c00a375`): every one of the 49 names has `0` hits in contract `src`, `0` in the config clone and `0` in api `src`. As a control, the same loop finds `ADMIN_STATUS_ORDER` (2 hits in contract `src`), so the search works. `grep -rli audit .repos/contract/src .repos/config` finds no file. `CREATE TABLE` in api `src/db.ts` and `src/migrations.ts` names only `checks`, `results`, `incidents`, `manual_incidents`, `manual_incident_updates`, `latency_daily`, `checks_new` and `uptime_daily`.
 
 New in contract (`src/tokens.ts` and `src/audit.ts`, exported from `src/index.ts`):
 
@@ -332,14 +376,14 @@ New in contract (`src/tokens.ts` and `src/audit.ts`, exported from `src/index.ts
 | `TokensResponse`, `tokensResponseSchema`, `validateTokensResponse` | strict object | `{ tokens: TokenMetadata[] }` |
 | `TokenCreateInput`, `tokenCreateInputSchema`, `validateTokenCreateInput` | strict object | `{ name, scopes, location?, expiresAt? }` with the D1 rules |
 | `TokenSecretResponse`, `tokenSecretResponseSchema`, `validateTokenSecretResponse` | strict object | `{ token: TokenMetadata, secret: string, previousValidUntil: number \| null }` |
-| `AUDIT_ACTIONS`, `AuditAction` | const, type | the 17 actions of D7 |
+| `AUDIT_ACTIONS`, `AuditAction` | const, type | the 17 actions of D7 (no separate action schema export) |
 | `AUDIT_TARGET_KINDS`, `AuditTargetKind` | const, type | `check`, `component`, `maintenance`, `manual-incident`, `token` |
 | `AuditEntry`, `auditEntrySchema`, `validateAuditEntry` | strict object | D7 |
 | `AuditPage`, `auditPageSchema`, `validateAuditPage` | strict object | `{ entries: AuditEntry[], nextBefore: number \| null }` |
 | `AUDIT_DEFAULT_LIMIT`, `AUDIT_MAX_LIMIT` | const | `100`, `1000` |
 | `AUDIT_EXPORT_CONTENT_TYPE` | const | `"application/x-ndjson"` |
 
-Fields: `id`, `name`, `scopes`, `location`, `source`, `createdAt`, `lastUsedAt`, `expiresAt`, `revokedAt`, `rotatedAt`, `previousValidUntil`, `secret`, `token`, `tokens`, `actor`, `tokenId`, `action`, `target`, `kind`, `revision`, `at`, `entries`, `nextBefore`. They live only inside the new strict objects. `lastUsedAt`, `expiresAt`, `revokedAt`, `rotatedAt`, `previousValidUntil` and `nextBefore` have `0` hits above. The others already exist as fields of unrelated objects (for example `name` and `location`), which cannot collide inside a new object.
+Fields: `id`, `name`, `scopes`, `location`, `source`, `createdAt`, `lastUsedAt`, `expiresAt`, `revokedAt`, `rotatedAt`, `previousValidUntil`, `secret`, `token`, `tokens`, `actor`, `tokenId`, `action`, `target`, `kind`, `revision`, `at`, `entries`, `nextBefore`. They live only inside the new strict objects. `lastUsedAt`, `expiresAt`, `revokedAt`, `rotatedAt`, `previousValidUntil`, `nextBefore` and `tokenId` have `0` hits above. Query parameters `actor`, `action`, `targetKind`, `targetId`, `since`, `until`, `limit`, `before` exist only on the new audit routes (`targetKind` and `targetId` have `0` hits above). The others already exist as fields of unrelated objects (for example `name` and `location`), which cannot collide inside a new object.
 
 Routes (api): `/admin/tokens`, `/admin/tokens/:id`, `/admin/tokens/:id/rotate`, `/admin/tokens/:id/revoke`, `/admin/audit`, `/admin/audit/export`. They have `0` hits above. They sit under the existing `/admin/` prefix, whose current sections are `config|checks|components|maintenance` (api `src/admin-routes.ts` `ADMIN_PATH`).
 
@@ -358,7 +402,8 @@ Files:
 - `package.json` (version `1.7.0`).
 - `README.md`, `docs/index.md`.
 
-Behavior change: yes. New validators and constants are new public behavior of the package.
+Behavior change: yes
+New validators and constants are new public behavior of the package.
 
 Behavior:
 - Add everything in the contract table of `## Contract fields`, with the exact values given there. Schemas are Zod (`zod` 4.6.7 is the only runtime dependency, `package.json`). Types are inferred. Validators follow the existing non-throwing `Validation` pattern of `src/validate.ts`: they return the same object on success, read own data properties only, and report the first problem with a field path.
@@ -366,7 +411,7 @@ Behavior:
   - `name`: string, 1-`TOKEN_NAME_MAX` characters after trim, no `\p{Cc}`.
   - `scopes`: array of 1-4 distinct `TokenScope`. `probe` only as the single entry.
   - `location`: required iff `scopes` is `["probe"]`, 1-64 characters after trim.
-  - `expiresAt`: optional positive integer.
+  - `expiresAt`: optional positive safe integer (1 to 9 007 199 254 740 991). The contract has no clock, so it does not check "in the future" or "at most 3650 days": the api does (D6).
   - Unknown keys are rejected.
 - `tokenMetadataSchema`:
   - `name` is non-empty with no maximum (imported legacy names).
@@ -379,7 +424,7 @@ Behavior:
   - `id` is a positive integer and `at` is finite.
   - `actor.tokenId` matches the token id pattern or is `null`, and `actor.name` is non-empty.
   - `action` comes from `AUDIT_ACTIONS` and `target.kind` from `AUDIT_TARGET_KINDS`.
-  - `target.id` is 1-200 characters.
+  - `target.id` is a non-empty string with no maximum, like check ids (`src/schema.ts` line 241 `id: nonEmpty`).
   - `revision` matches `isAdminRevision` or is `null`.
   - The action prefix must match `target.kind` (`check.*` ↔ `check`, `manual-incident.*` ↔ `manual-incident`, `token.*` ↔ `token`, ...).
   - All objects are strict.
@@ -387,22 +432,34 @@ Behavior:
 - `WIRE_VERSION` stays `1`, because the change is additive.
 
 Checks:
-- `test/tokens.test.ts` and `test/audit.test.ts` cover acceptance and rejection, with every create-validation counterexample of `## Counterexamples` as a rejected case. They also cover the strict rejection of `secret`/`secretSha256` on metadata, the action/kind mismatch (`{action:"token.revoke", target:{kind:"check",...}}` rejected), and a getter on an input that must not run.
+- `test/tokens.test.ts` covers acceptance and rejection:
+  - Rejected: every case of "Create validation, clock-independent" in `## Counterexamples`.
+  - Accepted: `{"name":"ci","scopes":["read","checks"]}`, `{"name":"probe eu","scopes":["probe"],"location":"eu"}`, a name of exactly 100 characters, and `expiresAt: 1` and `expiresAt: 9007199254740991` (the clock-dependent rules are the api's, see "Create validation, clock-dependent").
+  - The strict rejection of `secret` and `secretSha256` on metadata.
+  - A getter on an input object that must not run.
+- `test/audit.test.ts`:
+  - Accepted: an entry with `target.id` of 10 000 characters, an entry with `actor.tokenId: null`.
+  - Rejected: `target.id: ""`, an extra key, the action/kind mismatch `{action:"token.revoke", target:{kind:"check",...}}`, `revision: "abc"`.
+  - `validateAuditPage` with `nextBefore: 0` rejected and `nextBefore: null` accepted.
 - `test/types.fixture.ts` assigns a literal of each new type.
 - `test/smoke.test.ts` lists the new exports.
 
 Tool facts:
-- `bun run check` = `bun run lint && bun run build && bun run typecheck && bun run test` (`package.json` `scripts.check`).
-- Tests are `bun:test` with coverage at least 80 % lines (`bunfig.toml` `[test]` lines 1-4).
-- Biome `2.6.3` (`package.json` devDependencies). `biome.json` line 2 extends `@lorenzh/pulse-config/biome.json`. At the pinned `51e95b0eb463b27a196a33b428607bd92443e4f0` (`package.json` devDependency `@lorenzh/pulse-config`), that file includes `**` and excludes `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html` and `**/test/fixtures` (`biome.json` lines 8-18). It is identical to the config clone.
-- CI: `.github/workflows/ci.yml` line 17 uses `lorenzh/pulse-config/.github/workflows/check.yml@51e95b0eb463b27a196a33b428607bd92443e4f0` with `build: true`. At that ref (identical to the clone), the steps are:
-  - install `bun install --frozen-lockfile` (line 26)
-  - `bun run lint` (28)
-  - `bun run typecheck` (30)
-  - `bun run build` (33)
-  - `git diff --exit-code -- dist` (36)
-  - `bun run test` (38)
+All citations are contract `main` `ebcbbb6` unless they name the config repository.
+- Version `1.6.0` today (`package.json` line 3), which this change makes `1.7.0`.
+- Bun `1.4.0`: `package.json` line 7 (`packageManager: "bun@1.4.0"`) and lines 8-10 (`engines.bun`).
+- Scripts (`package.json`): `build` = `bun node_modules/typescript7/bin/tsc -p tsconfig.build.json` (line 22), `typecheck` = `bun node_modules/typescript7/bin/tsc --noEmit` (line 23), `test` = `bun test` (line 24), `lint` = `biome check . && pulse-eslint .` (line 25), `check` = `bun run lint && bun run build && bun run typecheck && bun run test` (line 28).
+- Pins (`package.json`): `@biomejs/biome` `2.6.3` (line 31), `@lorenzh/pulse-config` `github:lorenzh/pulse-config#51e95b0eb463b27a196a33b428607bd92443e4f0` (line 32), `typescript7` `npm:typescript@^7.0.2` (line 36), runtime dependency `zod` `4.6.7` (line 39, the only one).
+- Tests: `bun:test` with coverage on and at least 80 % lines (`bunfig.toml` lines 1-3: `[test]`, `coverage = true`, `coverageThreshold = { lines = 0.8 }`), ignoring `**/*.test.ts`, `test/**`, `**/test/**`, `dist/**` (line 4).
+- Biome scope: `biome.json` line 2 extends `@lorenzh/pulse-config/biome.json`. That file at the pinned `51e95b0` (read with `gh api "repos/lorenzh/pulse-config/contents/biome.json?ref=51e95b0eb463b27a196a33b428607bd92443e4f0"`) includes `**` and excludes `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html`, `**/test/fixtures` (lines 10-17), with `vcs.useIgnoreFile: true` (line 6). It is byte-identical to the config clone (`diff -q` empty).
+- CI: `.github/workflows/ci.yml` lines 16-19: job `check` uses `lorenzh/pulse-config/.github/workflows/check.yml@51e95b0eb463b27a196a33b428607bd92443e4f0` with `build: true`. That workflow at the pinned ref (read with `gh api`, byte-identical to the config clone) runs on `ubuntu-24.04` (line 16):
   - Bun `1.4.0` via `oven-sh/setup-bun` (lines 22-24)
+  - `bun install --frozen-lockfile` (lines 25-26)
+  - `bun run lint` (lines 27-28)
+  - `bun run typecheck` (lines 29-30)
+  - `bun run build` when `build` is true (lines 31-33)
+  - `git diff --exit-code -- dist` when `build` is true (lines 34-36)
+  - `bun run test` (lines 37-38)
 
 Completion evidence:
 - `bun run check` passes.
@@ -417,25 +474,28 @@ Files:
 - `src/token-scopes.ts` (new): the pure D1 matrix, grant rule and last-admin check.
 - `src/token-import.ts` (new): the D5 bootstrap import.
 - `src/token-routes.ts` (new): `/admin/tokens*`.
-- `src/audit-log.ts` (new): record in a transaction, pending/commit/resolve, query, batch iteration for export.
+- `src/audit-log.ts` (new): record in a transaction, pending insert (with `synchronous = FULL`), promote, delete, query, batch iteration for export.
 - `src/audit-routes.ts` (new): `/admin/audit`, `/admin/audit/export`.
 - `src/admin-routes.ts`: store-based auth, scopes, dispatch of the new sections, audit of config writes.
 - `src/admin-auth-failures.ts`: kinds of D2.
 - `src/admin-tokens.ts`: keeps the parser for import, plus digest-based distinctness.
 - `src/tokens.ts`: keeps `parseTokens` and the token rules, plus digest helper; drops the list-based `authenticate`/`findByToken` once unused.
-- `src/config-write.ts`: the D8 protocol and pending resolution.
+- `src/config-write.ts`: the D8 protocol and pending resolution; `WriteFs` gains `lstat(path): void` (throws with a Node `code`).
+- `src/config-fs.ts`: the real `lstat` for `WriteFs`.
 - `src/manual-incidents.ts`: writes run inside a transaction with the audit insert.
 - `src/server.ts`: probe-route and manual-write auth through the store; respond after commit; route patterns for metrics.
-- `src/start.ts`: open the database before import; import; feature gate; startup line; flush last-used on close.
+- `src/start.ts`: the D5 order (open the database, read bootstrap rows, then read only the files of pending imports); import; resolve pending audit entries once the database is open, before `listen`; feature gate; startup line; flush last-used on close.
 - Tests:
   - new: `src/token-store.test.ts`, `src/token-scopes.test.ts`, `src/start.token-import.test.ts`, `src/server.tokens.test.ts`, `src/server.scopes.test.ts`, `src/server.rotation.test.ts`, `src/server.audit.test.ts`, `src/config-write.audit.test.ts`
   - updated: `src/db.migrations.test.ts`, `src/server.auth.test.ts`, `src/server.manual-incidents.test.ts`, `src/server.manual-incidents.audit.test.ts`, `src/config-admin.test.ts`, `src/admin-tokens.test.ts`, `src/tokens.test.ts`, `src/start.test.ts`, `src/start.audit-log.test.ts`, `src/admin-auth-failures.test.ts`, `src/docs-claims.test.ts` if its claims change, and any other test that builds `createApiServer` with `adminTokens`.
+  - fixture: `test/fixtures/pulse-v3.db` (new, binary, a version-3 database made with api `main` `c00a375`).
 - `scripts/compose-e2e.sh`.
 - `compose.yaml` (comment only), `compose.e2e.yaml` (comment only, if needed).
 - `README.md`, `docs/rest-api.md`, `docs/configuration.md`, `docs/operation.md`.
 - `package.json`, `bun.lock` (contract pin to the merged contract SHA).
 
-Behavior change: yes. Authentication, storage, admin routes and audit are new behavior.
+Behavior change: yes
+Authentication, storage, admin routes and audit are new behavior.
 
 Behavior:
 - Implement D1-D9 exactly. Contract types come in with `import type`, and contract validators and constants are runtime imports, as the api already does with `validatePostResultRequest`.
@@ -492,26 +552,31 @@ Checks:
      - `validateAuditEntry` passes.
      - The sentinels, the Bearer value and its digest are absent from the query, the export, the `audit_log` cells and every captured log line.
      - Paging with the literal ids of `## Counterexamples`. Export across more than one page, read after a restart. `403` for non-admin readers.
+- `server.audit.test.ts` also holds, as separate tests:
+  - "an audit walk never skips an entry committed later": the interleaving case of `## Counterexamples` with its literal ids `[5,4]`, `[3,2]`, `[1]`, `[7,6]`, and the export that returns exactly ids 1-5.
+  - "audit entries keep check ids of any length": the 300-character id case of `## Counterexamples` (create, delete, `targetId` query → 2 entries).
 - Upgrade test, `start.token-import.test.ts` "upgrade from file tokens keeps existing tokens working":
-  - Build a version-3 database with today's `openDb` path: use migrations up to step 3, or a fixture database made by a pinned older checkout. The test must not build it with the code under test.
+  - The version-3 database comes from outside the code under test: a committed fixture `test/fixtures/pulse-v3.db` (Biome excludes `**/test/fixtures`; the image copies only `src`, `Dockerfile` line 14, and `.dockerignore` excludes `test` and `*.db`), created once with api `main` `c00a375`'s own `openDb` and two manual incidents. The PR states the exact command used. The test copies it to its `mkdtemp` directory.
   - The fixture from `## Counterexamples`. All 5 credentials work.
   - Restart without files. Revoke and restart with the files still mounted: no resurrection. The malformed-file rollback, the probe-only then admin bootstrap, and the duplicate-digest refusal.
-- Durability tests in `config-write.audit.test.ts` and `server.manual-incidents.audit.test.ts`: the D8 cases of `## Counterexamples`, with a fake `WriteFs` and a throwing audit recorder.
+- Bootstrap order tests in `start.token-import.test.ts`, one per case of the `## Counterexamples` import list: after import with missing paths, with `{not json` files, with directories in place of the files (each → start succeeds and stored credentials work), and the fresh install with a missing probe file (→ start fails, no `token_bootstrap` row).
+- Durability tests in `config-write.audit.test.ts` and `server.manual-incidents.audit.test.ts`: every D8 case of `## Counterexamples` (pending insert failure, promote failure, the A → B → A restore, the crash-before-rename and crash-after-rename fixtures, the delete-row-before-remove order, the `EACCES` `lstat`), with a fake `WriteFs` and a throwing audit recorder.
 - `token-store.test.ts`: last-used coalescing with the literal times `T`, `T + 59 999`, `T + 60 000`, and the flush on close.
 - `db.migrations.test.ts`: a version-3 file migrates to 4. A version-5 file is refused.
 
 Tool facts:
-- Bun `1.4.0`: `package.json` `engines.bun` and `packageManager`, lines 8-10 and 35.
-- `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json` `scripts.check`).
-- `lint` = `biome check . && pulse-eslint .` (`scripts.lint`).
-- Typecheck with `typescript7` (`npm:typescript@7.0.2`, `scripts.typecheck`).
-- Coverage at least 80 % lines (`bunfig.toml` `[test]` lines 1-4).
-- Biome `2.6.3` (`devDependencies`). `biome.json` extends `@lorenzh/pulse-config/biome.json`. At the pinned `dc69a126bebbe50d8a7339ea1325d51b2ea43d7d` that file includes `**` and excludes `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html` and `**/test/fixtures` (lines 8-18). It is identical to the config clone.
+All citations are api `main` `c00a375` unless they name the config repository.
+- Bun `1.4.0`: `package.json` lines 8-10 (`engines.bun`) and line 35 (`packageManager: "bun@1.4.0"`).
+- Scripts (`package.json`): `typecheck` = `bun node_modules/typescript7/bin/tsc --noEmit` (line 14), `test` = `bun test` (line 15), `lint` = `biome check . && pulse-eslint .` (line 16), `bench:selftest` = the seven `bun bench/selftest/check-*.ts` scripts (line 18), `check` = `bun run lint && bun run typecheck && bun run test` (line 20). There is no `build` script.
+- Pins (`package.json`): `@biomejs/biome` `2.6.3` (line 23), `@lorenzh/pulse-config` `github:lorenzh/pulse-config#dc69a126bebbe50d8a7339ea1325d51b2ea43d7d` (line 24), `typescript7` `npm:typescript@7.0.2` (line 27), `@lorenzh/pulse-contract` `github:lorenzh/pulse-contract#ebcbbb613328494185833f7133f1242910986948` (line 31, the pin this change moves), `zod` `4.6.7` (line 33).
+- Tests: coverage on with at least 80 % lines and no function threshold (`bunfig.toml` lines 1-3: `[test]`, `coverage = true`, `coverageThreshold = { lines = 0.8, functions = 0 }`), ignoring test files, `test/**` and `dist/**` (line 4).
+- Biome scope: `biome.json` line 2 extends `@lorenzh/pulse-config/biome.json`. That file at the pinned `dc69a12` (read with `gh api "repos/lorenzh/pulse-config/contents/biome.json?ref=dc69a126bebbe50d8a7339ea1325d51b2ea43d7d"`) includes `**` and excludes `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html`, `**/test/fixtures` (lines 10-17). It is byte-identical to the config clone (`diff -q` empty).
 - CI `.github/workflows/ci.yml`:
-  - `check` uses `lorenzh/pulse-config/.github/workflows/check.yml@dc69a126bebbe50d8a7339ea1325d51b2ea43d7d` (line 18). At that ref (identical to the clone) it runs install, `bun run lint`, `bun run typecheck` and `bun run test` on Bun 1.4.0 (lines 22-38). `build` stays false, so the dist steps are skipped.
-  - `bench-selftest` runs `bun run bench:selftest` and `docker compose -f bench/compose.bench.yaml config --quiet` (lines 20-31).
-  - `compose-e2e` runs `bash scripts/compose-e2e.sh` (lines 66-73).
-  - `docker` builds the image and runs `docker compose config` checks.
+  - `check` (lines 17-18) uses `lorenzh/pulse-config/.github/workflows/check.yml@dc69a126bebbe50d8a7339ea1325d51b2ea43d7d` without inputs. That workflow at the pinned ref (read with `gh api`, byte-identical to the config clone) runs Bun `1.4.0` via `oven-sh/setup-bun` (lines 22-24), `bun install --frozen-lockfile` (25-26), `bun run lint` (27-28), `bun run typecheck` (29-30) and `bun run test` (37-38). Its build and dist steps (31-36) run only with `build: true`, so they are skipped here.
+  - `bench-selftest` (lines 20-31): Bun `1.4.0` (lines 26-28), `bun install --frozen-lockfile` (29), `bun run bench:selftest` (30), `docker compose -f bench/compose.bench.yaml config --quiet` (31).
+  - `docker` (lines 33-54), on `ubuntu-24.04` and `ubuntu-24.04-arm` (line 37): `docker build --tag pulse-api:local .` (43), `cp .env.example .env && docker compose config --quiet` (44), "Image holds no test files" (45-48), "Status port override" (49-51), "Console port override" (52-54). This change touches none of the files these steps read except `compose.yaml` comments.
+  - `compose-e2e` (lines 66-76): `bash scripts/compose-e2e.sh` (73) with a 25-minute timeout (68), then `docker compose --project-name pulse-e2e --profile demo down -v --remove-orphans` (74-76).
+  - `release` (lines 56-64) runs only on tags and is unchanged.
 
 Completion evidence:
 - `bun run check` passes, and the red-then-green output of the four issue tests and the upgrade test is in the PR.
@@ -527,10 +592,11 @@ Completion evidence:
 
 - **Unsalted SHA-256 of legacy secrets:** a leaked database lets an attacker brute-force short imported secrets offline (the minimum is 16 characters). Generated secrets have 256 bits. The docs advise rotating imported tokens after the upgrade. A slow KDF would cost one scrypt per probe request and rules out the digest lookup.
 - **Lockout through expiry:** the last-admin rule covers revocation only. An expiring last admin locks the api, and recovery is a backup restore. The docs state this. No automatic re-bootstrap happens, because that would revive file credentials.
-- **File-plus-SQLite gap:** D8 can leave a `pending` row after a crash between the rename and the commit. That row is invisible until the next write or restart resolves it. A third-party edit of the file in that window resolves to `committed` (conservative).
+- **File-plus-SQLite gap:** D8 can leave an `audit_pending` row after a crash or a failed promote. That entry is invisible until the next config write or restart resolves it. Resolution uses only the temp file's existence, so a later external edit of the checks file (even back to the old bytes) never removes the entry. The one wrong outcome left is an entry for a write that did not land, when a third party deletes the api's temp file while the api crashes before its rename; it is documented and accepted.
+- **`synchronous = FULL` on the pending insert:** one extra WAL fsync per config write. Config writes are rare operator actions; ingest and reads keep `NORMAL`.
 - **Audit growth:** about 200 bytes per entry and no retention. 100 admin writes a day give about 7 MB a year. The docs name this.
 - **Probe rotation needs an operator:** a probe restarted after the 10-minute overlap with the old token gets `401` until it is restarted with the new token. Its result buffer (probe) keeps results across the gap, as in the existing outage test.
-- **Order of ids and `at`:** a pending config row takes its id before a manual-incident commit that lands earlier, so `at` is not strictly monotonic in `id`. Ordering and the cursor use `id` only. This is documented.
+- **Order of ids and `at`:** `audit_log` ids follow commit order (D9). A config entry promoted late keeps the `at` of its request, so `at` is not strictly monotonic in `id`, and a `since`/`until` window can gain an older-`at` entry after it was read. Ordering and the cursor use `id` only. This is documented in `docs/rest-api.md`.
 - **Test CPU budget:** the new HTTP suites can push `test_cpu_s` toward 4.1 s. Keep them to one server per file and no sleeps.
 
 ## Acceptance evidence
