@@ -1,0 +1,231 @@
+{
+  "issue": 518,
+  "kind": "quality",
+  "scope": "api",
+  "date": "2026-10-31",
+  "commits": {
+    "api": "6e238dea0ece835eb27f7af80d584be508a8930f",
+    "config": "01a57a7e3f7c61aaa2a65f54d8b780a51efe58dc",
+    "configPinnedByApi": "51e95b0eb463b27a196a33b428607bd92443e4f0",
+    "contract": "ebcbbb613328494185833f7133f1242910986948",
+    "kit": "6a06ec25d26d90be12eba133972b59077dd0e17d",
+    "kitPinnedByApi": "fa79ba8cd93949fc0cf87f7b41bdaf261dbe4dc6",
+    "probe": "85720d384a7e146c47d4436b14b3e85379e3deb4",
+    "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0",
+    "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933",
+    "meta": "62cfe4c8a89dfe842837997803d55236491ece94"
+  },
+  "checklist": [
+    {
+      "item": "Lint and typecheck. Every finding of the repository's own lint (biome, SonarJS) and typecheck (tsc) scripts on main.",
+      "status": "checked",
+      "evidence": "bun run lint (biome check . && pulse-eslint .): exit 0; Biome 'Checked 136 files in 174ms. No fixes applied. Found 2 infos.': lint/style/useTemplate at bench/compare.ts:239:59 and lint/complexity/noUselessSwitchCase at src/service.ts:671:7 (style only, notes), plus a deprecation of the 'recommended' field in the shared pulse-config biome.json:41 (note). ESLint (SonarJS, typescript-eslint): no output. bun run typecheck (tsc 7.0.2 --noEmit): exit 0, no output. bun run check: exit 0. pulse-eslint --no-inline-config shows what the disable comments hide in production code: sonarjs/cognitive-complexity at src/server.ts:527 (finding 3), function-return-type at src/server.ts:139 and src/admin-routes.ts:102, no-nested-conditional at src/service.ts:372; 53 directives in tests silence fixture rules."
+    },
+    {
+      "item": "Complexity. The functions with the highest cognitive complexity, with their value against the budget of the shared configuration.",
+      "status": "checked",
+      "evidence": "Shared budget: sonarjs/cognitive-complexity 15 (pulse-config eslint.config.js). pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src bench (the shared config with the threshold set to 0, audit copy only), exit 1, 452 functions above 0. Highest: 52 handle src/server.ts:527 (over by 37, silenced by eslint-disable-next-line at src/server.ts:526, finding 3); 15 runLoad bench/load.ts:176; 15 admin handler src/admin-routes.ts:221; 15 tick src/heartbeat.ts:35; 15 ingest transaction src/service.ts:881 (all four at the budget); 13 write src/admin-routes.ts:162; 12 uptimeOf src/service.ts:750; 12 run src/start.ts:122; 11 parseProbed src/config.ts:150; 11 checkMeasurements src/server.ts:108; 11 validateResult src/server.ts:139."
+    },
+    {
+      "item": "Duplicated logic. Logic that two or more files of this repository, or this repository and another pulse repository, implement separately.",
+      "status": "checked",
+      "evidence": "grep over src/ of api, probe, status, notify, kit, contract and reading. validateResult re-checks what the contract validator already checks (src/server.ts:146-156, 109-110, 113 after src/server.ts:144; finding 9). isRecord in api src/config.ts:31, src/config-write.ts:94, src/tokens.ts:58, probe src/check.ts:237 and src/check-domain.ts:73, status src/poller.ts:106, while pulse-contract exports isObject (src/validate.ts:57). err.code readers with three fallbacks: src/backup.ts:25, src/config-write.ts:77, src/config-reload.ts:47 (also probe src/attempt.ts:20, notify src/channels/smtp-send.ts:91). HttpError/sendError (src/server.ts:58, 68) and RouteError/sendError (src/admin-routes.ts:62, 128); BodyError 'aborted' mapped to two texts (src/server.ts:83, src/admin-routes.ts:97). Bearer regex twice with different rules (src/tokens.ts:99, src/server.ts:253); SHA-256 digest twice (src/server.ts:243, src/tokens.ts:101). Self-rescheduling timer loop four times (src/heartbeat.ts:89, src/config-reload.ts:154, src/retention.ts:80, src/latency-rollup.ts:60), also status src/api-poll.ts:16 and probe src/reloader.ts. Local MAX_TIMER_MS (src/location-silence.ts:3) next to the contract's MAX_TIMER_MS (imported at src/config.ts:9). No duplication of SLO, uptime or component state math (api uses the contract's combineStates and aggregateUptime). All except finding 9 are notes."
+    },
+    {
+      "item": "Dead code. Exports that nothing imports and files that nothing reaches, found with grep and tsc.",
+      "status": "checked",
+      "evidence": "tsc --noEmit --noUnusedLocals --noUnusedParameters: exit 0, no output. Export scan (Bun script, word match of every src export over src, bench, scripts): exit 0; exports without a production user in finding 10 (test-only reader src/config.ts:466-504, parseChecks, INITIAL_STATE, SCHEMA_VERSION, validateResult, maxFutureSkewMs, bound constants, nearestRank, fillAllRollups, cleanupResults, retentionCutoff; unused ConfigAction src/config-write.ts:15 and LatencyRollupRunner.done src/latency-rollup.ts:26). Reachability from src/main.ts, src/backup-main.ts, bench/run.ts and bench/selftest/*.ts: only bench/seed.ts is not imported, and bench/run.ts:117 runs it as a subprocess, so no file is unreached. Unreachable branches: finding 9."
+    },
+    {
+      "item": "Test quality. Coverage from the repository's own test script where it reports it; risky branches without a test; tests that assert nothing or only mirror the implementation.",
+      "status": "checked",
+      "evidence": "bun run test: exit 0, 407 pass, 0 fail, 57 files; coverage 96.99 % funcs, 99.19 % lines (threshold 80 % lines). Uncovered: src/config-fs.ts 40-42, src/config-reload.ts 112-113 and 122, src/latency-rollup.ts 92-93, src/service.ts 68 (finding 13). src/main.ts and src/backup-main.ts are not in the table (Bun lists only loaded files); lcov marks the unreachable src/server.ts:147 as run (DA:147,38), so line coverage overstates (note). A scan of 375 test bodies found no test without an assertion; no skip, todo or only. Bound tests mirror the implementation (finding 4). Untested retry after an apply failure (finding 1). Wall-clock assertions at src/uptime.test.ts:125 (< 1000 ms) and src/db.wal.test.ts:61 (< 50 ms) against the AGENTS.md no-real-clock rule (note). src/docs-claims.test.ts asserts doc wording (note)."
+    },
+    {
+      "item": "Error handling. Swallowed errors (empty or log-only catch, ignored promise rejections) and error shapes that differ for the same kind of failure.",
+      "status": "checked",
+      "evidence": "grep -nE -A4 'catch( \\(\\w+\\))? \\{|\\.catch\\(' src/*.ts and reading each block. Catches that drop the caught error all carry a reason comment (src/backup.ts:110, 116, src/config-write.ts:415, src/main.ts:13, src/server.ts:206, 273, 520, src/service.ts:68, 1116, src/admin-routes.ts:108). Log-only catches in the four background loops (src/heartbeat.ts:95, src/retention.ts:95, src/latency-rollup.ts:84, src/config-reload.ts:161) are by design; two log at info and vanish at PULSE_LOG_LEVEL=warn (finding 2); the reload apply failure logs only err.name, counts invalid and is not retried (finding 1). An error after the answer was sent is not logged (finding 6). no-floating-promises and no-misused-promises pass; the void-discarded promises catch internally. Different shapes for one failure: missing tokens file against missing checks file (finding 11), 405 with or without Allow (finding 5), Error subclasses without name (finding 12), 404 'unknown check' on /checks/:id/latency (src/server.ts:639) against 'unknown check \"<id>\"' elsewhere (documented, note)."
+    },
+    {
+      "item": "Consistency. Deviations from the repository's AGENTS.md and from the other services: naming, module layout, configuration handling.",
+      "status": "checked",
+      "evidence": "AGENTS.md deviations: complexity suppression (finding 3), Error subclasses without name (finding 12), silent error (finding 6), exports only for tests (finding 10), SQL outside src/service.ts in src/manual-incidents.ts:89-112 (12 statements; docs part in finding 8), file I/O with readFileSync in src/config.ts:469 and 509 while the reload path injects ReloadFs (note), '(err as Error)' casts without a check at src/config.ts:471 and 511 (note), ConfigError without cause at src/config.ts:471 (note), boolean names stopped (src/heartbeat.ts:90), fresh and checkForeignKeys (src/db.ts:113-114) (style, notes). Return types, import extensions, node: prefixes, named exports, no barrels: no deviation. Configuration handling: probe and status read their environment in one src/settings.ts; api spreads it over src/start.ts:79, src/retention.ts:9 (days read with readMs) and src/location-silence.ts:6 (note). Pins: contract pin is contract main; kit pin fa79ba8 is behind kit main but src/ is identical (diff -rq); probe, status and notify pin the same kit."
+    },
+    {
+      "item": "Docs against code. Claims in the README and docs/ of this repository that the code does not match, each with the claim and the contradicting code.",
+      "status": "checked",
+      "evidence": "Read README.md and all of docs/, checked claims against the code, a local bun start on 127.0.0.1 and scratch scripts. Contradictions: docs/operation.md:224 Allow on every 405 (finding 5), docs/rest-api.md:145 several rows per location and timestamp (finding 7), docs/development.md:22, 24, 26 code layout (finding 8), docs/development.md:51 and AGENTS.md:77 complexity limit against the suppressed handle (finding 3). Notes: docs/troubleshooting.md:115 'GET on every other path', docs/operation.md:195 incomplete listening fields (src/start.ts:295-311), docs/concepts.md:107 rollups of checks no longer in the database (the API never deletes checks). Correct: start errors and exit code 2 for seven bad settings and missing files, exit 0 on SIGTERM, POST /results idempotence and check order, the troubleshooting 400 messages, nearest-rank, 5 s backfill delay and read cache, the environment table."
+    }
+  ],
+  "findings": [
+    {
+      "id": "quality-api-2026-10-31-1",
+      "repos": ["api"],
+      "location": "src/config-reload.ts:97",
+      "severity": "P3",
+      "candidate": true,
+      "category": "error-handling",
+      "title": "A checks file whose apply fails once (SQLite error in upsertChecks) is logged as rejected with only err.name, counted as result=\"invalid\", and not retried by later looks because lastKey is set before the apply (src/config-reload.ts:107-108); untested",
+      "command": "Bun script outside the repo: import createConfigReloader and loadInitialConfig from the copy's src/config-reload.ts; fake ReloadFs; change the file once (new bytes and mtimeMs); first onApply throws an Error named SQLiteError, later calls succeed; call poll() three times; print onApply calls, applied name, log lines and metric results",
+      "exitCode": 0,
+      "excerpt": "{\n \"applyCalls\": 1,\n \"applied\": \"A\",\n \"logs\": [\n  \"config reload rejected: /x/checks.json: cannot apply the configuration (SQLiteError)\"\n ],\n \"metrics\": [\n  \"invalid\"\n ]\n}",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-2",
+      "repos": ["api"],
+      "location": "src/start.ts:205",
+      "severity": "P3",
+      "candidate": true,
+      "category": "error-handling",
+      "title": "Failed retention and latency rollup runs are logged at info (src/start.ts:205, 321), so at PULSE_LOG_LEVEL=warn a failing cleanup leaves no log line, while heartbeat and config poll failures log at warn (src/start.ts:214, 236)",
+      "command": "Bun script outside the repo: run the copy's startApi twice (PULSE_LOG_LEVEL=info, then warn; PORT=0; PULSE_DB=:memory:; example checks; throwaway tokens) with openDb wrapped to add two results of one check (one 400 days old) and a trigger BEFORE DELETE ON results that raises 'database or disk is full'; close the API; print the log lines containing 'retention'",
+      "exitCode": 0,
+      "excerpt": "PULSE_LOG_LEVEL=info: 2 retention line(s) [\"{\\\"time\\\":\\\"2026-10-31T00:00:00.000Z\\\",\\\"level\\\":\\\"info\\\",\\\"msg\\\":\\\"retention failed: database or disk is full\\\"}\",\"{... \\\"msg\\\":\\\"listening\\\", ... \\\"retentionDays\\\":90, ...}\"]\nPULSE_LOG_LEVEL=warn: 0 retention line(s) []",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-3",
+      "repos": ["api", "config"],
+      "location": "src/server.ts:526",
+      "severity": "P3",
+      "candidate": true,
+      "category": "complexity",
+      "title": "The router handle (src/server.ts:527) has cognitive complexity 52 against the shared budget of 15; an eslint-disable-next-line sonarjs/cognitive-complexity at src/server.ts:526 hides it from lint and from measurement, against AGENTS.md:77 and docs/development.md:51",
+      "command": "./node_modules/.bin/pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src bench (eslint.cc.config.js = the shared @lorenzh/pulse-config eslint config with sonarjs/cognitive-complexity set to 0, audit copy only), values sorted",
+      "exitCode": 1,
+      "excerpt": "52 src/server.ts:527:16\n15 bench/load.ts:176:23\n15 src/admin-routes.ts:221:27\n15 src/heartbeat.ts:35:5\n15 src/service.ts:881:22\n\nsrc/server.ts:526: // eslint-disable-next-line sonarjs/cognitive-complexity -- splitting this validator/handler would be a behaviour-risking refactor",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f", "configPinnedByApi": "51e95b0eb463b27a196a33b428607bd92443e4f0" }
+    },
+    {
+      "id": "quality-api-2026-10-31-4",
+      "repos": ["api"],
+      "location": "src/server.validation.test.ts:6",
+      "severity": "P3",
+      "candidate": true,
+      "category": "test-coverage",
+      "title": "The POST /results bound tests import the bounds from src/server.ts:39-45, so raising the documented limits (reason 1000, attempts 100, latencyMs 86400000; docs/rest-api.md:43-50) keeps all 407 tests green",
+      "command": "In the copy: sed -i on src/server.ts to MAX_REASON_LENGTH = 2000, MAX_ATTEMPTS = 1000, MAX_LATENCY_MS = 864_000_000; bun test; git checkout -- src/server.ts",
+      "exitCode": 0,
+      "excerpt": "-export const MAX_REASON_LENGTH = 1000;\n-export const MAX_ATTEMPTS = 100;\n-export const MAX_LATENCY_MS = 86_400_000;\n+export const MAX_REASON_LENGTH = 2000;\n+export const MAX_ATTEMPTS = 1000;\n+export const MAX_LATENCY_MS = 864_000_000;\ntest exit=0\n 407 pass\n 0 fail",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-5",
+      "repos": ["api"],
+      "location": "docs/operation.md:224",
+      "severity": "P3",
+      "candidate": true,
+      "category": "docs",
+      "title": "docs/operation.md:224 says every API route answers 405 with an Allow header, but /results, every read route, /probe/checks, /heartbeat/:id and unsupported admin methods send none (src/server.ts:564, 605, 269; src/admin-routes.ts:242); docs/rest-api.md:28 names only the ops paths",
+      "command": "bun start of the copy on 127.0.0.1 (PORT=38517, example checks with a replaced secret, throwaway tokens, PULSE_CHECKS_RELOAD_INTERVAL_MS=0); curl -sS -i -X <method> <url> filtered to status, Allow and body; SIGTERM (server exit 0)",
+      "exitCode": 0,
+      "excerpt": "### -X GET http://127.0.0.1:38517/results\nHTTP/1.1 405 Method Not Allowed\n{\"error\":\"method not allowed\"}\n### -X DELETE http://127.0.0.1:38517/checks\nHTTP/1.1 405 Method Not Allowed\n{\"error\":\"method not allowed\"}\n### -X POST http://127.0.0.1:38517/probe/checks\nHTTP/1.1 405 Method Not Allowed\n{\"error\":\"method not allowed\"}\n### -X POST http://127.0.0.1:38517/healthz\nHTTP/1.1 405 Method Not Allowed\nAllow: GET\n{\"error\":\"method not allowed\"}\n### -X PUT http://127.0.0.1:38517/manual-incidents\nHTTP/1.1 405 Method Not Allowed\nAllow: GET, POST\n{\"error\":\"method not allowed\"}",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-6",
+      "repos": ["api"],
+      "location": "src/server.ts:776",
+      "severity": "P3",
+      "candidate": false,
+      "category": "error-handling",
+      "title": "An error thrown after the answer was sent destroys the socket without calling logError and without a reason comment (AGENTS.md:63); docs/rest-api.md:30 says the cause of an unexpected failure is written to stderr",
+      "command": "Bun script outside the repo: createApiServer of the copy on 127.0.0.1:0 with an admin handler that answers 204 and then throws; GET /admin/config; count logError calls",
+      "exitCode": 0,
+      "excerpt": "{\"status\":204,\"logErrorCalls\":0,\"logged\":[]}",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-7",
+      "repos": ["api"],
+      "location": "docs/rest-api.md:145",
+      "severity": "P3",
+      "candidate": false,
+      "category": "docs",
+      "title": "docs/rest-api.md:145 says a retried submission can store several rows for one location and timestamp (5 rows for limit=1), but migration 2 adds a unique index on (check_id, location, timestamp) (src/migrations.ts:56) and the insert does nothing on conflict (src/service.ts:483)",
+      "command": "bun start of the copy on 127.0.0.1 as in finding 5; POST /results five times with the same body and probe token; GET /checks/example/results?limit=1 and without limit; count rows",
+      "exitCode": 0,
+      "excerpt": "post 1: 204\npost 2: 204\npost 3: 204\npost 4: 204\npost 5: 204\n### GET /checks/example/results?limit=1 -> rows: 1\n### GET /checks/example/results -> rows: 1",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-8",
+      "repos": ["api"],
+      "location": "docs/development.md:22",
+      "severity": "P3",
+      "candidate": false,
+      "category": "docs",
+      "title": "The code layout table of docs/development.md contradicts the code: main.ts does not read the environment or wire the parts (src/start.ts:122-311 does), db.ts holds the version 0 schema, not the current one (src/db.ts:4), and service.ts does not hold all SQL (src/manual-incidents.ts:89-112)",
+      "command": "grep -n \"Schema (current version only)\\|Reads the environment, wires\\|All SQL, row mapping\" docs/development.md; sed -n 4p src/db.ts; grep -cE \"\\.(prepare|query)\\(|db\\.run\\(\" src/manual-incidents.ts",
+      "exitCode": 0,
+      "excerpt": "22:| `src/main.ts`             | Reads the environment, wires the parts and starts the server.                            |\n24:| `src/service.ts`          | All SQL, row mapping to contract types, quorum evaluation.                               |\n26:| `src/db.ts`               | Schema (current version only).                                                           |\n/** The schema at `user_version` 0, as the first release created it. Later changes are migrations. */\n12",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-9",
+      "repos": ["api", "contract"],
+      "location": "src/server.ts:146",
+      "severity": "P3",
+      "candidate": false,
+      "category": "dead-code",
+      "title": "validateResult re-implements checks that the contract validator at src/server.ts:144 already enforces (shape, checkId, status, statusCode range, reason type; src/server.ts:146-156, 109-110, 113); those branches never answer, yet Bun's lcov marks src/server.ts:147 as run",
+      "command": "Bun script outside the repo: call the copy's validateResult with one body per rule; bun test --coverage --coverage-reporter=lcov and read DA:147 of src/server.ts",
+      "exitCode": 0,
+      "excerpt": "array body (server.ts:146) -> \"result: must be an object\"\nempty checkId (server.ts:150) -> \"result.checkId: must be a non-empty string\"\nbad status (server.ts:154) -> \"result.status: must be one of \\\"up\\\", \\\"degraded\\\", \\\"down\\\"\"\nstatusCode 600 (server.ts:109) -> \"result.statusCode: must be an integer 100..599\"\nreason number (server.ts:113) -> \"result.reason: must be a string\"\nlcov: DA:147,38",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f", "contract": "ebcbbb613328494185833f7133f1242910986948" }
+    },
+    {
+      "id": "quality-api-2026-10-31-10",
+      "repos": ["api"],
+      "location": "src/config.ts:493",
+      "severity": "P3",
+      "candidate": false,
+      "category": "dead-code",
+      "title": "Production code and exports used only by tests: the checks file reader loadConfig/loadChecks (src/config.ts:466-504, wording its read error differently from the real reader src/config-reload.ts:70), parseChecks, INITIAL_STATE, SCHEMA_VERSION, validateResult, maxFutureSkewMs, the bound constants, nearestRank, fillAllRollups, cleanupResults, retentionCutoff; unused ConfigAction and LatencyRollupRunner.done (AGENTS.md:72)",
+      "command": "Bun script outside the repo: list every export of src/*.ts (non-test) with the other files that name it (word match over src, bench, scripts), print those without a production user",
+      "exitCode": 0,
+      "excerpt": "src/config.ts:300 parseChecks | other prod files: 0 | own-file uses: 1 | tests: 7\nsrc/config.ts:493 loadConfig | other prod files: 0 | own-file uses: 1 | tests: 2 (src/config.examples.test.ts, src/config.maintenance.test.ts)\nsrc/config.ts:502 loadChecks | other prod files: 0 | own-file uses: 0 | tests: 1 (src/config.test.ts)\nsrc/config-write.ts:15 ConfigAction | other prod files: 0 | own-file uses: 0 | tests: 0\nsrc/migrations.ts:64 SCHEMA_VERSION | other prod files: 0 | own-file uses: 0 | tests: 1\nsrc/state.ts:13 INITIAL_STATE | other prod files: 0 | own-file uses: 0 | tests: 2\nsrc/server.ts:139 validateResult | other prod files: 0 | own-file uses: 2 | tests: 5",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-11",
+      "repos": ["api"],
+      "location": "src/config.ts:511",
+      "severity": "P3",
+      "candidate": false,
+      "category": "error-handling",
+      "title": "A missing tokens file and a missing checks file fail with differently shaped messages: the tokens path keeps Node's full message and names the path three times (src/config.ts:511, src/start.ts:146), the checks path gives only the code (src/config-reload.ts:70)",
+      "command": "cd <copy>; env PORT=0 PULSE_DB=:memory: PULSE_CHECKS_FILE=<run>/checks.json PULSE_TOKENS_FILE=<run>/tokens.json PULSE_CHECKS_RELOAD_INTERVAL_MS=0 <one bad setting> timeout 20 bun src/main.ts; stderr and exit code",
+      "exitCode": 2,
+      "excerpt": "PULSE_TOKENS_FILE=<run>/missing.json -> exit 2: pulse-api: cannot read tokens file <run>/missing.json: ENOENT: no such file or directory, open '<run>/missing.json' (PULSE_TOKENS_FILE=<run>/missing.json)\nPULSE_CHECKS_FILE=<run>/missing.json -> exit 2: pulse-api: cannot read checks file <run>/missing.json: ENOENT",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-12",
+      "repos": ["api"],
+      "location": "src/service.ts:107",
+      "severity": "P3",
+      "candidate": false,
+      "category": "consistency",
+      "title": "UnknownCheckError (src/service.ts:107) and HttpError (src/server.ts:58) set no name, against AGENTS.md:60; every other error class sets override name",
+      "command": "bun -e 'const { UnknownCheckError } = await import(\"<copy>/src/service.ts\"); const e = new UnknownCheckError(\"x\"); console.log(JSON.stringify({ name: e.name, isError: e instanceof Error, str: String(e) }))'",
+      "exitCode": 0,
+      "excerpt": "{\"name\":\"Error\",\"isError\":true,\"str\":\"Error: x\"}",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    },
+    {
+      "id": "quality-api-2026-10-31-13",
+      "repos": ["api"],
+      "location": "src/config-reload.ts:112",
+      "severity": "P3",
+      "candidate": false,
+      "category": "test-coverage",
+      "title": "Failure branches without a test: an unreadable checks file during a look (src/config-reload.ts:112-113, documented in docs/operation.md:150) and a failing stat (122), the fchown EPERM fallback of an admin write (src/config-fs.ts:40-42), a JSON column that no longer parses (src/service.ts:68)",
+      "command": "bun run test",
+      "exitCode": 0,
+      "excerpt": " src/config-fs.ts           |  100.00 |   88.57 | 40-42\n src/config-reload.ts       |  100.00 |   95.51 | 112-113,122\n src/latency-rollup.ts      |   91.67 |   96.23 | 92-93\n src/service.ts             |   97.83 |   99.72 | 68\n 407 pass\n 0 fail",
+      "commits": { "api": "6e238dea0ece835eb27f7af80d584be508a8930f" }
+    }
+  ]
+}
