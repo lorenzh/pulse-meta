@@ -383,11 +383,14 @@ Rollback (reverse order of release):
     becomes its first 999 characters plus `…` (length 1000); `""` stays `""`.
   - Contract boundaries: `reason` of 1000 characters is valid, 1001 is rejected, `null` is valid,
     in both `validateResult` and `validatePostResultRequest`.
-- **URL userinfo.** These are rejected: `http://user@h.test/`, `http://:pw@h.test/`,
-  `https://u:p@h.test/`, `http://%75@h.test/` (encoded). The message is
-  `check.url: must not contain a username or password` and contains neither `user` nor `pw`.
-  These stay valid: `https://h.test/` and `http://@h.test/`. `ftp://u:p@h.test/` keeps the
-  protocol error `must be an http: or https: URL`, because protocol is checked first.
+- **URL userinfo.** These are rejected: `http://qz9cred@h.test/`, `http://:qz9pass@h.test/`,
+  `https://qz9u:qz9p@h.test/`, `http://%71z9enc@h.test/` (encoded; `%71` is `q`). The message
+  is exactly `check.url: must not contain a username or password`. The non-disclosure check uses
+  sentinels that the fixed message cannot contain: the message contains neither `qz9`, `%71`,
+  `z9enc`, `@` nor `h.test`. (Words such as `user` or `pass` are not usable as sentinels,
+  because `username` and `password` are in the fixed message.) These stay valid:
+  `https://h.test/` and `http://@h.test/`. `ftp://qz9u:qz9p@h.test/` keeps the protocol error
+  `must be an http: or https: URL`, because protocol is checked first.
 - **`warnDays`.** TLS and domain: `0` and `3650` are valid. `3651`, `10000` (the current test at
   contract `test/validate.test.ts:398` expects valid, and that expectation changes), `-1`, `1.5`
   and `"14"` are rejected with `must be an integer 0..3650`. In the api TLS parser, absent becomes
@@ -617,12 +620,16 @@ Work:
   - **Probe reasons reach ingestion** (the api half of the issue's long-target criterion), in
     `src/server.validation.test.ts`, with a real `createApiServer` on `127.0.0.1` and a fetch
     `POST /results` as in the existing test "certDaysLeft out of range answers 400, a far expiry
-    is stored and served" (`:145`). Post an HTTP check result with `status: "down"`,
-    `statusCode: null`, `latencyMs: 0`, `attempts: 1` and each reason literal of the probe tests:
-    (a) `"redirect to http://" + "a".repeat(73) + "… not followed"` and (b)
-    `"m".repeat(999) + "…"`. Each answer is `204`. Then `service.listResults(<id>, 10)` and
-    `GET /checks/<id>/results` both show `status` `down`, `statusCode` null and the posted reason
-    unchanged (length 106 and 1000). A control post of `"m".repeat(1000) + "…"` (1001, what an
+    is stored and served" (`:145`). Post two results with `status: "down"`, `latencyMs: 0`,
+    `attempts: 1`, matching what the probe tests produce: (a) the long-origin redirect result,
+    `statusCode: 302` (the probe keeps the redirect status when it stops a hop, probe
+    `src/check.ts:325` and `:417`; `src/check.redirect.test.ts:76` asserts `302`) and reason
+    `"redirect to http://" + "a".repeat(73) + "… not followed"`; (b) the TCP result,
+    `statusCode: null` and reason `"m".repeat(999) + "…"`. Each answer is `204` (api
+    `src/server.ts:109` accepts `null` or an integer 100..599 for any check type). Then
+    `service.listResults(<id>, 10)` and `GET /checks/<id>/results` both show `status` `down`, the
+    posted `statusCode` (`302` for (a), null for (b)) and the posted reason unchanged (length 106
+    and 1000). A control post of `"m".repeat(1000) + "…"` with `statusCode: null` (1001, what an
     uncapped probe would send at minimum) answers `400` and stores nothing. These literals are
     written out in the test; they are not imported from the probe.
   - A database seeded by direct `INSERT` with `latency_ms = 12.5` and a 1500-character reason:
@@ -745,7 +752,9 @@ Work:
   2. **Long target, capped reason.** A secret-bearing check gets 302 to
      `http://<2000 × "a">.test/`. Then a 2000-character scheme.
      - The reasons equal exactly `redirect to http://<73 × "a">… not followed` and
-       `redirect to <80 × "a">… not followed` (literals from the Counterexamples).
+       `redirect to <80 × "a">… not followed` (literals from the Counterexamples). Both
+       results are `down` with `statusCode` `302` (the stopped hop's status, as today in
+       `src/check.redirect.test.ts:76`).
      - `validatePostResultRequest(result).ok` is `true` with the new contract.
      - The RDAP redirect host case and the DNS 20 × 500 case give the literal reasons of the
        Counterexamples.
@@ -756,8 +765,9 @@ Work:
      probe's real result poster (`postResult`, probe `src/client.ts:305`, called from
      `src/main.ts:161`) to a local
      `Bun.serve` stand-in on `127.0.0.1` that records the request body and answers `204`. Assert
-     that the recorded JSON has `status` `down`, `statusCode` null and the literal reason of
-     test 2 or 3. The api side of the same posts is the api regression "probe reasons reach
+     that the recorded JSON has `status` `down` and the literal reason of test 2 or 3, with
+     `statusCode` `302` for the redirect result of test 2 and `statusCode` null for the TCP
+     result of test 3. The api side of the same posts is the api regression "probe reasons reach
      ingestion" (api section), which uses the same literals against the real api code.
   5. Latency readings `100.25` → `101.75` give `latencyMs` `2`, and the objective edge cases
      `500.4` and `500.5`.
@@ -836,9 +846,10 @@ Tool facts:
 
 Work:
 - Bump `@lorenzh/pulse-contract` to the merged contract SHA and refresh `bun.lock`.
-- Add one test: a fake API `/checks` with `{ ..., url: "https://u:p@x.test/" }` at index 0. The
-  check is dropped. `onInvalidCheck` receives exactly
-  `checks[0].url: must not contain a username or password`, and the text has no `u:p`.
+- Add one test: a fake API `/checks` with `{ ..., url: "https://qz9u:qz9p@x.test/" }` at
+  index 0. The check is dropped. `onInvalidCheck` receives exactly
+  `checks[0].url: must not contain a username or password`, and the text contains neither
+  `qz9` nor `x.test`.
 
 Completion evidence:
 - `bun run check` is green, and CI is green.
