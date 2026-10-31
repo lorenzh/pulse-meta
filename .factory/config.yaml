@@ -132,6 +132,9 @@ models:
   # one diff.
   auditor:
     harness: claude
+    # An audit reads whole repositories and may run the bench; the default deadline of 60 minutes
+    # stopped the first performance audit (#503). The prompts budget their work to fit 120 minutes.
+    timeoutMs: 7200000
     options:
       model: claude-opus-5-5
       effort: xhigh

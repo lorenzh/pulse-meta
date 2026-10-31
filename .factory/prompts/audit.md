@@ -33,6 +33,22 @@ Record the examined commit of every repository you read:
 Start services only locally, with the repository's own commands (its `docs/development.md`). Never
 contact a production or shared system. Stop what you started and remove the copies at the end.
 
+## Time and agents
+
+The state has a hard deadline of 120 minutes (`timeoutMs` of the `auditor` model). Write the start
+time down first (`date -u +%T`) and check the clock before every long step. Start no step that can
+take more than 15 minutes after minute 75. At minute 100 stop working, write or finish the report
+files, and return the outcome. A run that hits the deadline loses everything, including the report.
+
+Do all work in this session. Do not start background tasks or background or parallel subagents: a
+subagent result that arrives after you return is lost, and work still running when you return can
+replace your structured outcome. If you started a subagent anyway, wait for every one to return
+before you write the report. Never return while one is running.
+
+An item that you could not finish in time is `blocked` with the reason ("not finished within the
+time budget") and what is left. An unfinished item is never a reason to skip the outcome: always
+return the structured outcome, never a prose answer instead.
+
 ## What you do
 
 1. Go through every checklist item of the issue body. For each item record one of: `checked` with
@@ -54,8 +70,18 @@ gh run download "$run" --repo lorenzh/pulse-api --name bench-out --dir "$(mktemp
 
 and `bench/budgets.json` in the pulse-api clone. Use those numbers where a checklist item has a
 bench metric. Measure anew only when you suspect a deviation from the budget or the baseline, in a
-copy of pulse-api: `bun bench/run.ts --a <sha> --b <sha>` (Docker with Compose; about 35 minutes).
-Every performance finding gives the value, its unit, the number of repetitions, the baseline it is
+copy of pulse-api, and only within this budget:
+
+- at most one A/B comparison per run, with at most 2 rounds per side:
+  `timeout 30m bun bench/run.ts --a <sha> --b <sha> --rounds 2` (Docker with Compose; 5 rounds take
+  about 35 minutes, so 2 rounds take about 15);
+- every other measurement (profile, `EXPLAIN QUERY PLAN`, test CPU, memory over time) runs under
+  `timeout`, at most 10 minutes each, with N minutes of load where N is at most 5;
+- start them only after the items that need no measurement are written down.
+
+A measurement that does not fit the budget, or that `timeout` stopped (exit 124), is `blocked` with
+the reason and the command that would measure it; never keep measuring until the deadline. Every
+performance finding gives the value, its unit, the number of repetitions, the baseline it is
 compared with, and the budget. Name the bench run you read.
 
 **Security audits: disclosure.** The pulse repositories and this report are public. For a `P1` or

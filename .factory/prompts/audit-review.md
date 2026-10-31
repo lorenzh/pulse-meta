@@ -15,6 +15,25 @@ or attack it. Start services only locally and never contact a production or shar
 you started and remove the copies at the end.
 {{/if}}
 
+## Time and agents
+
+The state has a hard deadline of 120 minutes (`timeoutMs` of the `auditor` model). Write the start
+time down first (`date -u +%T`) and check the clock before every long step. Start no step that can
+take more than 15 minutes after minute 75. At minute 100 stop working, finish your edits to the
+report files, and return the outcome. A run that hits the deadline loses everything, including your
+edits.
+
+Do all work in this session. Do not start background tasks or background or parallel subagents: a
+subagent result that arrives after you return is lost, and work still running when you return can
+replace your structured outcome. If you started a subagent anyway, wait for every one to return
+before you edit the report. Never return while one is running.
+
+A finding that you could not re-run in time stays in the report; name it in your outcome as not
+reproduced for lack of time and transition to `audit`. An unfinished check is never a reason to skip
+the outcome: always return the structured outcome, never a prose answer instead. Re-run a
+performance finding with at most one A/B comparison of at most 2 rounds per side
+(`timeout 30m bun bench/run.ts --a <sha> --b <sha> --rounds 2`).
+
 ## What you do
 
 1. Check that both files exist, that the `.json` parses (`jq . <file>`), and that it matches the
@@ -29,7 +48,7 @@ you started and remove the copies at the end.
    If `main` moved, re-run on the commit the report names (`git checkout <sha>` in your copy).
 5. Run the command of every `P1` and `P2` finding again yourself and compare exit code and output
    with the report. A performance finding is reproduced when the nightly bench run it names shows
-   the value, or when your own measurement (`bun bench/run.ts --a <sha> --b <sha>` in a copy of
+   the value, or when your own measurement (the bounded A/B comparison above, in a copy of
    pulse-api) confirms the deviation. Spot-check `P3` findings.
 6. Check the severity of each finding against its proof: `P1` breaks data, security, or the main
    flow for most users; `P2` breaks documented behavior in a realistic case; `P3` needs a contrived
