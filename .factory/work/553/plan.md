@@ -112,10 +112,16 @@ The findings were re-checked on notify `c090a07` and probe `50ec9ca`. Both are t
   - one poll with 1,025 malformed items;
   - `BoundedSet` unit tests.
   Tests use an injected `schedule`, `now` and `tick()` calls rather than real timers, except the existing health-test pattern. The Docker checks run only in CI, not in `bun run test`.
-- **notify and probe `image_mb`:** none. Only the `HEALTHCHECK` line changes, and no file or dependency is added.
+- **notify `image_mb` (reported, budget 126 MB):** up by roughly 0.01 MB. The comparison report prints values of 100 or more with no decimals (api `bench/compare.ts:223`), so the bench shows no change.
+  - The image copies `src` whole (notify `Dockerfile:16`). Today `src` is 141,531 bytes (`du -sb src` on `c090a07`).
+  - The change adds `src/bounded-set.ts` (about 1 KB) and grows `api.ts`, `notifier.ts`, `detector.ts`, `ledger.ts`, `metrics.ts` and `index.ts` by a few KB in total. `node:crypto` is built in, so `node_modules` is unchanged.
+  - The new `HEALTHCHECK` command is image config, not a layer, so `docker image inspect` `Size` doesn't count it.
+  - Expected growth is under 20,000 bytes. More than that means an unintended file or dependency.
+- **probe `image_mb`:** none. Only the `HEALTHCHECK` line changes (probe `Dockerfile:17`). It is image config, not a layer. `src` and the lockfile copied by `Dockerfile:4,14` don't change.
 - **probe:** none. No source change.
 - **How to measure:**
   - Before merge, A/B the test CPU locally in the notify checkout: run `/usr/bin/time -f '%U %S' bun run test` three times on `c090a07` and three times on the branch, and compare the medians of user+system.
+  - Before merge, build the notify image on `c090a07` and on the branch with `docker build -t notify:<ref> .`, and compare `docker image inspect notify:<ref> --format '{{.Size}}'`. The difference must be positive and under 20,000 bytes. Do the same for probe on `50ec9ca` and the branch: difference 0 bytes.
   - After notify merges, run `bun bench/run.ts --a main --b main` in an api checkout. Notify side A is the newest `v*` tag and side B is notify `main` (bench/README.md:57). All gating notify metrics must be within `bench/budgets.json`.
 
 ## Security impact
@@ -187,8 +193,15 @@ After step 3, rerun the latest api `main` CI run (`gh run rerun <id>` on `lorenz
   - A `302` on `/manual-incidents` is a feed failure, not an absent feed.
   - A wrong implementation with `redirect: "error"` also follows nothing. It is allowed only if the logged text stays fixed. This spec requires `"manual"`.
 - **Bound.**
-  - One poll serves 1,025 malformed incidents with ids 1..1025: 1,025 skip lines and counter +1025. The next poll serves ids 1 and 2: exactly 1 line (id 1 was evicted, id 2 is retained), and the counter adds 2.
-  - An unbounded set logs 0 lines in the second poll. A set bounded at 1,025 or more also logs 0, which pins the literal 1,024.
+  - One poll serves 1,025 malformed incidents with ids 1..1025, in that order: 1,025 skip lines and counter +1025. The set then holds ids 2..1025 (id 1 was evicted by id 1025).
+  - The next poll serves ids 2 and 1, in that order: exactly 1 line, and the counter adds 2.
+    - Id 2 is retained: no line, and no refresh.
+    - Id 1 is new: one line, and adding it evicts id 3, the oldest.
+  - The order of the second poll matters. With ids 1 then 2, adding id 1 evicts id 2, so a correct set logs 2 lines. The test must serve 2 before 1.
+  - A wrong bound fails the check:
+    - An unbounded set, or one bounded at 1,025 or more, logs 0 lines in the second poll.
+    - A set bounded at 1,023 holds ids 3..1025 after the first poll and logs 2 lines.
+    - So the literal 1 pins the bound 1,024.
   - `BoundedSet(3)` after adding `a`, `b`, `c`, `d`: `size` is 3, `has("a")` is false and `has("d")` is true.
 
 Statistic: `pulse_notify_skipped_items_total{feed}` is a monotonic counter per process. It starts at 0 for each of `incidents`, `checks` and `manual-incidents`, adds 1 per rejected item per successful read of that feed, and resets on restart. There is no window, percentile or rounding.
@@ -390,7 +403,7 @@ Behavior change: yes. It changes liveness, the healthcheck, manual seeding and k
   - the marker cases, collecting every log entry with `spyLogger` and asserting that `JSON.stringify(entry)` does not contain `PULSE_MARKER_7f3a`;
   - cross-origin and same-origin redirects with a second local server that counts requests (literal 0);
   - an injected `fetch` that records `init.redirect` and must see `"manual"` for all three paths;
-  - the bound case with 1,025 then 2 ids.
+  - the bound case: ids 1..1025, then ids 2 and 1 in that order (Counterexamples, Bound).
   - On main: the poll throws, the marker leaks and B counts 1.
 - **`test/bounded-set.test.ts` (new):** the `BoundedSet(3)` case, `add` return values, and no refresh on a repeated `add`.
 - **`test/api.test.ts`, `test/metrics.test.ts`, `test/ledger.v2.test.ts`:**
@@ -425,5 +438,5 @@ Each check below maps to an item of the issue's acceptance criteria. Expected va
 5. **A malformed item does not stop the next item.** A valid incident after the `{"toString":null,"valueOf":null}` id is delivered in the same poll, with the same result on manual and checks. It fails on `c090a07` (the poll throws).
 6. **A body with a marker string never appears in a log line.** `PULSE_MARKER_7f3a` is in no serialized log entry. It fails on `c090a07` (`JSON Parse error: Unexpected identifier "PULSE_MARKER_7f3a"` and the raw id).
 7. **A cross-origin redirect is not followed.** Origin B counts literal 0 requests. It fails on `c090a07` (1 request).
-8. **The dedupe set stays below its bound.** After ids 1..1025, the next poll with ids 1 and 2 logs exactly 1 line, and `BoundedSet(3).size` is 3 after 4 adds. It fails on `c090a07` (0 lines, because the set is unbounded).
+8. **The dedupe set stays below its bound.** After ids 1..1025, the next poll with ids 2 then 1 logs exactly 1 line, and `BoundedSet(3).size` is 3 after 4 adds. It fails on `c090a07` (0 lines, because the set is unbounded).
 9. **CI green; `compose-e2e` green.** The CI of api, probe and notify is green. api `compose-e2e` is green on the api PR (old notify, prefix match) and on the rerun after notify merges (new notify `main`).
