@@ -103,7 +103,7 @@
       "title": "status docs/development.md names a missing src/validate.ts and a browser import rule that the code no longer follows",
       "command": "grep -n 'src/validate.ts' .repos/status/docs/development.md; ls .repos/status/src/validate.ts; sed -n 19,20p .repos/status/src/render.ts; sed -n 1,22p .repos/status/src/poller.ts",
       "exitCode": 2,
-      "excerpt": "26:- `src/poller.ts`, `src/render.ts`, `src/theme.ts` and `src/validate.ts` run in the browser. ... They import only types, with one exception: `poller.ts` imports `validate.ts`.\nls: cannot access 'status/src/validate.ts': No such file or directory\nimport { escapeHtml } from \"@lorenzh/pulse-kit/escape\";\nimport { formatDuration } from \"@lorenzh/pulse-kit/format-duration\";\n  fetchJson, ... validateUptimeResponse, WIRE_VERSION_HEADER, } from \"@lorenzh/pulse-contract\";\nimport { type PollerErrorKind, RESOLVED_WINDOW_MS } from \"./render.ts\";",
+      "excerpt": "26:- `src/poller.ts`, `src/render.ts`, `src/theme.ts` and `src/validate.ts` run in the browser. ... They import only types, with one exception: `poller.ts` imports `validate.ts`.\nls: cannot access '.repos/status/src/validate.ts': No such file or directory\nimport { escapeHtml } from \"@lorenzh/pulse-kit/escape\";\nimport { formatDuration } from \"@lorenzh/pulse-kit/format-duration\";\n  fetchJson, ... validateUptimeResponse, WIRE_VERSION_HEADER, } from \"@lorenzh/pulse-contract\";\nimport { type PollerErrorKind, RESOLVED_WINDOW_MS } from \"./render.ts\";",
       "commits": { "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0" }
     },
     {
