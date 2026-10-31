@@ -1,0 +1,121 @@
+{
+  "template": 1,
+  "issue": null,
+  "as_of": "2026-10-31T21:51:36.044Z",
+  "lead": "Die Factory hat in {runs|int} Läufen {features_done|int} Features gebaut und dafür {usd|usd} an bekannten Kosten verbraucht, im Median {feature_usd_median|usd} pro Feature. {runs_cost_unknown|int} Codex-Läufe melden keine Kosten. {first_pass|pct} der Target-PRs kamen ohne Handarbeit aus. Die Schwäche bleibt das Review: Es prüft kaum selbst und hat Datenlecks in Fehlermeldungen, eine Abweichung von der Spec und Lücken in Tests durchgelassen.",
+  "notes": {
+    "duration": "Ein Lauf dauert wenige Minuten, und die Children eines Features laufen parallel. Wo ein Feature lange brauchte, lag es meist am Warten auf eine Person, etwa beim Review der Spec oder beim Mergen.",
+    "steps": "build/implement ist der teuerste Schritt. Die Review-Schritte laufen auf Codex und melden keine Kosten; ihre Balken zeigen nur die Läufe mit Kostenangabe.",
+    "days": "Die Arbeit kommt in Schüben, jeweils nach dem Merge einer Spec. Codex-Läufe fehlen in den Balken, weil sie keine Kosten melden.",
+    "targets": "api und status sind die teuersten Targets, weil viele Features sie berühren und ihre Test-Suiten groß sind.",
+    "human_fixes": "Mehrere davon schließen Datenlecks in Fehlermeldungen."
+  },
+  "changes": [
+    {
+      "title": "Neue Zählung der Kosten",
+      "text": "Codex-Läufe zählen jetzt als Läufe ohne Kostenangabe statt mit null Dollar. Ihre Tokens zählen mit: {tokens_m_codex|dec1} M."
+    },
+    {
+      "title": "Mehr Läufe",
+      "text": "Seit dem letzten Stand kamen {d_runs|int} Läufe und {d_usd|usd} an bekannten Kosten dazu, dazu {d_features_done|int} abgeschlossenes Feature."
+    },
+    {
+      "title": "Mehr Rückläufer",
+      "text": "Das Build-Review schickte {d_review_back|int} weitere Änderungen zurück, das Plan-Review {d_plan_back|int} weitere Pläne."
+    }
+  ],
+  "case_study": {
+    "note": "Das teuerste abgeschlossene Feature betraf nur ein Target. Die Kosten entstanden fast ganz in der Schleife zwischen Implement und Review.",
+    "items": [
+      {
+        "label": "Review-Schleife",
+        "text": "Das Build-Review schickte den Code {case_review_back|int}-mal zurück, bevor der Security-Schritt ihn freigab. Jede Runde kostete einen Implement- und einen Review-Lauf."
+      },
+      {
+        "label": "Ohne Handarbeit",
+        "text": "Trotz der Runden brauchte der PR keine Nachbesserung durch eine Person ({case_human_fixes|int} Hand-Commits)."
+      },
+      {
+        "label": "Dauer",
+        "text": "Vom ersten Lauf der Spec bis zum Merge vergingen {case_lead_h|hm} in {case_runs|int} Läufen."
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "title": "Kosten sind kein Engpass",
+      "text": "Ein Feature kostet im Median {feature_usd_median|usd}, etwa so viel wie ein Kaffee. Den größten Teil verbraucht build/implement. Der Cache-Anteil von {cached_share|pct0} hält die Preise niedrig."
+    },
+    {
+      "id": "F2",
+      "title": "Die Zeit liegt bei Menschen",
+      "text": "Die Läufe selbst dauern Minuten. Die Durchlaufzeit liegt im Median bei {lead_h_median|hm}, ein PR ist im Median {pr_merge_min_median|int} Minuten offen. Längere Durchlaufzeiten entstehen beim Warten auf den Merge der Spec und der PRs."
+    },
+    {
+      "id": "F3",
+      "title": "Das Review ist zu passiv",
+      "text": "Es schickte nur {review_back_rate|pct} der Build-Reviews zurück und wiederholt keine Mutation-Checks. Was durchrutschte, zeigen die Nachbesserungen: Secrets und Server-Texte in Fehlermeldungen (pulse-probe#34, pulse-notify#24, pulse-api#43), fehlende Exporte und Validierungen (pulse-contract#29, pulse-contract#24, pulse-api#37) und eine Abweichung von der Spec (pulse-api#48)."
+    },
+    {
+      "id": "F4",
+      "title": "Holds kommen aus ungeprüften Annahmen",
+      "text": "Von den {holds|int} Holds hingen bei SonarJS (#66) alle Children gleichzeitig fest, weil typescript-eslint `TypeScript 7` nicht unterstützt. Bei #96 ging der Plan davon aus, dass Biome keine Markdown-Dateien prüft. Issue-Review und Plan lesen die Clones nur stichprobenartig."
+    },
+    {
+      "id": "F5",
+      "title": "Plan-Review greift eher als Build-Review",
+      "text": "Das Plan-Review schickte {plan_back_rate|pct} der Pläne zurück, das Build-Review nur {review_back_rate|pct} der Änderungen. Das Issue-Review hat kein Feature blockiert."
+    },
+    {
+      "id": "F6",
+      "title": "Die Infrastruktur ist stabil",
+      "text": "{actions_failed|int} von {actions_total|int} Actions-Läufen schlugen fehl, und es gab {merge_runs|int} Merge-Läufe. Fehlgeschlagene Vorbereitungen gab es nur vereinzelt bei frühen Features."
+    }
+  ],
+  "recommendations": [
+    {
+      "title": "Reviewer prüft selbst",
+      "text": "Mindestens einen Mutation-Run wiederholen. Meldet der Implementer „kein Bug, keine Änderung“ zu einem Punkt, den die Spec als Verhaltensänderung beschreibt, geht das Issue an eine Person (needs-input) statt durch.",
+      "findings": [
+        "F3"
+      ]
+    },
+    {
+      "title": "Sicherheits-Checkliste im Review",
+      "text": "Keine Secrets, URLs, Header- oder Dateiinhalte in Fehler- und Log-Texten. Das war die häufigste Art von Nacharbeit.",
+      "findings": [
+        "F3"
+      ]
+    },
+    {
+      "title": "Plan prüft Annahmen gegen die Repos",
+      "text": "Tool-Versionen, Linter-Kompatibilität und was Biome prüft. Das hätte die Holds bei #66 und #96 vermieden.",
+      "findings": [
+        "F4"
+      ]
+    },
+    {
+      "title": "Gemeinsame Befunde teilen",
+      "text": "Wenn ein Child eine Frage klärt, die die Spec mehreren Children stellt (`TypeScript 7`), soll der Befund am Feature stehen und von den anderen gelesen werden.",
+      "findings": [
+        "F4"
+      ]
+    },
+    {
+      "title": "Spec-Regel für Prüfungen",
+      "text": "Eine Prüfung leitet ihren Sollwert nie aus der Datei ab, die sie prüft.",
+      "findings": [
+        "F3",
+        "F5"
+      ]
+    },
+    {
+      "title": "PR-Beschreibung füllen",
+      "text": "Den Bericht des Implementers samt Mutation-Output in den PR übernehmen, nicht nur „Closes …“.",
+      "findings": [
+        "F3"
+      ]
+    }
+  ]
+}

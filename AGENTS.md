@@ -4,16 +4,16 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 
 ## What lives here
 - Feature issues, specs (`.factory/work/<issue>/plan.md`, `targets.json`), Paragon Factory config (`.factory/config.yaml`, `.factory/prompts/`) and runner workflows (`.github/workflows/factory*.yml`).
-- The Factory report (`report/`): `generate.mjs` builds `index.html` and `data.json` from the public issues, Actions runs and pull requests; `.github/workflows/factory-report.yml` publishes it on GitHub Pages daily, on push to `report/**` and on demand.
+- The Factory report (`report/`): `data.mjs` builds `data.json` from the public issues, Actions runs and pull requests; the Factory workflow `report` writes `narrative.json`; `check.mjs` checks the text against the data; `index.html` is the fixed template. `factory-report-open.yml` opens the daily report issue, `factory-report.yml` publishes the merged report on GitHub Pages. See `docs/factory.md#factory-report`.
 - No product code. Never change a target repository by hand from here: write a feature issue and let Factory build it.
 - Targets: `contract`, `probe`, `api`, `status`, `notify`, `config`, `kit`, `website`, `console`, `deploy` (`lorenzh/pulse-<name>`). Their code conventions are in each target's `AGENTS.md`.
 - Runtime dependencies in a target come only from [docs/approved-packages.md](docs/approved-packages.md).
 
 ## How a feature flows
 1. A person opens a feature issue here.
-2. `factory start --issue <n> --workflow spec --apply` runs `issue-review`, `plan`, `plan-review`; the result is a spec PR here.
+2. `factory start --issue <n> --workflow spec --apply` runs `issue-review`, `plan`, `breakdown`, `plan-review`; the result is a spec PR here.
 3. Merging the spec PR approves the spec. `factory-fan-out.yml` opens one child issue per target in `targets.json`, linked as "blocked by" along `dependsOn`, and starts those that wait for nothing.
-4. Each child runs `build` (`implement`, `review`) in its target and opens a PR with `Closes lorenzh/pulse-meta#<child>`.
+4. Each child runs `build` (`implement` and `task-review` per task, then `review`) in its target and opens a PR with `Closes lorenzh/pulse-meta#<child>`.
 5. A person merges the target PRs. `factory-unblock.yml` starts the waiting children and closes the feature when all are done.
 - Merge conflict on a child: a person runs `factory start --issue <child> --workflow merge --apply`.
 - A `needs-input` hold means the agent waits for a decision from a person in the issue comments.
@@ -41,7 +41,9 @@ Lessons:
 |------|---------|
 | Install | `npm ci` (needs `GITHUB_PACKAGES_TOKEN` for `@paragondata` packages, see `.npmrc`) |
 | Validate config | `npx factory validate` |
-| Build the Factory report locally | `GH_TOKEN=<token> node report/generate.mjs _site` |
+| Build the report numbers locally | `GH_TOKEN=<token> node report/data.mjs /tmp/data.json --previous report/data.json` |
+| Check and test the report | `node report/check.mjs`, `node --test 'report/*.test.mjs'` |
+| Test the workflow scripts | `bash .github/workflow-tests/test.sh` |
 
 ## Rules
 - Public repository: no secrets, tokens or private details in issues, specs or config.

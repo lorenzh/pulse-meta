@@ -68,7 +68,7 @@ workspaces:
         meta:
           url: https://github.com/lorenzh/pulse-meta.git
           provider: { package: "@paragondata/factory-provider-github", options: { repository: lorenzh/pulse-meta } }
-          workflows: [ spec, audit, merge ]
+          workflows: [ spec, audit, report, merge ]
           context: [ contract, probe, api, status, notify, config, kit, website, console, deploy ]
         contract:
           url: https://github.com/lorenzh/pulse-contract.git
@@ -156,6 +156,12 @@ models:
     options:
       model: claude-opus-5-5
       effort: high
+  # Writes the task list of each repository section after the plan.
+  breakdown-writer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
   plan-reviewer:
     harness: codex
     options:
@@ -167,6 +173,12 @@ models:
       model: claude-opus-5-5
       effort: low
   code-reviewer:
+    harness: codex
+    options:
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
+  # Reviews one task of a child before the next task starts.
+  task-reviewer:
     harness: codex
     options:
       model: gpt-6.1-sol
@@ -197,6 +209,19 @@ models:
       model: claude-opus-5-5
       effort: xhigh
 
+  # Factory report (owner decision): Claude writes the text at high effort, Codex reviews it at
+  # medium. Both read one data.json; neither builds or runs the targets.
+  reporter:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
+  report-reviewer:
+    harness: codex
+    options:
+      model: gpt-6.1-sol
+      modelReasoningEffort: medium
+
 statuses:
   needs-input:
     source: agent
@@ -216,13 +241,20 @@ workflows:
         prompt: ../.factory/prompts/plan.md
         model: planner
         transitions:
-          - to: plan-review
+          - to: breakdown
         description: Write the cross-repository spec with one section per repository.
+      breakdown:
+        prompt: ../.factory/prompts/breakdown.md
+        model: breakdown-writer
+        transitions:
+          - to: plan-review
+        description: Cut each repository section into 1 to 8 tasks in tasks/<target>.json.
       plan-review:
         prompt: ../.factory/prompts/plan-review.md
         model: plan-reviewer
         transitions:
           - to: plan
+          - to: breakdown
         terminal: true
         description: Review the spec; merging its pull request approves it.
   build:
@@ -231,9 +263,18 @@ workflows:
       implement:
         prompt: ../.factory/prompts/implement.md
         model: implementer
+        # scripts/factory-tasks.mjs names the task: a step task goes to task-review; the final task,
+        # a fix after review or security, and a spec without a task list go to review.
         transitions:
+          - to: task-review
           - to: review
-        description: Implement this repository's section of the approved spec.
+        description: Implement the next task of this repository's section of the approved spec.
+      task-review:
+        prompt: ../.factory/prompts/task-review.md
+        model: task-reviewer
+        transitions:
+          - to: implement
+        description: Accept or reject the newest task in a fresh agent session.
       # Factory has no conditional transitions: the reviewer picks `security` instead of `complete`
       # when the spec says "Security impact: yes".
       review:
@@ -269,6 +310,24 @@ workflows:
           - to: audit
         terminal: true
         description: Reproduce every P1 and P2 finding and drop what the evidence does not prove.
+  # The Factory report on the meta target: report/data.json comes from factory-report-open.yml, the
+  # agent writes only report/narrative.json, and merging the pull request publishes the page.
+  report:
+    initial: report
+    states:
+      report:
+        prompt: ../.factory/prompts/report.md
+        model: reporter
+        transitions:
+          - to: report-review
+        description: Commit the opener's data.json unchanged and write the report text in narrative.json.
+      report-review:
+        prompt: ../.factory/prompts/report-review.md
+        model: report-reviewer
+        transitions:
+          - to: report
+        terminal: true
+        description: Run report/check.mjs and check every claim of the text against data.json.
   merge:
     interrupt: true
     initial: resolve
