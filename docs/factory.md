@@ -3,12 +3,39 @@
 pulse is built by Paragon Factory agents from issues in this repository. Do not change a target repository by hand for a feature. Write an issue instead.
 
 1. Open a feature issue here. [AGENTS.md](../AGENTS.md) says how to write one.
-2. The `spec` workflow (`issue-review`, `plan`, `plan-review`) writes a spec in `.factory/work/<issue>/plan.md` and the target list in `targets.json`. The result is a spec pull request here.
-3. Merge the spec pull request to approve the spec.
+2. The `spec` workflow (`issue-review`, `plan`, `breakdown`, `plan-review`) writes a spec in `.factory/work/<issue>/plan.md`, the target list in `targets.json`, and one task list per target in `tasks/<target>.json`. The result is a spec pull request here.
+3. Merge the spec pull request to approve the spec and its task lists.
 4. `factory-fan-out.yml` opens one child issue per target, linked as "blocked by" along `dependsOn`, and starts the children that wait for nothing.
-5. Each child runs the `build` workflow (`implement`, `review`, and `security` when the spec says `Security impact: yes`) in its repository and opens one pull request that says `Closes lorenzh/pulse-meta#<child>`.
+5. Each child runs the `build` workflow in its repository, one task per run (see [Task loop](#task-loop)): `implement` and `task-review` for each step task, then `implement` of the final task, `review`, and `security` when the spec says `Security impact: yes`. It opens one pull request that says `Closes lorenzh/pulse-meta#<child>`.
 6. If the base branch conflicts, run `factory start --issue <child> --workflow merge --apply`.
 7. Merge the pull requests. `factory-unblock.yml` starts waiting children and closes the feature when all are done.
+
+## Task loop
+
+A child works through its task list one task per agent run, so that no run has to build a large section at once (the three `HARNESS_TIMEOUT` stops, #451, #526 and #549, were all large sections). The design follows the `spec-driven-development` skill: split only at real seams, one task at a time, a fresh reviewer after each implementer, and a review of the whole branch at the end.
+
+**Task lists.** `breakdown` (`.factory/prompts/breakdown.md`, profile `breakdown-writer`) writes `.factory/work/<feature>/tasks/<target>.json` for every entry of `targets.json`: 1 to 8 tasks `T1`..`Tn`, the last one `kind: "final"`. Each task has `title`, `files`, `behaviorChange`, `spec` (the part of the section it implements), and `acceptance` (`command` and `expected`, a literal or an independent source). A change in one file or under about 200 changed lines is one task; tests go with their code; the final task holds the whole-change checks (compose end-to-end test, security checklist, pull request evidence). A small section is only its final task, and runs as before. `plan-review` runs `node scripts/factory-tasks.mjs --check <work dir>` (one file per target, the schema, every `Files:` path in a task), checks the cut, and sends spec defects to `plan` and task defects to `breakdown`. The task file never changes after the merge. `implement` may change other files than a task lists when the code needs it, with the reason in the commit; moving work between tasks needs a `needs-input` hold.
+
+**Progress.** No file holds a done flag: a child cannot commit `.factory/`, and its meta clone is read-only. `scripts/factory-tasks.mjs --issue <child> --target <target> --base <sha>` (Node, no dependencies) derives the progress from the run comments of the issue, counting only comments of the bot (`FACTORY_GITHUB_ACTOR`, or the login of the `gh` token) with a run record: a `task-review` transition whose message ends with `task-accepted: Tn @ <sha>` or `task-rejected: Tn`, `implement` retries and holds, and send-backs of `review` and `security`. Each implement commit ends with the trailer `Task: Tn`. The script prints `status`, the task `next`, its `taskBase` (the commit of the newest acceptance, or the branch base), and its `rejections` and `retries`:
+
+| `status` | `implement` does | then |
+|---|---|---|
+| `no-task-file` | the whole section, as before task lists (specs approved before them) | `review` |
+| `open` | step task `next` | `task-review` |
+| `fix-task` | the findings of the task review that rejected `next` | `task-review` |
+| `final` | the final task, all checks, the pull request evidence | `review` |
+| `fix-review` | the findings of the `review` or `security` run that sent the change back | `review` |
+| `stuck` | nothing; `needs-input` hold | — |
+
+`task-review` (`.factory/prompts/task-review.md`, profile `task-reviewer`) reviews only `git diff <taskBase>..HEAD` against the task: its acceptance commands, the required checks, the mutation step against `taskBase`, and the security items it touches. It does not wait for CI. Both verdicts go to `implement`. The final `review` still reads the whole diff and waits for CI, and it also sends the change back while a step task has no acceptance; a finding names the task it belongs to.
+
+**Limits.** The third rejection of one task becomes a `needs-input` hold of `task-review`. More than two `retry` outcomes on one task make it `stuck`, and `implement` holds. A hold resets both counts of the task: the person's answer starts a new budget. `factory-run.yml` runs with `--chain-limit 24` (two runs per step task, up to 8 tasks, and room for repairs). There is no cost budget. A forged comment from another account does not count, but every agent holds the bot token and could write one (see "Prompt injection and credentials"); the final `review` is the only check against an agent that marks its own task accepted.
+
+**Restart after a timeout.** When the run step of `factory-run.yml` stops with `HARNESS_TIMEOUT`, the step "Restart once after a harness timeout" (`.github/run/auto-restart.sh`) comments on the issue with the marker `<!-- pulse-factory-auto-restart <workflow>/<state> -->` and dispatches `admission=restart`. The work that the harness published stays on the branch, and `implement` continues the open task from `git log <taskBase>..HEAD`. It restarts a state once: when the newest marker names the same state and no run of that state finished after it, the failure comment below appears instead. Comments that arrived during the run reach the restarted agent unread by a person.
+
+**Tests.** `node --test scripts/*.test.mjs` covers the task file rules, `--check`, and every status. `.github/workflow-tests/task-loop.sh`, sourced by `test.sh`, runs the script and the restart against a stub `gh`.
+
+**Rollout.** Children that were fanned out before task lists keep `no-task-file` and run as before. A spec that gets task lists after its plan was written goes back to `breakdown` once. The state labels `factory/spec/breakdown` and `factory/build/task-review` come from `factory state --apply`.
 
 ## Quality gates and failure reports
 
@@ -22,13 +49,13 @@ pulse is built by Paragon Factory agents from issues in this repository. Do not 
 
 The security checklist covers secrets and server texts in errors, logs and responses; auth order and status codes; body and size limits on every method; input validation at trust boundaries, with validators that never throw; accessor and getter execution; SSRF, redirects and header forwarding; atomic, path-safe file writes; and dependency pins.
 
-**Model profiles.** Every state has its own profile in `.factory/config.yaml` (`models`). The writers run on Claude `claude-opus-5-5`: `planner` at effort `high`, `implementer` and `resolver` (merge conflicts) at `low`, and `auditor` (both audit states) at `xhigh`. The reviewers run on Codex `gpt-6.1-sol`, so every review comes from the other model family: `spec-reviewer`, `plan-reviewer`, `code-reviewer` and `security-reviewer` at `modelReasoningEffort: high`, the last two with adversarial prompts, and `merge-reviewer` at `medium`. The `codex` harness gives every Codex profile the auto preset of `factory docs codex` (`sandboxMode: workspace-write`, `approvalPolicy: on-request`, `approvalsReviewer: auto_review`) and `networkAccessEnabled: true`, so a reviewer can install packages, run tests and start local servers. Change a state's effort in its profile only.
+**Model profiles.** Every state has its own profile in `.factory/config.yaml` (`models`). The writers run on Claude `claude-opus-5-5`: `planner` and `breakdown-writer` at effort `high`, `implementer` and `resolver` (merge conflicts) at `low`, and `auditor` (both audit states) at `xhigh`. The reviewers run on Codex `gpt-6.1-sol`, so every review comes from the other model family: `spec-reviewer`, `plan-reviewer`, `task-reviewer`, `code-reviewer` and `security-reviewer` at `modelReasoningEffort: high`, the last two with adversarial prompts, and `merge-reviewer` at `medium`. The `codex` harness gives every Codex profile the auto preset of `factory docs codex` (`sandboxMode: workspace-write`, `approvalPolicy: on-request`, `approvalsReviewer: auto_review`) and `networkAccessEnabled: true`, so a reviewer can install packages, run tests and start local servers. Change a state's effort in its profile only.
 
 **Codex login (stopgap).** Codex runs on a ChatGPT subscription login, not an API key. The repository secret `FACTORY_CODEX_AUTH_JSON` holds the content of an `auth.json`; the step "Write the Codex login" of `factory-run.yml` writes it to `$RUNNER_TEMP/codex/auth.json` (mode 0600), and the run step alone gets `CODEX_HOME` pointing there. This is a stopgap until the self-hosted runner arrives: Codex refreshes the login after about eight days and so invalidates the copy in the secret (`factory docs runners`, "Logins between jobs"). When the review states fail to log in, renew the secret from a fresh `codex login`. Every agent of the job, the Claude ones included, can read the file while it runs.
 
 **Agent CLI versions.** `factory-run.yml` installs Claude Code at the version in `FACTORY_CLAUDE_VERSION` (`latest` by owner decision; `2.1.314` when unset) and the Codex CLI at the version in `FACTORY_CODEX_VERSION` (`0.165.0`; `skip` when unset). The repository variables `FACTORY_CLAUDE_VERSION` and `FACTORY_CODEX_VERSION` accept only an exact `MAJOR.MINOR.PATCH`, `latest` or `skip`. The step "Install agent CLIs" fails on anything else, such as a range or a `v` prefix.
 
-**Failure comments.** When a job of `factory.yml`, `factory-run.yml`, `factory-fan-out.yml` or `factory-unblock.yml` fails, its last step comments on the issue with the run link, the failed step, and the command that starts it again. This also covers failures before the Factory claim, which leave no Factory comment.
+**Failure comments.** When a job of `factory.yml`, `factory-run.yml`, `factory-fan-out.yml` or `factory-unblock.yml` fails, its last step comments on the issue with the run link, the failed step, and the command that starts it again. This also covers failures before the Factory claim, which leave no Factory comment. A first `HARNESS_TIMEOUT` of a state in `factory-run.yml` restarts the issue instead (see [Task loop](#task-loop)).
 
 **Sweeper.** `factory-sweep.yml` runs every 30 minutes. It comments once on each open issue that has a `factory/<workflow>/<state>` label, no open blocker, no hold, no active run, and no change for 60 minutes (repository variable `FACTORY_STALL_MINUTES`). An active run is any `factory-run.yml` run in status `in_progress`, `queued`, `waiting`, `requested`, or `pending`, found through every page of each status. It changes no labels and no claims. It does not comment again while its own or a failure comment is the last comment on the issue.
 

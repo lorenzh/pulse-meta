@@ -156,6 +156,12 @@ models:
     options:
       model: claude-opus-5-5
       effort: high
+  # Writes the task list of each repository section after the plan.
+  breakdown-writer:
+    harness: claude
+    options:
+      model: claude-opus-5-5
+      effort: high
   plan-reviewer:
     harness: codex
     options:
@@ -167,6 +173,12 @@ models:
       model: claude-opus-5-5
       effort: low
   code-reviewer:
+    harness: codex
+    options:
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
+  # Reviews one task of a child before the next task starts.
+  task-reviewer:
     harness: codex
     options:
       model: gpt-6.1-sol
@@ -216,13 +228,20 @@ workflows:
         prompt: ../.factory/prompts/plan.md
         model: planner
         transitions:
-          - to: plan-review
+          - to: breakdown
         description: Write the cross-repository spec with one section per repository.
+      breakdown:
+        prompt: ../.factory/prompts/breakdown.md
+        model: breakdown-writer
+        transitions:
+          - to: plan-review
+        description: Cut each repository section into 1 to 8 tasks in tasks/<target>.json.
       plan-review:
         prompt: ../.factory/prompts/plan-review.md
         model: plan-reviewer
         transitions:
           - to: plan
+          - to: breakdown
         terminal: true
         description: Review the spec; merging its pull request approves it.
   build:
@@ -231,9 +250,18 @@ workflows:
       implement:
         prompt: ../.factory/prompts/implement.md
         model: implementer
+        # scripts/factory-tasks.mjs names the task: a step task goes to task-review; the final task,
+        # a fix after review or security, and a spec without a task list go to review.
         transitions:
+          - to: task-review
           - to: review
-        description: Implement this repository's section of the approved spec.
+        description: Implement the next task of this repository's section of the approved spec.
+      task-review:
+        prompt: ../.factory/prompts/task-review.md
+        model: task-reviewer
+        transitions:
+          - to: implement
+        description: Accept or reject the newest task in a fresh agent session.
       # Factory has no conditional transitions: the reviewer picks `security` instead of `complete`
       # when the spec says "Security impact: yes".
       review:

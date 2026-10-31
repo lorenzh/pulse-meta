@@ -211,18 +211,32 @@ jobs:
           GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
           CODEX_HOME: ${{ runner.temp }}/codex
+        # stderr also goes to a file: the next step reads the error code from it. A task loop runs two
+        # states per task (implement, task-review), so the chain limit allows 8 tasks and some repairs.
         run: >-
           node ./node_modules/@paragondata/factory-cli/dist/bin.js run
           --issue "$FACTORY_ISSUE" --detect-workflow --workspace multigit --apply
           --runner-admission "$FACTORY_ADMISSION"
           ${FACTORY_GENERATION:+--generation "$FACTORY_GENERATION"}
-          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR" --chain-limit 10
+          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR" --chain-limit 24
           --continue-output "$GITHUB_OUTPUT"
+          2> >(tee "$RUNNER_TEMP/factory-run.err" >&2)
+
+      # A HARNESS_TIMEOUT restarts the issue once by itself (.github/run/auto-restart.sh). A second
+      # timeout of the same state before a run of it finishes gets the failure comment below.
+      - name: Restart once after a harness timeout
+        id: restart
+        if: ${{ failure() && inputs.admission != 'cancel' }}
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          FACTORY_RUN_ERR: ${{ runner.temp }}/factory-run.err
+          FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash .github/run/auto-restart.sh
 
       # A failure before the claim leaves no Factory comment. Say so on the issue, with the failed
       # step and the command that starts it again. Only the run URL and step name are printed.
       - name: Report the failure on the issue
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.restart.outputs.restarted != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

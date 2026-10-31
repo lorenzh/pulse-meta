@@ -20,6 +20,13 @@ If the spec or the section is missing, request a hold with status `needs-input`.
 
 ## What you do
 
+{{#if workspace.contextDirectory}}
+0. Run the task script of the meta repository:
+   `node {{project.root}}/{{workspace.contextDirectory}}/meta/scripts/factory-tasks.mjs --issue {{issue.id}} --target {{workspace.target}} --base {{workspace.baseCommit}}`.
+   Its `open` list names the step tasks without an acceptance of the task review. Status
+   `no-task-file` means a spec without a task list: review as before. If the script exits with an
+   error, request a hold with status `needs-input` and quote the error.
+{{/if}}
 1. Read the whole diff against the base line by line (`git diff {{workspace.baseCommit}}`),
    source and tests, against the issue and the spec section. Do not rely on the implementation
    report. Check that the change adds no `.factory/` files to this repository.
@@ -72,6 +79,7 @@ If the spec or the section is missing, request a hold with status `needs-input`.
 
 Transition to `implement` when any of these holds. Each one alone is enough:
 
+- a step task of the task list has no acceptance (the script's `open` list is not empty);
 - a defect that you proved with a failing test or command;
 - a required check fails, or the pull request's CI is red, still running, or timed out (a timeout
   means not ready);
@@ -95,7 +103,9 @@ question for the person: close the issue, allow a change with only regression te
 missing behavior.
 
 Include each finding with its proof (the failing test, the command and its output) and the failed
-checks in the outcome message.
+checks in the outcome message. With a task list, name the task that each finding belongs to; the
+fix goes to that task. A finding that needs a change of the spec or of the task list is a
+`needs-input` hold, not a transition.
 
 When you read the whole diff and no gate holds, read the line `Security impact:` in the section
 `## Security impact` of the spec. If it says `yes`, transition to `security`: a separate state attacks

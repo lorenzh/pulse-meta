@@ -285,4 +285,7 @@ check "architecture: an open audit on page 2 blocks" "#60 is still open for the 
 open_issues architecture '[{"number":60,"title":"Architecture audit: pulse (2026-10-21)"}]'
 check "architecture: an open architecture audit blocks" "#60 is still open for the whole system. No new issue." "$(audit architecture "" "" 2026-11-05)"
 
+# The task loop: scripts/factory-tasks.mjs and the timeout restart of factory-run.yml.
+source "$here/task-loop.sh"
+
 exit "$fail"

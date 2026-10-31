@@ -230,10 +230,10 @@ Do not publish port 9100 of the probe or notify: the listener has no authenticat
 ## How a feature moves from an issue to merged pull requests
 
 1. A person opens an issue here that describes the feature. [AGENTS.md](AGENTS.md) says how to write one.
-2. The `spec` workflow runs on the issue in this repository: `issue-review` checks the request for gaps, `plan` writes a spec with one section per affected repository (`.factory/work/<issue>/plan.md`) and the list of those repositories with their dependencies (`targets.json`), and `plan-review` reviews it. The result is a pull request in this repository.
+2. The `spec` workflow runs on the issue in this repository: `issue-review` checks the request for gaps, `plan` writes a spec with one section per affected repository (`.factory/work/<issue>/plan.md`) and the list of those repositories with their dependencies (`targets.json`), `breakdown` cuts each section into tasks (`tasks/<target>.json`), and `plan-review` reviews it. The result is a pull request in this repository.
 3. A person merges the spec pull request. Merging approves the spec.
 4. The fan-out (`factory-fan-out.yml`) opens one child issue here per repository that the spec lists, labelled `target/<name>`, and links them as "blocked by" along their dependencies. It starts each child that waits for no other.
-5. Each child runs the `build` workflow in its repository: `implement` carries out that repository's section of the spec, and `review` checks the change in a fresh agent session. The result is one pull request per repository, whose description says `Closes lorenzh/pulse-meta#<child>`.
+5. Each child runs the `build` workflow in its repository: `implement` carries out that repository's section of the spec one task per run, `task-review` accepts each task before the next, and `review` checks the whole change in a fresh agent session. The result is one pull request per repository, whose description says `Closes lorenzh/pulse-meta#<child>`.
 6. Before each run the base branch is merged into the issue branch. If that merge conflicts, a person starts the `merge` workflow on the child. It merges the base, resolves the conflicts, has the result reviewed, and returns to the interrupted workflow.
 7. A person merges the pull requests. Each merge closes its child issue. `factory-unblock.yml` then starts the children that waited for it, and closes the feature issue when all its children are closed.
 

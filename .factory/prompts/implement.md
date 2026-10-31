@@ -18,16 +18,66 @@ If the spec or the section is missing, if a repository that the section depends 
 released its change yet, or if the work needs a material decision, request a hold with status
 `needs-input`. State what the person must resolve.
 
+## The task of this run
+
+Run the task script of the meta repository first:
+
+{{#if workspace.contextDirectory}}
+```sh
+node {{project.root}}/{{workspace.contextDirectory}}/meta/scripts/factory-tasks.mjs --issue {{issue.id}} --target {{workspace.target}} --base {{workspace.baseCommit}}
+```
+{{else}}
+The meta repository is not cloned in this run: request a hold with status `needs-input`.
+{{/if}}
+
+It reads this repository's task file of the approved spec and the run comments of this issue, and
+prints JSON: `status`, the task `next` with its entry `task`, `taskBase` (the commit that the task
+starts from), and the `rejections` and `retries` of that task. If it exits with an error, request a
+hold with status `needs-input` and quote the error. Then follow `status`:
+
+- `no-task-file`: the spec has no task list for this repository (it was approved before task lists
+  existed). Implement the whole section in this run, as this prompt says for the final task, and
+  transition to `review`.
+- `open`: implement the step task `next` and nothing else, then transition to `task-review`.
+- `fix-task`: the newest task review rejected task `next`. Fix every finding of that review (the
+  newest comment that starts with `Factory ran build/task-review.`), then transition to
+  `task-review`.
+- `final`: every step task is accepted. Implement the final task, produce all of "Checks and
+  evidence" for the whole change, publish the evidence, and transition to `review`.
+- `fix-review`: the newest review or security run sent the change back. Fix every finding of that
+  run, produce "Checks and evidence" again, update the pull request body, and transition to
+  `review`.
+- `stuck`: task `next` was rejected three times or retried more than twice. Change no code. Request
+  a hold with status `needs-input` that names the task, the counts, the findings of the newest task
+  review or what the retries left open, and the question for the person.
+
+Rules for every task:
+
+- Change the files of the task. When the current code needs another file (a renamed file, a caller,
+  a shared helper), change it and give the reason in the commit message. Do not re-cut the task
+  list: when work must move between tasks, tasks must merge or split, or their order does not work,
+  request a hold with status `needs-input` that says why.
+- Commit the work of this run yourself. The last line of the commit message is the trailer
+  `Task: <id>` (`git commit -m "<what changed>" -m "Task: T2"`). A fix after review takes the id of
+  the task that the finding belongs to. Leave no uncommitted change: a commit that the Factory makes
+  has no trailer.
+- A step task needs no pull request body: the Factory pushes the branch and opens the draft pull
+  request when it publishes.
+- When a task does not fit one run, commit what passes and return `retry` with what is left in the
+  message. The next run continues the same task from `git log <taskBase>..HEAD`.
+
 ## No source change
 
-The section requires a behavior change when its line `Behavior change:` says `yes`. A section
-without that line (a spec written before it existed) requires one when its required behavior
+A task requires a behavior change when its `behaviorChange` is `true`. Without a task list, the
+section requires one when its line `Behavior change:` says `yes`. A section without that line (a
+spec written before it existed) requires one when its required behavior
 describes new or changed behavior. A source file is a file that ships or runs the behavior: not a
 test, fixture, or doc. A diff that only adds or changes tests, fixtures, or docs is no source
 change.
 
-When the section requires a behavior change and you find no defect and change no source file, do
-not transition to `review`, and do not commit or push. Request a hold with status `needs-input`.
+When the task or section requires a behavior change and you find no defect and change no source
+file, do not transition to `task-review` or `review`, and do not commit or push. Request a hold
+with status `needs-input`.
 Its message starts with "The code already has the behavior that the section asks for." and
 states:
 
@@ -39,14 +89,19 @@ states:
 
 After the person answers in the issue comments, follow the answer. For a change with only
 regression tests, add tests that pin the behavior, name the comment that allows it in the pull
-request body, and transition to `review`. For a missing behavior, implement it as usual.
+request body, and transition as the status says. For a missing behavior, implement it as usual.
 
 Keep changes within the section. Do not write `.factory/` or any other notes into this repository.
 
 ## Checks and evidence
 
-The review sends the change back when any of the following is missing, so produce all of it in
-this run.
+For a step task (`open`, `fix-task`), run the task's acceptance commands, the repository's required
+checks (lint, typecheck, tests), and the mutation step below with `<taskBase>` in place of the
+branch base, on the source files of this task. Follow rules 3 and 4 for what the task touches. The
+task review checks this; it does not wait for CI.
+
+For the final task, a fix after review, and a spec without a task list, the review sends the change
+back when any of the following is missing, so produce all of it in this run, for the whole change.
 
 1. **Acceptance checks.** Run every acceptance check and every check that the spec section names,
    including the repository's compose end-to-end test if it has one (`compose-e2e` in its CI; it
@@ -122,7 +177,11 @@ this repository, and the meta clone is read-only. The pull request body is the o
 Put the changed files, behavior, check results, the pull request number, and remaining limitations
 in the outcome message.
 
-Transition to `review` when the change, its checks, and the pull request body are complete.
-Never transition to `review` without a source change for a section that requires a behavior
-change, unless a person allowed a change with only regression tests (see "No source change").
+Name the task (`Task: <id>`) and the status of the task script in the outcome message.
+
+Transition to `task-review` when a step task and its checks are complete and committed. Transition
+to `review` when the final task, a fix after review, or the section without a task list is complete
+with its checks and the pull request body. Never transition without a source change for a task or
+section that requires a behavior change, unless a person allowed a change with only regression
+tests (see "No source change").
 Use `retry` only when useful work remains for another fresh run.
