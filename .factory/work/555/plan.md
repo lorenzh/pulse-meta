@@ -349,7 +349,7 @@ The shutdown timeout exits 1 through the new kit, and token-file errors now carr
 
 1. `src/token.test.ts`: messages unchanged (`PULSE_PROBE_TOKEN_FILE=<path>: cannot read (ENOENT)`, `file is empty`, `must hold one line`, `must hold printable ASCII`); a read error whose message is `secret-sentinel` and a file holding `secret-sentinel\nx` never put `secret-sentinel` in the message; `err.setting === "PULSE_PROBE_TOKEN_FILE"` for file errors.
 2. `src/settings.test.ts`: `PULSE_BUFFER_MAX_AGE_MS=2147483648` rejected, `2147483647` accepted; `PULSE_BUFFER_MAX_RESULTS=2147483648` rejected with `PULSE_BUFFER_MAX_RESULTS: must be a positive integer up to 2147483647`.
-3. `grep -n "function isRecord\|2_147_483_647\|2 \*\* 31" src/*.ts` finds only `MAX_BUFFER_RESULTS`.
+3. Production-copy check, test files excluded: `grep -n "function isRecord\|2_147_483_647\|2 \*\* 31" $(ls src/*.ts | grep -v '\.test\.ts$')` prints exactly one line, in `src/settings.ts`, the definition `const MAX_BUFFER_RESULTS = 2_147_483_647` (expected count `1`, a literal). On base `50ec9ca` the same command prints four lines (`check-domain.ts:73`, `check.ts:237`, `reload-interval.ts:3`, `settings.ts:20`). Test files are excluded on purpose: the boundary fixtures `src/settings.test.ts:33`, `src/reload-interval.test.ts:13` and `src/scheduler.test.ts:277,288` assert the timer limit as literals and must stay unchanged (they are the independent source of the expected `2147483647`; the PR must not edit or delete them).
 
 ### Checks (tool facts, cited)
 
