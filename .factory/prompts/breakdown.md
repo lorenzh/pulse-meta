@@ -56,6 +56,10 @@ commands, each with the result that proves the task (`expected`).
 - A `step` task's acceptance runs locally in a few minutes. The `final` task holds the checks of the
   whole change: the repository's required checks, the compose end-to-end test, the security
   checklist, and the evidence that the section asks for in the pull request body.
+- A focused command (`bun test <file>`, `-t <name>`) runs only part of the suite. When the
+  repository's `bunfig.toml` turns coverage on with a threshold, such a command fails the threshold
+  although no test fails. Its `expected` is then the test result ("N pass, 0 fail"), never "exit 0";
+  the coverage gate belongs to the full suite (`bun run check`) in the `final` task.
 - Every expected value is a literal in the check (a status code, a count, a hash written out) or an
   independent source that the spec names. It never comes from the file or code that the check
   checks.
