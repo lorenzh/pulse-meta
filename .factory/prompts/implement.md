@@ -47,6 +47,11 @@ hold with status `needs-input` and quote the error. Then follow `status`:
 - `fix-review`: the newest review or security run sent the change back. Fix every finding of that
   run, produce "Checks and evidence" again, update the pull request body, and transition to
   `review`.
+- For `fix-task` and `fix-review`, fix the class, not only the instance. A finding usually shows one
+  site of a defect class (a secret echoed in one error message, an inherited property accepted by
+  one validator). Search the whole change and the code it touches for every site of that class and
+  fix them all, then add one table-driven test that drives every site with the finding's input and
+  fails on the current commit. Name the class and the sites you fixed in the outcome message.
 - `stuck`: task `next` was rejected three times or retried more than twice. Change no code. Request
   a hold with status `needs-input` that names the task, the counts, the findings of the newest task
   review or what the retries left open, and the question for the person.
