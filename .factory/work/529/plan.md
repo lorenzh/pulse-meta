@@ -31,6 +31,15 @@ The first plan review found six defects. This revision resolves them:
 
 The review's task notes are in "Breakdown notes": the live Compose checks go to the final task, and no task holds docs alone.
 
+### Revision after the second plan review
+
+The second plan review found four defects. This revision resolves them:
+
+1. **Volume ownership:** the guard no longer trusts the project label alone. Step 3 requires every top-level volume and network of the effective configuration to have the literal name `<project>_<key>` and no `external`. Step 5 inspects each declared volume by its resolved name, plus every volume that carries the project label. Verified with Docker Compose v2.38.2 in this run: an override `volumes: {api-data: {name: victim_api-data}}` shows up as that `name` in `config --no-interpolate --format json`, and `down --volumes` with `--project-name pulse-other` then removed `victim_api-data`, although the volume carried `com.docker.compose.project=victim` and no container existed. The guard now refuses that case before any Compose call that acts (decision 13, counterexample, `cli-stack demo` step 9).
+2. **Compose arguments:** there are now two named forms. The *resolution call* is the single `config` call of step 3 and has no `--project-name`. Every other Compose call uses the *operation prefix* with `--project-name`. The tests assert exactly that (decision 13, Tests).
+3. **Comparing two init runs:** in-process comparisons inject the same literal `now` and the same deterministic random source into both runs, so the complete file sets are byte-equal, with no field excluded. Comparisons of two real processes use setup `full`, which has no time-dependent content, and a defined normalization that replaces every occurrence of each run's `installId` (in `pulse.json` and in the `compose.yaml` volume labels) and the `createdAt` value ("Comparing two init runs" under Tests).
+4. **Image fixtures:** fixtures under `cli/` use synthetic image references that the no-pin gate cannot match, and digests built at run time. The positive pin-shape case reads the embedded `common/services.yaml` (decision 3, "Fixtures").
+
 ## Scope
 
 - **deploy:**
@@ -68,6 +77,11 @@ The review's task notes are in "Breakdown notes": the live Compose checks go to 
    - Each generated service copies the common entry's `image`, `restart`, `security_opt`, `cap_drop`, `cap_add`, `user`, `network_mode`, `command`, `environment` and `healthcheck`. The setup-specific keys come from the CLI's model, as in the standalone setups.
    - A pin that does not match the shape rules of `scripts/check-setup.sh` rule 2 stops `pulse init` with exit code 1. That would be a broken build.
    - The CLI's TypeScript, tests and workflows hold no version or digest of a pinned image. The AGENTS.md rule applies to them too.
+   - **Fixtures.** The no-pin gate (Completion evidence 5) matches `sha256:[0-9a-f]{64}` and `pulse-(api|probe|status|notify|console):<x.y.z>` anywhere under `cli`, `docs`, `.github` and `package.json`, test files included. So:
+     - tests of the VERSION rule (decision 14), the stub `docker` and any fake `docker compose ps` output use the synthetic reference `example.invalid/fixture-svc:9.8.7`, and, where a digest is needed, `example.invalid/fixture-svc:9.8.7@` followed by a digest built at run time (`"sha256:" + "0".repeat(64)` in TypeScript, `printf 'sha256:%064d' 0` in shell). The expected VERSION values are the literals `9.8.7` and `sha256:000000000000`. The VERSION rule is generic (the tag of any reference), so a non-pulse name tests it fully;
+     - the positive pin-shape case reads the embedded `common/services.yaml`, the real file, and expects no error;
+     - the negative pin-shape fixtures are literals that the gate does not match: `ghcr.io/lorenzh/pulse-api:latest`, `ghcr.io/lorenzh/pulse-api:0.1` (two-part version) and `docker.io/library/nginx:1.2.3`, each followed by the run-time digest, plus `ghcr.io/lorenzh/pulse-api` with neither tag nor digest. Each must stop with exit 1;
+     - `docs/cli.md` writes image references as `ghcr.io/lorenzh/pulse-<svc>:<version>@sha256:<digest>` and shows VERSION values only as bare versions, never as `pulse-<svc>:<x.y.z>`.
 4. **Embedded assets.** The binary embeds, as text imports from their repository paths (one source, no copies):
    - `scripts/secrets-init.mjs`, `demo/targets.mjs`, `demo/tls.sh` and `demo/notify.json`;
    - `full/config/api/checks.json` and `minimal/config/checks.json` (the sample checks).
@@ -214,21 +228,33 @@ The review's task notes are in "Breakdown notes": the live Compose checks go to 
 13. **Compose lifecycle.**
     - **Project name:** `--project <name>`, default `pulse` for minimal and full, `pulse-demo` for demo and `pulse-dev` for dev (the names of the standalone setups, which users know). The pattern is `^[a-z0-9][a-z0-9_-]{0,62}$`. It is written as the top-level `name:` of `compose.yaml` and as `project` in `pulse.json`. Data is never shared with another installation of the same name: the volume guard below refuses that.
     - **Install id and volume labels:** `pulse init` creates `installId` (16 random bytes, 32 lowercase hex, not a secret) in `pulse.json`. Every top-level volume of the generated `compose.yaml` gets the label `io.github.lorenzh.pulse.install: "<installId>"`. `--force` keeps the `installId` of a valid existing `pulse.json`, so the labels never change for an install. A changed volume label would make Compose ask `Volume … exists but doesn't match configuration in compose file. Recreate (data will be lost)?` (verified with Docker Compose v2.38.2 in this run). The guard below stops before Compose could ask.
-    - **Invocation:** every Docker call is an argument array through `Bun.spawn`, never a shell string, with stdin `/dev/null`, so no Compose prompt can be answered. Every Compose call uses the same fixed prefix:
+    - **Invocation:** every Docker call is an argument array through `Bun.spawn`, never a shell string, with stdin `/dev/null`, so no Compose prompt can be answered. There are exactly two forms of a Compose call:
+      - the **operation prefix**, used by every Compose call except the resolution call:
 
-      `docker compose --project-directory <dir> --project-name <project from pulse.json> --file <dir>/compose.yaml [--file <dir>/compose.override.yaml] [--env-file <dir>/.env]`
+        `docker compose --project-directory <dir> --project-name <project from pulse.json> --file <dir>/compose.yaml [--file <dir>/compose.override.yaml] [--env-file <dir>/.env]`
 
-      - the override file is passed when it exists as a regular file, and `.env` when it exists;
+      - the **resolution call**, the single `config` call of guard step 3, once per `up`, `down` or `status` and before any other Compose call. It is the operation prefix without `--project-name`, because it must find the project that a plain `docker compose` in `<dir>` would use:
+
+        `docker compose --project-directory <dir> --file <dir>/compose.yaml [--file <dir>/compose.override.yaml] [--env-file <dir>/.env] config --no-interpolate --format json`
+
+      - in both forms, the override file is passed when it exists as a regular file, and `.env` when it exists;
       - the child environment is the CLI's environment minus every variable whose name starts with `COMPOSE_`. When it removes any, the CLI prints `pulse: ignoring COMPOSE_FILE, COMPOSE_PROJECT_NAME from the environment; using project <p> and <dir>/compose.yaml` (names only, never values) to stderr;
       - verified with Docker Compose v2.38.2 in this run: `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE` and `COMPOSE_ENV_FILES` in the environment, and `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE` lines in `.env`, each change the project or the file set of a plain `docker compose`; an explicit `--project-name` and `--file` win over all of them.
     - **Project resolution and guard.** `up`, `down` (with or without `--volumes`) and `status` run these steps, in this order, after the Docker preflight and before any Compose call that creates, stops, removes or reports containers. Any failure exits 1 and names the cause, and no container, network or volume is touched:
       1. **`pulse.json`:** missing or unknown `format` → `<dir> is not a pulse installation (no pulse.json); run pulse init`.
       2. **`.env`:** a line whose key starts with `COMPOSE_` → `.env sets <KEY>; remove it: it would make docker compose in <dir> act on another project or file`. The CLI never writes such a key, and decision 9 forbids such env names.
-      3. **Effective project of the files:** `docker compose --project-directory <dir> --file <dir>/compose.yaml [--file override] [--env-file .env] config --no-interpolate --format json`, with the stripped environment and without `--project-name`, parsed in memory and never printed (`--no-interpolate` leaves secret references unresolved; verified in this run). Its `name` is the project a plain `docker compose` in `<dir>` uses. If it differs from `pulse.json` `project` → `compose.yaml (or compose.override.yaml) sets project <x>, pulse.json says <p>; fix name: or rerun pulse init --force --project <x>`. Every `pulse.json` service must be a key of its `services` → else `service <svc> from pulse.json is not in the Compose project`.
+      3. **Effective configuration of the files:** the resolution call above, with the stripped environment, parsed in memory and never printed (`--no-interpolate` leaves secret references unresolved; verified in this run).
+         - **Project:** its `name` is the project a plain `docker compose` in `<dir>` uses. If it differs from `pulse.json` `project` → `compose.yaml (or compose.override.yaml) sets project <x>, pulse.json says <p>; fix name: or rerun pulse init --force --project <x>`.
+         - **Services:** every `pulse.json` service must be a key of its `services` → else `service <svc> from pulse.json is not in the Compose project`.
+         - **Volume and network names:** for every key `<k>` of the top-level `volumes` and of the top-level `networks` (Compose lists the implicit `default` network there too), the entry must have no `external: true` and a `name` that equals the literal string `<p>_<k>`, which is the name Compose derives when no `name:` is set and the only one the CLI generates. Else → `volume <k> of compose.yaml (or compose.override.yaml) is named <name>, not <p>_<k>; remove its name: or external:` (for a network: `network <k> …`). Compose removes declared non-external volumes by their resolved name in `down --volumes`, whatever their labels (verified in this run: an override `name: victim_api-data` made `down --volumes` of project `pulse-other` remove a volume labelled for project `victim`). A `name` that holds `${…}` is not equal to `<p>_<k>` in the uninterpolated output, so it is refused too, and interpolation at run time cannot change a name.
       4. **Containers:** `docker ps --all --filter label=com.docker.compose.project=<p> --format '{{.Label "com.docker.compose.project.working_dir"}}'`. Every value must equal `realpath(<dir>)` after `realpath`. Else → `project <p> is used by <other dir>; stop it there or choose another name (pulse init --force --project <name>)`.
-      5. **Volumes:** `docker volume ls --filter label=com.docker.compose.project=<p> --format '{{.Name}} {{.Label "io.github.lorenzh.pulse.install"}}'`. Every volume must carry this install's `installId`. Else → `volume <name> of project <p> belongs to another installation; choose another name (pulse init --force --project <name>)`. This covers a stopped standalone stack whose volumes remain, and keeps `down --volumes` from deleting another installation's data.
+      5. **Volumes:** the guard checks the union of two sets of volume names:
+         - the **declared** volumes: the resolved `name` of every top-level volume from step 3, so the check covers what Compose will create, mount or remove, whatever label it carries;
+         - the **labelled** volumes: `docker volume ls --quiet --filter label=com.docker.compose.project=<p>`, so a volume of the project that the files no longer declare is seen too.
 
-      So `up`, `down` and `status` act only on the project of this directory, never on the repository's `full/` stack or another install of the same name.
+         For each name, `docker volume inspect --format '{{json .Labels}}' <name>` (one call per name, argument array). A declared volume that does not exist yet (inspect exits non-zero with `no such volume`) is fine: `up` creates it with this install's labels. Every existing volume must carry `io.github.lorenzh.pulse.install` equal to this install's `installId` and `com.docker.compose.project` equal to `<p>`. Else → `volume <name> of project <p> belongs to another installation; choose another name (pulse init --force --project <name>)`. Any other inspect failure exits 1 with its first stderr line. This covers a stopped standalone stack whose volumes remain, a volume created by hand under the project's name, and keeps `down --volumes` from deleting another installation's data.
+
+      So `up`, `down` and `status` act only on the project of this directory and its own volumes, never on the repository's `full/` stack, another install of the same name, or a volume that an override points at.
     - **Docker preflight** (only `up`, `down`, `status`, and `init` when it starts the stack):
       - the `docker` binary is missing (spawn `ENOENT`): `Docker is not installed or not on PATH` and a link to the install docs;
       - `docker version --format '{{.Server.Version}}'` fails: `cannot reach the Docker daemon` and the first stderr line;
@@ -259,7 +285,7 @@ The review's task notes are in "Breakdown notes": the live Compose checks go to 
     - **Data:** `docker compose <prefix> ps --all --format json` gives state, health, exit code and image. A `/readyz` call (5 s bound) runs for each running pulse service.
     - **READY values:** `ready`, `not ready (<reason>)`, `completed`, `failed (exit <n>)`, `running` (helpers), `stopped`, `missing`.
     - **VERSION:**
-      - the tag of the image reference, for example `0.1.0` from `ghcr.io/lorenzh/pulse-api:0.1.0@sha256:…`;
+      - the tag of the image reference, for example `0.1.0` from `ghcr.io/lorenzh/pulse-api:0.1.0@sha256:…` (this example is for this spec only; tests and docs under the no-pin gate use the fixtures of decision 3);
       - `dev (local build)` for `pulse-<svc>:dev`;
       - `sha256:<first 12 hex>` for a digest-only reference;
       - else `unknown`.
@@ -309,7 +335,7 @@ Summary of the observable behavior. Details are in the decisions above.
 - A second `pulse init` without `--force` exits 1, lists the conflicts and changes no byte, mode or file. `--force` backs up the replaced files and keeps valid tokens.
 - `pulse up` starts and waits with a finite deadline, naming the services that are not ready. `pulse status` lists every service with state, readiness and version. `pulse down` keeps data unless `--volumes` is given.
 - Docker or Compose missing, too old or unreachable gives a clear message and exit 3.
-- `up`, `down` and `status` resolve the project from `pulse.json` and the files of `<dir>`, ignore `COMPOSE_*` variables of the caller, and refuse to act when the project's containers or volumes belong to another directory or installation.
+- `up`, `down` and `status` resolve the project from `pulse.json` and the files of `<dir>`, ignore `COMPOSE_*` variables of the caller, and refuse to act when the project's containers or volumes belong to another directory or installation, or when the files give a volume or network a name other than `<project>_<key>`.
 - Ending `pulse init` with EOF, SIGINT or SIGTERM leaves either nothing new or the complete file set, never a lock of its own, and says which (decision 12).
 - The generated directory works with plain `docker compose` (`docs/cli.md`, "Without the CLI").
 
@@ -377,7 +403,7 @@ Checklist items that apply:
   - a query string in a webhook URL is refused;
   - the docs say literal URLs are clear text.
 - **Process execution:** every Docker call is an argument array with stdin `/dev/null`; no shell string ever holds user input. The child environment drops `COMPOSE_*`, and the project name and files are passed explicitly.
-- **Acting on the wrong project:** the project resolution and guard (decision 13) runs before every `up`, `down` and `status`, so a caller's `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE`, a `.env` line, an edited `name:`, another directory's containers or another installation's volumes can never make `down --volumes` delete foreign data.
+- **Acting on the wrong project:** the project resolution and guard (decision 13) runs before every `up`, `down` and `status`, so a caller's `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE`, a `.env` line, an edited `name:`, another directory's containers, another installation's volumes, or an override that renames a volume or marks it `external` can never make `down --volumes` delete foreign data. The guard inspects every declared volume by its resolved name, not only the volumes that carry the project label.
 - **Lock ownership:** only the invocation that created `.pulse-init.lock` removes it, and only while it holds that invocation's nonce.
 - **Auth:** the generated admin and probe tokens are different 256-bit values. secrets-init refuses an admin token equal to a probe token (the api refuses it too). Probe tokens are per location and per volume; console sees only the admin token, and status and notify see no token.
 - **Dependency pins:**
@@ -401,6 +427,7 @@ The security state after the review should try:
 - concurrent `pulse init` runs, and a foreign `.pulse-init.lock`;
 - `--location 'x","token":"y'`;
 - `COMPOSE_PROJECT_NAME=pulse COMPOSE_FILE=/elsewhere/compose.yaml pulse down --volumes`, a `.env` line `COMPOSE_PROJECT_NAME=pulse`, and `name: pulse` edited into a demo install's `compose.yaml`, each while another `pulse` project has volumes;
+- a `compose.override.yaml` that sets `volumes: {api-data: {name: <another project>_api-data}}`, `name: "${X:-pulse_api-data}"`, or `external: true`, then `pulse down --volumes`;
 - a tampered or unlisted asset for `cli/test/verify-download.sh`.
 
 ## Rollout order
@@ -439,13 +466,18 @@ The api token store change of #561 (spec merged, in flight) is not a dependency.
   - EOF at the setup question: exit 2, the directory is still empty;
   - SIGINT (injected) at the third question: exit 130, the directory is still empty;
   - SIGINT (injected) between two renames of phase B: every managed file of the new set exists with its final mode, there is no `.pulse-init.lock`, exit 130, and the message says `interrupted after the files were written`. A wrong implementation exits at once and leaves a half set and its lock;
-  - EOF at "Start now?": exit 2, the full file set exists (equal to a `--no-start` run with the same answers, except `createdAt`, `installId` and tokens), no Docker call was made (the fake spawn records none), and the message says `the files are written, nothing started`. A wrong implementation reports `nothing written` or treats EOF as yes.
+  - EOF at "Start now?": exit 2, the full file set exists and is byte- and mode-equal to a `--no-start` run with the same answers, the same injected `now` and the same deterministic random source ("Comparing two init runs" under Tests; no field is excluded), no Docker call was made (the fake spawn records none), and the message says `the files are written, nothing started`. A wrong implementation reports `nothing written` or treats EOF as yes.
 - **Project resolution and guard** (each must exit 1 and leave every container, network and volume as it was):
   - the caller exports `COMPOSE_PROJECT_NAME=other` and `COMPOSE_FILE=/elsewhere/compose.yaml`: the Compose calls still carry `--project-name <pulse.json project>` and `--file <dir>/compose.yaml`, the child environment has neither variable, and stderr names both (names only). This one succeeds;
   - `.env` with `COMPOSE_PROJECT_NAME=pulse`: refused, naming the key;
   - `compose.yaml` `name:` edited to `pulse` in a `pulse-demo` install: refused with both names;
   - the repository's `full/` stack stopped with `docker compose -f full/compose.yaml stop` (containers and volumes of project `pulse` remain) and a generated full install named `pulse` in another directory: `pulse up`, `pulse status` and `pulse down --volumes` are refused, naming the other directory; `full/`'s volumes still exist;
-  - the same with `full/` fully down (`down` without `-v`, only volumes remain): `pulse up` and `pulse down --volumes` are refused, naming a `pulse_*` volume. A wrong implementation that checks only containers lets `down --volumes` delete them.
+  - the same with `full/` fully down (`down` without `-v`, only volumes remain): `pulse up` and `pulse down --volumes` are refused, naming a `pulse_*` volume. A wrong implementation that checks only containers lets `down --volumes` delete them;
+  - an install with project `pulse-other` and a `compose.override.yaml` with `volumes: {api-data: {name: pulse-demo_api-data}}`, while the volume `pulse-demo_api-data` of another install exists: `pulse down --volumes` is refused at step 3 (`volume api-data … is named pulse-demo_api-data, not pulse-other_api-data`), and `pulse-demo_api-data` still exists. A wrong implementation that lists only volumes labelled `com.docker.compose.project=pulse-other` finds none and lets Compose delete it;
+  - the same override with `name: "${X:-pulse-other_api-data}"`, and with `external: true`: refused at step 3;
+  - a volume `pulse-other_api-data` created by hand without labels (`docker volume create pulse-other_api-data`) and a correct install `pulse-other`: refused at step 5, naming that volume, because the declared name is inspected even though the volume carries no project label;
+  - a declared volume that does not exist yet: accepted (fresh install before the first `up`);
+  - the resolution call is the only Compose call without `--project-name`: a wrong implementation that drops `--project-name` from every call, or adds it to the resolution call, fails the argument assertions of the tests (with `--project-name` the resolution call would always report the `pulse.json` project, and the `name:` edit above would pass).
 - **Checks:**
   - `type=domain,domain=example.com,interval=30m` is refused (below 1 h);
   - `interval=5s` is refused (below 10 s);
@@ -468,6 +500,7 @@ The api token store change of #561 (spec merged, in flight) is not a dependency.
   - a readiness list derived from `docker compose ps` would miss a service that was never created; the list comes from `pulse.json`, so the service shows as `missing`.
 - **Compose version:** `2.22.9` and `v2.22.0` are refused; `2.23.0`, `v2.23.0`, `2.38.2` and `2.100.0` are accepted. A string compare would wrongly accept `2.3.0` and refuse `2.100.0`.
 - **Download check:** a `SHA256SUMS` that lists all three assets while only `pulse-darwin-arm64` is present passes `verify-download.sh pulse-darwin-arm64` (a wrong `shasum -a 256 -c SHA256SUMS` fails here); a changed byte, or an asset missing from `SHA256SUMS`, exits 1.
+- **Image fixtures:** a status test that writes `ghcr.io/lorenzh/pulse-api:0.1.0` into a file under `cli/` fails the no-pin gate. The VERSION tests use `example.invalid/fixture-svc:9.8.7@<run-time digest>` → `9.8.7`, `example.invalid/fixture-svc@<run-time digest>` → `sha256:000000000000`, `pulse-api:dev` → `dev (local build)`, `example.invalid/fixture-svc` → `unknown` (decision 3, "Fixtures").
 - **Status exit:** one service `not ready` makes `pulse status` exit 1 even when all others are ready. `completed` (secrets-init) and `running` (demo helpers) count as fine.
 - **Down:** `pulse down` keeps the volume `pulse-demo_api-data`. `pulse down --volumes` removes it.
 - **init time statistic:** with 11 samples 120…130 ms in some order, the median is the 6th smallest value, not the mean of the samples, and not the mean of two values.
@@ -553,7 +586,7 @@ What each file holds:
 | `cli/tokens.ts` | token and `installId` generation (decision 10, 13) |
 | `cli/write-install.ts` | preflight, lock ownership, backup, atomic write, deferred signals during the write (decisions 11, 12 phase B) |
 | `cli/init.ts` | `pulse init`: the phases of decision 12 in order, and "Start now?" |
-| `cli/docker.ts` | Docker preflight, the fixed Compose prefix, the stripped environment, the project resolution and guard (decision 13) |
+| `cli/docker.ts` | Docker preflight, the two Compose forms (operation prefix and resolution call), the stripped environment, the project resolution and guard with the volume and network name checks (decision 13) |
 | `cli/ready.ts`, `cli/lifecycle.ts`, `cli/status.ts` | readiness, `up`, `down`, `status` (decisions 13–14) |
 | `cli/docs.test.ts` | the docs/script equality of the download check (decision 17) |
 | `cli/test/smoke.sh` | the compiled-binary smoke test of `cli-build` |
@@ -694,9 +727,10 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
       6. **Admin auth with the generated file:** `docker compose exec -T api bun -e '<fetch GET /admin/config with Bearer from stdin>' < secrets/admin-token` answers 200. Without a token it answers 401. With `secrets/probe-token-eu` it answers 403. The literals come from `api/docs/rest-api.md` at `v0.1.0`.
       7. **Environment override ignored:** `COMPOSE_PROJECT_NAME=other COMPOSE_FILE=/nonexistent/compose.yaml pulse status --json` exits 0 with the same service list as step 4, and stderr names both variables.
       8. **Project guard, live:** a second `pulse init --setup demo --yes` in another empty directory (same default project `pulse-demo`, another `installId`). There, `pulse status`, `pulse up` and `pulse down --volumes` each exit 1, and the message names the first directory. Afterwards the first stack's `pulse status` still exits 0, and `docker volume ls -q --filter label=com.docker.compose.project=pulse-demo` lists the same names as before step 8.
-      9. `pulse down` in the first directory: `docker compose ps -a -q` is empty, `docker volume ls -q --filter label=com.docker.compose.project=pulse-demo` is not empty, and the generated files are unchanged (sha256 snapshot).
-      10. **Volume guard, live:** with only the first install's volumes left, `pulse up` in the second directory exits 1 naming a `pulse-demo_` volume, and that volume list is unchanged.
-      11. `pulse down --volumes` in the first directory: the volume list is empty.
+      9. **Override pointing at a foreign volume, live:** a third `pulse init --setup demo --yes --project pulse-other` in another empty directory, plus a `compose.override.yaml` there with the literal content `volumes: {api-data: {name: pulse-demo_api-data}}`. `pulse down --volumes` there exits 1, and the message holds the literal `is named pulse-demo_api-data, not pulse-other_api-data`. Afterwards `docker volume inspect pulse-demo_api-data` exits 0 and the `pulse-demo` volume list equals the one before step 8. Without the guard, Compose would delete that volume (verified in this run, decision 13 step 3).
+      10. `pulse down` in the first directory: `docker compose ps -a -q` is empty, `docker volume ls -q --filter label=com.docker.compose.project=pulse-demo` is not empty, and the generated files are unchanged (sha256 snapshot).
+      11. **Volume guard, live:** with only the first install's volumes left, `pulse up` in the second directory exits 1 naming a `pulse-demo_` volume, and that volume list is unchanged.
+      12. `pulse down --volumes` in the first directory: the volume list is empty.
     - **full:**
       - `pulse init --setup full --yes --channel email --smtp-host mail.invalid --smtp-user ops --smtp-password-env SMTP_SENTINEL --mail-from pulse@example.com --mail-to ops@example.com --channel webhook --webhook-url http://host.docker.internal:9999/hook --webhook-secret-env HOOK_SENTINEL --check url=http://127.0.0.1:1/,name=Down` exits 0, plus a `compose.override.yaml` in the test directory that adds only `extra_hosts: ["host.docker.internal:host-gateway"]` to notify;
       - first `pulse up` with `SMTP_SENTINEL=smtp-sentinel-5f2a` exported and `HOOK_SENTINEL` unset (and not in `.env`): exit 1, the message names `HOOK_SENTINEL` and does not contain `SMTP_SENTINEL`, and `docker compose ps -a -q` is empty. So only the missing webhook secret causes the failure;
@@ -723,7 +757,7 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
   - the four cancellation cases of "Counterexamples" (EOF and SIGINT in phase A, SIGINT in phase B, EOF at "Start now?"), with an injected signal source and the exact messages and exit codes of decision 12;
   - SIGINT in phase D: the fake readiness call is killed, no `down` is spawned, exit 130;
   - "Start now?" yes (the injected Docker runner receives `up`) and no;
-  - the same answers as flags give byte-equal non-secret files (all files except `secrets/` and `pulse.json` `createdAt`).
+  - the same answers as flags give the same files, compared as defined in "Comparing two init runs" below: in process, byte- and mode-equal with no field excluded; for the spawned `--interactive` run, after the normalization.
 - **yaml:** round trip `Bun.YAML.parse(emit(x))` deep-equals `x` for hostile strings (`: #`, newline, `"`, `\`, leading `-`, `true`, `null`, `0755`) with `$` turned into `$$`.
 - **render:**
   - per variant, the service list, the dependencies (probe without status), the mounts (only consumers mount their secrets volume; console only when on);
@@ -745,20 +779,38 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
 - **docker/ready/status** with a fake spawn:
   - preflight messages and exit codes;
   - the version compare cases;
-  - the fixed Compose prefix on every spawned Compose call (including the override file and `.env` only when they exist), and a child environment without `COMPOSE_*` while other variables (for example `SMTP_PASSWORD`, `DOCKER_HOST`) pass through;
+  - the two Compose forms of decision 13, for `up`, `down`, `down --volumes` and `status`: the first spawned Compose call is the resolution call, it is the only Compose call without `--project-name`, and it ends in `config --no-interpolate --format json`; every later Compose call starts with the full operation prefix including `--project-name <pulse.json project>`; in both forms the override file and `.env` appear only when they exist. The expected argument arrays are literals in the test;
+  - a child environment without `COMPOSE_*` while other variables (for example `SMTP_PASSWORD`, `DOCKER_HOST`) pass through;
   - the project resolution and guard steps 1–5 and their order: each failing step stops before any `up`, `down` or `ps` call is spawned (the fake spawn records the calls);
+  - step 3 names: a resolved config with `volumes.api-data.name: pulse-demo_api-data` for project `pulse-other`, with `name: "${X:-pulse-other_api-data}"`, with `external: true`, and with `networks.default.name: other_default` each exit 1 with the step 3 message, and no `down` is spawned;
+  - step 5 sets: the fake `docker volume ls` returns nothing while the declared `pulse-other_api-data` exists with no labels → exit 1 naming it; a declared volume whose inspect answers `no such volume` → accepted; a labelled but undeclared volume with another `installId` → exit 1; every declared and every labelled name is inspected exactly once;
   - the env preflight;
   - a failed one-shot fails fast;
   - healthy but `/readyz` 503 is not ready;
   - the deadline with a fake clock;
   - each spawned readiness call gets a kill bound ≤ the remaining time;
   - `pulse.json` service unknown to Compose;
-  - status rows, versions, the JSON output and the exit codes.
+  - status rows, versions (with the synthetic fixtures of decision 3, "Fixtures"), the JSON output and the exit codes.
 - **docs:** `cli/docs.test.ts` (decision 17).
+
+#### Comparing two init runs
+
+Two runs of `pulse init` differ by design in the tokens, the `installId` (in `pulse.json` and in every volume label of `compose.yaml`), `createdAt`, and, for demo, the maintenance windows of `config/api/checks.json`. Every check that compares two runs uses one of these two methods, and no other:
+
+1. **In process (unit tests):** both runs get the same injected `now`, the literal `2026-11-01T12:00:00.000Z`, and each gets a fresh instance of the same deterministic random source: a byte stream from a literal seed, for example SHA-256 in counter mode over the seed `"pulse-test"`, so the stream does not depend on the code under test. The CLI draws from the random source in a fixed order that does not depend on how the answers were collected (tokens, then `installId`, then the lock nonce and temp names). The expected result is that the complete file sets, including `secrets/`, `pulse.json`, the volume labels and demo maintenance windows, are byte- and mode-equal. Nothing is excluded or rewritten. This method covers flags against prompts, EOF at "Start now?" against `--no-start`, and any setup including demo.
+2. **Two real processes** (the spawned `--interactive` run against a spawned flags run): the randomness and the clock are real, so:
+   - the setup is `full`, whose checks file has no maintenance windows and no time-dependent value (the sample set of `full/config/api/checks.json` has only `checks`); demo is never compared this way;
+   - `secrets/` is compared by file names and modes only, and each token is checked against `^[0-9a-f]{64}$`;
+   - in each run, the `installId` is read from that run's `pulse.json` and must match `^[0-9a-f]{32}$`; every occurrence of that string in every file outside `secrets/` is replaced with `<install-id>`, and the number of occurrences in `compose.yaml` must equal the number of top-level volumes (a literal count of the variant in the test);
+   - the value of `createdAt` in `pulse.json` is replaced with `<created-at>` after it is checked to parse as an ISO time;
+   - then every file outside `secrets/` must be byte- and mode-equal.
+
+   The normalization touches only these two values; any other difference fails.
 
 ### Breakdown notes
 
 - Step tasks are checked with `bun test` and the fake spawn only. One exception: `scripts/secrets-init.test.sh` already needs Docker for single `docker run` containers, with no Compose stack (its header, lines 2–3, and the `lint` job step at `deploy/.github/workflows/ci.yml` lines 49–50). It runs locally in a few minutes, so it can stay the acceptance of the task that changes `scripts/secrets-init.mjs`. The jobs that need a live Docker daemon (`cli/test/stack.sh` for `demo`, `full`, `minimal` and `dev`, `cli/test/errors.sh` against the compiled binary, `cli/test/render-variants.sh`), `release.yml`, the security hostile inputs and the PR evidence belong to the final task.
+- Task acceptance that compares two `pulse init` runs uses the methods of "Comparing two init runs", never "equal except some fields". Task acceptance about Compose arguments names the two forms of decision 13 (the resolution call without `--project-name`, the operation prefix with it). Task acceptance about image references uses the fixtures of decision 3; no task acceptance or fixture writes a literal that the no-pin gate matches.
 - The section says `Behavior change: yes`. The docs (`docs/cli.md`, `README.md`, `AGENTS.md`, `dev/README.md`) go into the final task with the CI jobs that run their commands ("Without the CLI" in `cli-stack minimal`, the download check in `cli-build`), so no task holds docs alone and every task is a behavior change.
 
 ### Completion evidence
@@ -767,7 +819,7 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
 2. The PR quotes the `cli-stack demo` lines:
    - `pulse status` output with every service and its version;
    - the admin auth 200, 401 and 403 lines;
-   - the three refusals of the second install (project guard) and the volume-guard refusal;
+   - the three refusals of the second install (project guard), the refusal of the override that names a foreign volume, and the volume-guard refusal;
    - `pulse down` keeping volumes.
 3. The PR quotes the `cli-build` summary: the size of each binary in bytes and MiB, and the median, minimum and maximum `init` time per runner. It states that each binary ran natively on its own runner, and whether `codesign` was needed on macOS.
 4. The PR names `bun run check` passing locally and the effective Biome scope.
@@ -785,7 +837,7 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
 - **Admin routes with a read-only checks mount** answer 503 for writes. This matches `full`. The docs show the writable mount; console makes no API call in `0.1.0`.
 - **Future image bumps** (for example #561's token store) can change token file formats. The CLI stack jobs run on every bump PR and catch it before a release.
 - **Project name `pulse`** is shared with the repository's `full/`. The project resolution and guard (containers and volumes) prevents acting across directories or installations, but two installs with the same name cannot coexist, even stopped with kept volumes; the second needs `--project`. A user who ran the standalone setup first meets that refusal on the first `pulse up`; the message names the fix.
-- **Compose behavior** that the guard relies on (`--project-name` and `--file` over `COMPOSE_*`, `config --no-interpolate`, the recreate prompt on changed volume labels) was verified with Compose v2.38.2 only. The `cli-stack demo` steps 7, 8 and 10 recheck it on the runner's Compose in every run.
+- **Compose behavior** that the guard relies on (`--project-name` and `--file` over `COMPOSE_*`, `config --no-interpolate` with the resolved `name` of every volume and network, the recreate prompt on changed volume labels, `down --volumes` removing declared volumes by name) was verified with Compose v2.38.2 only. The `cli-stack demo` steps 7, 8, 9 and 11 recheck it on the runner's Compose in every run.
 - **Binary size** (~100 MiB) is the Bun runtime. Accepted: the issue asks only to report it.
 - **The scope is large.** The breakdown should split it at the seams of the `Files:` table: the secrets-init extension, the toolchain and argument parsing, rendering, writing and backups, lifecycle commands, prompts, and a final task with the CI jobs that need Docker, the release, the docs and the evidence ("Breakdown notes").
 
@@ -808,7 +860,7 @@ Each check names where its expected value comes from.
 4. **Second init** (`cli-build` smoke, unit test):
    - exit status ≠ 0;
    - the snapshot of paths, modes and sha256 taken before the second run equals the one after (two independent listings of the file system).
-5. **Interactive flow** (unit tests): the prompts are driven through injected input and through the real process with `--interactive`. The resulting non-secret files equal the files that the same answers produce as flags (two independent runs).
+5. **Interactive flow** (unit tests): the prompts are driven through injected input and through the real process with `--interactive`. The resulting files equal the files that the same answers produce as flags (two independent runs), compared as "Comparing two init runs" defines: in process with the literal `now` and the same seeded random source, byte- and mode-equal with nothing excluded; as two real processes with setup `full`, after replacing only each run's own `installId` and `createdAt`, with `secrets/` compared by names and modes.
 6. **Real wiring:**
    - admin `GET /admin/config` answers 200 with `secrets/admin-token`, 401 without a token and 403 with a probe token (status codes from `api/docs/rest-api.md` at `v0.1.0`);
    - the webhook receiver verifies the HMAC with the literal sentinel secret.
@@ -821,6 +873,6 @@ Each check names where its expected value comes from.
 9. **Distribution:**
    - on the PR (`cli-build`, each runner): `cli/test/verify-download.sh` prints `<asset>: OK` and exits 0 for the native binary listed in a three-line `SHA256SUMS` whose other two files are absent; it exits 1 for a changed byte and for an unlisted asset (literal exit codes). `cli/docs.test.ts` passes, so the docs show the same lines;
    - after merge and the `v0.1.0` tag: the release has the four literal asset names. The `release.yml` `verify` job on each of the three runners downloads one asset plus `SHA256SUMS`, passes `verify-download.sh`, and `pulse --version` prints `pulse 0.1.0`, where the value comes from the tag.
-10. **Project guard and environment** (`cli-stack demo` steps 7, 8 and 10, unit tests): with `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE` exported, `pulse status --json` exits 0 with the literal ten services; a second install of the same project name gets exit 1 from `status`, `up` and `down --volumes`, and the first install's volume names are the same before and after (Docker's own listing, compared with itself before the step).
+10. **Project guard and environment** (`cli-stack demo` steps 7, 8, 9 and 11, unit tests): with `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE` exported, `pulse status --json` exits 0 with the literal ten services; a second install of the same project name gets exit 1 from `status`, `up` and `down --volumes`; an install `pulse-other` whose override names the volume `pulse-demo_api-data` gets exit 1 from `down --volumes` with the literal message part `is named pulse-demo_api-data, not pulse-other_api-data`, and `docker volume inspect pulse-demo_api-data` still exits 0 (literal exit codes); the first install's volume names are the same before and after (Docker's own listing, compared with itself before the step).
 11. **Lock and cancellation** (unit tests, the cases of "Counterexamples"): a foreign `.pulse-init.lock` is byte- and mtime-equal after a refused run; EOF at "Start now?" exits 2 with every managed file present and no spawned Docker call; SIGINT in phase B exits 130 with the complete file set and no lock (literal exit codes and literal path list).
 12. **#528 is unchanged:** the `minimal`, `full` (with e2e), `demo`, `dev`, `pins` and `lint` jobs, including `scripts/check-setup.sh` and the existing `secrets-init.test.sh` cases, pass with no edit to their expected values.
