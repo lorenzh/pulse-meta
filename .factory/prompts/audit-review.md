@@ -19,7 +19,7 @@ you started and remove the copies at the end.
 
 ## Time and agents
 
-The state has a hard deadline of 120 minutes (`timeoutMs` of the `auditor` model). Write the start
+The state has a hard deadline of 120 minutes (`timeoutMs` of the `audit-reviewer` model). Write the start
 time down first (`date -u +%T`) and check the clock before every long step. Start no step that can
 take more than 15 minutes after minute 75. At minute 100 stop working, finish your edits to the
 report files, and return the outcome. A run that hits the deadline loses everything, including your
