@@ -24,23 +24,23 @@
         },
         {
           "command": "LEFTHOOK=0 bun test src/hook.test.ts",
-          "expected": "After the fix: 2 pass, 0 fail; both hook tests run, and the real-error test retains its nonzero hook-code and /no-floating-promises/ assertions. Focused coverage may cause a nonzero process exit; the full-suite check owns the coverage gate."
+          "expected": "After the fix: exit 0; 2 pass, 0 fail. Both hook tests run, and the real-error test retains its nonzero hook-code and /no-floating-promises/ assertions."
         },
         {
           "command": "env -u LEFTHOOK -u LEFTHOOK_EXCLUDE -u LEFTHOOK_QUIET bun test src/hook.test.ts",
-          "expected": "After the fix: 2 pass, 0 fail; focused coverage is evaluated by the full-suite check."
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
         },
         {
           "command": "LEFTHOOK_EXCLUDE=eslint bun test src/hook.test.ts",
-          "expected": "After the fix: 2 pass, 0 fail; focused coverage is evaluated by the full-suite check."
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
         },
         {
           "command": "LEFTHOOK_QUIET=meta,summary,success,failure,skips,execution,execution_out,execution_info bun test src/hook.test.ts",
-          "expected": "After the fix: 2 pass, 0 fail; focused coverage is evaluated by the full-suite check."
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
         },
         {
           "command": "LEFTHOOK=0 LEFTHOOK_EXCLUDE=biome,eslint LEFTHOOK_QUIET=execution_out bun test src/hook.test.ts",
-          "expected": "After the fix: 2 pass, 0 fail; focused coverage is evaluated by the full-suite check."
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
         },
         {
           "command": "LEFTHOOK=0 bun run check",
@@ -60,7 +60,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR body names the baseline reproduction and unfiltered-env red failure, records all 5 green environment runs with 2 pass / 0 fail and the passing full check, and reports all 9 CPU samples and the 3 medians with the 20% comparisons and 29.8-second budget. It states that only src/hook.test.ts changed, explains that both previously skipped hook invocations now run under LEFTHOOK=0, and records Security impact: no."
+          "expected": "The PR body names the baseline reproduction and unfiltered-env red failure, records all 5 green environment runs with exit 0 and 2 pass / 0 fail and the passing full check, and reports all 9 CPU samples and the 3 medians with the 20% comparisons and 29.8-second budget. It states that only src/hook.test.ts changed, explains that both previously skipped hook invocations now run under LEFTHOOK=0, and records Security impact: no."
         }
       ]
     }
