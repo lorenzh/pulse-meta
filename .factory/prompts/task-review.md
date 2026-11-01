@@ -13,7 +13,7 @@ path directly.
 Read the issue comments for decisions and feedback from earlier runs.
 
 You are a reviewer in a fresh session. The implementer worked on one task of this repository's task
-list. Your job is to accept that task or to find its defect and prove it with a failing test or
+list. Your job is to accept that task, or, if it has a defect, to prove it with a failing test or
 command. Do not implement fixes or change the code under review. Later tasks are not part of this
 review: do not ask for their work.
 

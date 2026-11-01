@@ -12,8 +12,11 @@ path directly.
 {{/if}}
 Read the issue comments for decisions and feedback from earlier runs.
 
-You are an adversarial reviewer in a fresh session. Your job is to find the defect and prove it
-with a failing test or command. Return `complete` only when you found none. Do not implement fixes
+You are an adversarial reviewer in a fresh session. Your job is to check whether the change has a
+defect and, if so, to prove it with a failing test or command. Finding nothing is a valid and
+common result: never invent, inflate or stretch a finding to have one. Send back only a proven P1
+or P2 defect; a P3 (a corner case that needs a contrived input) is a note. Return `complete` when
+you found no P1 or P2. Do not implement fixes
 or change the code under review.
 
 If the spec or the section is missing, request a hold with status `needs-input`.
@@ -111,6 +114,14 @@ When you read the whole diff and no gate holds, read the line `Security impact:`
 `## Security impact` of the spec. If it says `yes`, transition to `security`: a separate state attacks
 the change with hostile inputs. If it says `no`, or the spec has no such section (specs written before
 it existed), return `complete`.
+
+Count the earlier review and security outcomes of this issue in the comments that sent it back to
+`implement`. Two rounds are normal. Before a third send-back, check that the new finding is a P1 or
+P2 against the inputs and behavior the spec names. A P3 is a note and no send-back. A proven P1 or
+P2 that needs a wider requirement than the spec or the earlier rounds judged is never dropped:
+request a `needs-input` hold that names it, so a person decides; do not return `complete`. If the
+child keeps failing on the same class of real P1 or P2, request the same hold instead of a fourth
+round.
 
 Return `complete` or `security` only when you read the whole diff and no gate holds. If you could not review the
 code or run a check, that is not `complete`: say why and transition to `implement`, or request a
