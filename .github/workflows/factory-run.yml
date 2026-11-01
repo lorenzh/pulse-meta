@@ -79,16 +79,6 @@ jobs:
           fi
           bwrap --die-with-parent --unshare-pid --bind / / --proc /proc --dev-bind /dev /dev -- true
 
-      - name: Check the bot account
-        env:
-          FACTORY_GITHUB_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
-        run: |
-          [[ -n "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::Set the repository variable FACTORY_GITHUB_ACTOR to the login of the Factory bot account." >&2; exit 1; }
-          [[ -n "$FACTORY_GITHUB_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
-          login="$(GH_TOKEN="$FACTORY_GITHUB_TOKEN" gh api user --jq .login)" || { echo "::error::Cannot read the account of the secret FACTORY_GITHUB_TOKEN." >&2; exit 1; }
-          # The runner record compares authors exactly, so the logins must match, case included.
-          [[ "$login" == "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::The secret FACTORY_GITHUB_TOKEN belongs to $login, but the repository variable FACTORY_GITHUB_ACTOR is $FACTORY_GITHUB_ACTOR." >&2; exit 1; }
-
       # Git gets the bot token only through GIT_ASKPASS, on the steps that run Factory. The helper
       # prints the GH_TOKEN of the calling process and stores nothing, so no git config and no gh
       # file holds a credential, and the checkout keeps none. The agent still inherits GH_TOKEN
@@ -179,17 +169,55 @@ jobs:
           git config --global user.name "paragon-factory[bot]"
           git config --global user.email "paragon-factory[bot]@users.noreply.github.com"
 
+      - name: Create the Factory App token
+        if: ${{ vars.FACTORY_APP_ID != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
+
+      - name: Check the bot account
+        env:
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
+          FACTORY_APP_ID: ${{ vars.FACTORY_APP_ID }}
+          FACTORY_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          [[ -n "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::Set FACTORY_GITHUB_ACTOR to the Factory login (App: <slug>[bot])." >&2; exit 1; }
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Configure FACTORY_APP_ID and FACTORY_APP_PRIVATE_KEY, or the fallback FACTORY_GITHUB_TOKEN." >&2; exit 1; }
+          if [[ -n "$FACTORY_APP_ID" ]]; then
+            [[ -n "$FACTORY_APP_SLUG" ]] || { echo "::error::The App token action returned no app-slug." >&2; exit 1; }
+            login="${FACTORY_APP_SLUG}[bot]"
+          else
+            login="$(gh api user --jq .login)" || { echo "::error::Cannot read the account of FACTORY_GITHUB_TOKEN." >&2; exit 1; }
+          fi
+          [[ "$login" == "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::The Factory token belongs to $login, but FACTORY_GITHUB_ACTOR is $FACTORY_GITHUB_ACTOR." >&2; exit 1; }
+
+      # Factory reads GraphQL comment authors as <slug>, while REST and events use <slug>[bot].
       # A cancel ends the active interruption through resume. It writes the runner record as the
       # same author as every run, and it continues nothing: the run step and its outputs stay empty.
       - name: Cancel the interruption
         if: ${{ inputs.admission == 'cancel' }}
         env:
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
           GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
         run: >-
           node ./node_modules/@paragondata/factory-cli/dist/bin.js resume
           --issue "$FACTORY_ISSUE" --cancel-interruption --apply
-          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR"
+          --run-id "$FACTORY_RUN_ID" --record-author "${FACTORY_GITHUB_ACTOR%'[bot]'}"
 
       # Stopgap until the self-hosted runner arrives: Codex refreshes this subscription login after ~8 days, and then the secret stops working.
       - name: Write the Codex login
@@ -207,7 +235,7 @@ jobs:
         if: ${{ inputs.admission != 'cancel' }}
         id: run
         env:
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
           GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
           CODEX_HOME: ${{ runner.temp }}/codex
@@ -221,9 +249,30 @@ jobs:
           --issue "$FACTORY_ISSUE" --detect-workflow --workspace multigit --apply
           --runner-admission "$FACTORY_ADMISSION"
           ${FACTORY_GENERATION:+--generation "$FACTORY_GENERATION"}
-          --run-id "$FACTORY_RUN_ID" --record-author "$FACTORY_GITHUB_ACTOR" --chain-limit 24
+          --run-id "$FACTORY_RUN_ID" --record-author "${FACTORY_GITHUB_ACTOR%'[bot]'}" --chain-limit 24
           --continue-output "$GITHUB_OUTPUT"
           2> >(tee "$RUNNER_TEMP/factory-run.err" >&2)
+
+      - name: Create the Factory App token
+        if: ${{ failure() && inputs.admission != 'cancel' && vars.FACTORY_APP_ID != '' }}
+        id: restart-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
 
       # A HARNESS_TIMEOUT restarts the issue once by itself (.github/run/auto-restart.sh). A second
       # timeout of the same state before a run of it finishes gets the failure comment below.
@@ -231,7 +280,7 @@ jobs:
         id: restart
         if: ${{ failure() && inputs.admission != 'cancel' }}
         env:
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.restart-token.outputs.token }}
           FACTORY_RUN_ERR: ${{ runner.temp }}/factory-run.err
           FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: bash .github/run/auto-restart.sh
@@ -270,9 +319,30 @@ jobs:
       FACTORY_GENERATION: ${{ needs.run-state.outputs.generation }}
       FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
+      - name: Create the Factory App token
+        if: ${{ vars.FACTORY_APP_ID != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
+
       - name: Start the next run
         env:
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
         run: |
           [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
           [[ "$FACTORY_GENERATION" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "Not a canonical generation: $FACTORY_GENERATION" >&2; exit 1; }

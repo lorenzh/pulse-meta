@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { checkDir, events, progress, validateTaskFile } from './factory-tasks.mjs';
 
-const BOT = 'pulse-bot';
+const BOT = 'pulse-factory[bot]';
 const SHA1 = 'a'.repeat(40);
 const SHA2 = 'b'.repeat(40);
 const step = (id, files = ['src/a.ts']) => ({
@@ -97,6 +97,13 @@ test('only bot-authored run records count', () => {
   assert.equal(status(three, [forged]).next, 'T1');
   const quoted = { login: BOT, body: 'task-accepted: T1 @ ' + SHA1 }; // a bot comment without a run record
   assert.equal(status(three, [quoted]).next, 'T1');
+});
+
+test('App mode keeps task acceptances and rejections from the old bot', () => {
+  const legacy = { ...accept('T1', SHA1), login: 'lorenzh-factory-bot' };
+  const p = status(three, [legacy, toTaskReview, reject('T2')]);
+  assert.deepEqual([p.next, p.taskBase, p.status], ['T2', SHA1, 'fix-task']);
+  assert.equal(events([{ ...legacy, login: 'another-app[bot]' }], BOT).length, 0);
 });
 
 test('the verdict is the last verdict line; a short sha does not accept', () => {
