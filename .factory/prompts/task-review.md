@@ -81,6 +81,11 @@ Reject the task when any of these holds. Each one alone is enough:
   task's `files` has no reason;
 - the diff re-cuts the task list: it does work of another task, or leaves out work of this one.
 
+Severity follows the review rules: a defect that needs a contrived input is P3 and is a note in
+the verdict, not a reason to reject. Input that no caller can produce counts as contrived, for
+example a Proxy or an accessor handed to a validator that only ever receives `JSON.parse` output.
+Do not widen the input model from round to round; judge against the inputs the spec names.
+
 Accept the task when you read the whole task diff, ran its checks, and no reason above holds.
 
 Both verdicts transition to `implement`. Include each finding with its proof (the failing test, the
