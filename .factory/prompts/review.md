@@ -117,10 +117,11 @@ it existed), return `complete`.
 
 Count the earlier review and security outcomes of this issue in the comments that sent it back to
 `implement`. Two rounds are normal. Before a third send-back, check that the new finding is a P1 or
-P2 against the inputs and behavior the spec names, and that it is not a wider requirement than the
-earlier rounds judged. If it widens the requirement or is a P3, record it as a note and do not send
-back. If it is a real P1 or P2 but the child keeps failing on the same class, request a
-`needs-input` hold that names the class instead of a fourth round.
+P2 against the inputs and behavior the spec names. A P3 is a note and no send-back. A proven P1 or
+P2 that needs a wider requirement than the spec or the earlier rounds judged is never dropped:
+request a `needs-input` hold that names it, so a person decides; do not return `complete`. If the
+child keeps failing on the same class of real P1 or P2, request the same hold instead of a fourth
+round.
 
 Return `complete` or `security` only when you read the whole diff and no gate holds. If you could not review the
 code or run a check, that is not `complete`: say why and transition to `implement`, or request a
