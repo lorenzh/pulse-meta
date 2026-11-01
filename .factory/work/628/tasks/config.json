@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "target": "config",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Hook tests run the real hook regardless of caller Lefthook settings",
+      "files": ["src/hook.test.ts"],
+      "behaviorChange": true,
+      "spec": "## Repository: config, all Behavior bullets, Checks and Completion evidence; Required behavior 1-5, Acceptance evidence 1-5, Performance impact, Security impact and Counterexamples",
+      "acceptance": [
+        {
+          "command": "bun --version && bun install --frozen-lockfile",
+          "expected": "Bun reports 1.4.0; installation exits 0. Install in each writable config checkout used for the reproduction and timing checks."
+        },
+        {
+          "command": "LEFTHOOK=0 bun test src/hook.test.ts",
+          "expected": "Before the fix, in the baseline checkout at 04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7: nonzero exit; pre-commit hook reports a real error fails at assert.notEqual(result.code, 0, ...) because Lefthook returned 0. Record this reproduction separately from the green run."
+        },
+        {
+          "command": "env -u LEFTHOOK -u LEFTHOOK_EXCLUDE -u LEFTHOOK_QUIET bun test src/hook.test.ts",
+          "expected": "Red step before filtering: with preCommit(file, base = process.env), explicit env: base passed unfiltered to run(...), and the real-error test passing the hostile base from Required behavior 4, nonzero exit and pre-commit hook reports a real error fails at assert.notEqual(result.code, 0, ...). The hostile LEFTHOOK=0 reaches Lefthook and causes code 0. Record the failure, then omit exactly the three keys for green; do not leave the intermediate implementation in the final diff."
+        },
+        {
+          "command": "LEFTHOOK=0 bun test src/hook.test.ts",
+          "expected": "After the fix: exit 0; 2 pass, 0 fail. Both hook tests run, and the real-error test retains its nonzero hook-code and /no-floating-promises/ assertions."
+        },
+        {
+          "command": "env -u LEFTHOOK -u LEFTHOOK_EXCLUDE -u LEFTHOOK_QUIET bun test src/hook.test.ts",
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
+        },
+        {
+          "command": "LEFTHOOK_EXCLUDE=eslint bun test src/hook.test.ts",
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
+        },
+        {
+          "command": "LEFTHOOK_QUIET=meta,summary,success,failure,skips,execution,execution_out,execution_info bun test src/hook.test.ts",
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
+        },
+        {
+          "command": "LEFTHOOK=0 LEFTHOOK_EXCLUDE=biome,eslint LEFTHOOK_QUIET=execution_out bun test src/hook.test.ts",
+          "expected": "After the fix: exit 0; 2 pass, 0 fail."
+        },
+        {
+          "command": "LEFTHOOK=0 bun run check",
+          "expected": "Exit 0: Biome, ESLint, workflow policy lint, typecheck and the full test suite pass with the unchanged 0.8 line-coverage threshold."
+        },
+        {
+          "command": "for sample in 1 2 3; do env -u LEFTHOOK -u LEFTHOOK_EXCLUDE -u LEFTHOOK_QUIET /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "Run separately in installed writable checkouts A at 04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7 and B at the PR branch head. All 6 full-suite runs exit 0. Record each user and system CPU sample and compute the median of their sums per checkout. B median is within 20% of A median and below 29.8 seconds, as required by Performance impact; compare config checkouts directly rather than api bench --a/--b."
+        },
+        {
+          "command": "for sample in 1 2 3; do env -u LEFTHOOK_EXCLUDE -u LEFTHOOK_QUIET LEFTHOOK=0 /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "In checkout B at the PR branch head: all 3 full-suite runs exit 0. Record each user and system CPU sample and the median of their sums; this median is within 20% of B's unset median and below 29.8 seconds. Both hook invocations now run under LEFTHOOK=0; the failing baseline under LEFTHOOK=0 is not a valid performance baseline."
+        },
+        {
+          "command": "git diff --name-only 04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7 && git diff 04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7 -- src/hook.test.ts",
+          "expected": "The changed-path list is exactly src/hook.test.ts. Review confirms a file-local optional base: NodeJS.ProcessEnv = process.env; a fresh explicit child env omits exactly LEFTHOOK, LEFTHOOK_EXCLUDE and LEFTHOOK_QUIET, retaining PATH, HOME and every other key unchanged. Keys are absent, not overridden or assigned undefined; no assignment to or deletion from process.env/Bun.env, global mocks, exports, skips or weakened assertions. The real-error test supplies the exact hostile base in Required behavior 4, while the fixture test uses the default. Preserve launcher, args, cwd, capture, error mapping, probe naming, cleanup, test names and exactly 2 hook runs. Include the one-line Factory rationale comment. Review all Counterexamples. Security impact: no, per the spec's test-only scope."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names the baseline reproduction and unfiltered-env red failure, records all 5 green environment runs with exit 0 and 2 pass / 0 fail and the passing full check, and reports all 9 CPU samples and the 3 medians with the 20% comparisons and 29.8-second budget. It states that only src/hook.test.ts changed, explains that both previously skipped hook invocations now run under LEFTHOOK=0, and records Security impact: no."
+        }
+      ]
+    }
+  ]
+}
