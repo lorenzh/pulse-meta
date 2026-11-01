@@ -617,7 +617,7 @@ Module names are fixed by this list. The implementer may add a module next to th
   - deploy has no `package.json` today (`deploy/AGENTS.md` "Project": "There is no TypeScript and no `package.json`"). This change adds `packageManager: bun@1.4.0` and `engines.bun: 1.4.0`, as `api/package.json` lines 8–10 and 35.
 - **Scripts** as in `config/package.json` lines 35–37 and `api/package.json` lines 14–20:
   - `typecheck`: `bun node_modules/typescript7/bin/tsc --noEmit`;
-  - `test`: `bun test cli`;
+  - `test`: `bun test --coverage cli`;
   - `lint`: `biome check . && pulse-eslint . && pulse-workflows`;
   - `format`: `biome check --write .`;
   - `check`;
@@ -635,7 +635,7 @@ Module names are fixed by this list. The implementer may add a module next to th
   - deploy's own `biome.json` narrows `files.includes` to `cli/**`, `package.json`, `tsconfig.json`, `biome.json`, `bunfig.toml`, `eslint.config.js`, `lefthook.yml`, keeping the shared negations. The existing `.mjs` helpers and setup JSON files keep their `node --check` and `jq empty` checks and are not reformatted in this change.
   - The implementer confirms the effective scope with `biome check --verbose` and states it in the PR.
 - **ESLint:** `eslint.config.js` spreads the shared config with `ignores: [".repos/**", "dist/**"]`, as `api/eslint.config.js`. The shared rules apply to `**/*.ts` and `**/*.js` (`config/eslint.config.js` lines 11 and 20), so the `.mjs` helpers stay outside ESLint.
-- **Coverage:** `bunfig.toml` `[test]` has `coverage = true` and `coverageThreshold = { lines = 0.8 }`, as `config/bunfig.toml`.
+- **Coverage:** `bunfig.toml` `[test]` has `coverageThreshold = { lines = 0.8 }` but not `coverage = true`; the full suite turns coverage on with `bun test --coverage cli` (the `test` script), so the 80 % gate applies to `bun run test` and `bun run check`. Focused acceptance commands (`bun test <file>`) run without coverage and pass on 0 failing tests; with `coverage = true` a single file would fail the threshold because the other modules are not exercised (seen in #617).
 - **Docker in CI:** the deploy `lint` job already checks Compose ≥ 2.23 on `ubuntu-24.04` (`deploy/.github/workflows/ci.yml` lines 23–30). `macos-15` runners have no Docker, so jobs that need Docker run on `ubuntu-24.04` only.
 
 ### Behavior
