@@ -16,7 +16,7 @@ A child works through its task list one task per agent run, so that no run has t
 
 **Task lists.** `breakdown` (`.factory/prompts/breakdown.md`, profile `breakdown-writer`) writes `.factory/work/<feature>/tasks/<target>.json` for every entry of `targets.json`: 1 to 8 tasks `T1`..`Tn`, the last one `kind: "final"`. Each task has `title`, `files`, `behaviorChange`, `spec` (the part of the section it implements), and `acceptance` (`command` and `expected`, a literal or an independent source). A change in one file or under about 200 changed lines is one task; tests go with their code; the final task holds the whole-change checks (compose end-to-end test, security checklist, pull request evidence). A small section is only its final task, and runs as before. `plan-review` runs `node scripts/factory-tasks.mjs --check <work dir>` (one file per target, the schema, every `Files:` path in a task), checks the cut, and sends spec defects to `plan` and task defects to `breakdown`. The task file never changes after the merge. `implement` may change other files than a task lists when the code needs it, with the reason in the commit; moving work between tasks needs a `needs-input` hold.
 
-**Progress.** No file holds a done flag: a child cannot commit `.factory/`, and its meta clone is read-only. `scripts/factory-tasks.mjs --issue <child> --target <target> --base <sha>` (Node, no dependencies) derives the progress from the run comments of the issue, counting only comments of the bot (`FACTORY_GITHUB_ACTOR`, or the login of the `gh` token) with a run record: a `task-review` transition whose message ends with `task-accepted: Tn @ <sha>` or `task-rejected: Tn`, `implement` retries and holds, and send-backs of `review` and `security`. Each implement commit ends with the trailer `Task: Tn`. The script prints `status`, the task `next`, its `taskBase` (the commit of the newest acceptance, or the branch base), and its `rejections` and `retries`:
+**Progress.** No file holds a done flag: a child cannot commit `.factory/`, and its meta clone is read-only. `scripts/factory-tasks.mjs --issue <child> --target <target> --base <sha>` (Node, no dependencies) derives the progress from the run comments of the issue, counting only comments of the bot (`FACTORY_GITHUB_ACTOR`, or the login of the `gh` token) and the historical `lorenzh-factory-bot` account with a run record: a `task-review` transition whose message ends with `task-accepted: Tn @ <sha>` or `task-rejected: Tn`, `implement` retries and holds, and send-backs of `review` and `security`. Each implement commit ends with the trailer `Task: Tn`. The script prints `status`, the task `next`, its `taskBase` (the commit of the newest acceptance, or the branch base), and its `rejections` and `retries`:
 
 | `status` | `implement` does | then |
 |---|---|---|
@@ -87,13 +87,69 @@ The agent creates no issues and writes no comments. After the merge the owner pi
 2. *Text.* The Factory workflow `report` runs on the meta target. `report` (profile `reporter`, `claude-opus-5-5`, effort `high`) downloads the artifact, checks its hash, commits it unchanged, and writes only `report/narrative.json`: fixed slots for the lead, five chart notes, changes since the last report, the case study, three to six findings and three to six recommendations. `report-review` (profile `report-reviewer`, Codex `gpt-6.1-sol`, `modelReasoningEffort: medium`) runs `report/check.mjs`, checks every claim with `jq` against the data, and sends the text back or completes; it edits nothing.
 3. *Design.* `report/index.html` is the fixed template, a dashboard in the losoft design system (tokens copied from lorenzh/losoft.dev, light and dark mode with a toggle as on losoft.dev): KPI tiles with the change since the last report, cost, runs or tokens per step, repository and day (one control switches all three), the feature table with sort and filters, the human fixes and events, the case study, then the text. It fills the slots with `textContent` only and formats numbers with the same formatter as the tiles. Merging the report pull request runs `factory-report.yml`: `check.mjs`, then the Pages deploy of `index.html`, `data.json` and `narrative.json`, then `.github/report/close-issue.sh` closes the report issue that `narrative.json` names. The workflow fetches no live data.
 
-*What the agent sees.* `data.json` holds numbers, controlled names (steps, profiles, targets, event kinds) and references only: no issue titles, no commit messages. Run records count only from `FACTORY_GITHUB_ACTOR`; split comments only from the bot, `github-actions[bot]` (`factory fan-out`) and the owner. A commit is human when a GitHub account other than the bot made it. Codex runs report no cost, so their cost is unknown (`runs_cost_unknown`), not 0, and every USD value counts known costs only; their tokens count. Detail tables and charts cover the last 30 days; `summary` keeps the all-time totals, the window (`win_*`), the change since the last merged report (`d_*`) and the case study (`case_*`, the most expensive feature finished in the window).
+*What the agent sees.* `data.json` holds numbers, controlled names (steps, profiles, targets, event kinds) and references only: no issue titles, no commit messages. Run records count from `FACTORY_GITHUB_ACTOR` and the historical `lorenzh-factory-bot` account. Split comments also count from `github-actions[bot]` (`factory fan-out`) and the owner. Neither Factory account counts as human in commit statistics. Codex runs report no cost, so their cost is unknown (`runs_cost_unknown`), not 0, and every USD value counts known costs only; their tokens count. Detail tables and charts cover the last 30 days; `summary` keeps the all-time totals, the window (`win_*`), the change since the last merged report (`d_*`) and the case study (`case_*`, the most expensive feature finished in the window).
 
 *The check.* `report/check.mjs` fails on: a changed file other than the two report files (C1, with `--base`); a data hash or `as_of` that differs from the issue (C2); a wrong shape, count or length, or a wrong `issue` (C3); a placeholder `{field|fmt}` whose field is not a number of `summary[0]` or is `null`, or that stands in a code span (C4); any digit or other numeric character of any script (`\p{N}`: full-width digits, fractions, superscripts, Roman numerals) outside a placeholder, a reference or a code span (C5); a `#N` or `pulse-<repo>#N` that is not in the data (C6); HTML, links or token patterns (C7). Quantity words and digits in code spans are warnings for the reviewer. `report-check.yml` runs on `pull_request_target` for every pull request that touches `report/**` or `.github/**`: the workflow as it is on the base branch, a checkout of the base commit only, a read-only token. `.github/report/check-pr.sh` fetches the pull request's `data.json` and `narrative.json` through the API as data and runs the base commit's `check.mjs` on them; no code of the pull request runs, so a report run can change neither the check nor the workflow that judges it. On a `factory/<issue>-…` branch it adds the template lock against the pull request's changed-file list (any path but the two report files fails, `.github/` included) and compares hash and `as-of` with the issue. Tests: `node --test 'report/*.test.mjs'`.
 
 *Labels.* `factory/report/report` and `factory/report/report-review` come from `factory state --apply`, which the owner runs once after the merge and before the first report. The opener creates `report`. Cost: one `high` Claude state and one `medium` Codex state per day with new activity; the report's own runs show as `report_runs` and `report_usd`, outside every other number.
 
 **Workflow script tests.** `.github/workflow-tests/test.sh` runs the scripts of the sweeper and the audit workflow against fixtures with a stub `gh` (needs bash, jq, python3 with PyYAML). For the Factory report it covers the fingerprint skip, the dedupe, the issue body, the dispatch, the closing of the report issue after the deploy, and the pull request check from the base commit (template lock, a weakened `check.mjs`, altered data, a typed number). For the audits it covers the rotation of each kind, dedupe on `audit/<repo>`, label creation, the start label and the dispatch of `factory-run.yml` (none on a dedupe hit or for a non-canonical issue number), `actions: write` on the job, the dispatch inputs, the mapping of every cron line to a kind, and that each issue text names the start label and the report instead of one issue per finding.
+
+## GitHub App
+
+If `vars.FACTORY_APP_ID` is set, the admission, run, continuation and unblock jobs use App tokens.
+Otherwise they keep `secrets.FACTORY_GITHUB_TOKEN`. An App failure never falls back to the PAT.
+Audit, report, fan-out and failure-report steps keep their built-in `GITHUB_TOKEN`.
+
+Grant these **repository permissions**:
+
+| Permission | Access | Purpose |
+| --- | --- | --- |
+| Contents | Read and write | Clone repositories and push branches. |
+| Issues | Read and write | Read dependencies. Write issues, labels and comments. |
+| Pull requests | Read and write | Create and update PRs. Read merge state. Mark drafts ready. |
+| Actions | Read and write | Dispatch runs. Read jobs, logs and artifacts. |
+| Workflows | Read and write | Push changes to `.github/workflows/`. Dispatch alone needs only Actions write. |
+| Checks | Read | Read PR checks. |
+| Commit statuses | Read | Read status contexts in PR checks. |
+| Metadata | Read | Read repository metadata. GitHub grants this automatically. |
+
+No organization or user permissions are needed.
+Keep `FACTORY_PACKAGES_TOKEN` separately for GitHub Packages (`read:packages`).
+
+Owner setup:
+
+1. Register an App under [Developer settings → GitHub Apps](https://github.com/settings/apps/new) with these permissions.
+2. Disable its webhook. These workflows need no webhook server or user authorization.
+3. Install it on `lorenzh`. Select the 11 repositories in `.factory/config.yaml`: `pulse-meta`, `pulse-contract`, `pulse-probe`, `pulse-api`, `pulse-status`, `pulse-notify`, `pulse-config`, `pulse-kit`, `pulse-website`, `pulse-console`, `pulse-deploy`.
+4. Generate a private key. Store the full PEM in the pulse-meta Actions secret `FACTORY_APP_PRIVATE_KEY`.
+5. Pause active runs. Set the pulse-meta Actions variable `FACTORY_GITHUB_ACTOR` to `<app-slug>[bot]`.
+6. Set the pulse-meta Actions variable `FACTORY_APP_ID` to the numeric App ID to enable App mode.
+7. Start a short issue with `factory-run.yml`. Check comment attribution, PR checks and continuation.
+
+To return to PAT mode, clear `FACTORY_APP_ID` and restore the PAT login in `FACTORY_GITHUB_ACTOR`.
+The PAT must still be valid.
+
+The pinned `actions/create-github-app-token` v2.2.2 mints repository-scoped tokens and revokes them after the job.
+The identity check uses its `app-slug` output instead of `/user` in App mode.
+REST and events use `<slug>[bot]`. Factory 0.8.0 reads GraphQL comment authors as `<slug>`.
+The run and cancel commands strip `[bot]` from `--record-author`.
+The task script inherits the full REST login from `FACTORY_GITHUB_ACTOR` and bypasses `/user`.
+Report, task and restart filters also accept historical `lorenzh-factory-bot` comments.
+Git keeps its existing commit identity.
+
+App pushes, PRs and labels can trigger workflows ([GitHub trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)).
+`factory.yml` ignores events from both Factory accounts to prevent recursive starts.
+Explicit dispatches start `factory-run.yml`. Built-in `GITHUB_TOKEN` dispatches also work.
+
+**Limits.** Tokens [expire after one hour](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation).
+Factory 0.8.0 does not refresh them during a state. The configured two-hour audits can lose API and push access.
+The workflow mints just before Factory starts and again for timeout recovery.
+Factory runner history matches only one author. Stop old runs before switching and restart unfinished issues with `admission=restart`.
+History filters cannot recover comments that GitHub hides after an account suspension.
+The provider `currentUser()` and facade `cancelInterruption()` still need a user token. The workflow CLI paths bypass them.
+
+References: [Factory runner identity](https://github.com/paragondata/factory/blob/v0.8.0/packages/cli/docs/runners.md#pull-requests-get-no-automatic-ci), [GitHub provider](https://github.com/paragondata/factory/blob/v0.8.0/packages/provider-github/docs/github.md), [App token action](https://github.com/actions/create-github-app-token/tree/v2.2.2), [App permissions](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps).
 
 ## Prompt injection and credentials
 

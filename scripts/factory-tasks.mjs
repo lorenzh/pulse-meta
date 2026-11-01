@@ -109,7 +109,7 @@ export function checkDir(dir) {
 export function events(comments, author) {
   const out = [];
   for (const c of comments) {
-    if (c.login !== author) continue; // anyone can comment; only the bot writes run records
+    if (c.login !== author && c.login !== 'lorenzh-factory-bot') continue; // anyone can comment; only the bot writes run records
     const m = RECORD.exec(c.body ?? '');
     if (!m) continue;
     let rec;
