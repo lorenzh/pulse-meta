@@ -211,6 +211,9 @@ jobs:
           GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.FACTORY_CLAUDE_OAUTH_TOKEN }}
           CODEX_HOME: ${{ runner.temp }}/codex
+          # Factory commits leftover agent work when it publishes, also on a hold. A failing lefthook
+          # pre-commit then ends the run with COMMAND_FAILED and loses the hold (#603). CI runs the checks.
+          LEFTHOOK: "0"
         # stderr also goes to a file: the next step reads the error code from it. A task loop runs two
         # states per task (implement, task-review), so the chain limit allows 8 tasks and some repairs.
         run: >-
