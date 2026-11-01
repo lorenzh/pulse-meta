@@ -157,11 +157,13 @@ models:
       model: claude-opus-5-5
       effort: high
   # Writes the task list of each repository section after the plan.
+  # Owner decision: the task breakdown runs on GPT. plan-review (also GPT) then reviews it from the
+  # same family; factory-tasks.mjs --check and the task-review of every task are the cross-checks.
   breakdown-writer:
-    harness: claude
+    harness: codex
     options:
-      model: claude-opus-5-5
-      effort: high
+      model: gpt-6.1-sol
+      modelReasoningEffort: high
   plan-reviewer:
     harness: codex
     options:
