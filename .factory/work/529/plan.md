@@ -40,6 +40,10 @@ The second plan review found four defects. This revision resolves them:
 3. **Comparing two init runs:** in-process comparisons inject the same literal `now` and the same deterministic random source into both runs, so the complete file sets are byte-equal, with no field excluded. Comparisons of two real processes use setup `full`, which has no time-dependent content, and a defined normalization that replaces every occurrence of each run's `installId` (in `pulse.json` and in the `compose.yaml` volume labels) and the `createdAt` value ("Comparing two init runs" under Tests).
 4. **Image fixtures:** fixtures under `cli/` use synthetic image references that the no-pin gate cannot match, and digests built at run time. The positive pin-shape case reads the embedded `common/services.yaml` (decision 3, "Fixtures").
 
+### Revision after the third plan review
+
+The third plan review found one contradiction: the resolution call was said to be the first Compose call and the only one without `--project-name`, but the Docker preflight spawns `docker compose version --short` before it. This revision names that call the **preflight version call**, a third form that is not project-scoped and carries no project arguments. The ordering rule and the `--project-name` rule now apply only to the **project-scoped Compose calls** after it: the resolution call is the first of those and the only one without `--project-name` (decision 13 "Invocation", Counterexamples, Tests "docker/ready/status", Breakdown notes).
+
 ## Scope
 
 - **deploy:**
@@ -228,16 +232,17 @@ The second plan review found four defects. This revision resolves them:
 13. **Compose lifecycle.**
     - **Project name:** `--project <name>`, default `pulse` for minimal and full, `pulse-demo` for demo and `pulse-dev` for dev (the names of the standalone setups, which users know). The pattern is `^[a-z0-9][a-z0-9_-]{0,62}$`. It is written as the top-level `name:` of `compose.yaml` and as `project` in `pulse.json`. Data is never shared with another installation of the same name: the volume guard below refuses that.
     - **Install id and volume labels:** `pulse init` creates `installId` (16 random bytes, 32 lowercase hex, not a secret) in `pulse.json`. Every top-level volume of the generated `compose.yaml` gets the label `io.github.lorenzh.pulse.install: "<installId>"`. `--force` keeps the `installId` of a valid existing `pulse.json`, so the labels never change for an install. A changed volume label would make Compose ask `Volume … exists but doesn't match configuration in compose file. Recreate (data will be lost)?` (verified with Docker Compose v2.38.2 in this run). The guard below stops before Compose could ask.
-    - **Invocation:** every Docker call is an argument array through `Bun.spawn`, never a shell string, with stdin `/dev/null`, so no Compose prompt can be answered. There are exactly two forms of a Compose call:
-      - the **operation prefix**, used by every Compose call except the resolution call:
+    - **Invocation:** every Docker call is an argument array through `Bun.spawn`, never a shell string, with stdin `/dev/null`, so no Compose prompt can be answered. There are exactly three forms of a Compose call. The first is not project-scoped; the other two are the **project-scoped Compose calls**, and the ordering and `--project-name` rules below apply to these two only:
+      - the **preflight version call**, exactly `docker compose version --short`, spawned once by the Docker preflight below, before every other Compose call. It carries none of `--project-directory`, `--project-name`, `--file` and `--env-file`, because it reads no project. It runs with the stripped environment below. It is the only Compose call before the resolution call, and the only Compose call that is neither the resolution call nor uses the operation prefix. When the preflight fails, no project-scoped Compose call is spawned;
+      - the **operation prefix**, used by every project-scoped Compose call except the resolution call:
 
         `docker compose --project-directory <dir> --project-name <project from pulse.json> --file <dir>/compose.yaml [--file <dir>/compose.override.yaml] [--env-file <dir>/.env]`
 
-      - the **resolution call**, the single `config` call of guard step 3, once per `up`, `down` or `status` and before any other Compose call. It is the operation prefix without `--project-name`, because it must find the project that a plain `docker compose` in `<dir>` would use:
+      - the **resolution call**, the single `config` call of guard step 3, once per `up`, `down` or `status`. It is the first project-scoped Compose call: only the preflight version call comes before it. It is the operation prefix without `--project-name`, because it must find the project that a plain `docker compose` in `<dir>` would use:
 
         `docker compose --project-directory <dir> --file <dir>/compose.yaml [--file <dir>/compose.override.yaml] [--env-file <dir>/.env] config --no-interpolate --format json`
 
-      - in both forms, the override file is passed when it exists as a regular file, and `.env` when it exists;
+      - in both project-scoped forms, the override file is passed when it exists as a regular file, and `.env` when it exists;
       - the child environment is the CLI's environment minus every variable whose name starts with `COMPOSE_`. When it removes any, the CLI prints `pulse: ignoring COMPOSE_FILE, COMPOSE_PROJECT_NAME from the environment; using project <p> and <dir>/compose.yaml` (names only, never values) to stderr;
       - verified with Docker Compose v2.38.2 in this run: `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE` and `COMPOSE_ENV_FILES` in the environment, and `COMPOSE_PROJECT_NAME` and `COMPOSE_FILE` lines in `.env`, each change the project or the file set of a plain `docker compose`; an explicit `--project-name` and `--file` win over all of them.
     - **Project resolution and guard.** `up`, `down` (with or without `--volumes`) and `status` run these steps, in this order, after the Docker preflight and before any Compose call that creates, stops, removes or reports containers. Any failure exits 1 and names the cause, and no container, network or volume is touched:
@@ -258,7 +263,7 @@ The second plan review found four defects. This revision resolves them:
     - **Docker preflight** (only `up`, `down`, `status`, and `init` when it starts the stack):
       - the `docker` binary is missing (spawn `ENOENT`): `Docker is not installed or not on PATH` and a link to the install docs;
       - `docker version --format '{{.Server.Version}}'` fails: `cannot reach the Docker daemon` and the first stderr line;
-      - `docker compose version --short` fails: `Docker Compose v2 is missing (the docker compose plugin)`;
+      - the preflight version call `docker compose version --short` (the first form of "Invocation" above, not project-scoped) fails: `Docker Compose v2 is missing (the docker compose plugin)`;
       - the version is below 2.23.0 (numeric compare, an optional leading `v` removed): `Docker Compose <v> is older than 2.23`.
       - All four exit 3.
     - **`pulse up [--dir <dir>] [--timeout <s>]`:**
@@ -477,7 +482,8 @@ The api token store change of #561 (spec merged, in flight) is not a dependency.
   - the same override with `name: "${X:-pulse-other_api-data}"`, and with `external: true`: refused at step 3;
   - a volume `pulse-other_api-data` created by hand without labels (`docker volume create pulse-other_api-data`) and a correct install `pulse-other`: refused at step 5, naming that volume, because the declared name is inspected even though the volume carries no project label;
   - a declared volume that does not exist yet: accepted (fresh install before the first `up`);
-  - the resolution call is the only Compose call without `--project-name`: a wrong implementation that drops `--project-name` from every call, or adds it to the resolution call, fails the argument assertions of the tests (with `--project-name` the resolution call would always report the `pulse.json` project, and the `name:` edit above would pass).
+  - the preflight version call comes first and is not project-scoped: a wrong implementation that runs the resolution call before the Docker preflight (so a missing Compose plugin fails as a guard error with exit 1 instead of exit 3), or that adds `--project-directory`, `--project-name` or `--file` to `docker compose version --short`, fails the argument and order assertions of the tests;
+  - the resolution call is the only project-scoped Compose call without `--project-name`: a wrong implementation that drops `--project-name` from every call, or adds it to the resolution call, fails the argument assertions of the tests (with `--project-name` the resolution call would always report the `pulse.json` project, and the `name:` edit above would pass).
 - **Checks:**
   - `type=domain,domain=example.com,interval=30m` is refused (below 1 h);
   - `interval=5s` is refused (below 10 s);
@@ -586,7 +592,7 @@ What each file holds:
 | `cli/tokens.ts` | token and `installId` generation (decision 10, 13) |
 | `cli/write-install.ts` | preflight, lock ownership, backup, atomic write, deferred signals during the write (decisions 11, 12 phase B) |
 | `cli/init.ts` | `pulse init`: the phases of decision 12 in order, and "Start now?" |
-| `cli/docker.ts` | Docker preflight, the two Compose forms (operation prefix and resolution call), the stripped environment, the project resolution and guard with the volume and network name checks (decision 13) |
+| `cli/docker.ts` | Docker preflight with the preflight version call, the two project-scoped Compose forms (operation prefix and resolution call), the stripped environment, the project resolution and guard with the volume and network name checks (decision 13) |
 | `cli/ready.ts`, `cli/lifecycle.ts`, `cli/status.ts` | readiness, `up`, `down`, `status` (decisions 13–14) |
 | `cli/docs.test.ts` | the docs/script equality of the download check (decision 17) |
 | `cli/test/smoke.sh` | the compiled-binary smoke test of `cli-build` |
@@ -779,7 +785,13 @@ Everything in "Decisions" 1–17 and "Required behavior". In particular:
 - **docker/ready/status** with a fake spawn:
   - preflight messages and exit codes;
   - the version compare cases;
-  - the two Compose forms of decision 13, for `up`, `down`, `down --volumes` and `status`: the first spawned Compose call is the resolution call, it is the only Compose call without `--project-name`, and it ends in `config --no-interpolate --format json`; every later Compose call starts with the full operation prefix including `--project-name <pulse.json project>`; in both forms the override file and `.env` appear only when they exist. The expected argument arrays are literals in the test;
+  - the three Compose forms of decision 13, for `up`, `down`, `down --volumes` and `status`:
+    - the first spawned Compose call is the preflight version call, with exactly the arguments `["docker", "compose", "version", "--short"]`; it is the only Compose call before the resolution call and is excluded from the two rules below;
+    - among the project-scoped Compose calls (every Compose call after the preflight version call), the first is the resolution call, it is the only one without `--project-name`, and it ends in `config --no-interpolate --format json`;
+    - every later project-scoped Compose call starts with the full operation prefix including `--project-name <pulse.json project>`;
+    - in both project-scoped forms the override file and `.env` appear only when they exist;
+    - when the fake `docker compose version --short` fails or prints `2.22.0`, the recorded calls end with it: no project-scoped Compose call is spawned, and the exit code is 3;
+    - the expected argument arrays are literals in the test;
   - a child environment without `COMPOSE_*` while other variables (for example `SMTP_PASSWORD`, `DOCKER_HOST`) pass through;
   - the project resolution and guard steps 1–5 and their order: each failing step stops before any `up`, `down` or `ps` call is spawned (the fake spawn records the calls);
   - step 3 names: a resolved config with `volumes.api-data.name: pulse-demo_api-data` for project `pulse-other`, with `name: "${X:-pulse-other_api-data}"`, with `external: true`, and with `networks.default.name: other_default` each exit 1 with the step 3 message, and no `down` is spawned;
@@ -810,7 +822,7 @@ Two runs of `pulse init` differ by design in the tokens, the `installId` (in `pu
 ### Breakdown notes
 
 - Step tasks are checked with `bun test` and the fake spawn only. One exception: `scripts/secrets-init.test.sh` already needs Docker for single `docker run` containers, with no Compose stack (its header, lines 2–3, and the `lint` job step at `deploy/.github/workflows/ci.yml` lines 49–50). It runs locally in a few minutes, so it can stay the acceptance of the task that changes `scripts/secrets-init.mjs`. The jobs that need a live Docker daemon (`cli/test/stack.sh` for `demo`, `full`, `minimal` and `dev`, `cli/test/errors.sh` against the compiled binary, `cli/test/render-variants.sh`), `release.yml`, the security hostile inputs and the PR evidence belong to the final task.
-- Task acceptance that compares two `pulse init` runs uses the methods of "Comparing two init runs", never "equal except some fields". Task acceptance about Compose arguments names the two forms of decision 13 (the resolution call without `--project-name`, the operation prefix with it). Task acceptance about image references uses the fixtures of decision 3; no task acceptance or fixture writes a literal that the no-pin gate matches.
+- Task acceptance that compares two `pulse init` runs uses the methods of "Comparing two init runs", never "equal except some fields". Task acceptance about Compose arguments names the three forms of decision 13: the preflight version call `docker compose version --short` first and without project arguments, then the resolution call without `--project-name`, then the operation prefix with it. Ordering and `--project-name` assertions are scoped to the project-scoped calls after the preflight version call. Task acceptance about image references uses the fixtures of decision 3; no task acceptance or fixture writes a literal that the no-pin gate matches.
 - The section says `Behavior change: yes`. The docs (`docs/cli.md`, `README.md`, `AGENTS.md`, `dev/README.md`) go into the final task with the CI jobs that run their commands ("Without the CLI" in `cli-stack minimal`, the download check in `cli-build`), so no task holds docs alone and every task is a behavior change.
 
 ### Completion evidence
