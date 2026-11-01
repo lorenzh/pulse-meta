@@ -141,10 +141,11 @@ workspaces:
           exclude: [ /.factory/ ]
           pullRequest: { body: "Closes lorenzh/pulse-meta#{issue.id}" }
 
-# One profile per role. Writers (planner, implementer, resolver, auditor) run on Claude, reviewers
-# on Codex, so every review comes from the other model family. Effort follows the work: specs and
-# reviews decide what ships and run at high; implementation follows an approved spec and runs at
-# low; a merge conflict is mechanical. review.md and security.md frame the reviewers adversarially.
+# One profile per role. Each writer is reviewed by the other model family: planner, implementer
+# and auditor run on Claude with Codex reviewers; resolver runs on Codex with a Claude reviewer.
+# Exception (owner decision): breakdown-writer runs on Codex and plan-review is Codex too. Effort
+# follows the work: specs and reviews decide what ships and run at high; implementation follows an
+# approved spec and runs at low. review.md and security.md frame the reviewers adversarially.
 models:
   spec-reviewer:
     harness: codex
