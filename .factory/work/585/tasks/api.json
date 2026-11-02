@@ -5,46 +5,65 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Hosted Bench passes with measured temporary api and notify test CPU floors",
-      "files": ["bench/budgets.json", "bench/README.md"],
+      "title": "Hosted Bench passes with measured budgets and bounded temporary test floors",
+      "files": [
+        "bench/budgets.json",
+        "bench/README.md"
+      ],
       "behaviorChange": true,
-      "spec": "## Repository: api, Preconditions, steps 1-5, Checks and Completion evidence; Required behavior 3-5; Counterexamples (rounding, median, api budget/floor and notify verdicts); Rollout order; Risks; Acceptance evidence 3-4. Keep R1, its derived budget/floor edits, temporary-floor documentation and R2 in this single task. Check merged #617 and merged probe/status children before any change or measurement; hold if missing. Follow every step-2 hold condition and hold on R2 failure without widening values. No release tags, thresholdPct changes or production/harness/CI changes.",
+      "spec": "## Repository: api, Preconditions, Measurement provenance, steps 1-5 including status step 2a, Checks and Completion evidence; Required behavior 3-5; Counterexamples (rounding, median, budget/floor, status normal/fallback and measured SHA); Rollout order; Risks; Acceptance evidence 3-4. Keep R1, derived budget/floor edits, README and R2 together. Before edits or measurements require merged #617 and probe/status children. Use pinned api B and independently bracket other main refs for both runs. Apply all hold rules and the pre-decided bounded status fallback; hold on R2 failure without widening values. Only the two bench files change; no tags, thresholdPct, product, harness, CI or other budget edits.",
       "acceptance": [
         {
           "command": "gh issue view 617 --repo lorenzh/pulse-meta --json state,body,comments && gh pr view <617-api-pr> --repo lorenzh/pulse-api --json mergedAt,mergeCommit && git merge-base --is-ancestor <617-api-merge-sha> origin/main && gh pr view <probe-child-pr> --repo lorenzh/pulse-probe --json mergedAt,mergeCommit && gh pr view <status-child-pr> --repo lorenzh/pulse-status --json mergedAt,mergeCommit",
-          "expected": "Before changing files or starting R1: #617 is CLOSED, its API PR is merged into origin/main (ancestor command exit 0), and both #585 probe/status children are merged into their main branches. Confirm the child merge SHAs are ancestors of their current main heads. If any precondition fails, request needs-input naming it; especially stop if #617 has not merged after probe/status finish."
+          "expected": "Before any file change or R1: #617 is CLOSED, its api PR merged and merge commit an ancestor of current origin/main (exit 0); #585 probe/status PRs are merged into their mains. Confirm the child merges are ancestors of the PRE heads with the compare checks below. If any precondition fails, request needs-input naming it; stop if #617 is still unmerged after probe/status are done. After fan-out a person must link the api child natively blocked by #617; do not rely solely on fan-out dependencies."
         },
         {
-          "command": "gh workflow run bench.yml --repo lorenzh/pulse-api --ref main",
-          "expected": "R1 is a hosted, default-input, 5-round A/B measurement on API main containing #617 and probe/status main containing the child changes. Identify and watch this dispatch, download its bench-out artifact and read table.json and resolved refs. An exit-1 gating failure on api/notify test_cpu_s is expected and supplies the measurements; a harness error is not acceptable. Record R1 run URL and api/notify/probe/status A/B medians from this one run."
+          "command": "API_B=$(git ls-remote https://github.com/lorenzh/pulse-api.git refs/heads/main | cut -f1); gh api \"repos/lorenzh/pulse-api/compare/<617-api-merge-sha>...$API_B\" --jq .status",
+          "expected": "For each run separately, API_B is a fresh full 40-character api main SHA; independent GitHub compare status is ahead or identical, proving it contains #617. Record API_B and status; dispatch with this b input. The workflow checkout head_sha is not the api B worktree SHA."
+        },
+        {
+          "command": "for repo in probe status notify contract kit config; do git ls-remote \"https://github.com/lorenzh/pulse-$repo.git\" refs/heads/main; done",
+          "expected": "Run immediately before each dispatch to record PRE for all six repositories, and immediately after the corresponding run concludes to record POST. Label each SHA by repository and run. Before dispatch, compare probe/status child merge commits to their PRE heads: ahead or identical is required. Validate every PRE/POST pair with the following compare command; record A tags and commits from the run's A log line as well."
+        },
+        {
+          "command": "gh api repos/lorenzh/pulse-<repo>/compare/<PRE>...<POST> --jq .status && gh api repos/lorenzh/pulse-<probe-or-status>/compare/<child-merge-sha>...<PRE> --jq .status && git ls-remote --tags https://github.com/lorenzh/pulse-<repo>.git 'refs/tags/<A-tag>' 'refs/tags/<A-tag>^{}'",
+          "expected": "Repeat for both R1/R2 and every applicable repo. PRE=POST or compare status ahead validates the bracket; probe/status child-to-PRE status must be ahead or identical. If a non-api main advances, record the measured B as bracketed between PRE and POST containing PRE, not as an exact SHA inferred from the main log string. Record each A tag's commit (peeled commit for annotated tags). If any main diverges or goes behind, discard and repeat that run once; a second provenance failure requests needs-input."
+        },
+        {
+          "command": "gh workflow run bench.yml --repo lorenzh/pulse-api --ref main -f b=\"$API_B\"",
+          "expected": "R1 uses api main's harness and existing budgets, pinned api main B containing #617, default A and no others input. Capture the dispatch run ID/URL, watch it and take POST immediately on completion. It supplies five samples per side in one run; known api/notify test_cpu_s failures and the old status 2.4 s budget failure are measurement evidence, not a harness error. The A/B log lines and independent provenance record establish measured revisions."
         },
         {
           "command": "gh run view <R1-run-id> --repo lorenzh/pulse-api --log && gh run download <R1-run-id> --repo lorenzh/pulse-api --name bench-out --dir <R1-artifact-directory>",
-          "expected": "Before edits, R1 shows probe test_cpu_s B at most 2.3 s, status B at most 2.4 s, notify B at most 2.5 s and notify B-A at most 0.6 s. With ceil0.1(x)=Math.ceil(x*10-1e-9)/10, ceil0.1(api A*1.3) is at least api B+0.1 s. No other gating row fails. If any condition fails or the harness errors, request needs-input with the measurements instead of changing other rows or widening the prescribed values."
+          "expected": "Read table.json and samples.json from this independent hosted R1. Record medians (3rd smallest of five, not means or medians across runs), samples, verdicts and provenance. With ceil0.1(x)=Math.ceil(x*10-1e-9)/10, hold with numbers if probe B>2.3, notify B>2.5, notify B-A>0.6, ceil0.1(api A*1.3)<api B+0.1, any other gating row fails, provenance fails twice, or a harness error prevents valid measurements. Never raise probe or any unrelated budget. Status test_cpu_s follows step 2a below instead of the obsolete B>2.4 rule."
         },
         {
-          "command": "git diff --check && git diff --name-only <base-sha> HEAD && git diff <base-sha> HEAD -- bench/budgets.json bench/README.md",
-          "expected": "exit 0; exactly bench/budgets.json and bench/README.md change. notify.test_cpu_s has budget 2.5, unit s, gating true and floor 0.6. api.test_cpu_s keeps unit s and gating true; budget is ceil0.1(R1 api A median*1.3), floor is ceil0.1(R1 api B median-R1 api A median+0.2), using the same independent hosted R1 table.json. For A=3.76/B=4.66 the values are 4.9/1.1, never 6.1. Every other budget entry remains byte-for-byte unchanged; no thresholdPct changes. Under Initial budgets, Temporary test floors documents R1 URL, notify/api A/B medians, formulas/results, accepted notify growth from #588/#594/#605/#607 and API #561/#617 against v0.1.0. It says release tags remain an owner decision and the first API PR after each repo's next v* tag removes that repo's floor and resets its budget from new A*1.3 rounded up to 0.1 s. Contract/config floor text stays unchanged."
+          "command": "node -e 'const fs = require(\"node:fs\"); const rows = JSON.parse(fs.readFileSync(process.argv[1], \"utf8\")); const r = rows.find(r => r.service === \"status\" && r.metric === \"test_cpu_s\"); const ceil = x => Math.ceil(x * 10 - 1e-9) / 10; console.log({ A: r.a, B: r.b, delta: r.b-r.a, L: Math.max(r.a*0.1, 0.2)-0.05, budget: ceil(r.a*1.3), fallbackFloor: ceil(r.b-r.a+0.2) });' <R1-artifact-directory>/table.json",
+          "expected": "Apply step 2a from R1: if status B-A <= L and B+0.1 <= ceil0.1(A*1.3), use the normal budget reset with no floor. If B-A > L, use the pre-decided fallback without a new approval: floor=ceil0.1(B-A+0.2), budget=ceil0.1(A*1.3); hold with status samples if floor>0.5, budget>3.2 or B+0.1>budget. Normal path also holds if budget margin is below 0.1 s. Example A=2.42/B=2.60 gives L=0.192 and no floor; A=2.42/B=2.65 gives budget=3.2 and fallback floor=0.5; B=2.75 exceeds the floor bound and holds. State status fallback floor applied at the top of the PR body when used."
+        },
+        {
+          "command": "git diff --check && git diff --stat <base-sha> HEAD && git diff <base-sha> HEAD -- bench/budgets.json bench/README.md",
+          "expected": "exit 0; exactly bench/budgets.json and bench/README.md change. notify.test_cpu_s is budget 2.5, unit s, gating true, floor 0.6. api.test_cpu_s budget equals ceil0.1(R1 api A*1.3) and floor equals ceil0.1(R1 api B-R1 api A+0.2), retaining unit s and gating true. The rounded budget is both required value and cap; A=3.76/B=4.66 gives 4.9/1.1, not 6.1. status.test_cpu_s budget equals ceil0.1(R1 status A*1.3), retaining unit s and gating true, with no floor on the normal path and only the bounded step-2a floor on fallback. All other budget entries stay byte-for-byte unchanged and no thresholdPct changes. README under Initial budgets adds Temporary test floors with R1 URL, notify/api A/B medians, formulas/results, accepted growth #588/#594/#605/#607 and #561/#617 against v0.1.0, and release tags as an owner decision. The first api PR after the next v* tag of notify/api removes that repo's floor and resets its budget from new A*1.3 rounded up to 0.1 s. Status budget is documented as a permanent normal reset from R1 A because v0.1.0 exceeds 2.4, with arithmetic; only a fallback status floor is temporary with the same removal rule after the next status tag. Contract/config floor text remains unchanged. Security/scope review confirms no product, dependency, Dockerfile, harness or CI change and no release tags."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; repository lint, typecheck and the full test suite pass with the existing coverage gate."
+          "expected": "exit 0; lint, typecheck and the full test suite pass with the existing coverage gate."
         },
         {
           "command": "bun run bench:selftest",
-          "expected": "exit 0; every check-*.ts self-test in the script passes, including check-budgets: ok."
+          "expected": "exit 0; all eight bench/selftest/check-*.ts scripts pass, including check-budgets."
         },
         {
           "command": "docker compose -f bench/compose.bench.yaml config --quiet",
-          "expected": "exit 0; the existing benchmark Compose configuration validates. The full hosted R2 exercises this Compose stack end to end."
+          "expected": "exit 0; existing Compose configuration validates. Hosted R2 runs the full Compose benchmark end to end."
         },
         {
-          "command": "gh workflow run bench.yml --repo lorenzh/pulse-api --ref <pushed-pr-branch>",
-          "expected": "R2 dispatches the pushed PR branch with no a, b or others inputs, using its changed budgets and main for B. Identify/watch this dispatch and inspect its bench-out artifact. Conclusion success, bench exit 0, no harness error, no FAIL row and every gating row ok, including probe B at most 2.3 s and status B at most 2.4 s. If any row fails, including kit, request needs-input with the failing rows; do not widen values beyond the spec."
+          "command": "gh workflow run bench.yml --repo lorenzh/pulse-api --ref <pushed-pr-branch> -f b=\"$API_B\"",
+          "expected": "R2 runs after pushing the two-file change. Repeat all provenance steps with fresh API_B from api main containing #617, fresh PRE/POST and A tag commits; default A and no others input. The workflow uses PR-branch budgets but separately measures pinned api main B. R2 head_sha must equal the branch head containing the new budgets. Concludes success, bench exit 0, every gating row ok, no FAIL row and no harness error; status must also satisfy step 2a's condition for the chosen path. Hold with failing rows/samples on any failure, including kit, without widening values beyond the spec."
         },
         {
-          "command": "gh run view <R2-run-id> --repo lorenzh/pulse-api --json conclusion,url && gh run view <R2-run-id> --repo lorenzh/pulse-api --log && gh run download <R2-run-id> --repo lorenzh/pulse-api --name bench-out --dir <R2-artifact-directory> && gh pr checks <pr-number> --repo lorenzh/pulse-api && gh pr view <pr-number> --repo lorenzh/pulse-api --json body --jq .body",
-          "expected": "R2 conclusion is success and all required PR CI checks pass. PR body gives R1/R2 URLs, resolved API B SHA containing #617 and probe/status B SHAs containing their child merges, a table of A/B medians and verdicts for every R2 test_cpu_s row, arithmetic from R1 for both API values, checks/results and the kit risk (previous B 0.672 s against 0.7 s). It records the post-merge handoff: the person merging verifies the first nightly Bench on API main concludes success with #617 merged, and posts its run URL and test_cpu_s A/B medians on #585. This nightly remains feature acceptance, after the pre-merge R2 check."
+          "command": "gh run view <R2-run-id> --repo lorenzh/pulse-api --json conclusion,url,headSha && gh run view <R2-run-id> --repo lorenzh/pulse-api --log && gh run download <R2-run-id> --repo lorenzh/pulse-api --name bench-out --dir <R2-artifact-directory> && gh pr checks <pr-number> --repo lorenzh/pulse-api && gh pr view <pr-number> --repo lorenzh/pulse-api --json body --jq .body",
+          "expected": "R2 conclusion success, expected branch headSha and passing required PR checks (shared checks, bench-selftest and Docker). PR includes R1/R2 URLs and per-run API_B with its literal B log line and #617 compare status; PRE/POST for all six other repos with compare statuses and child-merge-to-PRE statuses for probe/status; all A tags/commits; R2 head_sha; table of A/B medians/verdicts for every R2 test_cpu_s row; R1 arithmetic for api budget/floor and status budget, normal/fallback decision and fallback arithmetic if used; checks/results and risks. Probe B<=2.3, notify budget/floor 2.5/0.6, other values from independent R1. Note kit's previous B=0.672 against 0.7 and runner variability; no automatic widening after merge. State the post-merge handoff: the person merging verifies the first hosted nightly Bench on api main with #617 merged concludes success and posts its run URL and test_cpu_s A/B medians on #585. This nightly is final feature acceptance after pre-merge R2."
         }
       ]
     }

@@ -5,34 +5,56 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Status keeps startup coverage with three process tests under the CPU limit",
-      "files": ["src/main.startup.test.ts"],
+      "title": "Bad settings avoid the server graph while three startup tests preserve coverage",
+      "files": [
+        "src/upstream-timeout.ts",
+        "src/server.ts",
+        "src/settings.ts",
+        "src/main.startup.test.ts",
+        "docs/development.md"
+      ],
       "behaviorChange": false,
-      "spec": "## Repository: status, all change bullets, Checks and Completion evidence; Performance impact measurement command; Security impact; Counterexamples (status removal and no test.skip); Acceptance evidence 2. Delete only the POLL_MS and http PULSE_STATUS_LOGO process tests, whose in-process twins remain in start.test.ts/settings.test.ts. Retain invalid PULSE_API_URL, occupied PORT and the separate PULSE_LOG_LEVEL catch-path test unchanged; leave production code, budgets and coverage settings unchanged.",
+      "spec": "## Repository: status, Change 1 (leaf module), Change 2 (startup tests and measured cache decision), Checks and Completion evidence; Performance impact (CPU command and Status scale); Security impact; Counterexamples (leaf module, transpiled count, scale, cache and no test.skip); Acceptance evidence 2. Move the two constants and comments unchanged to upstream-timeout.ts, importing only MAX_TIMER_DELAY_MS from pulse-kit. Update server/settings imports, remove the unused kit import and do not re-export from server. Document the module in Code layout. Delete only POLL_MS and http-logo spawns; keep URL, PORT and log-level tests and all their assertions. Measure cache variants after the fix; remove cache setup/env/cleanup and cache-only imports when the no-cache median is at most 0.05 s slower. All messages, exits, limits, served bytes and existing in-process tests remain unchanged.",
       "acceptance": [
         {
           "command": "bun test src/main.startup.test.ts",
-          "expected": "3 pass, 0 fail, 0 skip: invalid PULSE_API_URL, occupied PORT and invalid PULSE_LOG_LEVEL each start one child and retain their exit-2, one-line startup error assertions. The API URL value is not printed. A focused run may fail the full-suite coverage threshold; its test results are the acceptance here."
+          "expected": "3 pass, 0 fail, 0 skip: invalid PULSE_API_URL, occupied PORT and invalid PULSE_LOG_LEVEL each start one child and retain exit 2, empty stdout, one stderr line with the exact existing message/pattern, no stack and URL-secret redaction. Only the POLL_MS and http PULSE_STATUS_LOGO spawns are removed. A focused run may exit nonzero because of the full-suite coverage threshold; accept the test results here."
+        },
+        {
+          "command": "bun test src/settings.test.ts src/start.test.ts src/server.test.ts",
+          "expected": "0 fail, 0 skip; existing tests pass unchanged: upstream timeout 2147481647 is accepted and 2147481648 rejected with the exact message; page data-timeout-ms remains 6000, 3500 and 2147483647 in the specified cases. The in-process POLL_MS=999 and http-logo cases retain their exact error assertions. A focused run may exit nonzero because of the full-suite coverage threshold."
+        },
+        {
+          "command": "grep -n 'server.ts\\|start.ts' src/settings.ts src/upstream-timeout.ts",
+          "expected": "No output, exit 1 (no match). Inspect imports transitively: settings no longer reaches server; the new module imports only MAX_TIMER_DELAY_MS from @lorenzh/pulse-kit, exports BROWSER_TIMEOUT_MARGIN_MS=2000 and MAX_UPSTREAM_TIMEOUT_MS=MAX_TIMER_DELAY_MS-BROWSER_TIMEOUT_MARGIN_MS (2147481647), with no server re-export. docs/development.md Code layout explains this module and why a bad setting avoids server loading."
+        },
+        {
+          "command": "bun -e 'import { mkdtempSync, readdirSync, rmSync } from \"node:fs\"; import { tmpdir } from \"node:os\"; import { join } from \"node:path\"; const cache = mkdtempSync(join(tmpdir(), \"status-bad-setting-\")); try { const p = Bun.spawn([\"bun\", \"src/main.ts\"], { env: { PATH: process.env.PATH ?? \"\", PORT: \"0\", PULSE_API_URL: \"not-a-url-secret\", BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache }, stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; console.log(code, readdirSync(cache, { recursive: true, withFileTypes: true }).filter(f => f.isFile()).length); } finally { rmSync(cache, { recursive: true, force: true }); }'",
+          "expected": "Run once on main and once on branch with Bun 1.4.0, each using its own empty cache. Both children exit 2; branch transpiles at most 10 files. Record actual counts and SHAs in PR; measured plan references are main d352e06: 95 and branch: 3. Above 10 files, the graph fix is not accepted."
+        },
+        {
+          "command": "lscpu && for sample in 1 2 3 4 5; do for repo_dir in <main-checkout> <branch-checkout>; do (cd \"$repo_dir\" && git rev-parse HEAD && bun --version && bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2))'); done; done",
+          "expected": "Five alternating samples per side in the same session, all reporting test exit code 0, with SHAs, CPU model and Bun version. Take the 3rd smallest sample per side. Scaled branch median = branch median * 2.84 / same-session main median, rounded to 0.01 s, must be at most 2.55 s. The independent scale anchor is measurements.md, status after #592, main d352e06 median 2.84 s. Above 2.55 s, request needs-input with all samples; do not cut further tests. Record raw medians, scaling arithmetic and result."
+        },
+        {
+          "command": "for sample in 1 2 3 4 5; do for repo_dir in <fixed-with-cache-checkout> <fixed-without-cache-checkout>; do (cd \"$repo_dir\" && bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2))'); done; done",
+          "expected": "After the leaf fix and two cuts, collect five alternating full-suite CPU samples per cache variant in one session, each test exit code 0. Remove the shared transpiler cache and cache-only imports/setup/env/cleanup if median_without <= median_with + 0.05 s; otherwise retain it. PR includes both sets of samples, medians and decision. Judge the final selected variant with the preceding same-session main/branch scale check."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with 0 fail, 0 skip and line coverage at least 80 %. Existing in-process tests still reject POLL_MS=999 with POLL_MS: must be an integer from 1000 to 2147483647 and an http logo with PULSE_STATUS_LOGO: URL must use https."
+          "expected": "exit 0; lint, typecheck (including e2e) and full tests pass with 0 fail, 0 skip and line coverage at least 80 %. Existing in-process tests, messages and data-timeout-ms assertions are unchanged."
         },
         {
-          "command": "bun run check:a11y",
-          "expected": "exit 0 with Chromium installed as in CI; the accessibility matrix, behavior checks and no-JavaScript checks pass."
+          "command": "bunx playwright install --with-deps chromium && bun run check:a11y",
+          "expected": "exit 0; the existing CI accessibility, behavior and no-JavaScript checks pass with Chromium installed. No e2e files or page bytes change."
         },
         {
-          "command": "git rev-parse HEAD && bun --version && lscpu && for sample in 1 2 3 4 5; do bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2))'; done",
-          "expected": "Run separately on clean main and branch head on the same runner with Bun 1.4.0. Each side supplies 5 samples, each reporting test exit code 0. The branch median (3rd smallest of 5) is at most 2.25 s. If higher, request needs-input with the samples instead of widening scope or budgets. Record both SHAs, CPU model and Bun version."
-        },
-        {
-          "command": "git diff --check && git diff --name-only <base-sha> HEAD && git diff <base-sha> HEAD -- src/main.startup.test.ts",
-          "expected": "exit 0; only src/main.startup.test.ts changes. Exactly the POLL_MS and http PULSE_STATUS_LOGO process tests are deleted; the other 3 remain unchanged. No skipped tests, production code, dependencies, Dockerfiles, CI, budgets or coverage configuration changes."
+          "command": "git diff --check && git diff --name-only <base-sha> HEAD && git diff <base-sha> HEAD -- src/upstream-timeout.ts src/server.ts src/settings.ts src/main.startup.test.ts docs/development.md",
+          "expected": "exit 0; exactly the five Files paths of the status section change. Production edits only move the two constants/comments and redirect imports, with no behavior, message, exit code, limit or served-byte change. Only the two specified startup tests are deleted; retained assertions and in-process tests stay unchanged. Cache deletion follows its measured rule; no test.skip, dependency, Dockerfile, CI, budget or coverage configuration changes. Security review preserves URL redaction and both-stream assertions."
         },
         {
           "command": "gh pr checks <pr-number> --repo lorenzh/pulse-status && gh pr view <pr-number> --repo lorenzh/pulse-status --json body --jq .body",
-          "expected": "All required CI checks pass, including shared lint/typecheck/test, Docker and accessibility checks. The PR body names #585, records the 3 retained tests and in-process coverage for the 2 removals, both SHAs, CPU model, Bun version, 5 CPU samples and median per side, branch median at most 2.25 s, coverage at least 80 %, commands/results and known limits."
+          "expected": "Required CI checks pass, including shared lint/typecheck/test, Docker and a11y. PR names #585 and includes main/branch SHAs, CPU model, Bun version, both transpiled file counts (branch <=10), five alternating CPU samples per side, raw medians and scaled branch median <=2.55 s, cache samples/decision, three retained process tests, in-process twins for both deletions, coverage >=80 %, checks/results and known limits."
         }
       ]
     }
