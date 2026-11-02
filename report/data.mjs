@@ -465,7 +465,7 @@ export function mergeArchive(a, l, now, inWin) {
     const live = l.issueStates?.get(n);
     if (touched.has(n) || !live || live.state !== 'closed' || row.status === 'abgeschlossen') continue;
     const end = t(live.closed_at);
-    rows.set(n, { ...row, status: 'abgeschlossen', end, lead_h: r2((end - atUtc(row.started)) / 3600000) });
+    rows.set(n, { ...row, status: 'abgeschlossen', end, last: Math.max(row.last, end), lead_h: r2((end - atUtc(row.started)) / 3600000) });
   }
   const features = [...rows.values()].sort((x, y) => x.started.localeCompare(y.started));
   const built = features.filter((r) => r.targets > 0);

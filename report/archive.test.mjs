@@ -210,6 +210,9 @@ test('review findings: open PR state, closed archive feature, run record posted 
   // feature 40 has no run after the cut; closing its issue completes it
   const closed = build({ ...live(), issues: [...ISSUES.filter((i) => i.number !== 40), issue(40, '2026-11-28T12:00:00Z')] }, { bot: BOT, now: NOW, archive });
   assert.equal(closed.summary[0].features_done, merged.summary[0].features_done + 1);
+  // the closure is activity in the window: the row shows and counts as done there
+  assert.ok(closed.features.some((f) => f.issue === 40 && f.status === 'abgeschlossen'));
+  assert.equal(closed.summary[0].win_features_done, merged.summary[0].win_features_done + 1);
   // a run that started before the cut and posted its record after it is counted once
   const crossing = record(11, '2026-11-20T00:01:00Z', { cost: 1 });
   const w = { id: 5, display_title: 'Factory run #11 label', run_started_at: '2026-11-19T23:59:00Z', updated_at: '2026-11-20T00:02:00Z', conclusion: 'success' };
