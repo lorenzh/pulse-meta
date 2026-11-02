@@ -149,8 +149,12 @@ export function progress(doc, evs, base = null) {
   evs.forEach((ev, i) => {
     const cur = current();
     if (ev.carried) {
-      if (ev.carried in rejections) carried.set(ev.carried, ev.sha);
-      taskBase = ev.sha;
+      if (ev.carried in rejections) {
+        carried.set(ev.carried, ev.sha);
+        // A line posted after a later task's verdict must not move that task's base back.
+        const after = tasks.slice(tasks.findIndex((t) => t.id === ev.carried) + 1);
+        if (!after.some(done)) taskBase = ev.sha;
+      }
     } else if (ev.reason === 'hold') {
       // A person answers a hold; that answer starts a new budget for the task.
       rejections[cur] = 0;

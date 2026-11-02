@@ -122,6 +122,13 @@ test('an owner task-carried line skips a task without accepting it', () => {
   assert.equal(back.status, 'fix-review');
 });
 
+test('a late task-carried line keeps the base of a later accepted task', () => {
+  const four = doc(step('T1'), step('T2'), step('T3'), final('T4'));
+  const late = { login: 'lorenzh', body: `task-carried: T1 @ ${SHA1}` };
+  const p = progress(four, events([accept('T2', SHA2), late], BOT, 'lorenzh'), 'base0');
+  assert.deepEqual([p.next, p.taskBase], ['T3', SHA2]);
+});
+
 test('the verdict is the last verdict line; a short sha does not accept', () => {
   const msg = `earlier: task-rejected: T1 was wrong\ntask-rejected: T1\nnow fixed\ntask-accepted: T1 @ ${SHA1}`;
   assert.equal(status(three, [run('task-review', 'transition', ['implement'], msg)]).next, 'T2');
