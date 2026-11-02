@@ -106,6 +106,22 @@ test('App mode keeps task acceptances and rejections from the old bot', () => {
   assert.equal(events([{ ...legacy, login: 'another-app[bot]' }], BOT).length, 0);
 });
 
+test('an owner task-carried line skips a task without accepting it', () => {
+  const six = doc(step('T1'), step('T2'), step('T3'), final('T4'));
+  const line = { login: 'lorenzh', body: `Lead decision.\ntask-carried: T1 @ ${SHA1}\ntask-carried: T2 @ ${SHA2}` };
+  const run_ = (cs) => progress(six, events(cs, BOT, 'lorenzh'), 'base0');
+  const p = run_([line]);
+  assert.deepEqual([p.status, p.next, p.taskBase, p.accepted, p.carried],
+    ['open', 'T3', SHA2, {}, { T1: SHA1, T2: SHA2 }]);
+  assert.deepEqual(run_([{ ...line, login: 'stranger' }]).carried, {});
+  assert.deepEqual(run_([{ ...line, login: BOT }]).carried, {});
+  assert.equal(run_([line, toTaskReview, reject('T3')]).status, 'fix-task');
+  const done = run_([line, toTaskReview, accept('T3', SHA1)]);
+  assert.deepEqual([done.status, done.next, Object.keys(done.accepted), done.open], ['final', 'T4', ['T3'], []]);
+  const back = run_([line, toTaskReview, accept('T3', SHA1), run('review', 'transition', ['implement'])]);
+  assert.equal(back.status, 'fix-review');
+});
+
 test('the verdict is the last verdict line; a short sha does not accept', () => {
   const msg = `earlier: task-rejected: T1 was wrong\ntask-rejected: T1\nnow fixed\ntask-accepted: T1 @ ${SHA1}`;
   assert.equal(status(three, [run('task-review', 'transition', ['implement'], msg)]).next, 'T2');

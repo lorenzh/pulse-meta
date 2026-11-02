@@ -22,6 +22,7 @@ export const MAX_RETRIES = 2; // more retries of one task make it stuck
 const TASK_KEYS = ['id', 'kind', 'title', 'files', 'behaviorChange', 'acceptance', 'spec'];
 const RECORD = /<!-- factory-record v3 (\{.*\}) -->/;
 const VERDICT = /^task-(accepted|rejected): (T[1-9]\d*)(?: @ ([0-9a-f]{40}))?\s*$/;
+const CARRIED = /^task-carried: (T[1-9]\d*) @ ([0-9a-f]{40})\s*$/gm; // the owner's line for a task whose records GitHub hides
 
 const isText = (v) => typeof v === 'string' && v.trim() !== '';
 
@@ -106,9 +107,10 @@ export function checkDir(dir) {
 }
 
 /** Parses the bot's run comments of the build workflow into events, oldest first. */
-export function events(comments, author) {
+export function events(comments, author, owner = null) {
   const out = [];
   for (const c of comments) {
+    if (c.login === owner) for (const m of (c.body ?? '').matchAll(CARRIED)) out.push({ carried: m[1], sha: m[2] });
     if (c.login !== author && c.login !== 'lorenzh-factory-bot') continue; // anyone can comment; only the bot writes run records
     const m = RECORD.exec(c.body ?? '');
     if (!m) continue;
@@ -135,16 +137,21 @@ export function progress(doc, evs, base = null) {
   const tasks = doc.tasks;
   const final = tasks.at(-1).id;
   const accepted = new Map();
+  const carried = new Map(); // no visible acceptance: skipped by the loop, reported, never counted as accepted
   const rejected = new Set(); // the newest verdict of the task was a rejection
   const rejections = Object.fromEntries(tasks.map((t) => [t.id, 0]));
   const retries = Object.fromEntries(tasks.map((t) => [t.id, 0]));
   let taskBase = base;
   let lastToReview = -1;
   let lastReviewBack = -1;
-  const current = () => tasks.find((t) => t.kind === 'step' && !accepted.has(t.id))?.id ?? final;
+  const done = (t) => accepted.has(t.id) || carried.has(t.id);
+  const current = () => tasks.find((t) => t.kind === 'step' && !done(t))?.id ?? final;
   evs.forEach((ev, i) => {
     const cur = current();
-    if (ev.reason === 'hold') {
+    if (ev.carried) {
+      if (ev.carried in rejections) carried.set(ev.carried, ev.sha);
+      taskBase = ev.sha;
+    } else if (ev.reason === 'hold') {
       // A person answers a hold; that answer starts a new budget for the task.
       rejections[cur] = 0;
       retries[cur] = 0;
@@ -174,8 +181,9 @@ export function progress(doc, evs, base = null) {
     taskBase,
     rejections: rejections[next],
     retries: retries[next],
-    open: tasks.filter((t) => t.kind === 'step' && !accepted.has(t.id)).map((t) => t.id),
+    open: tasks.filter((t) => t.kind === 'step' && !done(t)).map((t) => t.id),
     accepted: Object.fromEntries(accepted),
+    carried: Object.fromEntries(carried),
   };
 }
 
@@ -220,7 +228,7 @@ function main(argv) {
   const comments = gh(['api', '--paginate', `repos/${o.repo}/issues/${o.issue}/comments?per_page=100`,
     '--jq', '.[] | {login: .user.login, body} | @json'])
     .split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  const result = progress(doc, events(comments, author), o.base ?? null);
+  const result = progress(doc, events(comments, author, o.repo.split('/')[0]), o.base ?? null);
   console.log(JSON.stringify({ status: result.status, feature: Number(feature), file, ...result }, null, 2));
   return 0;
 }
