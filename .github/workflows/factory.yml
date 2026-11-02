@@ -8,15 +8,36 @@ permissions: {}
 
 jobs:
   admit:
-    if: ${{ startsWith(github.event.label.name, 'factory/') && github.event.sender.login != vars.FACTORY_GITHUB_ACTOR }}
+    if: ${{ startsWith(github.event.label.name, 'factory/') && github.event.sender.login != vars.FACTORY_GITHUB_ACTOR && github.event.sender.login != 'lorenzh-factory-bot' }}
     runs-on: ubuntu-24.04
     permissions:
       actions: write
       issues: write
     steps:
+      - name: Create the Factory App token
+        if: ${{ vars.FACTORY_APP_ID != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
+
       - name: Start a factory run
         env:
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
           FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
           FACTORY_SENDER: ${{ github.event.sender.login }}
           FACTORY_ACTION: ${{ github.event.action }}
@@ -25,8 +46,8 @@ jobs:
           FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           [[ -n "$FACTORY_GITHUB_ACTOR" ]] || { echo "::error::Set the repository variable FACTORY_GITHUB_ACTOR to the login of the Factory bot account." >&2; exit 1; }
-          if [[ "$FACTORY_SENDER" == "$FACTORY_GITHUB_ACTOR" ]]; then echo "Ignoring an event of the Factory bot."; exit 0; fi
-          [[ -n "$GH_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
+          if [[ "$FACTORY_SENDER" == "$FACTORY_GITHUB_ACTOR" || "$FACTORY_SENDER" == lorenzh-factory-bot ]]; then echo "Ignoring an event of the Factory bot."; exit 0; fi
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Configure FACTORY_APP_ID and FACTORY_APP_PRIVATE_KEY, or the fallback FACTORY_GITHUB_TOKEN." >&2; exit 1; }
           state='^factory/[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$'
           status='^factory/[a-z0-9][a-z0-9-]*/status/[a-z0-9][a-z0-9-]*$'
           admit=false

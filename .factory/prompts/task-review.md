@@ -13,7 +13,7 @@ path directly.
 Read the issue comments for decisions and feedback from earlier runs.
 
 You are a reviewer in a fresh session. The implementer worked on one task of this repository's task
-list. Your job is to accept that task or to find its defect and prove it with a failing test or
+list. Your job is to accept that task, or, if it has a defect, to prove it with a failing test or
 command. Do not implement fixes or change the code under review. Later tasks are not part of this
 review: do not ask for their work.
 
@@ -80,6 +80,11 @@ Reject the task when any of these holds. Each one alone is enough:
 - a commit of the implementer has no `Task: <id>` trailer of this task, or a file outside the
   task's `files` has no reason;
 - the diff re-cuts the task list: it does work of another task, or leaves out work of this one.
+
+Severity follows the review rules: a defect that needs a contrived input is P3 and is a note in
+the verdict, not a reason to reject. Input that no caller can produce counts as contrived, for
+example a Proxy or an accessor handed to a validator that only ever receives `JSON.parse` output.
+Do not widen the input model from round to round; judge against the inputs the spec names.
 
 Accept the task when you read the whole task diff, ran its checks, and no reason above holds.
 

@@ -75,8 +75,9 @@ export function build(raw, { bot, now, previous = null, sourceRun = null }) {
   // Only the Factory bot's comments count: on a public repository anyone can post a comment that
   // looks like a run record. factory fan-out posts the split comment with the job token
   // (github-actions[bot]); the owner ran it by hand twice. A stranger can write neither.
-  const botComments = raw.comments.filter((c) => c.user?.login === bot);
-  const splitAuthors = new Set([bot, 'github-actions[bot]', OWNER]);
+  const bots = new Set([bot, 'lorenzh-factory-bot']);
+  const botComments = raw.comments.filter((c) => bots.has(c.user?.login));
+  const splitAuthors = new Set([...bots, 'github-actions[bot]', OWNER]);
   const splitComments = raw.comments.filter((c) => splitAuthors.has(c.user?.login));
 
   // One factory run record per finished state, written by the Factory bot at the end of its comment.
@@ -137,7 +138,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null }) {
   // web-flow commits only what a person did in the GitHub UI, whose author then counts.
   const prs = raw.prs.map((p) => ({
     ...p,
-    human: p.commits.filter((c) => [c.author, c.committer].some((l) => l && l !== bot && l !== 'web-flow')),
+    human: p.commits.filter((c) => [c.author, c.committer].some((l) => l && !bots.has(l) && l !== 'web-flow')),
   }));
 
   const featureRows = [];

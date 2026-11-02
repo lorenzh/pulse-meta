@@ -54,15 +54,36 @@ jobs:
           fi
           echo "Using @paragondata/factory-cli $installed."
 
+      - name: Create the Factory App token
+        if: ${{ vars.FACTORY_APP_ID != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
+
       - name: Follow the closed issue
         env:
           # The bot's token: GitHub starts no workflow for an event of the job token, and a feature
           # that this step closes must start the unblock of the issues that wait for it.
-          GH_TOKEN: ${{ secrets.FACTORY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
           FACTORY_ISSUE: ${{ github.event.issue.number }}
           FACTORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          [[ -n "$GH_TOKEN" ]] || { echo "::error::Set the repository secret FACTORY_GITHUB_TOKEN to a personal access token of the Factory bot account." >&2; exit 1; }
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::Configure FACTORY_APP_ID and FACTORY_APP_PRIVATE_KEY, or the fallback FACTORY_GITHUB_TOKEN." >&2; exit 1; }
           [[ "$FACTORY_ISSUE" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "Not a canonical issue number: $FACTORY_ISSUE" >&2; exit 1; }
           result="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js unblock --issue "$FACTORY_ISSUE" --apply)"
           printf '%s\n' "$result"

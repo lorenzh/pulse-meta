@@ -434,5 +434,6 @@ check "pr check: a base without check.mjs checks nothing" "::notice::The base co
 mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
 # The task loop: scripts/factory-tasks.mjs and the timeout restart of factory-run.yml.
 source "$here/task-loop.sh"
+source "$here/app-token.sh" || fail=1
 
 exit "$fail"

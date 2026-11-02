@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build, fingerprint } from './data.mjs';
 
-const BOT = 'lorenzh-factory-bot';
+const BOT = 'pulse-factory[bot]';
 const NOW = Date.parse('2026-11-30T12:00:00Z');
 let id = 0;
 const record = ({ issue, wf = 'build', state = 'implement', harness = 'claude', model = 'implementer', cost, next = [], reason = 'transition', run, user = BOT, total = 1000 }) => ({
@@ -72,6 +72,19 @@ test('a commit is human only when an account other than the bot made it', () => 
   assert.equal(d.summary[0].prs_human, 1);
   assert.deepEqual(d.human_fixes.map((h) => [h.pr, h.sha]), [['pulse-api#7', 'bbbbbbb']]);
   assert.equal(d.features[0].human_fixes, 1);
+});
+
+test('App mode keeps the old bot records, splits and commits, but rejects strangers', () => {
+  const r = raw();
+  r.comments = r.comments.map((c, i) => i % 2 === 0 && c.user.login === BOT
+    ? { ...c, user: { login: 'lorenzh-factory-bot' } } : c);
+  r.comments[0].user.login = 'lorenzh-factory-bot';
+  r.prs[0].commits.push({ sha: 'e'.repeat(40), author: 'lorenzh-factory-bot', committer: BOT });
+  const d = build(r, { bot: BOT, now: NOW });
+  assert.equal(d.summary[0].runs, 5);
+  assert.equal(d.summary[0].features, 1);
+  assert.equal(d.human_fixes.length, 1);
+  assert.equal(d.meta.bot, BOT);
 });
 
 test('the window keeps detail tables to 30 days, all-time totals stay in summary', () => {

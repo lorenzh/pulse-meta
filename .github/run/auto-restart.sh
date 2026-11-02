@@ -14,14 +14,14 @@ grep -qx '  code: HARNESS_TIMEOUT' "$FACTORY_RUN_ERR" 2> /dev/null || { echo "No
 comments="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$issue/comments?per_page=100" \
   --jq '.[] | {login: .user.login, body} | @json')"
 state="$(jq -rs --arg bot "$FACTORY_GITHUB_ACTOR" --arg run "$FACTORY_RUN_ID" '
-  def rec: select(.login == $bot) | (.body | capture("<!-- factory-record v3 (?<r>\\{.*\\}) -->").r | fromjson?) // empty;
+  def rec: select(.login == $bot or .login == "lorenzh-factory-bot") | (.body | capture("<!-- factory-record v3 (?<r>\\{.*\\}) -->").r | fromjson?) // empty;
   [.[] | rec | (.claim // .) | select(.run == $run) | "\(.workflow)/\(.state)"] | last // empty' <<< "$comments")"
 [[ -n "$state" ]] || { echo "No claim of run $FACTORY_RUN_ID."; exit 0; }
 
 marker="<!-- pulse-factory-auto-restart $state -->"
 again="$(jq -rs --arg bot "$FACTORY_GITHUB_ACTOR" --arg marker "$marker" --arg state "$state" '
-  def rec: select(.login == $bot) | (.body | capture("<!-- factory-record v3 (?<r>\\{.*\\}) -->").r | fromjson?) // empty;
-  (to_entries | map(select(.value.login == $bot and (.value.body | contains($marker))) | .key) | last) as $m
+  def rec: select(.login == $bot or .login == "lorenzh-factory-bot") | (.body | capture("<!-- factory-record v3 (?<r>\\{.*\\}) -->").r | fromjson?) // empty;
+  (to_entries | map(select((.value.login == $bot or .value.login == "lorenzh-factory-bot") and (.value.body | contains($marker))) | .key) | last) as $m
   | if $m == null then "no"
     elif [.[$m + 1:][] | rec | select(.kind == "run" and "\(.claim.workflow)/\(.claim.state)" == $state)] | length > 0 then "no"
     else "yes" end' <<< "$comments")"
