@@ -171,8 +171,9 @@ Transports:
 
 ## Acceptance evidence
 
-Every regression test below fails on probe `271401b` and passes after the change. The implementer
-shows the red run (test output against unchanged `src/`) and the green run in the PR.
+Every regression test below fails on probe `271401b` and passes after the change, except the
+cases marked "control", which pass on both and guard against a wrong fix. The implementer shows
+the red run (test output against unchanged `src/`) and the green run in the PR.
 Expected values are literals in the test.
 
 1. Retry: table test for `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` with `retries: 3`,
@@ -201,22 +202,51 @@ Expected values are literals in the test.
    aborted. Removal and `stop`: signal aborted.
 5b. Retry wait: a GET check with `retries: 2` whose signal aborts during `sleep`: 1 fetch call
    in total.
-5c. Shutdown already happened: with an aborted signal, default `tcpConnect` against a loopback
-   server on port 0 accepts no connection (server `connection` count 0); default
-   `resolveRecords` against a loopback UDP DNS fake receives no query; default `tlsConnect`
-   against a loopback TLS server receives no connection; HTTP and domain fake `fetch` gets 0
-   calls; guarded `tlsConnect` calls neither `lookup` nor the inner `tlsConnect`.
-5d. Abort in flight: aborting during a TCP connect and a TLS handshake to a loopback server
-   that never answers settles the promise within the test and leaves no abort listener on the
-   signal; the guarded TLS passes an aborted signal to the inner `tlsConnect`.
+5c. Shutdown already happened (red): the signal is aborted with a `reason` object before the
+   call. Default `tcpConnect` against a loopback server on port 0 rejects with that `reason`
+   (identity) and, counted after the server's `close` callback, the server saw 0 connections
+   (on `271401b` it connects and resolves); default `resolveRecords` against a loopback UDP
+   DNS fake rejects and the fake received 0 queries; default `tlsConnect` (with the new
+   `signal` option) against a loopback TLS server rejects and the server saw 0 connections;
+   `runCheck` for HTTP and domain with the aborted signal makes 0 fake `fetch` calls; guarded `tlsConnect` with host `example.test` (a name, so a lookup would be needed)
+   calls neither the fake `lookup` nor the inner `tlsConnect`.
+5d. Abort in flight. Each case uses a fixed cancellation point, a timeout of 60000 ms (so only
+   the abort, not the timeout, can settle it inside bun's default 5 s test limit) and these
+   assertions: the promise rejects with the exact `reason` object passed to `abort` (identity,
+   `toBe`); afterwards `getEventListeners(signal, "abort")` from `node:events` has length 0
+   (works on Bun 1.4.0 for `AbortSignal`); and the loopback server's `close` callback fires
+   within the test, which needs every accepted connection to be closed by the client.
+   - TCP (control): a `node:net` server on `127.0.0.1` port 0. The test calls default
+     `tcpConnect` with a live signal and calls `controller.abort(reason)` synchronously in the
+     same tick, before awaiting. No I/O event (`connect`, `error`) can be delivered before the
+     abort, so the abort always lands before the `connect` event, whatever the kernel does.
+     Also assert no `connect` resolution: the promise rejects. (A silent listening server is
+     not a cancellation point for TCP: the kernel completes the connection without the
+     server's help.) This passes on `271401b` too; it guards the new entry check against
+     breaking the in-flight path.
+   - TLS (red): a plain `node:net` server (not TLS) on `127.0.0.1` port 0 that accepts the
+     socket and never writes, so the TLS handshake stays pending (pattern of
+     `src/tls.test.ts:145`). The test calls default `tlsConnect` with `signal`, waits for the
+     server's `connection` event, then aborts. Expected as above, plus the server-side socket
+     emits `close`. On `271401b` there is no `signal` option, so the promise stays pending
+     until the 60 s timeout and the test fails.
+   - Guarded TLS (red): `createCheckGuard` (`src/check-guard.ts:35`) for host `example.test`,
+     with a fake `lookup` returning a public address (`93.184.216.34`), stub `fetch`,
+     `tcpConnect`, `resolve`, a fake `monotonic`, and a fake inner `tlsConnect` that records
+     its options and stays pending until its `signal` aborts. Abort the outer signal after the inner call is recorded:
+     the recorded `options.signal.aborted` is `true` and the outer promise rejects.
 5e. Domain: two domain checks share one pending bootstrap; aborting the first check's run signal
    ends only the first run; the second gets its result; aborting `shutdown` aborts the shared
    bootstrap fetch.
 6. Gates: `bun install --frozen-lockfile`, `bun run check`, probe CI (`check` and both `docker`
    legs) green on the PR.
-7. Run once: `bun run start` against a fake api with two checks of equal interval and one check
-   with an unset header env, reload twice: log shows one skip line and the two first results at
-   different times; report the command and log excerpt.
+7. Run once (observational, required by probe `AGENTS.md`, not a pass/fail gate for jitter):
+   `bun run start` against a fake api with two checks of equal interval and one check with an
+   unset header env, reload twice. Pass condition: exactly one skip line for that check in the
+   whole log (literal count 1), and both other checks post results. Report the command, the log
+   excerpt and the first-result time of each check as observed. The two first-result times may
+   be equal, because the delays are sampled independently; the jitter itself is proven only by
+   the deterministic injected-random assertions of item 3.
 8. Compose E2E with the candidate image (deploy stays unchanged):
    ```
    docker build --tag pulse-probe:candidate <probe checkout>
@@ -224,10 +254,18 @@ Expected values are literals in the test.
    # in /tmp/deploy-557/common/services.yaml, set only the probe service's image to pulse-probe:candidate
    cd /tmp/deploy-557 && scripts/init-secrets.sh && bash e2e/compose-e2e.sh
    ```
-   Expected: the last line is `==> All checks passed` (the script's own literal) and
-   `docker compose -p pulse-e2e ps` during the run shows image `pulse-probe:candidate` for the
-   probe. Record the probe commit, the candidate image ID and the deploy commit. A run of the
-   unchanged published pins does not count.
+   Capture the output with `bash e2e/compose-e2e.sh 2>&1 | tee /tmp/e2e-557.log` and
+   `echo "${PIPESTATUS[0]}"`. Expected (literals from the script, not from the probe):
+   - exit status `0`;
+   - the log contains the line `==> All checks passed` (printed by `step "All checks passed"`,
+     `.repos/deploy/e2e/compose-e2e.sh:679`, via `step` at `:42`);
+   - that line comes before the line `==> Teardown`, which the `EXIT` trap prints afterwards
+     (`:77`, trap at `:87`), so `==> Teardown` is normally the last marker, not a failure;
+   - the log contains no line starting with `==> Failure` (`:63`) or `FAIL:` (`:43`).
+   The trap turns a failed `docker compose down` after a green run into exit 1 (`:78-79`), so
+   exit `0` covers the teardown too. `docker compose -p pulse-e2e ps` during the run shows image
+   `pulse-probe:candidate` for the probe. Record the probe commit, the candidate image ID and
+   the deploy commit. A run of the unchanged published pins does not count.
 
 ## Performance impact
 
@@ -369,7 +407,8 @@ injected `random`/timers, never deleted. No real timers or external network; loo
 `127.0.0.1` port 0, closed after the test.
 
 Completion evidence: `bun install --frozen-lockfile` and `bun run check` pass locally; probe CI
-`check` and both `docker` legs green; the `bun run start` exercise (evidence 7) reported in the PR;
-the candidate-image Compose E2E (evidence 8) ending with `==> All checks passed`, with the probe
+`check` and both `docker` legs green; the `bun run start` exercise (evidence 7) reported in the PR
+with its single skip line; the candidate-image Compose E2E (evidence 8) with exit status 0,
+`==> All checks passed` before `==> Teardown` and no `==> Failure`/`FAIL:` line, with the probe
 commit, image ID and deploy commit recorded; `test_cpu_s` before/after medians reported and below
 2.3 s.
