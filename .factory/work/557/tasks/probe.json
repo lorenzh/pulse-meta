@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Only GET and HEAD HTTP checks retry and buffer age cannot exceed seven days",
+      "files": [
+        "src/check.ts",
+        "src/check.test.ts",
+        "src/settings.ts",
+        "src/settings.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe; Required behavior 1-2; Acceptance evidence 1-2; retry and buffer-age counterexamples, configured-method security rule and rollout risk. Decide eligibility from the original HTTP method, including omitted GET, before redirect handling. POST, PUT, PATCH, DELETE and OPTIONS make one attempt without sleep; TCP/DNS/domain retries, TLS single-attempt behavior and GET/HEAD budgets stay intact. Set kit readMs max to 604800000 inclusive, retain the default 3600000 and the existing StartupError/exit-2 path. Update, rather than weaken, the existing old-maximum test; keep buffer.ts and its strict timestamp boundary unchanged. Update README and the configuration/operation pages for both changes, including both retry sections, the side-effect warning, new age range and breaking limit. Capture the regressions' red output against unchanged 271401b source and green output; exempt the specified controls from red failure.",
+      "acceptance": [
+        {
+          "command": "bun test src/check.test.ts src/check.tcp.test.ts src/check.dns.test.ts src/check.domain.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). With retries 3 and retryDelayMs 10, each excluded method has 1 fetch, 0 sleeps and attempts 1; GET, HEAD and omitted method have 4 fetches, 3 sleep(10) calls and attempts 4. POST -> 303 -> GET -> 500 has 2 fetches and attempts 1. Existing early-success, retry-budget and non-HTTP retry controls pass. Red evidence against 271401b demonstrates the excluded-method and redirected-POST regressions."
+        },
+        {
+          "command": "bun test src/settings.test.ts src/buffer.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). loadSettings accepts 604800000 and returns 604800000; 604800001 throws StartupError with the exact message 'PULSE_BUFFER_MAX_AGE_MS: must be an integer from 1 to 604800000'; unset returns 3600000. Values 0, 7d and 2147483647 are rejected. Existing timestamp-based buffer expiry tests pass. Red evidence against 271401b shows rejection of 604800001 fails before the fix."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 0.8 line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Repeated reloads log each skipped check only once",
+      "files": [
+        "src/client.ts",
+        "src/client.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe; Required behavior 4; Acceptance evidence 4; skip counterexamples and log-secret checklist. Deduplicate both skip paths by check ID in a WeakMap keyed by logger identity, with one shared fallback key for ID-less records. Preserve validation and header resolution on every load, recovery, heartbeat silence and header-host denial logging. An ID remains quiet after recovery or a change in rejection reason; different loggers start fresh. Keep dedup keys free of raw records and secrets. Update README and the two specified docs. Capture red output against unchanged 271401b source and green output.",
+      "acceptance": [
+        {
+          "command": "bun test src/client.test.ts src/client.http-options.test.ts src/client.probed-types.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). Initial load plus 2 reloads with bad, hdr, an ID-less invalid record and ok produce exactly 3 skip lines, and return ok on all 3 loads. hdr is returned after env recovery; rejecting it again or rejecting the same ID through the other skip path adds 0 lines. A new logger produces 3 skip lines again. Reordering preserves the ID scope; ID-less records share 1 warning. Header sentinel occurrences in logs: 0. Heartbeat and header-host denial controls pass. Red evidence against 271401b shows repeated skip lines."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 0.8 line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Every check transport and retry wait honours cancellation",
+      "files": [
+        "src/check.ts",
+        "src/check-tcp.ts",
+        "src/check-dns.ts",
+        "src/check-domain.ts",
+        "src/check-guard.ts",
+        "src/check-scheduler.ts",
+        "src/main.ts",
+        "src/check.test.ts",
+        "src/check.tcp.test.ts",
+        "src/check.dns.resolver.test.ts",
+        "src/check.domain.test.ts",
+        "src/check-guard.test.ts",
+        "src/tls.test.ts",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe; Required behavior 5, Check run and Transports; Acceptance evidence 5b-5e; transport-cleanup and shared-bootstrap risks. Prepare the run-signal API before T4 supplies entry signals. Add abortable sleep and wire node:timers/promises in main; check cancellation before work, around retry waits and before HTTP hops. Pass TlsConnectOptions.signal through default and guarded TLS without changing timeout budgets, SNI or address policy. TCP/DNS entry cancellation creates no socket/Resolver. Separate CheckDeps/DomainDeps.shutdown from per-run signal; check-scheduler passes the process signal as shutdown now, and T4 combines the run signals. Update existing domain shutdown fixtures to supply shutdown explicitly, preserving their assertions and cleanup, so this task is green independently. Shared bootstrap uses only shutdown; individual waiters cancel independently and an already-aborted run never initiates refresh. Capture red/green evidence for 5b-5e, retaining the TCP in-flight control. Use the exact corrected deterministic cancellation points and cleanup assertions of 5c/5d; no external network or wall-clock polling. Update README for cancellation support; schedule replacement documentation belongs to T4.",
+      "acceptance": [
+        {
+          "command": "bun test src/check.test.ts src/check.tcp.test.ts src/check.dns.resolver.test.ts src/check.domain.test.ts src/check-guard.test.ts src/tls.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). Aborting GET during retry sleep gives exactly 1 fetch. Pre-aborted default TCP/DNS/TLS reject with the identical reason and produce 0 connections/queries; HTTP/domain make 0 fetches; guarded TLS makes 0 lookup and inner-connect calls. With fixture timeoutMs 60000, every active type's pre-aborted run returns down with 'timeout after 60000ms'. For 5d, timeoutMs is 60000: TCP aborts synchronously before any connect event (control); default TLS aborts after a silent plain-net server accepts; guarded TLS aborts after its fake inner call is recorded. Each rejects with the identical reason; abort-listener count is 0 afterwards; applicable loopback server close callbacks and accepted TLS socket close fire within the test. Guarded inner options.signal.aborted is true. The 2 domain checks share 1 pending bootstrap; aborting one waiter ends only that run, the other receives its result, and shutdown aborts the shared fetch. Red evidence against 271401b is recorded for the regression cases, with controls explicitly identified."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 0.8 line coverage, including existing domain shutdown and single-flight controls"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "New checks start with bounded jitter and changed runs abort without overlap",
+      "files": [
+        "src/scheduler.ts",
+        "src/check-scheduler.ts",
+        "src/main.ts",
+        "src/scheduler.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe; Required behavior 3 and 5, Scheduler; Acceptance evidence 3, 5a and all completion evidence 6-8; Performance impact, Security impact, Rollout order and Counterexamples. Consume T3's abort-capable run API. Give each scheduler entry an AbortController; abort on replacement/removal/stop, combine its signal with process shutdown for runCheck and pass shutdown separately. Suppress expected cancellation errors and obsolete results. A replacement waits for both its sampled delay and the old in-flight run to settle; equal sync preserves its entry/timer. Implement first-run timer jitter with injected random, bounded/clamped as specified, one sample per new entry; main supplies Math.random via check-scheduler. Keep interval-from-previous-start and no-overlap through onResult. Update existing immediate-run tests with injected zero random and explicit timer advance, retaining the real-child-process main test. Update README and Schedule docs together. Capture red/green evidence for 3 and 5a against unchanged 271401b source. Final handoff collects T1-T3 evidence, all whole-change gates, runtime observation, candidate Compose evidence, CPU medians and security checklist in the PR body. Any topic test splits permitted by the section must be included in the test commands and evidence.",
+      "acceptance": [
+        {
+          "command": "bun test src/scheduler.test.ts src/main.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). For interval 60000 and random samples 0, 0.5, 0.999: 0 synchronous runs; first runs at 0 (advance(0)), 500, 999 and second runs at 60000, 60500, 60999. Interval 200 with 0.999 starts at 199; interval 1 starts at 0. Invalid random values still yield whole delays from 0 through bound-1. Equal sync retains the timer handle and makes 0 new random calls; changed sync resamples; removal/stop before first run leave 0 pending timers and 0 runs. Changing an in-flight check aborts the old signal, drops its result, makes 0 onError calls and runs the new check only after the old run settles and its jitter elapses. Equal sync does not abort; removal/stop do. Slow runs and result handlers do not overlap. The real child-process test still passes without stubbing randomness. Red evidence against 271401b is recorded for jitter and changed-run cancellation."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0; existing dependency pins and lockfile remain unchanged"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 0.8 line coverage; all Acceptance evidence 1-5e regressions and specified controls pass"
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "exit 0; probe CI check and both docker matrix legs (ubuntu-24.04 and ubuntu-24.04-arm) succeed, including dotenv exclusion, 0 image test files and the healthcheck checks from .github/workflows/ci.yml"
+        },
+        {
+          "command": "PULSE_CHECKS_RELOAD_MS=5000 bun run start",
+          "expected": "In the fake-api setup of Acceptance evidence 7, 2 equal-interval runnable checks both post results; the unset-header check produces exactly 1 skip line across initial load and 2 reloads. PR evidence includes the command, log excerpt and both observed first-result times. Equal observed times are permitted; jitter is proved by the deterministic tests."
+        },
+        {
+          "command": "docker build --tag pulse-probe:candidate .",
+          "expected": "exit 0; record the candidate image ID and probe commit for Acceptance evidence 8"
+        },
+        {
+          "command": "bash -c 'cd /tmp/deploy-557 && scripts/init-secrets.sh && { bash e2e/compose-e2e.sh 2>&1 | tee /tmp/e2e-557.log; e2e_status=${PIPESTATUS[0]}; printf \"compose-e2e exit: %s\\n\" \"$e2e_status\"; exit \"$e2e_status\"; }'",
+          "expected": "After preparing the throwaway deploy copy exactly as Acceptance evidence 8 specifies, changing only its probe image to pulse-probe:candidate, script status is 0 (including teardown). Log contains '==> All checks passed' before '==> Teardown', with 0 lines starting '==> Failure' or 'FAIL:'. PR records probe commit, image ID, deploy commit and captured output. Read-only deploy clone remains unchanged; a run of published probe pins does not count."
+        },
+        {
+          "command": "cd /tmp/deploy-557 && COMPOSE_FILE=full/compose.yaml:e2e/compose.e2e.yaml docker compose -p pulse-e2e ps",
+          "expected": "During the Compose run, probe image is pulse-probe:candidate; preserve this output with the image ID evidence"
+        },
+        {
+          "command": "for cpu_run in 1 2 3; do /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "exit 0 when run in each of an unchanged 271401b checkout and the candidate checkout. PR reports both 3-run medians of user+system CPU seconds and their comparison; candidate test_cpu_s is below 2.3 s, the independent probe budget in .repos/api/bench/budgets.json named by Performance impact."
+        },
+        {
+          "command": "git diff 271401b -- src README.md docs && gh pr view --json body",
+          "expected": "Review and PR evidence satisfy the plan's Security impact checklist: 0 header-value sentinel leaks, IDs/variable names only in skip diagnostics and dedup keys, settings validation through kit, original-method retry decision, guarded TLS address validation and unchanged redirect/SNI/timeout rules. Cover the specified changing-ID, ID-less-flood, CR/LF header and POST -> 303 -> GET hostile inputs. PR includes red/green regression output (controls identified), local/CI gates, runtime log and times, candidate Compose identities and markers, CPU medians, and the one-repository rollout/breaking-limit notes requested by Completion evidence and Risks."
+        }
+      ]
+    }
+  ]
+}
