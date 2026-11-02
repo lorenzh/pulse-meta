@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Probe preserves startup coverage with eight process tests within the CPU limit",
+      "files": [
+        "src/main.test.ts",
+        "src/token.test.ts"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: probe, all change bullets, Checks and Completion evidence; Performance impact; Security impact (yes: input validation and secrets in errors/logs, including hostile-input evidence); Counterexamples (probe removal and no test.skip); Acceptance evidence 1. Delete the 14 specified duplicate spawn cases and preserve the eight specified process tests. Add the in-process EISDIR case through startupMessage. Add the explicit stdout tok-secret absence assertion to the retained PULSE_API_URL test, retaining its stderr assertion. Keep the invalid UTF-8 token-file process test and its real readFileSync path and both-stream redaction checks. Map each removed test to its in-process twin, preserving validation, exact messages and secret absence. No production, budget, dependency, CI or coverage changes.",
+      "acceptance": [
+        {
+          "command": "bun test src/main.test.ts",
+          "expected": "8 pass, 0 fail, 0 skip; eight children, one per remaining test: bad PULSE_API_URL, occupied health port, SIGTERM, healthz/metrics/shutdown, token-file success, ENOENT, invalid UTF-8 token content, and private-ranges end-to-end. The bad-setting test asserts exit 2, one error line naming PULSE_API_URL and no tok-secret in stdout or stderr. The invalid UTF-8 test keeps exit 2, one sanitized error line and no SENTINEL in either stream. A focused run may exit nonzero because of the full-suite coverage threshold; accept the test results here."
+        },
+        {
+          "command": "bun test src/token.test.ts",
+          "expected": "0 fail, 0 skip; the added failingReader(new FakeFsError(message containing SENTINEL, EISDIR)) case with PULSE_PROBE_TOKEN_FILE=/dir gives exactly PULSE_PROBE_TOKEN_FILE=/dir: cannot read (EISDIR) through startupMessage, with no SENTINEL. All existing token cases pass. A focused run may exit nonzero because of the full-suite coverage threshold."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import { mkdtempSync, writeFileSync, rmSync } from \"node:fs\"; import { tmpdir } from \"node:os\"; import { join } from \"node:path\"; const dir = mkdtempSync(join(tmpdir(), \"probe-security-\")); const marker = \"tok-sentinel-481\"; try { const file = join(dir, \"token\"); writeFileSync(file, Buffer.concat([Buffer.from(marker), Buffer.from([0xff, 0xfe])])); for (const env of [{ PULSE_PROBE_TOKEN: marker, PULSE_API_URL: \"not-a-url-secret\" }, { PULSE_PROBE_TOKEN_FILE: file }]) { const p = Bun.spawn([\"bun\", \"src/main.ts\"], { env: { PATH: process.env.PATH ?? \"\", ...env }, stdout: \"pipe\", stderr: \"pipe\" }); const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]); assert.equal(code, 2); assert.equal(err.trimEnd().split(\"\\n\").length, 1); assert.ok(err.startsWith(\"pulse-probe: \")); for (const text of [out, err]) { assert.ok(!text.includes(marker)); assert.ok(!text.includes(\"not-a-url-secret\")); } } console.log(\"2 sanitized startup failures\"); } finally { rmSync(dir, { recursive: true, force: true }); }'",
+          "expected": "exit 0; prints 2 sanitized startup failures. Security impact is yes: unchanged token/settings validators reject hostile inputs; real startup exits 2 with one sanitized error line, and neither stdout nor stderr contains the token-file marker, token marker or invalid PULSE_API_URL value. Record this security check and the deleted-test/in-process-twin mapping in the PR. Other security checklist items are not applicable for the reasons in Security impact."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and full tests pass with 0 fail, 0 skip and line coverage at least 80 %."
+        },
+        {
+          "command": "git rev-parse HEAD && bun --version && lscpu && for sample in 1 2 3 4 5; do bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2))'; done",
+          "expected": "Run on clean main 8260148 (or current main) and on branch head, on the same EPYC 7763-class runner with Bun 1.4.0. Record both SHAs, CPU model, Bun version and 5 samples per side, all with test exit code 0. The branch median (3rd smallest of 5) must be at most 2.20 s. Above 2.20 s, request needs-input with the samples instead of cutting more tests or raising a budget."
+        },
+        {
+          "command": "git diff --check && git diff --name-only <base-sha> HEAD && git diff <base-sha> HEAD -- src/main.test.ts src/token.test.ts",
+          "expected": "exit 0; only src/main.test.ts and src/token.test.ts change. Exactly 14 specified duplicate process tests are deleted, no test.skip is introduced, and the EISDIR in-process case and bad-setting stdout assertion are added. The six specified single process tests and the two retained loop entries keep all prior assertions. Removed assertions remain covered by the in-process twins named in the spec. Security review confirms token content is absent from both output streams; production, dependencies, Dockerfiles, CI, budgets and coverage settings are unchanged."
+        },
+        {
+          "command": "gh pr checks <pr-number> --repo lorenzh/pulse-probe && gh pr view <pr-number> --repo lorenzh/pulse-probe --json body --jq .body",
+          "expected": "Required CI checks pass, including shared lint/typecheck/test and Docker. The PR names #585, lists the eight retained spawns and every deleted test with its in-process twin (file:line), gives both SHAs, CPU model, Bun version, 5 CPU samples and median per side, branch median at most 2.20 s, coverage at least 80 %, checks/results and known limits."
+        }
+      ]
+    }
+  ]
+}
