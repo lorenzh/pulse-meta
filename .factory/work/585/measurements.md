@@ -1,5 +1,5 @@
 # #585 plan: measurements (2026-11-02)
-<!-- Second plan run: see "status after #592" below. The earlier status numbers are for 0a4768d. -->
+<!-- Second plan run: see "status after #592" below. The earlier status numbers are for 0a4768d. Third plan run: see "status import fix". -->
 
 
 Evidence that the `plan` state collected before its `needs-input` hold. A later `plan` run can reuse it, but should re-check the SHAs, because the repositories may have moved on.
@@ -61,6 +61,34 @@ Status `main` moved from `0a4768d` to `d352e06` (pulse-status PR #63, #592 laten
 - #592 also gave the children a shared transpiler cache (`src/main.startup.test.ts:16-28`). Since then, the first child pays for the transpile (about 0.3 s) and every further child costs about 0.1 s. So each removed spawn now saves less than the 0.16 s measured on `0a4768d`.
 - Per-file CPU (`bun test ./src/<file>`, each with its own process start): `main.startup.test.ts` 0.70, `server.hidden-checks.test.ts` 0.69, `server.syndication.test.ts` 0.48, `server.privacy.test.ts` 0.46, `server.test.ts` 0.46, `server.page-weight.test.ts` 0.46, `server.cache.test.ts` 0.45 s.
 - Result: with any cut that keeps a process-level test, status stays above its 2.4 s budget (2.53 s at best). Only removing every spawn test gets under it (2.24 s, a 0.16 s margin). Against hosted A `v0.1.0` 2.42 s, the regression limit is max(0.242, 0.2) = 0.242 s. So 2.84 s fails as a regression, while 2.65 s (+0.23) and 2.53 s (+0.11) pass that rule and fail only the budget.
+
+### status import fix (third plan run, 2026-11-02)
+
+Same CPU model (AMD EPYC 7763, 4 vCPU) and Bun 1.4.0, on a fresh copy of `d352e06` after `bun install --frozen-lockfile`. This runner was about 10 % slower than the one in the second run: it measured `main` at 3.13 s, not 2.84 s.
+
+Variants:
+- **fix**: `BROWSER_TIMEOUT_MARGIN_MS` and `MAX_UPSTREAM_TIMEOUT_MS` are moved from `src/server.ts:74-77` to a new `src/upstream-timeout.ts` that imports only `MAX_TIMER_DELAY_MS` from `@lorenzh/pulse-kit`. `src/settings.ts:11` imports from it. The POLL_MS and `PULSE_STATUS_LOGO` spawn tests are removed, and the shared transpiler cache stays.
+- **fix, no cache**: the same, with the transpiler cache removed from `src/main.startup.test.ts`.
+
+One bad-setting child (`PORT=0`, `PULSE_API_URL=not-a-url-secret`, exit 2), with an empty `BUN_RUNTIME_TRANSPILER_CACHE_PATH`. The file count is taken after each run, and CPU is user + system from `resourceUsage()`:
+
+| Variant | Files in the cache | CPU cold / warm / warm (s) |
+| --- | --- | --- |
+| `main` `d352e06` | 95 | 0.181 / 0.119 / 0.118 |
+| fix | 3 | 0.048 / 0.045 / 0.045 |
+
+Full `bun run test` CPU. There were two sessions of 5 samples per variant, run in the order main, fix, no cache, main, fix, no cache. All runs exited 0.
+
+| Variant | Session 1 | Median | Session 2 | Median |
+| --- | --- | --- | --- | --- |
+| `main` | 3.15 3.14 3.07 3.13 3.14 | 3.14 | 3.12 3.09 3.04 3.13 3.16 | 3.12 |
+| fix | 2.72 2.72 2.74 2.72 2.75 | 2.72 | 2.64 2.64 2.64 2.65 2.66 | 2.64 |
+| fix, no cache | 2.64 2.62 2.60 2.77 2.70 | 2.64 | 2.67 2.67 2.62 2.72 2.68 | 2.67 |
+
+- On the plan's scale (× 2.84 / `main` median of the same session), fix is 2.72 × 2.84 / 3.14 = 2.46 s and 2.64 × 2.84 / 3.12 = 2.40 s. Both are under the owner's 2.55 s limit.
+- The cache saves nothing measurable after the fix: no cache 2.64 / 2.67 s against 2.72 / 2.64 s.
+- fix: `bun test` gave 474 pass, 0 fail, and 97.52 % function and 98.51 % line coverage (All files). `tsc --noEmit` passed for both variants. Biome is clean apart from a blank line my scratch edit left in the no-cache variant.
+- Hosted estimate: status B ≈ 2.84 × 0.86 ≈ 2.44 s against A `v0.1.0` 2.42 s, so B − A ≈ 0.02 s. The api task's status limit is 0.192 s, and the new budget is round-up-0.1(2.42 × 1.3) = 3.2.
 
 ## notify: regression against v0.1.0 (not named in #585)
 
