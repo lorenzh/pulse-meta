@@ -351,8 +351,12 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
       firstRun: runs.length ? new Date(firstRun).toISOString() : null,
     }, now, inWin);
   }
-  // Change since the last merged report, from its all-time numbers.
-  const prev = previous?.summary?.[0] ?? null;
+  // Change since the last merged report, from its all-time numbers. A report built while GitHub
+  // hid the old bot's records holds live numbers only (no meta.carry), so it is no base: the
+  // newest whole report is the archive.
+  const partial = archive && previous && !previous.meta?.carry && t(previous.meta?.as_of) > t(archive.meta.as_of);
+  const base = partial ? archive : previous;
+  const prev = base?.summary?.[0] ?? null;
   for (const k of ['runs', 'usd', 'features_done', 'prs_merged', 'prs_human', 'holds', 'review_back', 'plan_back', 'actions_failed', 'runs_cost_unknown']) {
     out.summary[`d_${k}`] = prev && typeof prev[k] === 'number' && typeof out.summary[k] === 'number' ? r2(out.summary[k] - prev[k]) : null;
   }
@@ -361,7 +365,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
     meta: {
       schema: 2,
       as_of: new Date(now).toISOString(),
-      previous_as_of: previous?.meta?.as_of ?? null,
+      previous_as_of: base?.meta?.as_of ?? null,
       source_run: sourceRun,
       fingerprint: fingerprint(out.summary),
       bot,

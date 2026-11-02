@@ -191,3 +191,13 @@ test('case study: archive case runs join only when the merged pick is the archiv
     assert.equal(d.case.length, caseRuns, name);
   }
 });
+
+test('a live-only previous report is no base for the deltas: the archive is', () => {
+  const partial = { meta: { as_of: '2026-11-22T00:00:00.000Z' }, summary: [{ runs: 2, usd: 1 }] };
+  const d = build(live(), { bot: BOT, now: NOW, archive, previous: partial });
+  assert.equal(d.summary[0].d_runs, d.summary[0].runs - archive.summary[0].runs);
+  assert.equal(d.meta.previous_as_of, archive.meta.as_of);
+  const whole = build(live(), { bot: BOT, now: NOW, archive, previous: merged });
+  assert.equal(whole.meta.previous_as_of, merged.meta.as_of);
+  assert.equal(whole.summary[0].d_runs, 0);
+});
