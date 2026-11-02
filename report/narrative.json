@@ -62,7 +62,7 @@
     {
       "id": "F2",
       "title": "Bekannte Kosten sind unvollständig",
-      "text": "{runs_cost_unknown|int} von {runs|int} Läufen melden keine Kosten, davon {d_runs_cost_unknown|int} seit dem Archivstand; build/review hat die meisten davon. Von {tokens_m|dec1} M Tokens entfallen {tokens_m_codex|dec1} M auf Codex, dessen Kosten in keiner Summe stehen. Die bekannten Kosten betragen {usd|usd}, im Median {feature_usd_median|usd} pro Feature und {pr_usd|usd} pro PR."
+      "text": "{runs_cost_unknown|int} von {runs|int} Läufen melden keine Kosten, davon {d_runs_cost_unknown|int} seit dem Archivstand; build/review hat die meisten davon. Von {tokens_m|dec1} M Tokens entfallen {tokens_m_codex|dec1} M auf Codex, dessen Kosten in keiner Summe stehen. Die bekannten Kosten betragen {usd|usd}; pro Feature liegt der Median bei {feature_usd_median|usd}. Die bekannten Gesamtkosten geteilt durch die Zahl der PRs ergeben {pr_usd|usd} pro PR."
     },
     {
       "id": "F3",
