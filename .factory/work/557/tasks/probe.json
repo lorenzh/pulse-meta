@@ -5,31 +5,10 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Only configured GET and HEAD HTTP checks retry",
+      "title": "Only GET and HEAD HTTP checks retry and buffer age cannot exceed seven days",
       "files": [
         "src/check.ts",
         "src/check.test.ts",
-        "README.md",
-        "docs/configuration.md"
-      ],
-      "behaviorChange": true,
-      "spec": "## Repository: probe; Required behavior 1; Acceptance evidence 1; retry counterexamples and the configured-method security rule. Decide eligibility from the original HTTP method, including omitted GET, before redirect handling. POST, PUT, PATCH, DELETE and OPTIONS make one attempt without sleep; TCP/DNS/domain retries, TLS single-attempt behavior and GET/HEAD budgets stay intact. Update README and both configuration sections, including the side-effect warning. Capture the regression's red output against unchanged 271401b source and green output; exempt the specified controls from red failure.",
-      "acceptance": [
-        {
-          "command": "bun test src/check.test.ts src/check.tcp.test.ts src/check.dns.test.ts src/check.domain.test.ts",
-          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). With retries 3 and retryDelayMs 10, each excluded method has 1 fetch, 0 sleeps and attempts 1; GET, HEAD and omitted method have 4 fetches, 3 sleep(10) calls and attempts 4. POST -> 303 -> GET -> 500 has 2 fetches and attempts 1. Existing early-success, retry-budget and non-HTTP retry controls pass. Red evidence against 271401b demonstrates the excluded-method and redirected-POST regressions."
-        },
-        {
-          "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 0.8 line coverage"
-        }
-      ]
-    },
-    {
-      "id": "T2",
-      "kind": "step",
-      "title": "Buffer max age accepts at most seven days",
-      "files": [
         "src/settings.ts",
         "src/settings.test.ts",
         "README.md",
@@ -37,8 +16,12 @@
         "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: probe; Required behavior 2; Acceptance evidence 2; buffer-age counterexamples and rollout risk. Set kit readMs max to 604800000 inclusive, retain the default 3600000 and the existing StartupError/exit-2 path. Update, rather than weaken, the existing old-maximum test. Document the new range and breaking limit in README and the configuration/operation pages. Keep buffer.ts and its strict timestamp boundary unchanged. Capture red regression output against unchanged 271401b source and green output.",
+      "spec": "## Repository: probe; Required behavior 1-2; Acceptance evidence 1-2; retry and buffer-age counterexamples, configured-method security rule and rollout risk. Decide eligibility from the original HTTP method, including omitted GET, before redirect handling. POST, PUT, PATCH, DELETE and OPTIONS make one attempt without sleep; TCP/DNS/domain retries, TLS single-attempt behavior and GET/HEAD budgets stay intact. Set kit readMs max to 604800000 inclusive, retain the default 3600000 and the existing StartupError/exit-2 path. Update, rather than weaken, the existing old-maximum test; keep buffer.ts and its strict timestamp boundary unchanged. Update README and the configuration/operation pages for both changes, including both retry sections, the side-effect warning, new age range and breaking limit. Capture the regressions' red output against unchanged 271401b source and green output; exempt the specified controls from red failure.",
       "acceptance": [
+        {
+          "command": "bun test src/check.test.ts src/check.tcp.test.ts src/check.dns.test.ts src/check.domain.test.ts",
+          "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). With retries 3 and retryDelayMs 10, each excluded method has 1 fetch, 0 sleeps and attempts 1; GET, HEAD and omitted method have 4 fetches, 3 sleep(10) calls and attempts 4. POST -> 303 -> GET -> 500 has 2 fetches and attempts 1. Existing early-success, retry-budget and non-HTTP retry controls pass. Red evidence against 271401b demonstrates the excluded-method and redirected-POST regressions."
+        },
         {
           "command": "bun test src/settings.test.ts src/buffer.test.ts",
           "expected": "0 fail in the selected tests (a focused run may fail only the coverage threshold). loadSettings accepts 604800000 and returns 604800000; 604800001 throws StartupError with the exact message 'PULSE_BUFFER_MAX_AGE_MS: must be an integer from 1 to 604800000'; unset returns 3600000. Values 0, 7d and 2147483647 are rejected. Existing timestamp-based buffer expiry tests pass. Red evidence against 271401b shows rejection of 604800001 fails before the fix."
@@ -50,7 +33,7 @@
       ]
     },
     {
-      "id": "T3",
+      "id": "T2",
       "kind": "step",
       "title": "Repeated reloads log each skipped check only once",
       "files": [
@@ -74,7 +57,7 @@
       ]
     },
     {
-      "id": "T4",
+      "id": "T3",
       "kind": "step",
       "title": "Every check transport and retry wait honours cancellation",
       "files": [
@@ -94,7 +77,7 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: probe; Required behavior 5, Check run and Transports; Acceptance evidence 5b-5e; transport-cleanup and shared-bootstrap risks. Prepare the run-signal API before T5 supplies entry signals. Add abortable sleep and wire node:timers/promises in main; check cancellation before work, around retry waits and before HTTP hops. Pass TlsConnectOptions.signal through default and guarded TLS without changing timeout budgets, SNI or address policy. TCP/DNS entry cancellation creates no socket/Resolver. Separate CheckDeps/DomainDeps.shutdown from per-run signal; check-scheduler passes the process signal as shutdown now, and T5 combines the run signals. Update existing domain shutdown fixtures to supply shutdown explicitly, preserving their assertions and cleanup, so this task is green independently. Shared bootstrap uses only shutdown; individual waiters cancel independently and an already-aborted run never initiates refresh. Capture red/green evidence for 5b-5e, retaining the TCP in-flight control. Use the exact corrected deterministic cancellation points and cleanup assertions of 5c/5d; no external network or wall-clock polling. Update README for cancellation support; schedule replacement documentation belongs to T5.",
+      "spec": "## Repository: probe; Required behavior 5, Check run and Transports; Acceptance evidence 5b-5e; transport-cleanup and shared-bootstrap risks. Prepare the run-signal API before T4 supplies entry signals. Add abortable sleep and wire node:timers/promises in main; check cancellation before work, around retry waits and before HTTP hops. Pass TlsConnectOptions.signal through default and guarded TLS without changing timeout budgets, SNI or address policy. TCP/DNS entry cancellation creates no socket/Resolver. Separate CheckDeps/DomainDeps.shutdown from per-run signal; check-scheduler passes the process signal as shutdown now, and T4 combines the run signals. Update existing domain shutdown fixtures to supply shutdown explicitly, preserving their assertions and cleanup, so this task is green independently. Shared bootstrap uses only shutdown; individual waiters cancel independently and an already-aborted run never initiates refresh. Capture red/green evidence for 5b-5e, retaining the TCP in-flight control. Use the exact corrected deterministic cancellation points and cleanup assertions of 5c/5d; no external network or wall-clock polling. Update README for cancellation support; schedule replacement documentation belongs to T4.",
       "acceptance": [
         {
           "command": "bun test src/check.test.ts src/check.tcp.test.ts src/check.dns.resolver.test.ts src/check.domain.test.ts src/check-guard.test.ts src/tls.test.ts",
@@ -107,7 +90,7 @@
       ]
     },
     {
-      "id": "T5",
+      "id": "T4",
       "kind": "final",
       "title": "New checks start with bounded jitter and changed runs abort without overlap",
       "files": [
@@ -119,7 +102,7 @@
         "docs/configuration.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: probe; Required behavior 3 and 5, Scheduler; Acceptance evidence 3, 5a and all completion evidence 6-8; Performance impact, Security impact, Rollout order and Counterexamples. Consume T4's abort-capable run API. Give each scheduler entry an AbortController; abort on replacement/removal/stop, combine its signal with process shutdown for runCheck and pass shutdown separately. Suppress expected cancellation errors and obsolete results. A replacement waits for both its sampled delay and the old in-flight run to settle; equal sync preserves its entry/timer. Implement first-run timer jitter with injected random, bounded/clamped as specified, one sample per new entry; main supplies Math.random via check-scheduler. Keep interval-from-previous-start and no-overlap through onResult. Update existing immediate-run tests with injected zero random and explicit timer advance, retaining the real-child-process main test. Update README and Schedule docs together. Capture red/green evidence for 3 and 5a against unchanged 271401b source. Final handoff collects T1-T4 evidence, all whole-change gates, runtime observation, candidate Compose evidence, CPU medians and security checklist in the PR body. Any topic test splits permitted by the section must be included in the test commands and evidence.",
+      "spec": "## Repository: probe; Required behavior 3 and 5, Scheduler; Acceptance evidence 3, 5a and all completion evidence 6-8; Performance impact, Security impact, Rollout order and Counterexamples. Consume T3's abort-capable run API. Give each scheduler entry an AbortController; abort on replacement/removal/stop, combine its signal with process shutdown for runCheck and pass shutdown separately. Suppress expected cancellation errors and obsolete results. A replacement waits for both its sampled delay and the old in-flight run to settle; equal sync preserves its entry/timer. Implement first-run timer jitter with injected random, bounded/clamped as specified, one sample per new entry; main supplies Math.random via check-scheduler. Keep interval-from-previous-start and no-overlap through onResult. Update existing immediate-run tests with injected zero random and explicit timer advance, retaining the real-child-process main test. Update README and Schedule docs together. Capture red/green evidence for 3 and 5a against unchanged 271401b source. Final handoff collects T1-T3 evidence, all whole-change gates, runtime observation, candidate Compose evidence, CPU medians and security checklist in the PR body. Any topic test splits permitted by the section must be included in the test commands and evidence.",
       "acceptance": [
         {
           "command": "bun test src/scheduler.test.ts src/main.test.ts",
