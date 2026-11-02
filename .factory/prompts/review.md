@@ -30,6 +30,12 @@ If the spec or the section is missing, request a hold with status `needs-input`.
    `no-task-file` means a spec without a task list: review as before. If the script exits with an
    error, request a hold with status `needs-input` and quote the error.
 {{/if}}
+0a. The script's `carried` map names step tasks whose task review GitHub hides after an account
+   suspension. It is not an acceptance. For each entry not in `accepted`: run every acceptance
+   command of its task-file entry at HEAD and compare with `expected`; repeat the mutation step
+   from the task's start commit (the SHA of the task before it, or the base) to its SHA; check
+   its `Task:` trailers, that its SHA is on this branch, and that its diff matches its `spec`.
+   Name each task and its result in the outcome. A failure is a finding for that task.
 1. Read the whole diff against the base line by line (`git diff {{workspace.baseCommit}}`),
    source and tests, against the issue and the spec section. Do not rely on the implementation
    report. Check that the change adds no `.factory/` files to this repository.
