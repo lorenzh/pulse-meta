@@ -127,7 +127,9 @@ Owner setup:
 6. Set the pulse-meta Actions variable `FACTORY_APP_ID` to the numeric App ID to enable App mode.
 7. Start a short issue with `factory-run.yml`. Check comment attribution, PR checks and continuation.
 
-To return to PAT mode, clear `FACTORY_APP_ID` and restore the PAT login in `FACTORY_GITHUB_ACTOR`.
+`runtime.recordAuthor` holds the same login without `[bot]`, for Factory Manager and local commands.
+
+To return to PAT mode, clear `FACTORY_APP_ID`, restore the PAT login in `FACTORY_GITHUB_ACTOR` and set `runtime.recordAuthor` to it.
 The PAT must still be valid.
 
 The pinned `actions/create-github-app-token` v2.2.2 mints repository-scoped tokens and revokes them after the job.
