@@ -131,11 +131,13 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
       tok: usage.total ?? 0,
       cached: usage.cached ?? 0,
       start: w ? w.run_started_at : c.created_at,
+      rec: c.created_at,
       dur: w ? (t(w.updated_at) - t(w.run_started_at)) / 60000 : 0,
     });
   }
   const isReport = (r) => r.wf === 'report' || reportIssues.has(r.n);
-  const liveRuns = allRuns.filter((r) => afterCut(r.start));
+  // The archive holds the records written up to its as_of; a run that started earlier but posted its record later is live.
+  const liveRuns = allRuns.filter((r) => afterCut(r.rec));
   const reportRuns = liveRuns.filter(isReport);
   const runs = liveRuns.filter((r) => !isReport(r));
 
@@ -303,7 +305,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
     issues_open: [...issues.values()].filter((i) => i.state === 'open').length,
     prs: prs.length,
     prs_merged: mergedPrs.length,
-    prs_open: prs.filter((p) => p.state === 'open').length,
+    prs_open: raw.prs.filter((p) => p.state === 'open').length, // a state, not accounting: every visible PR
     prs_human: prs.filter((p) => p.human.length).length,
     human_share: ratio(prs.filter((p) => p.human.length).length, prs.length),
     first_pass: ratio(prs.filter((p) => !p.human.length).length, prs.length),
@@ -344,6 +346,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
     out = mergeArchive(archive, {
       ...out,
       featureRows,
+      issueStates: new Map([...issues].map(([n, i]) => [n, { state: i.state, closed_at: i.closed_at }])),
       allEvents,
       runRows: runs.map(caseRowOf),
       cached: sum(runs.map((r) => r.cached)),
@@ -455,6 +458,14 @@ export function mergeArchive(a, l, now, inWin) {
       human_fixes: o.human_fixes + f.human_fixes,
       started,
     });
+  }
+  // An archive feature without a new run can still have been closed since: take that from the issue.
+  const touched = new Set(l.featureRows.map((f) => f.issue));
+  for (const [n, row] of rows) {
+    const live = l.issueStates?.get(n);
+    if (touched.has(n) || !live || live.state !== 'closed' || row.status === 'abgeschlossen') continue;
+    const end = t(live.closed_at);
+    rows.set(n, { ...row, status: 'abgeschlossen', end, lead_h: r2((end - atUtc(row.started)) / 3600000) });
   }
   const features = [...rows.values()].sort((x, y) => x.started.localeCompare(y.started));
   const built = features.filter((r) => r.targets > 0);

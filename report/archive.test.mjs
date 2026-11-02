@@ -201,3 +201,18 @@ test('a live-only previous report is no base for the deltas: the archive is', ()
   assert.equal(whole.meta.previous_as_of, merged.meta.as_of);
   assert.equal(whole.summary[0].d_runs, 0);
 });
+
+test('review findings: open PR state, closed archive feature, run record posted after the cut', () => {
+  // an open PR created before the cut is a live state, not accounting
+  const open = { ...pr('api', 9, 11, '2026-11-19T12:00:00Z', null, false), state: 'open' };
+  assert.equal(build({ ...live(), prs: [...NEW_PRS, open] }, { bot: BOT, now: NOW, archive }).summary[0].prs_open, merged.summary[0].prs_open + 1);
+  assert.equal(merged.summary[0].prs, build({ ...live(), prs: [...NEW_PRS, open] }, { bot: BOT, now: NOW, archive }).summary[0].prs);
+  // feature 40 has no run after the cut; closing its issue completes it
+  const closed = build({ ...live(), issues: [...ISSUES.filter((i) => i.number !== 40), issue(40, '2026-11-28T12:00:00Z')] }, { bot: BOT, now: NOW, archive });
+  assert.equal(closed.summary[0].features_done, merged.summary[0].features_done + 1);
+  // a run that started before the cut and posted its record after it is counted once
+  const crossing = record(11, '2026-11-20T00:01:00Z', { cost: 1 });
+  const w = { id: 5, display_title: 'Factory run #11 label', run_started_at: '2026-11-19T23:59:00Z', updated_at: '2026-11-20T00:02:00Z', conclusion: 'success' };
+  const c = build({ ...live(), comments: [...live().comments, crossing], wruns: [...WRUNS, w] }, { bot: BOT, now: NOW, archive });
+  assert.equal(c.summary[0].runs, merged.summary[0].runs + 1);
+});
