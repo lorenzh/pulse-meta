@@ -16,7 +16,7 @@ A child works through its task list one task per agent run, so that no run has t
 
 **Task lists.** `breakdown` (`.factory/prompts/breakdown.md`, profile `breakdown-writer`) writes `.factory/work/<feature>/tasks/<target>.json` for every entry of `targets.json`: 1 to 8 tasks `T1`..`Tn`, the last one `kind: "final"`. Each task has `title`, `files`, `behaviorChange`, `spec` (the part of the section it implements), and `acceptance` (`command` and `expected`, a literal or an independent source). A change in one file or under about 200 changed lines is one task; tests go with their code; the final task holds the whole-change checks (compose end-to-end test, security checklist, pull request evidence). A small section is only its final task, and runs as before. `plan-review` runs `node scripts/factory-tasks.mjs --check <work dir>` (one file per target, the schema, every `Files:` path in a task), checks the cut, and sends spec defects to `plan` and task defects to `breakdown`. The task file never changes after the merge. `implement` may change other files than a task lists when the code needs it, with the reason in the commit; moving work between tasks needs a `needs-input` hold.
 
-**Progress.** No file holds a done flag: a child cannot commit `.factory/`, and its meta clone is read-only. `scripts/factory-tasks.mjs --issue <child> --target <target> --base <sha>` (Node, no dependencies) derives the progress from the run comments of the issue, counting only comments of the bot (`FACTORY_GITHUB_ACTOR`, or the login of the `gh` token) and the historical `lorenzh-factory-bot` account with a run record: a `task-review` transition whose message ends with `task-accepted: Tn @ <sha>` or `task-rejected: Tn`, `implement` retries and holds, and send-backs of `review` and `security`. Each implement commit ends with the trailer `Task: Tn`. The script prints `status`, the task `next`, its `taskBase` (the commit of the newest acceptance, or the branch base), and its `rejections` and `retries`:
+**Progress.** No file holds a done flag: a child cannot commit `.factory/`, and its meta clone is read-only. `scripts/factory-tasks.mjs --issue <child> --target <target> --base <sha>` (Node, no dependencies) derives the progress from the run comments of the issue, counting only comments of the bot (`FACTORY_GITHUB_ACTOR`, or the login of the `gh` token) and the historical `lorenzh-factory-bot` account with a run record: a `task-review` transition whose message ends with `task-accepted: Tn @ <sha>` or `task-rejected: Tn`, `implement` retries and holds, and send-backs of `review` and `security`. Each implement commit ends with the trailer `Task: Tn`. An owner comment line `task-carried: Tn @ <sha>` skips a task whose records GitHub hides after an account suspension. It is not an acceptance: the script lists it under `carried`, and `review` re-runs its checks. The script prints `status`, the task `next`, its `taskBase` (the commit of the newest acceptance, or the branch base), and its `rejections` and `retries`:
 
 | `status` | `implement` does | then |
 |---|---|---|
@@ -127,7 +127,9 @@ Owner setup:
 6. Set the pulse-meta Actions variable `FACTORY_APP_ID` to the numeric App ID to enable App mode.
 7. Start a short issue with `factory-run.yml`. Check comment attribution, PR checks and continuation.
 
-To return to PAT mode, clear `FACTORY_APP_ID` and restore the PAT login in `FACTORY_GITHUB_ACTOR`.
+`runtime.recordAuthor` holds the same login without `[bot]`, for Factory Manager and local commands.
+
+To return to PAT mode, clear `FACTORY_APP_ID`, restore the PAT login in `FACTORY_GITHUB_ACTOR` and set `runtime.recordAuthor` to it.
 The PAT must still be valid.
 
 The pinned `actions/create-github-app-token` v2.2.2 mints repository-scoped tokens and revokes them after the job.

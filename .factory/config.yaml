@@ -14,7 +14,7 @@ runtime:
   workspace: multigit
   onHold: skip
   onNoState: skip
-  recordAuthor: github-actions
+  recordAuthor: lorenzh-factory
 
 prompts:
   preamble: ../.factory/prompts/preamble.md
