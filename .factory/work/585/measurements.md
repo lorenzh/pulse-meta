@@ -1,4 +1,6 @@
 # #585 plan: measurements (2026-11-02)
+<!-- Second plan run: see "status after #592" below. The earlier status numbers are for 0a4768d. -->
+
 
 Evidence that the `plan` state collected before its `needs-input` hold. A later `plan` run can reuse it, but should re-check the SHAs, because the repositories may have moved on.
 
@@ -42,7 +44,23 @@ Experiment on `main` (`82601487`): marking those 15 tests `test.skip` gives samp
 - `main` (`0a4768d`): 2.52 2.44 2.45 2.46 2.55, median 2.46 s.
 - With the hosted medians 2.47, 2.46 and 2.44 s (runs 41292492988, 41421625359, 41235464206), status `main` is above 2.4 in every measurement. That is repeatable, not noise.
 - `src/main.startup.test.ts` costs 0.88 s on its own and spawns 5 children of `bun src/main.ts`, at 0.16 s each. `src/settings.test.ts` and `src/start.test.ts` already cover the POLL_MS, logo and log-level messages in-process.
-- Experiment: skipping the POLL_MS, `PULSE_STATUS_LOGO` and `PULSE_LOG_LEVEL` spawn tests (keeping the invalid URL and the occupied PORT) gives 1.97 1.97 1.97 1.96 1.96, median 1.97 s, with 0 fail and 98.47 % line coverage.
+- Experiment: skipping the POLL_MS, `PULSE_STATUS_LOGO` and `PULSE_LOG_LEVEL` spawn tests (keeping the invalid URL and the occupied PORT) gives 1.97 1.97 1.97 1.96 1.96, median 1.97 s, with 0 fail and 98.47 % line coverage. Correction: `PULSE_LOG_LEVEL` is not covered in-process. Its spawn test is the only test of the `readLogLevel` `catch` in `src/main.ts:8-15`.
+
+### status after #592 (re-measured 2026-11-02, second plan run)
+
+Status `main` moved from `0a4768d` to `d352e06` (pulse-status PR #63, #592 latency charts, merged 2026-11-02 15:20 UTC, after the last nightly 41421625359). No hosted run has measured it yet. Same machine class and method as above (AMD EPYC 7763, 4 vCPU, Bun 1.4.0, fresh copy, `bun install --frozen-lockfile`, 5 samples, median = 3rd smallest):
+
+| `src/main.startup.test.ts` on `d352e06` | Samples | Median |
+| --- | --- | --- |
+| unchanged, 5 spawn tests (476 pass, 0 fail) | 2.84 2.83 2.87 2.90 2.84 | 2.84 |
+| POLL_MS and `PULSE_STATUS_LOGO` removed (3 spawns: URL, PORT, log level) | 2.70 2.70 2.65 2.60 2.64 | 2.65 |
+| also `PULSE_LOG_LEVEL` removed (2 spawns: URL, PORT) | 5 samples, median only recorded | 2.53 |
+| all 5 spawn tests removed (0 spawns; lower bound of spawn cuts) | 5 samples, median only recorded | 2.24 |
+
+- #592 added about 0.38 s (2.46 → 2.84 s). The diff `0a4768d...d352e06` adds in-process tests (`server.privacy.test.ts` +328 lines, `server.page-weight.test.ts` new, `server.cache.test.ts` +124, `server.syndication.test.ts` +110, `component-latency.test.ts` new). No new spawn: `src/main.startup.test.ts` is still the only test file that spawns (`grep -ln "spawn\|execPath" src/*.test.ts`).
+- #592 also gave the children a shared transpiler cache (`src/main.startup.test.ts:16-28`). Since then, the first child pays for the transpile (about 0.3 s) and every further child costs about 0.1 s. So each removed spawn now saves less than the 0.16 s measured on `0a4768d`.
+- Per-file CPU (`bun test ./src/<file>`, each with its own process start): `main.startup.test.ts` 0.70, `server.hidden-checks.test.ts` 0.69, `server.syndication.test.ts` 0.48, `server.privacy.test.ts` 0.46, `server.test.ts` 0.46, `server.page-weight.test.ts` 0.46, `server.cache.test.ts` 0.45 s.
+- Result: with any cut that keeps a process-level test, status stays above its 2.4 s budget (2.53 s at best). Only removing every spawn test gets under it (2.24 s, a 0.16 s margin). Against hosted A `v0.1.0` 2.42 s, the regression limit is max(0.242, 0.2) = 0.242 s. So 2.84 s fails as a regression, while 2.65 s (+0.23) and 2.53 s (+0.11) pass that rule and fail only the budget.
 
 ## notify: regression against v0.1.0 (not named in #585)
 
