@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Status keeps startup coverage with three process tests under the CPU limit",
+      "files": ["src/main.startup.test.ts"],
+      "behaviorChange": false,
+      "spec": "## Repository: status, all change bullets, Checks and Completion evidence; Performance impact measurement command; Security impact; Counterexamples (status removal and no test.skip); Acceptance evidence 2. Delete only the POLL_MS and http PULSE_STATUS_LOGO process tests, whose in-process twins remain in start.test.ts/settings.test.ts. Retain invalid PULSE_API_URL, occupied PORT and the separate PULSE_LOG_LEVEL catch-path test unchanged; leave production code, budgets and coverage settings unchanged.",
+      "acceptance": [
+        {
+          "command": "bun test src/main.startup.test.ts",
+          "expected": "3 pass, 0 fail, 0 skip: invalid PULSE_API_URL, occupied PORT and invalid PULSE_LOG_LEVEL each start one child and retain their exit-2, one-line startup error assertions. The API URL value is not printed. A focused run may fail the full-suite coverage threshold; its test results are the acceptance here."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with 0 fail, 0 skip and line coverage at least 80 %. Existing in-process tests still reject POLL_MS=999 with POLL_MS: must be an integer from 1000 to 2147483647 and an http logo with PULSE_STATUS_LOGO: URL must use https."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0 with Chromium installed as in CI; the accessibility matrix, behavior checks and no-JavaScript checks pass."
+        },
+        {
+          "command": "git rev-parse HEAD && bun --version && lscpu && for sample in 1 2 3 4 5; do bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2))'; done",
+          "expected": "Run separately on clean main and branch head on the same runner with Bun 1.4.0. Each side supplies 5 samples, each reporting test exit code 0. The branch median (3rd smallest of 5) is at most 2.25 s. If higher, request needs-input with the samples instead of widening scope or budgets. Record both SHAs, CPU model and Bun version."
+        },
+        {
+          "command": "git diff --check && git diff --name-only <base-sha> HEAD && git diff <base-sha> HEAD -- src/main.startup.test.ts",
+          "expected": "exit 0; only src/main.startup.test.ts changes. Exactly the POLL_MS and http PULSE_STATUS_LOGO process tests are deleted; the other 3 remain unchanged. No skipped tests, production code, dependencies, Dockerfiles, CI, budgets or coverage configuration changes."
+        },
+        {
+          "command": "gh pr checks <pr-number> --repo lorenzh/pulse-status && gh pr view <pr-number> --repo lorenzh/pulse-status --json body --jq .body",
+          "expected": "All required CI checks pass, including shared lint/typecheck/test, Docker and accessibility checks. The PR body names #585, records the 3 retained tests and in-process coverage for the 2 removals, both SHAs, CPU model, Bun version, 5 CPU samples and median per side, branch median at most 2.25 s, coverage at least 80 %, commands/results and known limits."
+        }
+      ]
+    }
+  ]
+}
