@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reject admin tokens shorter than 32 characters and keep CI starting",
+      "files": [
+        "src/admin-token.ts",
+        "src/admin-token.test.ts",
+        "src/settings.test.ts",
+        ".github/workflows/ci.yml",
+        "docs/configuration.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior R5, all Checks and Completion evidence. Raise the minimum and both messages, update affected fixtures and the docker CI sentinel to console-ci-sentinel-token-0123456789ab, and document the rule. Preserve trimming, optional sources, error secrecy and the existing order of validation rules; update expectations when a shorter invalid fixture now hits the length rule first. README is included to satisfy console AGENTS.md's requirement to document changed settings there as well as docs/configuration.md. Capture the 31-character regression failing on console main c93f61cee3568e23e35233927f1aa1e3e015312a and passing on the branch.",
+      "acceptance": [
+        {
+          "command": "bun test src/admin-token.test.ts src/settings.test.ts",
+          "expected": "0 fail on the branch (focused coverage may exit nonzero). Both env and file refuse 31 characters with PULSE_CONSOLE_ADMIN_TOKEN must hold at least 32 characters or PULSE_CONSOLE_ADMIN_TOKEN_FILE=<path>: must hold at least 32 characters, without the secret. Both accept 32 characters after surrounding whitespace is trimmed; exactly-16-chars is refused. Existing source/error/rule ordering stays; length-compatible fixtures still exercise whitespace, ASCII and placeholder checks. Baseline accepts 31 characters, failing the new regression."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage. Settings fixtures and docs use 32, and src/main.startup.test.ts's existing 33-character fixture stays valid."
+        },
+        {
+          "command": "PULSE_API_URL=http://api.invalid:3000 PULSE_CONSOLE_ADMIN_TOKEN=console-ci-sentinel-token-0123456789ab bun start",
+          "expected": "The service starts with the new sentinel; GET /readyz answers 200 and no token value appears in logs or the page. Record the command and result per console AGENTS.md."
+        },
+        {
+          "command": "gh pr view --json url,body,statusCheckRollup",
+          "expected": "CI including both docker jobs is green with the new sentinel, /readyz 200 and the existing no-token-in-logs/page assertions. PR body contains bun run check output, red-then-green evidence and the CI link."
+        }
+      ]
+    }
+  ]
+}

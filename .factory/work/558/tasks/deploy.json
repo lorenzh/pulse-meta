@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Run Compose e2e with compatible admin fixtures and the changed api",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/compose.e2e.yaml",
+        "docs/cli.md",
+        "full/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior R6, all Checks and Completion evidence; Required behavior R6 and Rollout order step 4. Change both defaults to e2e-admin-token-sentinel-0123456789abcdef, keep E2E_ADMIN_TOKEN overrides, accept exactly 401 or 403 for the probe-token write while keeping unauthenticated writes exactly 401, and update the ok message. Keep the two failed admin attempts below the throttle limit. Correct admin rotation docs to API rotation then updating the console's secrets/admin-token; retain the 16-character init/secret-init rule and explain the api first-import 32-character minimum. No committed image pins/build/image lines change. Candidate validation depends on the merged api child; use only a scratch deploy worktree for its temporary image replacement as the spec directs.",
+      "acceptance": [
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; required helper syntax check from the touched lint CI job."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0."
+        },
+        {
+          "command": "scripts/check-setup.sh",
+          "expected": "exit 0; setup rules and committed image pins stay intact."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/published-port.test.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; the remaining checks of the touched lint CI job pass without relaxing assertions."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint, typecheck and CLI tests pass."
+        },
+        {
+          "command": "grep -c 'e2e-admin-token-sentinel-0123456789abcdef' e2e/compose-e2e.sh e2e/compose.e2e.yaml",
+          "expected": "e2e/compose-e2e.sh:1 and e2e/compose.e2e.yaml:1; both defaults are the same literal from R6."
+        },
+        {
+          "command": "grep -rn 'e2e-admin-token-sentinel-0123}' e2e",
+          "expected": "exit 1 with no output; the old default is absent."
+        },
+        {
+          "command": "git diff --exit-code origin/main -- common/services.yaml",
+          "expected": "exit 0; no image pin or candidate-image change is committed. Docs explain API admin rotation and console file replacement, not rotation by editing an ignored bootstrap file; full/README.md says at least 32 characters."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 and ==> All checks passed with committed pinned images. The unauthenticated write answers 401; the probe-token write answers 401 or 403; the ok line is writes without a token answer 401, with a probe token 401 or 403. No extra failed admin requests are added."
+        },
+        {
+          "command": "git -C .repos/api rev-parse HEAD && git -C .repos/api merge-base --is-ancestor \"${API_FEATURE_MERGE_SHA:?set from the merged api child PR}\" HEAD && docker build --tag pulse-api:candidate .repos/api",
+          "expected": "exit 0; obtain API_FEATURE_MERGE_SHA independently from the merged api child PR, record API_SHA from rev-parse, prove it contains this feature's merged api commit and build that exact clone into the candidate image."
+        },
+        {
+          "command": "git worktree add /tmp/deploy-candidate HEAD",
+          "expected": "exit 0; scratch worktree contains the deploy candidate. Using file tools, replace only the api service image value in its common/services.yaml with pulse-api:candidate for the next check; this temporary change is never committed."
+        },
+        {
+          "command": "bash /tmp/deploy-candidate/e2e/compose-e2e.sh",
+          "expected": "exit 0 and ==> All checks passed against pulse-api:candidate. Capture the last 20 lines and identify the api SHA. If an unrelated step fails, hold with its step name and log as the spec requires. A pinned-release-only run does not satisfy this check."
+        },
+        {
+          "command": "docker image inspect pulse-api:candidate --format '{{.Id}}'",
+          "expected": "Record the exact candidate image ID from this independent Docker result alongside API_SHA and the successful candidate run excerpt in the PR body."
+        },
+        {
+          "command": "git worktree remove --force /tmp/deploy-candidate",
+          "expected": "exit 0 after preserving validation evidence; scratch-only candidate image edits are removed."
+        },
+        {
+          "command": "gh pr view --json url,body,statusCheckRollup",
+          "expected": "CI is green, including full against the committed pinned api 0.1.0. PR body contains shell/JSON/setup/check evidence and CI link, plus the changed-api candidate's API_SHA, image ID and last 20 run lines including ==> All checks passed. Security review confirms no secret output, only the intended 401/403 compatibility change, and no committed image pin changes."
+        }
+      ]
+    }
+  ]
+}
