@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Top-level response arrays reject inherited elements as absent",
+      "files": [
+        "src/validate.ts",
+        "test/validate.test.ts",
+        "dist/validate.js"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Task a; required behavior 3; counterexamples 1, 2 and the top-level cases of 5 and 6. Test first, then change only arrayProblem's item read to ownValue(value, i); preserve its accessor check. Cover uptime and latency with literal errors. Rebuild dist and finish green before T2.",
+      "acceptance": [
+        {
+          "command": "bun test test/validate.test.ts",
+          "expected": "Red run before the source change on 7ce23aaf3fa3e038f65ecfed755188b83bde143f: the new counterexample 1 and 2 assertions fail because inherited elements are accepted. The hole and accessor guards pass. Record failing test names and messages; a focused run is judged by tests, not its coverage exit status."
+        },
+        {
+          "command": "bun test test/validate.test.ts",
+          "expected": "After the fix: 0 failing tests. Mixed inherited input gives uptime[1]: must be an object and latency[1]: must be an object; all-inherited input gives uptime[0]: must be an object and latency[0]: must be an object. Top-level holes give the index-1 must-be-an-object errors; index-0 accessors give uptime[0]: is required and latency[0]: is required, with getter counts 0. Dense controls retain input identity. Coverage exit status is not this focused check's gate."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and the full suite pass with line coverage at least 0.8. Rebuilt dist/validate.js accompanies the source change; no other src/ file changes in T1. Preserve the check output and tests added for final PR evidence."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "exit 0 after committing the regenerated dist from this task; the build performed by bun run check leaves committed dist fresh."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Certified plain JSON bypasses copying and matches the frozen copy path",
+      "files": [
+        "src/validate-core.ts",
+        "test/reference/validate-core.ts",
+        "test/reference/validate.ts",
+        "test/validate-diff.test.ts",
+        "test/tokens.test.ts",
+        "dist/validate-core.js",
+        "dist/validate-core.d.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Task b; required behaviors 1, 2, 4, 5 and 6; counterexamples 1-10 and 12-15 in the differential suite, and existing case-11 tests. Freeze the 7ce23aa reference before adding the walk. Use schema-compiled private walks, captured built-ins, technique A or the complete technique-B call integrity check, no input trust cache and only the allowed descriptor allocations. Certify own data and plain prototypes at each level, including absent-key inheritance and the once-per-call enumerable Object.prototype check; records, multi-option unions and lazy object/function values retain the specified copy fallback. Keep APIs, schemas, types, wire version and dependency pins unchanged. Replace only the named Proxy descriptor/get test with Validation/no-throw assertions and update problem's comment. Follow Task b's before-walk green run, two throwaway red runs and final green run in order.",
+      "acceptance": [
+        {
+          "command": "git diff 7ce23aaf3fa3e038f65ecfed755188b83bde143f \"$task_pr_base\" -- src/validate-core.ts src/validate.ts src/schema.ts",
+          "expected": "With task_pr_base set to the PR branch-base SHA, no output, excluding T1's commits. If upstream changed these files relative to the frozen baseline, request the hold required by behavior 6 instead of substituting a new reference."
+        },
+        {
+          "command": "diff <(git show 7ce23aaf3fa3e038f65ecfed755188b83bde143f:src/validate-core.ts) test/reference/validate-core.ts",
+          "expected": "No differences except the optional single leading source/freeze comment allowed by behavior 6. The immutable git object is the independent source. Save the diff for the PR."
+        },
+        {
+          "command": "diff <(git show 7ce23aaf3fa3e038f65ecfed755188b83bde143f:src/validate.ts) test/reference/validate.ts",
+          "expected": "Only the schema import changes from ./schema.ts to ../../src/schema.ts, plus the optional single leading source/freeze comment. arrayProblem still reads value[i] in this reference. Save the diff for the PR."
+        },
+        {
+          "command": "rg -n '^import|from \"' test/reference/validate-core.ts test/reference/validate.ts",
+          "expected": "Reference imports are limited to zod, ../../src/schema.ts and ./validate-core.ts; no import of candidate src/validate-core.ts, src/validate.ts or src/index.ts."
+        },
+        {
+          "command": "bun test test/validate-diff.test.ts",
+          "expected": "Before adding the walk, on the branch with T1 complete: 0 failing tests. Each of the 26 validate* exports and 6 schema-level pairs has valid JSON and wrong-typed-field entries; every entry checks literal results, verdict, exact first-error text and success identity against the frozen reference. The only exception entries are counterexample 1 for uptime/latency and counterexample 2: reference ok:true with input identity, candidate rejects with their literal errors. Unicode and fixed-depth entries satisfy the same literals required by the after-walk check below. If the reference misses a depth literal on this machine, leave the test failing and request a hold with measured values; do not loosen it. Focused coverage exit status is not the gate."
+        },
+        {
+          "command": "bun test test/validate-diff.test.ts",
+          "expected": "Throwaway red run 1 only: run in a clean worktree of 7ce23aaf3fa3e038f65ecfed755188b83bde143f with only the new differential suite and frozen reference copied in. Counterexamples 1 and 2 fail because the candidate accepts inherited elements; no other entry fails. Record entry names and messages. Never commit this run's setup."
+        },
+        {
+          "command": "bun test",
+          "expected": "Throwaway red run 2 only: apply the Counterexamples historical-walk recipe to that 7ce23aa worktree, omitting the duplicate lookupGetter declaration and leaving arrayProblem unchanged. Differential entries 1-4, 9, 13 and 14 fail at least; 13a-c count 1, 13d gives check.headers: must be an object, and 14a-c count above 0. The expected 11 existing failures are the eight admin tests at baseline lines 397, 465, 510, 559, 637, 662, 689 and 710; tokens tests at 283 and 313; and the unrebuilt-dist smoke test. List any additional failure by name/message, including any depth-suite failure; report any unexpected existing-test failure. Save results for the PR and never commit the historical walk."
+        },
+        {
+          "command": "bun test test/validate-diff.test.ts",
+          "expected": "After the walk: 0 failing tests, including counterexamples 1-10 and 12-15. Corpus includes raw JSON duplicate keys parsed before validation, own __proto__, huge/non-finite-looking numbers, lone surrogates (raw and escaped), 50 astral characters, NFC/NFD keys, competing errors and both nesting kinds per 15g. Literal verdicts/errors match Verified state and Counterexamples; the NFC/NFD result is exactly the JS string literal \"component: has an unknown field: caf\\u00e9, cafe\\u0301\". Both keys and the expected text use only \\u escapes in the test source, with no literal accented character and no normalization, sorting or error reordering. Getter counts for 6, 8, 13 and 14 are 0 and never exceed the reference. Pollution is isolated/restored with finally and schemas are warmed before pollution; mutation case 8 revalidates. For nested arrays and nested objects separately, at each of depths 1000, 5000, 10000 and 100000, call candidate and reference 3 times each, alternating, with a fresh JSON-parsed input for each call. At 1000 and 5000 every call on both sides is ok:true with value === input; at 10000 and 100000 every call is exactly {ok:false,error:\"check: is not a valid value\"}. Every call must equal its literal; depth adds no equivalence exception. Test no other depth, search for no limit, and permit no alternative outcome. If the reference misses a depth literal on this machine, leave the test failing and request a hold with measured values; do not loosen it. The suite contains no Proxy and its exception entries remain exactly cases 1 and 2. Focused coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and the full suite pass with line coverage at least 0.8, including existing own-data, union, record, recursive JSON, hostile Proxy and cyclic-prototype tests. Only the named descriptor/get Proxy test is replaced; each replacement call returns a boolean ok without throwing. Preserve output and tests changed for final evidence."
+        },
+        {
+          "command": "git diff 7ce23aaf3fa3e038f65ecfed755188b83bde143f -- test/",
+          "expected": "No existing assertion is removed except those in the single replaced test named a Proxy whose get differs from its own data descriptor is judged by the descriptor. Guards 5-8, 10, 12 and 15 pass on the copy-path branch and final branch, without a required red demonstration."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "exit 0 after committing regenerated dist; bun run check's build leaves dist fresh, including validate-core.js and validate-core.d.ts."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "CPU meets the historical baseline bound and the PR documents the guarantee",
+      "files": [
+        "test/validate-cpu.ts",
+        "test/validate.bench.test.ts",
+        "docs/index.md",
+        "README.md",
+        "package.json",
+        "src/validate-core.ts",
+        "dist/validate-core.js",
+        "dist/validate-core.d.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Task c; CPU statistic; Checks; Completion evidence; Security impact. Add the standalone CPU runner, document own-data elements at every level, the proven-equivalence guarantee and its two exceptions, and bump package version 1.7.0 to 1.7.1. README.md changes only if it repeats the rule; validate.bench.test.ts changes only if fixtures move. src/validate-core.ts and its dist outputs change only if optimization is needed to meet the unchanged 10% CPU bound, preserving every safety check and rerunning the differential/full suite. Collect the complete PR evidence and applicable security checklist for the whole change.",
+      "acceptance": [
+        {
+          "command": "bun test/validate-cpu.ts .",
+          "expected": "exit 0 on Bun 1.4.0; one JSON line with root, bun, uptime:{samples,median}, latency:{samples,median}. The runner dynamically imports the requested root's src/index.ts, narrows validators from unknown without any, and uses the CPU statistic fixtures: JSON-parsed 1,000 checks x 90 days from 2026-01-01. Before timing, each validator returns ok:true and the same input; each workload then has 2 warmups and 7 process.cpuUsage user+system delta samples in ms, median the 4th smallest. It is not discovered as a test by bun test."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0 in each benchmark worktree, using the locked dependencies and Bun 1.4.0. A resolves to ebcbbb613328494185833f7133f1242910986948; B resolves to the candidate PR head. Both sides run on the same machine."
+        },
+        {
+          "command": "for task_cpu_side in \"$task_cpu_a_root\" \"$task_cpu_b_root\" \"$task_cpu_a_root\" \"$task_cpu_b_root\" \"$task_cpu_a_root\" \"$task_cpu_b_root\"; do bun test/validate-cpu.ts \"$task_cpu_side\" || exit; done",
+          "expected": "With task_cpu_a_root and task_cpu_b_root set to the A and B worktrees and the command run from B, the same runner succeeds unchanged in 6 fresh processes ordered A,B,A,B,A,B. Save all 3 x 7 raw samples per side/workload and invocation medians. Per workload, side value is the 2nd smallest invocation median, not an average; unrounded B <= 1.10 x A for uptime and latency separately. PR values round to 0.01 ms and (B/A - 1) x 100 to 0.1%, each <= 10.0%. If either fails, optimize only within the spec's safety/allocation rules and rerun the differential/full suite and A/B."
+        },
+        {
+          "command": "bun test/validate-cpu.ts \"$task_cpu_current_root\" && bun test/validate-cpu.ts \"$task_cpu_b_root\"",
+          "expected": "exit 0 with task_cpu_current_root at 7ce23aaf3fa3e038f65ecfed755188b83bde143f and task_cpu_b_root at B on the same machine. Record this additional current-main/B comparison in the PR; it demonstrates the gain and is not the gating historical-baseline A/B."
+        },
+        {
+          "command": "git diff 7ce23aaf3fa3e038f65ecfed755188b83bde143f -- docs/index.md README.md package.json src/version.ts src/schema.ts",
+          "expected": "docs/index.md Validators/Error format describes own-data array elements at every level, direct plain-JSON parsing with copy-path equivalence, and Proxy scope. The guarantee has exactly two exceptions: inherited/missing top-level elements are rejected and Proxy inputs are out of scope. Deep nesting is no third exception: every tested depth requires the same literal verdict and error text on both sides, and the suite gives no allowance at any depth. Known limits include the existing propertyIsEnumerable and top-level lookupGetter.call reads and the engine-dependent exact stack-overflow depth; no new depth limit is added. README changes only if needed. Package version is 1.7.1; schemas, WIRE_VERSION, public names/types and dependency pins remain unchanged."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 on final PR head; lint, build, typecheck, full tests and coverage at least 0.8 pass, including all differential entries, unchanged own-data tests and the replacement no-throw Proxy test. No weakening of lint, cognitive-complexity limit 15, typecheck or coverage. Any T3 optimization has passed the whole suite again."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after committing the final generated outputs; the independent build leaves every committed dist file unchanged."
+        },
+        {
+          "command": "git diff 7ce23aaf3fa3e038f65ecfed755188b83bde143f -- src/ test/",
+          "expected": "The applicable Security impact checklist is addressed in the PR: own-data input validation, accessor execution and unchanged error text with no input values added. Hostile-input coverage includes the spec's prototype/global pollution cases, record own constructor, frozen/subclass arrays, null-prototype objects, deep input, competing errors and existing hostile Proxy tests. No own-data assertion is removed except the named Proxy-test replacement. All other checklist items retain the spec's not-applicable rationale."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body contains Completion evidence: full A/B and current-main/B results, resolved SHAs, exact commands, Bun 1.4.0, OS/CPU, raw samples, invocation/side medians and both <=10.0% results; the two frozen-reference diffs; T1/T2 red test names/messages compared with their expected lists; equivalence with exactly its two explicit exceptions and known limits, with no depth allowance; per-task bun run check output and tests changed; the single replaced Proxy test; walk technique A or B and module-level captured constants; and the applicable security checklist. The largest passing depth per nesting kind and side is optional evidence only: if measured, use a throwaway script, never commit it and never use its measurement as an expected value or comparison. No compose end-to-end check is specified for this library."
+        }
+      ]
+    }
+  ]
+}
