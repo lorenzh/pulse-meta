@@ -77,7 +77,7 @@ With the probe `main` image the binding is missing, so `e2e-post` stays `down` w
 3. Run A, the pinned probe: `bash e2e/compose-e2e.sh` with `common/services.yaml` unchanged. It exits 0 and its output contains `==> All checks passed` (literal from `e2e/compose-e2e.sh:680`). It also contains the lines `ok: <surface> shows no secret` for `GET /checks`, `GET /metrics`, `the status page proxy` and `the container logs` (literals from `:380`, `:423-426`).
 4. Run B, probe `main`. Build an image from probe `main` and select it with the temporary substitution in the deploy section. Then run `bash e2e/compose-e2e.sh` with no other change.
    - It exits 0 with the same `==> All checks passed` and the same four `shows no secret` lines.
-   - While the stack runs, `docker compose -p pulse-e2e logs probe` contains `header host bindings for 1 variable(s)`. The count `1` comes from this spec: one key in the binding. `docker inspect` of the probe container shows the image ID of the local build.
+   - While the stack runs, `docker compose -p pulse-e2e -f full/compose.yaml -f e2e/compose.e2e.yaml logs probe` contains `header host bindings for 1 variable(s)`. The count `1` comes from this spec: one key in the binding. `docker inspect` of the probe container (selected with the same `-p` and `-f` flags) shows the image ID of the local build. The `-f` flags are needed because the `COMPOSE_FILE` export of the script (`e2e/compose-e2e.sh:14`) does not reach a second shell.
    - The PR reports the probe commit SHA, the local tag and the image ID.
 5. After the substitution is restored: `git diff --exit-code -- common/services.yaml` passes, `scripts/check-setup.sh` passes, and `bash scripts/check-setup.test.sh` passes.
 6. Optional negative control, recommended: Run B without the new line (for example on `main` of deploy) fails at `e2e-post is up` after 90 s, and the probe logs `header host bindings for 0 variable(s)`. This shows that the binding is what makes Run B pass.
@@ -160,9 +160,9 @@ Add to `services.probe.environment` in `e2e/compose.e2e.yaml`, directly after th
    - Build with `docker build -t pulse-probe:e2e-main <probe>`. The probe `Dockerfile` installs the GitHub dependencies with `bun install --frozen-lockfile`, so it needs network access.
    - Record `docker image inspect pulse-probe:e2e-main --format '{{.Id}}'`.
 2. Copy `common/services.yaml` aside. Replace only the probe image value at `common/services.yaml:16` with `pulse-probe:e2e-main`. `--pull missing` (`e2e/compose-e2e.sh:320`) uses the local image.
-3. Run `bash e2e/compose-e2e.sh`. In a second shell, while the stack runs:
-   - run `docker compose -p pulse-e2e logs probe | grep 'header host bindings for 1 variable(s)'`;
-   - run `docker inspect --format '{{.Image}}' $(docker compose -p pulse-e2e ps -q probe)` and compare the result with the recorded image ID.
+3. Run `bash e2e/compose-e2e.sh`. In a second shell at the deploy root, while the stack runs (the script exports `COMPOSE_FILE` only in its own process, `e2e/compose-e2e.sh:14`, so the second shell names the files itself):
+   - run `docker compose -p pulse-e2e -f full/compose.yaml -f e2e/compose.e2e.yaml logs probe | grep -F 'header host bindings for 1 variable(s)'`;
+   - run `docker inspect --format '{{.Image}}' $(docker compose -p pulse-e2e -f full/compose.yaml -f e2e/compose.e2e.yaml ps -q probe)` and compare the result with the recorded image ID.
 4. Restore `common/services.yaml` from the copy, then run `git diff --exit-code -- common/services.yaml`.
 
 ### Checks (from deploy `AGENTS.md` and CI)
@@ -170,7 +170,14 @@ Add to `services.probe.environment` in `e2e/compose.e2e.yaml`, directly after th
 CI facts, cited from `.repos/deploy/.github/workflows/ci.yml`:
 - The `lint` job checks Compose >= 2.23 (`:26-33`). It runs shellcheck and `bash -n` (`:34-37`), `jq empty` on JSON (`:40-41`), `scripts/check-setup.sh` (`:48-49`) and `bash scripts/check-setup.test.sh` (`:50-51`).
 - The `full` job pulls the pins, runs `scripts/measure.sh full` and then `bash e2e/compose-e2e.sh` (`:99-118`).
-- The reusable `check` job (`:16-17`, `lorenzh/pulse-config/.github/workflows/check.yml@04108fa`) is not affected: the change touches no TypeScript or JSON.
+- The reusable `check` job (`:16-17`) uses `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, the same commit that `package.json:22` pins as `@lorenzh/pulse-config`. The pinned `check.yml` (read with `gh api`, identical to the config clone at `bc87049`) runs `bun run lint` (`:27-28`), `bun run typecheck` (`:29-30`) and `bun run test` (`:37-38`); the build steps (`:31-36`) are off because deploy passes no `build` input. None of them reads `e2e/compose.e2e.yaml`:
+  - `lint` is `biome check . && pulse-eslint . && pulse-workflows` (deploy `package.json:14`).
+    - Biome: deploy `biome.json:2` extends the pinned `biome.json`, whose `files.includes` is `**` minus build paths (`:10-17`). Deploy `biome.json:4-27` narrows it to `cli/**` and root config files and excludes `!e2e` (`biome.json:17`). The pinned file and the clone are identical.
+    - ESLint: deploy `eslint.config.js:4` spreads the pinned `eslint.config.js`, whose rules apply only to `files: ["**/*.ts", "**/*.js"]` (`:11`, `:20`). A YAML file is not linted.
+    - `pulse-workflows`: the pinned `bin/pulse-workflows.js:40` reads only `.github/workflows`, which this change does not touch.
+  - `typecheck` is `tsc --noEmit` (deploy `package.json:12`) on `tsconfig.json:3` `"include": ["cli"]`.
+  - `test` is `bun test --coverage cli` (deploy `package.json:13`), so only `cli` tests run.
+  Deploy `AGENTS.md:60` asks for the checks of every job that a change touches; the `check` job is not touched, so `bun run check` (`AGENTS.md:36`) is optional. If the implementer runs it, it must pass unchanged.
 
 The implementer runs:
 - `scripts/check-setup.sh` and `bash scripts/check-setup.test.sh`. Rule 5 renders `-f full/compose.yaml -f e2e/compose.e2e.yaml`, so the overlay still has to render.
