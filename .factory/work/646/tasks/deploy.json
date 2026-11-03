@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Bind the E2E header secret to e2e-target and verify both probe images",
+      "files": ["e2e/compose.e2e.yaml"],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy — Change; Validation of probe main (local only, never committed); Checks; Completion evidence. Implements Required behavior, Acceptance evidence 1–6 (6 optional), and the applicable Security impact checklist. Add PULSE_PROBE_HEADER_HOSTS: '{\"PULSE_HEADER_SVC_TOKEN\":[\"e2e-target\"]}' immediately after the existing probe header variable, preceded by the short English comment specified in Required behavior; keep every other byte unchanged. If the binding already exists on main, request a hold. Run B uses only the temporary probe image substitution described in the spec, restored before handoff. No additional committed files, dependencies, pin changes, assertions, timeout changes or probe/API changes. If another incompatibility blocks Run B, request needs-input with the failing step and both image identities; if Docker is unavailable, disclose the missing runs in the PR and leave them open for review.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main && git diff origin/main -- e2e/compose.e2e.yaml && git diff --exit-code origin/main -- common e2e/compose-e2e.sh e2e/ro e2e/target.mjs full",
+          "expected": "The only changed path is e2e/compose.e2e.yaml. Its diff adds only the single-quoted JSON binding PULSE_PROBE_HEADER_HOSTS: '{\"PULSE_HEADER_SVC_TOKEN\":[\"e2e-target\"]}' immediately after PULSE_HEADER_SVC_TOKEN and a short English comment explaining that main requires a bound host, older probes ignore the variable, and the binding names only a variable and host, never a secret. The existing header line, target, dependencies and remaining bytes are unchanged. The final command exits 0 with no diff. Security review confirms exactly one variable and one bare host, no extra hosts, second variable, wildcard, scheme, port, path or secret value, and no change to redirect policy or dependency pins. The literal render comparison below rejects the hostile binding variants listed in Security impact without committing them."
+        },
+        {
+          "command": "docker compose version --short",
+          "expected": "Docker Compose version is at least 2.23. Run both E2Es with curl, jq, network access and free ports 3000, 8080 and 8082, as required by the spec and deploy README."
+        },
+        {
+          "command": "docker compose -f full/compose.yaml -f e2e/compose.e2e.yaml config --format json | jq -e '.services.probe.environment.PULSE_PROBE_HEADER_HOSTS | fromjson == {\"PULSE_HEADER_SVC_TOKEN\":[\"e2e-target\"]}'",
+          "expected": "Prints true and exits 0. The rendered environment value is JSON text whose entire parsed object equals the literal {\"PULSE_HEADER_SVC_TOKEN\":[\"e2e-target\"]}, with no additional variables or hosts."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "Exit 0 from the repository root; the lint job's shellcheck passes."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "Exit 0; all tracked shell scripts pass bash syntax checks."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "Exit 0; all tracked helper scripts pass the lint job's syntax check."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "Exit 0; the lint job's JSON syntax check passes."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/published-port.test.sh",
+          "expected": "Exit 0; all three existing E2E helper suites from the lint job pass."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "Exit 0; all four remaining script suites from the lint job pass, including the Docker secrets-init tests."
+        },
+        {
+          "command": "scripts/init-secrets.sh && docker compose -f full/compose.yaml pull && scripts/measure.sh full && docker compose -f full/compose.yaml down -v",
+          "expected": "Exit 0 with common/services.yaml at its original pins; the full job's ordinary stack starts, becomes ready, completes its existing measurements and is torn down before the E2E runs. No performance budget is introduced."
+        },
+        {
+          "command": "git diff --exit-code -- common/services.yaml && bash e2e/compose-e2e.sh",
+          "expected": "Run A: exit 0 with the unchanged pinned probe 0.1.0. Output includes '==> All checks passed', 'ok: GET /checks shows no secret', 'ok: GET /metrics shows no secret', 'ok: the status page proxy shows no secret' and 'ok: the container logs shows no secret'. Every existing assertion remains enabled, including the later metrics leak check, failure cases, recovery and clean stop."
+        },
+        {
+          "command": "git -C \"${PROBE_SOURCE:?set PROBE_SOURCE to the probe main checkout}\" rev-parse HEAD && docker build -t pulse-probe:e2e-main \"$PROBE_SOURCE\" && docker image inspect pulse-probe:e2e-main --format '{{.Id}}'",
+          "expected": "Exit 0; record the actual probe main commit SHA, local tag pulse-probe:e2e-main and built image ID. PROBE_SOURCE names the read-only probe context checkout or a fresh clone of probe main, as allowed by Validation of probe main. No source changes or new build tooling."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Run B: after copying common/services.yaml aside and temporarily substituting only its probe image with pulse-probe:e2e-main as specified, exit 0 and output '==> All checks passed' plus the same four literal 'shows no secret' lines required for Run A. Every existing assertion, including the later metrics leak check, remains enabled. All other service images retain their pins. The script remains unchanged; an external COMPOSE_FILE, a new override file or a build key is not an image-selection substitute. Capture the following identity and log evidence while this stack exists, before its teardown, and restore common/services.yaml even if the run fails."
+        },
+        {
+          "command": "docker compose -p pulse-e2e -f full/compose.yaml -f e2e/compose.e2e.yaml logs probe | grep -F 'header host bindings for 1 variable(s)'",
+          "expected": "While Run B is running, exit 0 and print the literal startup line 'header host bindings for 1 variable(s)'. Use the explicit Compose files in this observing shell because compose-e2e.sh exports COMPOSE_FILE only inside its own process. Do not use docker compose config output as leak evidence; the existing E2E checks inspect the required responses and logs."
+        },
+        {
+          "command": "docker inspect --format '{{.Image}}' $(docker compose -p pulse-e2e -f full/compose.yaml -f e2e/compose.e2e.yaml ps -q probe)",
+          "expected": "While Run B is running, exit 0 and print the same image ID recorded by docker image inspect pulse-probe:e2e-main after the build. That independently recorded build identity proves Run B used probe main rather than the pinned probe. Record it in the PR with the commit SHA and tag."
+        },
+        {
+          "command": "git diff --exit-code -- common/services.yaml && scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "After restoring the saved original common/services.yaml, exit 0; the image-pin file has no diff, all static setup rules pass (including the E2E render and rule 2 digest pins), and all existing negative setup tests pass. Run these on the restored deliverable."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Optional negative control only, using probe main in a disposable deploy checkout with the binding omitted: fails at 'e2e-post is up' after the default 90 seconds; observing the running probe logs shows 'header host bindings for 0 variable(s)'. Report if performed; it is not required for completion and must not alter the final deliverable."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "At PR handoff, the body names #646, describes the one-file diff and reports render output, static and applicable CI checks, Run A and Run B results with '==> All checks passed' and all four leak-check lines, probe main commit SHA, local tag, built and running image IDs, startup binding count of 1, and restored common/services.yaml with its exit-0 diff check. Include the optional negative control if run. If Docker prevented either run, explicitly identify it as unrun and open for the reviewer; never report a partial or unavailable run as passing. Include the applicable security checklist conclusions: exact host scope, absent secrets on existing checked surfaces, unchanged redirects and unchanged delivered pins."
+        }
+      ]
+    }
+  ]
+}
