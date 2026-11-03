@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Manual incident E2E accepts counter and digest update keys exactly once through restart",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/manual-count.test.sh",
+        ".github/workflows/ci.yml",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy: all Required behavior items 1-9, the complete Counterexamples table, Security impact checklist, checks before handoff 1-5, and completion evidence A-C. Add decimal-id-validated update counting and exactly-one helpers; count every matching line across all lower-case hex suffixes, including legacy 1. Replace all three update:1 checks, preserve exact opened/resolved and routing behavior and restart timing, print only the matched key once, and add the Docker-free test, lint step and command-table row. Keep all pins and other E2E steps unchanged. If all three checks already accept digests, hold instead of reviewing; if acceptance B fails elsewhere, hold with needs-input and name the step.",
+      "acceptance": [
+        {
+          "command": "bash e2e/manual-count.test.sh",
+          "expected": "exit 0 without Docker; test extracts the real helpers, checks declare -F and reports the number of passed cases. Every Counterexamples row passes using literal expected counts: legacy and digest separately count 1 and sent succeeds; missing and empty files and no match count 0; identical duplicates, different digests and mixed legacy/digest count 2 and sent fails; other incident ids/events, upper-case/non-hex/empty suffixes, trailing text and key text only in a message count 0; invalid ids '1|.*' and '' print 0 and return non-zero; existing manual_count and manual_sent still accept the exact opened key. Counts 0 and 2 fail manual_update_sent."
+        },
+        {
+          "command": "bash e2e/manual-count.test.sh",
+          "expected": "Regression proof for check 1: in a disposable copy with update matching restricted to today's exact update:1 behavior, the digest fixture fails and the command exits non-zero. Record this failure, discard the copy and retain the passing implementation. Missing new helpers alone is not the digest regression proof."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root, including the tracked new e2e/manual-count.test.sh"
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0, including the tracked new helper test"
+        },
+        {
+          "command": "docker compose version && shellcheck --version && jq --version && node --version && v=$(docker compose version --short) && printf '%s\\n2.23.0\\n' \"${v#v}\" | sort -V -C -r",
+          "expected": "exit 0; the lint job's tools are available and Compose is at least 2.23.0"
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0"
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash e2e/metric-is.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash e2e/published-port.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "scripts/check-setup.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash scripts/check-setup.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0 with Docker available"
+        },
+        {
+          "command": "bash scripts/bump-images.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash scripts/wait-ready.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash scripts/init-secrets.test.sh",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; repository lint, typecheck and full CLI test suite pass, including the workflow policy check for ci.yml"
+        },
+        {
+          "command": "base=$(git merge-base origin/main HEAD) && git rev-parse \"$base\" && git diff --exit-code \"$base\" HEAD -- common/services.yaml && git diff --name-only \"$base\" HEAD",
+          "expected": "exit 0 for the committed branch; record the implementation base SHA. common/services.yaml has no diff, and the changed paths are exactly .github/workflows/ci.yml, AGENTS.md, e2e/compose-e2e.sh and e2e/manual-count.test.sh. No committed pin change or candidate-copy change."
+        },
+        {
+          "command": "git diff \"$base\" HEAD -- e2e/compose-e2e.sh e2e/manual-count.test.sh .github/workflows/ci.yml AGENTS.md",
+          "expected": "Security checklist review: only the specified helpers, three update checks, matched-key ok line, helper test, lint run step and command row change. The id is validated with ^[0-9]+$ before pattern use; output includes only a matched manual:<digits>:update:[0-9a-f]+ key, never an entire service record, message or token. All existing action SHA pins and persist-credentials: false remain; no dependency, image or action is added. Exact manual_count/manual_sent behavior, routing checks, opened/resolved checks and restart polling/settling remain. Record the checklist result in the PR evidence."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Acceptance A, in the implementation checkout with unchanged pins: exit 0 and final step ==> All checks passed. Retain the run log and its single ok key line with suffix 1, as independently specified by notify v0.1.0 src/detector.ts:102-104. All three events occur exactly once in the catch-all channel before restart and the web channel after restart; routing and the other E2E checks pass."
+        },
+        {
+          "command": "git -C \"$notify_checkout\" rev-parse HEAD && docker build -t \"pulse-notify:e2e-${notify_sha}\" \"$notify_checkout\" && docker image inspect \"pulse-notify:e2e-${notify_sha}\" --format '{{.Id}}'",
+          "expected": "Acceptance B preparation: notify_checkout is a separate checkout of a recorded notify main SHA, and notify_sha equals that SHA. Build exits 0; record the source SHA and local image ID for completion evidence C. No notify source changes."
+        },
+        {
+          "command": "COMPOSE_FILE=full/compose.yaml:e2e/compose.e2e.yaml docker compose config --images",
+          "expected": "Acceptance B, from a disposable copy of the deploy implementation with only notify's image value substituted in common/services.yaml: exit 0 and the selected images include pulse-notify:e2e-<the recorded notify_sha>. Every other image pin remains unchanged; the substitution is never committed."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Acceptance B, from that disposable deploy copy: exit 0 and final step ==> All checks passed. Retain the run log and its single ok key line with exactly 32 lower-case hex characters after update:, independently required by notify main src/detector.ts:107-113, not inferred from the E2E. Catch-all before restart and web after restart each still hold exactly one entry for every event. If another step fails, hold with needs-input and name it without widening scope. Delete the disposable copy after the run."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Completion evidence C: the PR body names the issue, implementation base SHA, notify main SHA and local image ID; includes both observed ok key lines; reports checks 1-5, the regression failure proof, both full E2E results and the security checklist; and states any known limits. No secrets or service-record contents appear."
+        }
+      ]
+    }
+  ]
+}
