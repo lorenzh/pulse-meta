@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Skipped-check warnings saturate without re-flooding and preserve distinct string IDs",
+      "files": [
+        "src/client.ts",
+        "src/client.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe — Behavior (Required behavior 1-6), Tests 1-7, Docs, Tool facts and Completion evidence; Acceptance evidence; Security impact; Performance impact; Counterexamples; Risks and Rollout order. Keep this small client.ts warning-state change, its tests and docs together. First reproduce both defects with failing loadChecks tests, then implement SHA-256 with explicit utf16le encoding and per-logger saturation: retain at most 10000 fixed-size digest/null keys, never clear or evict them, and emit the exact fixed overflow line only for the first unseen key past capacity. Keep null distinct from all string keys, share state across both skip paths and all reloads, update the state comment, and export no test-only helpers. Preserve validation/recovery and all non-goals. Implement every test scenario with literal expectations and the version header, retain existing regressions unchanged, and document the suppression trade-off and restart behavior in all four documentation files. Collect red/green output, focused-test timings, full checks, local runtime observation and security review in the PR body.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0 under Bun 1.4.0; dependency pins and bun.lock remain unchanged"
+        },
+        {
+          "command": "/usr/bin/time -p bun test src/client.test.ts",
+          "expected": "Record the unchanged suite time before edits and the final suite time after the fix in the PR. First run the new Tests 1 and 5 against unchanged client.ts and capture their expected failures: three-load warning counts [10001, 10001, 10001] and 1 lone-surrogate line. After the fix, 0 fail in the focused suite; a nonzero exit solely from the global coverage threshold is permitted here. Tests 1-7 use loadChecks, injected fetch with x-pulse-contract: 1 and a stable logger per scenario. All expected counts and the overflow text are literals, never imported from client.ts."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "0 fail in the focused suite (only the global coverage gate may make this focused command exit nonzero). Tests 1-4 prove 10001 rejected IDs c00000..c10000 plus a valid control yield per-load total warning counts [10001, 0, 0], with 10000 detailed lines, no repeated detailed line, exactly 1 line equal to 'skipped checks exceed 10000 remembered IDs; new skip lines are suppressed until the probe restarts', and only the control returned on each load. Exactly 10000 distinct rejected IDs emit 10000 detailed lines and 0 overflow lines; repeating them adds 0, the next new ID adds exactly 1 overflow line, and two more new IDs, a repeated full list, and an empty list followed by the full list each add 0. A previously rejected record corrected after saturation is returned with 0 new lines, then excluded again with 0 new lines when invalid. A fresh logger independently emits 10000 detailed lines and 1 overflow line while the original logger stays quiet."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "0 fail in the focused suite (only the global coverage gate may make this focused command exit nonzero). Tests 5-7 prove rejected IDs '\\ud800' and '\\ud801' emit exactly 2 different detailed lines containing their actual lone-surrogate IDs; a second load adds 0. An empty-string ID and an ID-less record emit exactly 2 lines. Existing repeated-load, cross-path shared-ID, changed-reason, reorder, ID-less fallback, recovery, fresh-logger, secret and long-ID memory tests remain unchanged and pass. Extend the oversized scenario with a header-env skip containing the value sentinel skip-sentinel and assert 0 lines containing that sentinel, including the exact overflow line."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; Biome, ESLint (cognitive complexity at most 15 per function), workflow lint, strict TypeScript and the full test suite pass, with line coverage at least 0.8 and no weakened tooling rules"
+        },
+        {
+          "command": "PULSE_CHECKS_RELOAD_MS=5000 bun run start",
+          "expected": "Prepare the local fake-API setup in Completion evidence: bind to 127.0.0.1 port 0, serve an unchanged JSON response of 10001 small invalid checks with x-pulse-contract: 1, and set PULSE_API_URL to that server and PULSE_PROBE_TOKEN to a local dummy value. Unset PULSE_PROBE_TOKEN_FILE; use a known environment without unrelated startup failures. Start the real probe with this command, observe startup and at least two completed reloads, then stop it and the fake API. Capture parsed warning messages from stderr: the first load emits 10000 detailed skip lines and exactly 1 overflow line with the specified literal text; the next two reloads each emit 0 skip-related lines. Record the complete setup/start command, request count and observed [10001, 0, 0] in the PR; the endpoint must actually be requested at least 3 times."
+        },
+        {
+          "command": "grep -rn 'memory is reset' README.md docs",
+          "expected": "no matches (grep exit 1); README.md, both reset references in docs/configuration.md and the invalid-check section of docs/troubleshooting.md now state the 10000-ID bound, one overflow warning, suppression of new detailed warnings until restart, quiet remembered IDs and continued validation/recovery. Troubleshooting adds the overflow cause and action (fix the API checks file and restart the probe to see lines again); docs/operation.md lists the exact overflow text at warn level."
+        },
+        {
+          "command": "git diff --check && git diff -- src/client.ts src/client.test.ts README.md docs/configuration.md docs/troubleshooting.md docs/operation.md",
+          "expected": "exit 0 for diff --check. Review against Security impact and Counterexamples confirms SHA-256 uses the exact UTF-16 code-unit sequence with utf16le, 64-hex-character retained string keys, a distinct shared null key counted toward the 10000-key cap, and only one overflow boolean per logger in the WeakMap. There are 0 raw IDs/payloads in retained state, 0 growing secondary caches, 0 clears/evictions, 0 external values in the overflow message, and no changed validation, header-resolution, 5 MiB body limit, heartbeat, host-denial, fallback or version-warning behavior. Check the named hostile inputs: 10001+ IDs, exactly 10000 then one, lone and paired surrogates, empty strings, long IDs, ID-less records and alternating/empty responses. The PR contains the applicable secrets/body-limit/input-validation checklist results, red/green evidence, before/after focused-test times, full check output and runtime counts, and explains the post-saturation suppression limit and single-repository rollout."
+        }
+      ]
+    }
+  ]
+}
