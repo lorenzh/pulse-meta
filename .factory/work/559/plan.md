@@ -62,7 +62,7 @@ notify only:
 
 ### R2. SMTP partial refusal (`src/channels/*`, `src/errors.ts`, `src/types.ts`, `src/delivery.ts`)
 
-- **Recipient identity.** A recipient's id is `envelopeAddress(entry)` (`src/channels/mailer.ts:34-38`) with its domain part (after the last `@`) in lower case. The display name is not part of the id, and the local part is kept as it is.
+- **Recipient identity.** A recipient's id is `envelopeAddress(entry)` (`src/channels/mailer.ts:34-38`) with its domain part (after the last `@`) in lower case. The display name is not part of the id, and the local part is kept as it is. The helper is `recipientId(value: string): string` in `src/channels/mailer.ts`.
 - **Progress type.** Add to `src/types.ts`:
   `interface RecipientProgress { delivered: string[]; refused: string[] }`. Both lists hold recipient ids. `delivered` holds recipients for whom the end-of-data reply was 2xx and who were accepted at RCPT. `refused` holds recipients that got a 5xx at RCPT.
   `Sender` becomes `(notification, signal?, progress?: RecipientProgress) => Promise<void>`. Non-email senders ignore `progress`.
@@ -73,7 +73,7 @@ notify only:
 - **One attempt** of the email sender:
   - `remaining` = the ids of the current `channel.to` that are not in `progress.delivered` or `progress.refused`.
   - If `remaining` is empty, the attempt connects to nothing. It resolves when `refused` is empty, and throws `PartialDeliveryError` with `isPermanent: true` when it is not.
-  - Otherwise it sends with nodemailer's `envelope: { from: envelopeAddress(from), to: remaining }`. The `To` header still lists the whole `channel.to`, and the Message-ID stays the one derived from the key (`src/channels/email.ts:35-40`).
+  - Otherwise it sends with nodemailer's `envelope: { from: envelopeAddress(from), to: remaining }`. `MailMessage` (`src/channels/mailer.ts:48-59`) gains `envelopeTo: string[]` for this list. The `To` header still lists the whole `channel.to`, and the Message-ID stays the one derived from the key (`src/channels/email.ts:35-40`).
 - **Mapping the result** (in `src/channels/smtp-send.ts`; `SendMail` returns `Promise<SendMailResult>` with `accepted: string[]` and `refused: { recipient: string; responseCode: number | undefined }[]`):
   - nodemailer resolves: each `accepted` entry that matches a `remaining` id is added to `delivered`. Match it exactly, or else after the domain is lowercased.
   - Each `rejectedErrors` entry with a 5xx `responseCode` adds its recipient to `refused`. Every other refused recipient (4xx, or no code) stays remaining.
@@ -109,7 +109,7 @@ notify only:
 - **Later events still notify.** A newly routed incident's next event is sent normally: a `resolved`, a manual `update` or `resolved`, or a reminder of a later interval.
 - **Once-only limit.** A ledger without a stored fingerprint (a migrated v1/v2 ledger, or a channel from before this change) adopts the current filters without seeding. A filter widening made in the same restart as this upgrade can still replay old history once. Document it in the upgrade note, with the advice to upgrade first and change the filters in a later restart.
 
-### R4. Incremental, atomic ledger (`src/ledger.ts`, `src/index.ts`, `src/failed-cli.ts`)
+### R4. Incremental, atomic ledger (`src/ledger.ts`, `src/index.ts`, `src/notifier.ts`)
 
 - **Format 3.** A SQLite database (`bun:sqlite`) at the existing path `PULSE_NOTIFY_STATE` (default `./notify-state.json`; `/data/notify-state.json` in the image, `Dockerfile:9`). The `.json` name stays, so existing settings and volumes keep working.
   - `PRAGMA user_version = 3`.
@@ -151,8 +151,8 @@ notify only:
 - **`flush()`** stays async. It runs `PRAGMA wal_checkpoint(TRUNCATE)` and rejects if that fails. Shutdown (`src/index.ts:145-152`) and the CLI (`src/index.ts:348-350`) call it, then close the ledger.
 - **`close()`** closes the database. Every later mutation throws `LedgerClosedError` (name `"LedgerClosedError"`) and writes nothing. This covers lock loss (`src/index.ts:213-217`): no write after `close()`, also not a sync one, which today's `#writeSync` does not prevent.
 - **Opening** (`new Ledger(path, opts)`, still synchronous; errors become `cannot use state file <path>: <reason>`, exit 2, through `openLedger`, `src/index.ts:113-122`):
-  1. Remove a leftover `<state>.migrating`.
-  2. No file at `path`: build an empty format-3 database at `<state>.migrating`, close it, rename it to `path`, fsync the directory.
+  1. Remove a leftover `<state>.migrating` and its sidecars `<state>.migrating-journal`, `<state>.migrating-wal` and `<state>.migrating-shm` (unlink, never follow a symlink). `.migrating` is built in SQLite's default rollback-journal mode and switched to WAL only after it is published at `path`.
+  2. No file at `path`: build an empty format-3 database at `<state>.migrating`, close it, remove stale sidecars at `path` (see below), rename it to `path`, fsync the directory.
   3. The first 16 bytes are `SQLite format 3\0`:
      - Open without create. Read `user_version` **before** any pragma that writes. If it is not 3, fail `ledger <path> has an unsupported format` and do not change the file.
      - Load and validate every row: `status` in the set, `at` an integer, `payload` `NULL` or a JSON object, `recipients` `NULL` or `{delivered: string[], refused: string[]}`, fingerprints `NULL` or the shape of R3. Any violation fails with the same message.
@@ -161,13 +161,14 @@ notify only:
      - Parse it with today's `migrate` (v1 and v2, `src/ledger.ts:60-99`). Errors are unchanged: an unsupported or invalid file stops startup and is not modified.
      - Build `<state>.migrating` with all channels, entries, payloads and marks in one transaction. v1 entries get the load time, as today. Fingerprints are `NULL`, and recipients are `NULL`.
      - Write a byte-for-byte copy of the original to `<state>.v<N>.bak` (N = 1 or 2) with `writeFileAtomicSync` from pulse-kit, replacing an older backup.
-     - Rename `.migrating` over `path`, and fsync the directory.
-     - Log `info` `ledger migrated` (`from`: N, `entries`: count, `backup`: path).
+     - Remove stale sidecars at `path`, rename `.migrating` over `path`, and fsync the directory.
+     - Set the read-only property `ledger.migration` to `{ from: N, entries: <count of migrated entries>, backup: "<state>.v<N>.bak" }`. It is `undefined` when nothing was migrated. The ledger has no logger; `run` in `src/index.ts` logs `info` `ledger migrated` with these three fields after `openLedger`. The CLI (`runCli`) writes no extra line.
+  - **Stale sidecars.** In steps 2 and 4 the path holds no SQLite database, so a `<state>-wal`, `<state>-shm` or `<state>-journal` there belongs to an old database (for example after a restore that kept the sidecars). SQLite would replay such a WAL into the new file. So these three files are unlinked before the rename. The state lock is held, so no other process uses them. In step 3 the sidecars are kept: they hold committed data.
   - An interruption before the rename leaves the JSON file in place, and the next start migrates again. After the rename the file is format 3.
   - Test-only hooks in `LedgerOptions.hooks`:
     - `beforeCommit` runs inside each write transaction; a throw rolls it back.
     - `beforePublish` runs after the backup and before the rename; a throw simulates a crash.
-  - They replace `hooks.beforeRename` and `fs`.
+  - `LedgerOptions` keeps `now` and `hooks` only. `schedule` (the batch timer), `onError` (batched write errors), `hooks.beforeRename` and `fs` are removed, because nothing is batched and the database file is no longer written through the atomic file writer of pulse-kit (it writes only the backup). `LEDGER_VERSION` stays exported, with the value 3.
 - **CLI.** `failed list|resend` opens the same ledger under the lock, so running it on a JSON ledger migrates it. Document this.
 - **Backup and restore** (`docs/operation.md:51`, which today says a copy of the live file is always whole; that is no longer true).
   - Backup: stop pulse-notify, then copy `<state>`. A clean stop checkpoints, so `<state>-wal` is empty.
@@ -254,6 +255,8 @@ Each item's regression test is written first and must fail on notify `main` `3a0
      - the backup file is byte-equal to the original input (compare it with the fixture bytes the test wrote);
      - a `beforePublish` crash leaves the JSON in place, and the next open migrates;
      - a second open does not migrate again;
+     - a stale `<state>-wal` left from another database (built by the test, then its main file removed) is not replayed: opening a fresh or JSON `path` gives a ledger with exactly the expected keys (literal list in the test) and no key of the old database;
+     - `ledger.migration` is `{ from: 2, entries: <literal count of the fixture>, backup: <state>.v2.bak }` after a v2 migration and `undefined` on the second open;
      - a `user_version` of 4 and a bad status row are refused, and the file is unchanged (same bytes before and after);
      - a `beforeCommit` failure in `seed`, `claim`, `resend` and `setRecipients` leaves memory and disk unchanged;
      - prune removes only old settled rows;
@@ -343,48 +346,137 @@ One repository: notify alone changes. No other repository reads the state file o
 - **Existing keys.** Incident 7 has `7:opened` `failed` with a payload. A widening seed must leave it `failed` with its payload. Overwriting it to `seeded` is wrong.
 - **Cost test.** One `claim` at N = 10,000: about 4 pages × (4,096 + 24) bytes ≈ 16,480 bytes of WAL is expected and passes. A whole-file rewrite (about 500,000 bytes) fails the 65,536-byte bound. Batching N claims into one snapshot still writes 500,000 bytes per flush, and the settle-plus-flush op fails too. A mean of the 5 deltas instead of the median is wrong.
 - **Atomic migration.** A crash after the backup and before the rename: the path still holds the JSON, and the next start migrates again. Writing the database directly at `path`, or deleting the JSON before the database is complete, is wrong.
+- **Stale WAL.** An operator restores `<state>.v2.bak` to `<state>` and keeps `<state>-wal` of the format-3 database. Opening it, migrating, and letting SQLite apply that WAL to the new database is wrong: the old rows would come back. The sidecars must be gone before the rename.
 - **Unsupported file.** A JSON `{"version":3,…}` or a SQLite `user_version` of 4 must fail without changes. Setting `journal_mode=WAL` before checking `user_version` changes the file header, which is wrong.
 
 ## Contract fields
 
-No contract, config, env-variable or route names. All new names are local to notify. Searches on 2026-11-03:
+No contract or config name, env variable, HTTP route or wire field is new or renamed. Every new name below is private to notify: a TypeScript name, a column of notify's own state file, a file suffix, or a log text. Nothing outside notify reads any of them (see Rollout order).
 
-- `grep -rn '<name>' .repos/contract/src .repos/config` gave no match for any of: `PartialDeliveryError`, `RecipientProgress`, `LedgerClosedError`, `checkRouting`, `componentRouting`, `setRecipients`, `beforeCommit`, `beforePublish`, `user_version`, `.bak`.
-- The same names in `.repos/notify/src` and `.repos/notify/test`: no match. So nothing in notify collides either.
+Searches on 2026-11-03 at contract `7ce23aa`, config `bc87049` and notify `3a0b4c8`. Run from the meta checkout, one name at a time:
 
-New local names:
-- types `RecipientProgress`, `SendMailResult`;
-- errors `PartialDeliveryError`, `LedgerClosedError`;
-- `Ledger` methods `setRecipients`, `checkRouting`, `componentRouting`; seed marks `checkRouting`, `componentRouting`;
-- `PendingEntry.recipients`, `FailedEntry.recipients`;
-- routing functions `checkRouting(config)` and `componentRouting(config)` in `src/channels/routing.ts`;
-- SQLite tables `channels` and `entries` and their columns (R4);
-- files `<state>.migrating`, `<state>.v1.bak`, `<state>.v2.bak`, `<state>-wal`, `<state>-shm`;
-- log messages `delivery attempt partly refused`, `ledger recipient write failed`, `ledger prune failed, the next prune retries`, `routing changed: history of newly routed checks skipped`, `routing changed: history of newly routed manual incidents skipped`, `ledger migrated`.
+```sh
+grep -rnE '<name>' .repos/contract/src | wc -l
+grep -rnE '<name>' .repos/config --exclude-dir=node_modules --exclude-dir=.git | wc -l
+grep -rnE '<name>' .repos/notify/src .repos/notify/test | wc -l
+```
 
-Removed:
-- `WRITE_BATCH_MS`, `LedgerOptions.hooks.beforeRename` and `LedgerOptions.fs`;
-- `LedgerOptions.onError`, if nothing uses it after batching goes; then the `ledger write failed, pending keys are resent` row of `docs/operation.md:100` goes too.
+**New names with no match anywhere** (contract 0, config 0, notify 0):
+
+| Kind | Names |
+| --- | --- |
+| types | `RecipientProgress`, `SendMailResult` |
+| errors | `PartialDeliveryError`, `LedgerClosedError` |
+| functions | `recipientId` (`src/channels/mailer.ts`); `checkRouting`, `componentRouting` (`src/channels/routing.ts`) |
+| `Ledger` members | `setRecipients`, `checkRouting`, `componentRouting`, `migration` |
+| `LedgerOptions.hooks` members | `beforeCommit`, `beforePublish` |
+| `MailMessage` field | `envelopeTo` |
+| SQLite identifiers | `user_version`, `channel_id`, `reminders_from`, `manual_from`, `check_routing`, `component_routing` |
+| file suffixes | `.migrating` (searched as `\.migrating`), `.bak` (`\.bak`), `-wal` (`\-wal`), `-shm` (`\-shm`) |
+| log messages | `delivery attempt partly refused`, `ledger recipient write failed`, `ledger prune failed` (searched as that prefix), `routing changed` (prefix of both routing messages), `ledger migrated` |
+| log fields | `remaining`, `backup` (word search `grep -rnw`) |
+
+**Names that intentionally reuse an existing word**, each in its own namespace (word search `grep -rnw '<name>'`; counts are contract/src, config, notify/src):
+
+| Name | Hits | Why the reuse is safe |
+| --- | --- | --- |
+| `checkRouting`, `componentRouting` | 0, 0, 0 | Used twice inside notify on purpose: as functions exported by `src/channels/routing.ts` and as `Ledger` methods and `seed` marks. A method is reached only as `ledger.checkRouting(id)`, so it never shadows the imported function in `src/notifier.ts`. The marks and methods hold the strings that the functions produce. |
+| `recipients` (`PendingEntry`, `FailedEntry`, column `entries.recipients`) | 0, 0, 1 | The notify hit is a comment (`src/channels/smtp-send.ts:120`), which this change rewrites. |
+| `delivered` (`RecipientProgress`) | 0, 0, 11 | The notify hits are the ledger status and delivery outcome `"delivered"` (`src/ledger.ts:19`, `src/delivery.ts:31`). The new field is a property of `RecipientProgress` only; it is never a status value. |
+| `refused` (`RecipientProgress`, `SendMailResult`) | 1, 0, 4 | The contract hit is a comment (`src/schema.ts:806`); the notify hits are comments and config error text (`src/config.ts:141`, `src/index.ts:335`, `src/failed-cli.ts:5`). No type has a field of this name. |
+| `accepted` (`SendMailResult`) | 1, 2, 0 | Hits are a contract comment (`src/schema.ts:580`) and a local variable in config `src/release.test.ts:152`. In notify it mirrors nodemailer's result field of the same name. |
+| `codes`, `attempt`, `incidents` (log fields) | 0/0/1, 0/0/13, 20/0/69 | `attempt` and `incidents` are existing notify log fields with the same meaning (`src/delivery.ts:144-148`, `src/notifier.ts:519-522`). `codes` has one notify hit, a comment (`src/channels/smtp-send.ts:97`). Log fields are not wire fields. |
+| tables `channels`, `entries`; columns `id`, `key`, `status`, `at`, `payload` | `entries` 9/7/57, `payload` 0/2/8; `channels` 0/0/46; `id`, `key`, `status`, `at` are common words in all three | They are the names of the format-2 JSON ledger (`src/ledger.ts:35-44`) carried into SQLite with the same meaning. The contract hit of `entries` is the audit page field (`.repos/contract/src/audit.ts:109`), a wire field of the api that notify never reads. The config hits are tests and fixtures. A table of notify's private state file cannot collide with a wire name. |
+| `LEDGER_VERSION` | 0, 0, 7 | Kept; its value goes from 2 to 3. |
+
+**Removed names:** `WRITE_BATCH_MS`; `LedgerOptions.schedule`, `LedgerOptions.onError`, `LedgerOptions.hooks.beforeRename`, `LedgerOptions.fs`; the log message `ledger write failed, pending keys are resent` and its row in `docs/operation.md:100`. The shutdown log `ledger flush failed, pending keys are resent` (`src/index.ts:148`) stays.
 
 ## Repository: notify
 
 Files:
-- `src/delivery.ts`: scheduler with per-job retry timers and per-job recipient progress.
-- `src/types.ts`: `RecipientProgress`, the extended `Sender`.
-- `src/errors.ts`: `PartialDeliveryError`.
-- `src/channels/mailer.ts`: `SendMailResult`, the `SendMail` return type, the recipient id helper.
-- `src/channels/smtp-send.ts`: envelope `to`, result mapping, replaces `assertAllAccepted`.
-- `src/channels/email.ts`: remaining recipients, short-circuit when nothing remains.
-- `src/channels/routing.ts`: `checkRouting`, `componentRouting`.
-- `src/notifier.ts`: routing baseline, pending progress, catching the writes that are no longer batched.
-- `src/ledger.ts`: format 3 on `bun:sqlite`, migration, `setRecipients`, fingerprints, `LedgerClosedError`.
-- `src/index.ts`: close after flush, the `onError` wiring.
-- `src/failed-cli.ts`: only if resend output needs it.
-- `test/delivery.test.ts`, `test/email-smtp.test.ts`, `test/smtp-stub.ts` (only if a needed reply is missing), `test/routing-change.test.ts` (new), `test/ledger-cost.test.ts` (new), `test/ledger.test.ts`, `test/ledger.v2.test.ts`, `test/ledger.race.test.ts`, `test/security-atomic-errors.test.ts`, `test/failed-cli.test.ts`, `test/support.ts`, and every other test in `test/` that reads or writes the state file as raw JSON (today: `grep -ln 'readFileSync\|JSON.parse\|writeFileSync' test/*.ts`). Each one moves to the `Ledger` API or to JSON fixtures that go through migration, and keeps its behavioral assertion.
-- `README.md`, `AGENTS.md` (the "Ledger" line: format 3, SQLite, no batching), `docs/channels.md` (`:133`, `:135` ordering and blocking; partial SMTP; routing change), `docs/operation.md` (`:5-12` durability, `:51` backup and restore, the log table, the upgrade note), `docs/troubleshooting.md` (`:31`, `:39` state file errors, the new log lines), `docs/configuration.md:11` (the `PULSE_NOTIFY_STATE` description), `docs/development.md:25`.
+- `src/delivery.ts`
+- `src/types.ts`
+- `src/errors.ts`
+- `src/channels/mailer.ts`
+- `src/channels/smtp-send.ts`
+- `src/channels/email.ts`
+- `src/channels/routing.ts`
+- `src/notifier.ts`
+- `src/ledger.ts`
+- `src/index.ts`
+- `test/delivery.test.ts`
+- `test/email-smtp.test.ts`
+- `test/channels.test.ts`
+- `test/routing-change.test.ts` (new)
+- `test/ledger-cost.test.ts` (new)
+- `test/ledger.test.ts`
+- `test/ledger.v2.test.ts`
+- `test/ledger.race.test.ts`
+- `test/security-atomic-errors.test.ts`
+- `test/security-review.test.ts`
+- `test/manual-upgrade.test.ts`
+- `test/reminders.test.ts`
+- `test/failed-cli.test.ts`
+- `test/index.lock.test.ts`
+- `test/index.test.ts`
+- `test/permanent.test.ts`
+- `README.md`
+- `AGENTS.md`
+- `docs/channels.md`
+- `docs/channels/email.md`
+- `docs/operation.md`
+- `docs/troubleshooting.md`
+- `docs/configuration.md`
+- `docs/development.md`
 
 Behavior change: yes
 Delivery order, SMTP retries, routing seeding and the on-disk format all change.
+
+### What each file changes
+
+Source:
+- `src/delivery.ts`: the per-channel scheduler with a retry timer per job (R1), and the recipient progress of each job (R2).
+- `src/types.ts`: `RecipientProgress` and the extended `Sender` (R2).
+- `src/errors.ts`: `PartialDeliveryError` (R2).
+- `src/channels/mailer.ts`: `SendMailResult`, the new `SendMail` return type, `MailMessage.envelopeTo`, `recipientId` (R2).
+- `src/channels/smtp-send.ts`: the envelope recipient list and the result mapping; it replaces `assertAllAccepted` (R2).
+- `src/channels/email.ts`: the remaining recipients, and no connection when nothing remains (R2).
+- `src/channels/routing.ts`: the functions `checkRouting` and `componentRouting` (R3).
+- `src/notifier.ts`: the routing baseline (R3), progress of recovered pending entries (R2), and the catches for writes that are no longer batched (R4).
+- `src/ledger.ts`: format 3 on SQLite, the migration, `setRecipients`, the fingerprints, `migration`, `LedgerClosedError` (R4).
+- `src/index.ts`: `close()` after `flush()` at shutdown and in the CLI, no `onError` wiring, and the `ledger migrated` log (R4).
+
+No change is needed in the other senders (`src/channels/webhook.ts`, `file.ts`, `slack.ts`, `teams.ts`): a function with fewer parameters fits the extended `Sender` type. `src/channels/factory.ts` and `src/failed-cli.ts` need no change either: `failed resend` calls `ledger.resend`, which keeps the delivered recipients by itself.
+
+Tests:
+- `test/delivery.test.ts`: acceptance 1 and its controls; the FIFO test at `:221` is rewritten to the new policy.
+- `test/email-smtp.test.ts`: acceptance 2 and its controls. The existing `test/smtp-stub.ts` already has one-shot replies by command prefix (`replies`, `:55`, `:140-145`) and `endOfDataReply` (`:63`), so it needs no change.
+- `test/routing-change.test.ts` (new): acceptance 3 and its controls, with the fake API of `test/support.ts` (unchanged).
+- `test/ledger-cost.test.ts` (new): acceptance 4.
+- These tests change because they use removed options or read the state file as JSON. Each keeps its behavioral assertion and reads the result through a reopened `Ledger` instead:
+  - `test/ledger.test.ts`: `fs` and `schedule` (`:108`), raw JSON reads (`:83`), and the fsync step test, which becomes the `beforeCommit` rollback test; the ledger controls of acceptance 4 go here.
+  - `test/ledger.v2.test.ts`: `WRITE_BATCH_MS` (`:6`, `:110`), `schedule` and `onError` (`:168`), raw JSON reads (`:60`); batching tests become per-mutation commit tests; the migration controls of acceptance 4 go here.
+  - `test/ledger.race.test.ts`: `hooks.beforeRename` (`:46`, `:82`, `:113`), raw JSON read (`:63`).
+  - `test/security-atomic-errors.test.ts`: `fs` (`:33`); the fault moves to `hooks.beforeCommit`, and the check that the error text carries no `secret-sentinel` stays.
+  - `test/security-review.test.ts`: `schedule` on `new Ledger` (`:329`); the symlink at `<state>.tmp` (`:328`) becomes a symlink at `<state>.migrating`, which must be unlinked, and the victim file must stay `DO_NOT_OVERWRITE`.
+  - `test/manual-upgrade.test.ts`: `fs` (`:80`), raw JSON reads (`:106`).
+  - `test/reminders.test.ts`: raw JSON read (`:53`).
+  - `test/failed-cli.test.ts`: raw JSON read (`:245`); add the resend control of acceptance 2 at the ledger level (a resend keeps `delivered` and clears `refused`).
+  - `test/index.lock.test.ts`: raw JSON read (`:166`).
+  - `test/channels.test.ts`: raw JSON reads (`:266`, `:314`); its fake `SendMail` (`:62-67`) returns a `SendMailResult`.
+  - `test/permanent.test.ts`: it removes `state.json` and opens a new `Ledger` on the same path while the old one is still open (`:44`, `:83`, `:125`, `:159`, `:182`). With SQLite the old connection can delete the WAL of the new file when it closes. The test closes the previous ledger before it removes the file.
+- `test/index.test.ts`: a start on a v2 JSON state file logs `ledger migrated` with `from: 2` (literal) and leaves `<state>.v2.bak`.
+- Tests that write a v1 or v2 JSON fixture and then open a `Ledger` (for example `test/feeds.test.ts:200`) keep working through the migration and do not change.
+
+Docs:
+- `README.md`: the one-line summary of delivery and the pointer to the upgrade note (state file format 3, backup needs a stopped service).
+- `AGENTS.md`: the "Ledger" line (`:105`): format 3, SQLite, no batching, `close()` after `flush()`.
+- `docs/channels.md`: ordering and blocking (`:133`, `:135`), the new retry policy and completion order, the routing change rule and its once-only limit at upgrade.
+- `docs/channels/email.md`: partial refusal (`:39`): only the remaining recipients are retried, 5xx recipients are not.
+- `docs/operation.md`: durability (`:5-12`), backup and restore (`:51`), the log table (new messages; the row at `:100` goes), and the upgrade note (migration, backup file, downgrade, once-only replay).
+- `docs/troubleshooting.md`: the state file errors (`:31`, `:39`) for SQLite files, and the new log lines.
+- `docs/configuration.md`: the `PULSE_NOTIFY_STATE` row (`:11`): a SQLite database with `-wal` and `-shm` beside it, the name keeps `.json`.
+- `docs/development.md`: the `src/ledger.ts` line (`:25`).
 
 ### Behavior
 
