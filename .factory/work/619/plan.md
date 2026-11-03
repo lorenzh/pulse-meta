@@ -138,7 +138,7 @@ Files:
 - `src/validate-core.ts`: compiled own-data walk and fast path in the problem function, new comment on that function.
 - `src/validate.ts`: the arrayProblem function reads each element with ownValue(value, i).
 - `test/validate.test.ts`: counterexamples 1-10 and 12 for the uptime and latency history validators, and the item 7 polluted-prototype case.
-- `test/http-options.test.ts`: counterexample 13 (three variants of a polluted `Object.prototype` at the `headers` record, through validateCheck).
+- `test/http-options.test.ts`: counterexample 13 (three variants of a polluted Object.prototype at the headers record, through validateCheck).
 - `test/tokens.test.ts`: replace the descriptor/get Proxy test (lines 313-338) as required behavior 5 says.
 - `test/validate-cpu.ts` (new): the A/B script.
 - `test/validate.bench.test.ts`: only if the shared fixture shapes are moved into `test/validate-cpu.ts` and imported from there. Otherwise leave it alone.
