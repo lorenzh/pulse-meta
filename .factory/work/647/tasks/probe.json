@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Skipped-check warnings saturate without re-flooding and preserve distinct string IDs",
+      "files": [
+        "src/client.ts",
+        "src/client.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe — Behavior (Required behavior 1-6), Tests 1-6, Docs, Tool facts and Completion evidence; Acceptance evidence; Security impact; Performance impact; Counterexamples; Risks and Rollout order. One final task: this small warning-state algorithm, its regressions and docs have no independent seam. Implement SHA-256 over the exact ID with explicit utf16le encoding; keep null as a distinct shared key counting toward the unchanged 10000-key cap. Retain the first 10000 fixed-size digest/null keys per log identity in the WeakMap, plus one overflow boolean; never clear, evict or insert over-capacity keys. Known keys stay quiet at capacity; the first unseen key beyond capacity emits only the exact fixed overflow line, once per logger lifetime, and subsequent untracked keys stay quiet until restart. Both skip paths and repeated skipLogger calls with the same log share state. Export skipLogger with its existing signature and explicit return type, document that it is exported for tests, and export nothing else new; this explicit spec requirement takes precedence over the target's general prohibition on test-only exports. Update the state comment. Preserve detailed message text, validation, recovery and every non-goal. Keep every function within cognitive complexity 15 and strict TypeScript. Implement Tests 1-6 with literal expected values, using direct skipLogger calls for capacity/lifetime and at most three large loadChecks calls total. Update all four doc files and collect red/green, full checks, six full-suite CPU samples, local runtime observations and the applicable security checklist in the PR body.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0 under Bun 1.4.0; dependency pins, bun.lock and tooling rules remain unchanged"
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run exactly three samples on the unchanged base commit before edits and three on the completed branch, on the same machine. All six full-suite runs pass. Record each user and system CPU sample, each sum, both medians and branch median minus base median in the PR. The difference is at most 0.15 s; focused-test elapsed time does not satisfy this check. Follow Performance impact: expected test_cpu_s growth about 0.1 s, with a 2.3 s probe budget and the benchmark regression rule max(A * 10%, 0.2 s). Explain that the other probe bench metrics are unaffected because the fixture has 20 valid checks and no skips; after 10001 hostile IDs retained state grows from 1 key on base to 10000 keys (about 1 MiB more), while its maximum remains bounded. Do not use api bench --others-ref for a two-probe-ref comparison because it pins both sides to one ref."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "Capture red/green evidence for Tests 1, 2 and 4. With the baseline warning implementation, Test 1 observes [10001, 10001, 10001] instead of [10001, 0, 0], Test 2 observes a detailed line instead of the overflow line, and Test 4 observes 1 line instead of 2. Expose skipLogger for Test 2 without changing its baseline behavior when collecting that failure. After the fix, the focused suite reports 0 fail; a nonzero exit solely from the global 80% line-coverage threshold is allowed here. Expected counts, returned IDs and overflow text are literals in tests, never read or imported from the implementation."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "0 fail in the focused suite (only global coverage may make its exit nonzero). Test 1 uses injected fetch, x-pulse-contract: 1, headerHosts: skipHosts and one stable logger. Build the large JSON body once: 10001 records { id, type: 'x' } with IDs c00000..c10000 followed by skipOk and skipHdr, with env.PULSE_HEADER_SKIP = SKIP_SENTINEL. Make exactly three large loadChecks calls, and no other new test makes a loadChecks call with 10000 or more records. Literal per-load counts are [10001, 0, 0]; the first contains 10000 detailed lines and exactly 1 line equal to 'skipped checks exceed 10000 remembered IDs; new skip lines are suppressed until the probe restarts'. No line repeats or contains skip-sentinel; every load returns exactly ['ok', 'hdr'] in that order. On the same saturated logger, small lists [{ ...skipOk, id: 'c00005' }, { ...skipBad, id: 'late' }], [], and [{ ...skipBad, id: 'late2' }, { ...skipBad, id: 'c00005' }] return ['c00005'], [], [] respectively and each adds 0 lines. Validation/recovery and suppression survive changed, reordered and empty responses."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "0 fail in the focused suite (only global coverage may make its exit nonzero). Tests 2-3 call exported skipLogger directly, avoiding large validation loads. With fresh L1, k00000..k09999 produce exactly 10000 detailed lines and 0 overflow lines; repeating those 10000 IDs adds 0. k10000 adds exactly 1 line, equal to the literal overflow text; k10001, k10002, null and k00000 add 0. A second skipLogger(L1) with k10003 adds 0, proving shared state. Fresh L2 with k00000..k10000 independently produces 10001 lines with the literal overflow text last, while the original saturated L1 still adds 0 for k00001. Keep tests independent by creating any required saturated L1 within the scenario rather than depending on execution order."
+        },
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "0 fail in the focused suite (only global coverage may make its exit nonzero). Integration Tests 4-5 use versioned fake responses and fresh stable loggers: rejected IDs '\\ud800' and '\\ud801' produce exactly 2 different detailed lines, one containing each actual lone-surrogate ID, and a second load adds 0; an empty-string ID and skipNoId produce exactly 2 lines. Test 6 preserves all existing repeated-load, cross-path shared-ID, reason-change, reorder, shared ID-less fallback, recovery, fresh-logger, skip-sentinel and long-ID memory regressions unchanged and passing."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; Biome, ESLint with cognitive complexity at most 15 per function, workflow lint, strict TypeScript and the full test suite pass with line coverage at least 0.8. No tooling rule is weakened. The export-only testing exception is limited to skipLogger as explicitly required by the spec."
+        },
+        {
+          "command": "PULSE_CHECKS_RELOAD_MS=5000 bun run start",
+          "expected": "Prepare a local fake API bound to 127.0.0.1 port 0, serving an unchanged JSON response of 10001 invalid { id, type: 'x' } checks with x-pulse-contract: 1 on the checks endpoint requested by the probe. Set PULSE_API_URL to that server and PULSE_PROBE_TOKEN to a local dummy value, unset PULSE_PROBE_TOKEN_FILE and avoid unrelated startup failures. Start the real probe, observe startup and two completed reloads, then stop the probe and fake API. Parse stderr warning messages: the first load emits 10000 detailed skip lines and exactly 1 overflow line with the specified literal text; the next two reloads each emit 0 skip-related lines. Record the complete setup/start command, at least 3 served checks requests and observed [10001, 0, 0] in the PR, satisfying AGENTS.md End-to-end checks and Completion evidence."
+        },
+        {
+          "command": "rg -n 'memory is reset' README.md docs",
+          "expected": "no matches (exit 1). README.md:5, both reset references in docs/configuration.md and docs/troubleshooting.md now explain the 10000 remembered-ID bound, one overflow line, suppression of new detailed skip lines until restart, quiet remembered IDs and continued validation/recovery. No promise to log every new ID after capacity. Troubleshooting adds the overflow line's cause (more than 10000 distinct skipped IDs) and action (fix the checks file and restart the probe to see lines again); docs/operation.md lists the exact overflow text at warn level."
+        },
+        {
+          "command": "git diff --check && git diff -- src/client.ts src/client.test.ts README.md docs/configuration.md docs/troubleshooting.md docs/operation.md",
+          "expected": "exit 0 for diff --check. Review Security impact and Counterexamples: the WeakMap retains at most 10000 keys per logger (64-hex-character UTF-16LE SHA-256 digests or the shared null key) and one boolean, with 0 retained raw IDs/payloads, 0 growing secondary caches, 0 clears/evictions and 0 external values in the overflow line. Confirm exact UTF-16 code units without normalization or surrogate repair and membership checked before overflow. Review hostile inputs: 10001+ IDs, exactly 10000 then one, lone and paired surrogates, empty strings, long IDs, ID-less records and alternating/empty responses. Validation, header resolution, the 5 MiB body cap, heartbeat filtering, host-denial diagnostics, fallback and version warnings remain unchanged; add no env var, setting, dependency, route, contract field or pin move. The PR includes applicable secrets/body-limit/input-validation checklist results, red/green evidence, full checks, all six CPU samples and median difference at most 0.15 s, local runtime counts, the suppression limitation and single-repository rollout."
+        }
+      ]
+    }
+  ]
+}
