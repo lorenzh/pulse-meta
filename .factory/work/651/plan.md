@@ -77,7 +77,11 @@ Source: issue #651, follow-up of the spot review of pulse-notify#41 (child #649 
 
 ## Performance impact
 
-The notify metrics of `bench/budgets.json` in the api repository (`notify`: `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, `startup_wall_ms`, `image_mb`): none expected to move measurably. The change adds one boolean check per mutation call and one test with about 17 synchronous calls on a small temporary ledger; `test_cpu_s` (budget 3.4 s, floor 1.5 s) may grow by a few milliseconds, well inside noise. No startup, memory or image change. No A/B run is required; if the implementer wants a number, `bun bench/run.ts --a <api sha> --b <api sha> --others-ref <notify sha>` from the api repository compares notify refs.
+The notify metrics of `bench/budgets.json` in the api repository (`notify`: `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, `startup_wall_ms`, `image_mb`): none expected to move measurably. The change adds one boolean check per mutation call and one test with about 17 synchronous calls on a small temporary ledger; `test_cpu_s` (budget 3.4 s, floor 1.5 s) may grow by a few milliseconds, well inside noise. No startup, memory or image change. No A/B run is required.
+
+The api bench cannot A/B one notify revision against another. `bench/refs.ts:55-65` (api `main` at `3fdfbe5`) varies only the api ref between sides. `--others-ref` puts the same ref on both sides for every non-api repository, including contract, kit and config. A notify SHA there neither compares notify revisions nor exists in those repositories. So do not use `bun bench/run.ts` for this change.
+
+If the implementer wants a number, measure `test_cpu_s` directly in the notify clone, the way the bench does. The bench runs `bun run test` in the repository (`bench/run.ts:161-166`) and counts user + system CPU seconds of the child and its waited descendants (`bench/measure.ts:68-70`). Run `TIMEFORMAT='%U %S'; time bun run test` five times on the base commit (`757e78f`) and five times on the PR branch. Sum user + sys for each run, then take the median (third of five sorted values) per side. Report B − A in seconds. Expected: below 0.05 s, and B stays under the 3.4 s budget (`bench/budgets.json`, `notify.test_cpu_s`).
 
 ## Security impact
 
