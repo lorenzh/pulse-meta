@@ -25,7 +25,9 @@ jobs:
           FORCE: ${{ vars.RUNNERS_FORCE }}
         run: |
           pick='"ubuntu-24.04"'
-          if [[ "$FORCE" != hosted && "$IDLE" =~ ^[1-9][0-9]*$ && "$BEAT" =~ ^[0-9]+$ ]] && (( $(date +%s) - BEAT < 180 )); then
-            pick='["self-hosted","pulse-meta","bwrap"]'
+          if [[ "$FORCE" != hosted && "$IDLE" =~ ^[1-9][0-9]*$ && "$BEAT" =~ ^[0-9]+$ ]]; then
+            age=$(( $(date +%s) - BEAT ))
+            # A heartbeat from the future (clock skew) is as untrustworthy as a stale one.
+            (( age >= 0 && age < 180 )) && pick='["self-hosted","pulse-meta","bwrap"]'
           fi
           echo "runs-on=$pick" | tee -a "$GITHUB_OUTPUT"

@@ -21,6 +21,7 @@ step_script() { # <workflow file> <job> -> the run script of the job's first ste
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 [[ "$1" == workflow ]] && { echo "DISPATCH $*" >> "$FIXTURES/writes.log"; exit 0; }
+[[ "$1" == variable ]] && { echo "VAR $*" >> "$FIXTURES/writes.log"; exit 0; }
 shift # api
 method=""; [[ "$1" == -X ]] && { method="$2"; shift 2; }
 paginate=false; [[ "$1" == --paginate ]] && { paginate=true; shift; }
@@ -445,7 +446,19 @@ pick() { # <idle> <beat age in s> <force>
 check "runner pick: fresh heartbeat, idle runner" 'runs-on=["self-hosted","pulse-meta","bwrap"]' "$(pick 2 30 '')"
 check "runner pick: no idle runner" 'runs-on="ubuntu-24.04"' "$(pick 0 30 '')"
 check "runner pick: stale heartbeat" 'runs-on="ubuntu-24.04"' "$(pick 2 600 '')"
+check "runner pick: heartbeat from the future" 'runs-on="ubuntu-24.04"' "$(pick 2 -600 '')"
 check "runner pick: forced hosted" 'runs-on="ubuntu-24.04"' "$(pick 2 30 hosted)"
 check "runner pick: heartbeat never written" 'runs-on="ubuntu-24.04"' "$(IDLE='' BEAT='' FORCE='' GITHUB_OUTPUT="$tmp/p2" bash -c "$pickscript" >/dev/null; cat "$tmp/p2")"
+# runner-heartbeat.sh counts only runners that carry every label of the pick.
+export FIXTURES="$tmp/beat"; mkdir -p "$FIXTURES"
+cat > "$FIXTURES/$(key "repos/$R/actions/runners").json" <<'JSON'
+{"runners":[
+ {"status":"online","busy":false,"labels":[{"name":"self-hosted"},{"name":"pulse-meta"}]},
+ {"status":"online","busy":true,"labels":[{"name":"self-hosted"},{"name":"pulse-meta"},{"name":"bwrap"}]},
+ {"status":"offline","busy":false,"labels":[{"name":"self-hosted"},{"name":"pulse-meta"},{"name":"bwrap"}]},
+ {"status":"online","busy":false,"labels":[{"name":"self-hosted"},{"name":"pulse-meta"},{"name":"bwrap"}]}]}
+JSON
+PATH="$tmp/bin:$PATH" bash "$here/../../scripts/runner-heartbeat.sh" "$R"
+check "runner heartbeat: one runner matches every label" "VAR variable set RUNNERS_IDLE --repo $R --body 1" "$(grep -m1 RUNNERS_IDLE "$FIXTURES/writes.log")"
 
 exit "$fail"
