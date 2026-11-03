@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Hosted Bench passes with R-derived temporary notify test CPU limits",
+      "files": [
+        "bench/budgets.json",
+        "bench/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api — Behavior, Checks and Completion evidence; Required behavior 1-9; Acceptance evidence (Provenance and checks 1-6); Security impact; Rollout order. Follow R before edits, then the two-file change, V and PR; M follows a person's merge and completes the feature, not the child build.",
+      "acceptance": [
+        {
+          "command": "git ls-remote --tags --sort=-v:refname https://github.com/lorenzh/pulse-notify.git 'v*' && gh api repos/lorenzh/pulse-notify/git/ref/tags/v0.1.0 && gh api \"repos/lorenzh/pulse-notify/compare/757e78f27cfdbb89109c216dcba829158ea7b5c3...$NOTIFY_PRE\" --jq .status",
+          "expected": "Before R and again before V, newest notify v* tag is v0.1.0, its object.type is commit and object.sha is c090a07811590eb158849fb9981f3c94fec74276, and notify main's PRE SHA contains 757e78f27cfdbb89109c216dcba829158ea7b5c3 (compare status ahead or identical). A newer tag requires needs-input naming that tag; do not calibrate against a release that already contains the ledger. Follow Provenance's discard/repeat-once/hold rule for an invalid ancestry result."
+        },
+        {
+          "command": "gh run list -R lorenzh/pulse-api --workflow bench.yml --branch main --json databaseId,createdAt,conclusion,url",
+          "expected": "Inspect applicable nightly Bench tables until this change lands: only notify.test_cpu_s may have verdict FAIL regression or FAIL budget. Any other failing row requires needs-input with its run link and row; change no unrelated value or code."
+        },
+        {
+          "command": "git ls-remote \"https://github.com/lorenzh/pulse-$repo.git\" refs/heads/main; git ls-remote --tags \"https://github.com/lorenzh/pulse-$repo.git\" \"refs/tags/$TAG\" \"refs/tags/$TAG^{}\"; gh api \"repos/lorenzh/pulse-$repo/compare/$PRE...$POST\" --jq .status; gh run view \"$RUN\" -R lorenzh/pulse-api --json headSha,url --log",
+          "expected": "For each of R, V and post-merge M, apply Acceptance evidence / Provenance: snapshot PRE immediately before dispatch and POST immediately after completion for all unpinned main refs (including api for M); record api B's pinned main SHA for R/V. Every PRE equals POST or compare prints ahead. Record each A tag named in the run log and resolve its commit using the peeled SHA when present, otherwise the lightweight tag SHA; notify A is c090a07811590eb158849fb9981f3c94fec74276. Record the workflow checkout SHA separately. Preserve PRE/POST and compare evidence for all seven repositories; symbolic refs and headSha alone do not prove measured worktree SHAs. An invalid provenance result discards the run with one repeat, then needs-input, as specified."
+        },
+        {
+          "command": "API_B=$(git ls-remote https://github.com/lorenzh/pulse-api.git refs/heads/main | cut -f1); gh workflow run bench.yml -R lorenzh/pulse-api --ref \"$BRANCH\" -f \"b=$API_B\"",
+          "expected": "R is dispatched on the unchanged api implementation branch before any file edit, with b pinned to the just-read full api main SHA and a and others omitted. The unchanged harness runs its default five alternating A/B rounds. Record R's ID/link and pre-edit workflow SHA. Do not dispatch on main with b set to the implementation branch, pin others, change the workflow, or select new samples after a gating failure."
+        },
+        {
+          "command": "gh run view \"$R\" -R lorenzh/pulse-api --log && gh run download \"$R\" -R lorenzh/pulse-api --name bench-out --dir /tmp/pulse-652-R",
+          "expected": "R reached the table with samples.json, table.json and table.md; every present sample list has five values, including five unrounded samples each at samples.a.notify.test_cpu_s and samples.b.notify.test_cpu_s. Harness exit is 0 or 1, never 2. No table row other than notify/test_cpu_s has verdict FAIL regression or FAIL budget. A missing/incomplete artifact or harness error permits one more dispatch, then needs-input with both run links; another failing row requires an immediate hold. Record the ten samples, medians (3rd smallest), other-row results and exit code."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; const r = await Bun.file(\"/tmp/pulse-652-R/samples.json\").json(); const a = [...r.samples.a.notify.test_cpu_s].sort((x,y) => x-y); const b = [...r.samples.b.notify.test_cpu_s].sort((x,y) => x-y); assert.equal(a.length,5); assert.equal(b.length,5); const A = a[2], B = b[2]; const A_us = Math.round(A*1e6), B_us = Math.round(B*1e6); const floor = Math.ceil((B_us-A_us+200000)/100000)/10; const fromA = Math.ceil(A_us*13/1000000)/10; const fromB = Math.ceil((B_us+100000)/100000)/10; const budget = Math.max(fromA,fromB); console.log(JSON.stringify({a,b,A,B,A_us,B_us,floor,fromA,fromB,budget})); assert.ok(B_us-A_us >= 200000); assert.ok(floor <= 1.4); assert.ok(budget <= 3.2); const edited = (await Bun.file(\"bench/budgets.json\").json()).notify.test_cpu_s; assert.equal(edited.floor,floor); assert.equal(edited.budget,budget);'",
+          "expected": "Independent recomputation from R's pre-edit artifact agrees exactly with both edited numbers: floor = ceil0.1(B-A+0.2) <= 1.4 and budget = max(ceil0.1(A*1.3),ceil0.1(B+0.1)) <= 3.2, using integer microseconds and unrounded third-of-five medians. Exit 0 for an admissible calibration and matching edit. Calculate and check the caps and B-A >= 0.2 before editing. A failed bound requires needs-input with ten samples, medians, arithmetic, run links and SHAs; never clamp, guess values, widen caps, or average across R/V/M. The PR shows the integer-microsecond intermediate arithmetic."
+        },
+        {
+          "command": "git diff --stat origin/main && git diff -U0 origin/main -- bench/budgets.json && grep -c thresholdPct bench/budgets.json",
+          "expected": "The diff contains exactly bench/budgets.json and bench/README.md. The JSON diff changes exactly the notify.test_cpu_s budget and floor number lines, from 2.5 and 0.6 to the independently R-derived values. Every other byte, including key order, unit s, gating true, other notify metrics and all other service values, is unchanged. grep prints 0 (its no-match exit status is 1). No baseline, harness, self-test, workflow, dependency, code or tag changes."
+        },
+        {
+          "command": "git diff origin/main -- bench/README.md",
+          "expected": "Only the notify-related introduction and notify bullet within Temporary test floors change. The introduction attributes api/status to R1 and notify to R, retaining R1's link. Notify's bullet links R, identifies A v0.1.0/c090a07 and B main's recorded SHA containing #41/757e78f, gives both medians to three decimals, links the accepted #649 owner decision (https://github.com/lorenzh/pulse-meta/issues/649#issuecomment-6594413459), and writes both formulas with numeric substitutions, intermediate results, final values and caps 1.4/3.2. Both values are explicitly temporary. Api/status bullets and the closing release rule remain byte-for-byte unchanged: the first api PR after the next notify v* tag removes its floor and resets its budget to ceil0.1(new A*1.3). No release tag is created."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 with the repository's existing lint, typecheck and full test/coverage gates on Bun 1.4.0; do not weaken configuration or format unrelated files."
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "Exit 0; all eight existing bench self-tests pass, including check-budgets parsing the edited budget data and checking every emitted metric."
+        },
+        {
+          "command": "docker compose -f bench/compose.bench.yaml config --quiet",
+          "expected": "Exit 0. Hosted R and V exercise the existing compose-based Bench stack end to end; no new compose or test files are needed."
+        },
+        {
+          "command": "API_B=$(git ls-remote https://github.com/lorenzh/pulse-api.git refs/heads/main | cut -f1); gh workflow run bench.yml -R lorenzh/pulse-api --ref \"$BRANCH\" -f \"b=$API_B\"",
+          "expected": "After committing the two-file edit and repeating the tag precondition and Provenance snapshots, dispatch V from the branch checkout containing that commit, with fresh pinned api B and a/others omitted. V uses the new budgets, is complete under R's completeness checks, and exits 0 with no failing row. Record V's link, artifact, notify medians and SHAs. An incomplete run/harness error permits one repeat, then hold; a gating failure requires needs-input immediately, with R/V samples and the failing row, and never widening or repeated attempts until green. V never re-derives the values."
+        },
+        {
+          "command": "gh pr view \"$PR\" -R lorenzh/pulse-api --json body,url,files",
+          "expected": "PR body names the issue and check results; includes R's run/artifact links, ten unrounded notify samples, medians, exit code, both values' integer-microsecond arithmetic/caps, workflow SHA, A/B SHA evidence for all seven repositories with PRE/POST and ancestry checks, and no other failing row. It includes V's link, exit 0, notify medians and SHAs. Security impact is no, verified by the two-file data/documentation scope; no routes, parsers, clients, writes, logs, dependencies, Dockerfiles or CI change. State that the child build completes with V while feature acceptance awaits M on api main after a person's merge, whose evidence must be added as a PR comment. On a hold report all samples, medians, arithmetic, run links and SHAs gathered so far."
+        },
+        {
+          "command": "gh run view \"$M\" -R lorenzh/pulse-api --json headSha,headBranch,conclusion,url --log",
+          "expected": "Post-merge feature acceptance only: a complete hosted Bench on api main containing the merge commit, default inputs and five rounds (manual dispatch or the 02:17 UTC nightly), exits 0 with no failing row. Repeat Provenance including api main bracketing and record M's link, notify A/B medians and SHAs in a comment on the implementation PR after the person merges. Do not claim M has passed during the pre-merge child build or merge/tag as part of this task."
+        }
+      ]
+    }
+  ]
+}
