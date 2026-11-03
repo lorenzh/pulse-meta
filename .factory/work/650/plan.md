@@ -188,9 +188,9 @@ kept unchanged.
 ## Repository: deploy
 
 Files:
-- `e2e/compose-e2e.sh` (change: new update helpers, lines 501, 521-524, 531-534, the `ok:` key line)
+- `e2e/compose-e2e.sh` (change: new update helpers, lines 501, 521-524, 531-534, and the ok line that prints the update key)
 - `e2e/manual-count.test.sh` (new: Docker-free helper test)
-- `.github/workflows/ci.yml` (change: one step in job `lint`)
+- `.github/workflows/ci.yml` (change: one step in the lint job)
 - `AGENTS.md` (change: one row in the command table)
 
 Behavior change: yes
@@ -210,12 +210,24 @@ Tool facts, verified in this repository at `d4fa0ee`:
   the new step goes there.
 - CI job `full` runs `bash e2e/compose-e2e.sh` (`ci.yml:116-118`) on the pinned images.
 - CI job `check` uses `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
-  (`ci.yml:17`). At that ref the file runs `bun run lint`, `bun run typecheck` and
-  `bun run test` (`check.yml:27-38`); the pinned file is the same as the config clone
-  (`main`). Deploy's `lint` is `biome check . && pulse-eslint . && pulse-workflows`
-  (`package.json:14`). `pulse-workflows` (`bin/pulse-workflows.js` of config, same at the pin
-  and on `main`) checks every `.github/workflows/*.yml` against the action policy, so the
-  changed `ci.yml` passes through it. Biome and ESLint do not read `.sh` files.
+  (`ci.yml:17`); `package.json:22` pins `@lorenzh/pulse-config` to the same SHA. At that ref
+  `check.yml` runs `bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck` and
+  `bun run test` (`check.yml:25-38` at `04108fa`, read with `gh api` from the contents API at
+  that ref; byte-equal to the config clone on `main`). Deploy's `lint` is
+  `biome check . && pulse-eslint . && pulse-workflows` (`package.json:14`).
+- `pulse-workflows` (`bin/pulse-workflows.js:39-45` of config at `04108fa`, byte-equal to the
+  clone) reads every `*.yml` file of `.github/workflows` and checks it against the action
+  policy, so the changed `ci.yml` passes through it.
+- Biome does not read `.sh` files and does not read `e2e/` or `.github/`: deploy's `biome.json:2`
+  extends `@lorenzh/pulse-config/biome.json`, and its own `files.includes` (`biome.json:4-27`)
+  lists `cli/**` and a few root config files and excludes `!.github` (line 12), `!*.md`
+  (line 13) and `!e2e` (line 17). The inherited `biome.json` of config at `04108fa` sets
+  `"ignoreUnknown": true` (line 9) and has no shell support; it is byte-equal to the clone.
+  `AGENTS.md` is excluded by `!*.md`.
+- ESLint does not read `.sh` or `.yml` files: deploy's `eslint.config.js:4` spreads the base
+  config of `@lorenzh/pulse-config/eslint.config.js`, which at `04108fa` sets
+  `files: ["**/*.ts", "**/*.js"]` (lines 11 and 20) and nothing else; it is byte-equal to the
+  clone.
 - The E2E sets `COMPOSE_FILE=full/compose.yaml:e2e/compose.e2e.yaml` itself
   (`e2e/compose-e2e.sh:14`) and starts with `docker compose up -d --pull missing` (line 320),
   so a local image named in `common/services.yaml` is used without a pull.
@@ -229,16 +241,31 @@ Checks before handoff (deploy `AGENTS.md`, "Commands"; the changed jobs are `lin
    case must fail.
 2. `git ls-files -z '*.sh' | xargs -0 shellcheck -x` and
    `git ls-files -z '*.sh' | xargs -0 -n 1 bash -n`, from the repository root.
-3. `bash e2e/metric-is.test.sh`, `bash e2e/published-port.test.sh`,
-   `bash e2e/outage-history.test.sh`, `scripts/check-setup.sh`: unchanged results.
-4. `bun install --frozen-lockfile && bun run check` (covers `pulse-workflows` on `ci.yml`).
-5. `scripts/check-setup.sh` and `git diff --exit-code -- common/services.yaml` on the branch:
-   no pin changed.
+3. Every other step of job `lint` (`ci.yml:26-59`), run from the repository root, each with
+   exit `0`:
+   - `git ls-files -z '*.mjs' | xargs -0 -n 1 node --check` (helper syntax, `ci.yml:38-39`)
+   - `git ls-files -z '*.json' | xargs -0 -n 1 jq empty` (JSON syntax, `ci.yml:40-41`)
+   - `bash e2e/outage-history.test.sh`, `bash e2e/metric-is.test.sh`,
+     `bash e2e/published-port.test.sh` (`ci.yml:42-47`)
+   - `scripts/check-setup.sh` and `bash scripts/check-setup.test.sh` (`ci.yml:48-51`)
+   - `bash scripts/secrets-init.test.sh` (needs Docker, `ci.yml:52-53`)
+   - `bash scripts/bump-images.test.sh` (`ci.yml:54-55`)
+   - `bash scripts/wait-ready.test.sh` (`ci.yml:56-57`)
+   - `bash scripts/init-secrets.test.sh` (`ci.yml:58-59`)
+   These are the rows of deploy's `AGENTS.md` command table (lines 43-54) for the `lint` job.
+4. `bun install --frozen-lockfile && bun run check` (job `check`; covers `pulse-workflows` on
+   `ci.yml`).
+5. No pin changed in the committed branch. Record the implementation base as
+   `base=$(git merge-base origin/main HEAD)` and name its SHA in the pull request. Then
+   `git diff --exit-code "$base" HEAD -- common/services.yaml` exits `0` and
+   `git diff --name-only "$base" HEAD` lists exactly the four files of the Files: list. This
+   compares the committed branch against the base, so a pin moved in a commit is caught. The
+   job `full` (`ci.yml:99-123`) is covered by acceptance run A.
 
 Completion evidence (acceptance):
 
 A. Pinned notify. In the implementation checkout, `bash e2e/compose-e2e.sh` exits `0` and ends
-   with `==> All checks passed`. The log holds the `ok:` line of item 6 with the suffix `1`.
+   with `==> All checks passed` (printed by `step` at `e2e/compose-e2e.sh:680`). The log holds the `ok:` line of item 6 with the suffix `1`.
    The expected suffix `1` comes from notify `v0.1.0` `src/detector.ts:102-104` (counter `n`,
    and the update is the second entry, `n = 1`), not from the E2E.
 B. Notify from `main`. Record the notify `main` SHA. Build it:
