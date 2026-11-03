@@ -18,14 +18,14 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `startup_cpu_ms` | 250 ms | 270 ms | 260, 270, 280, 270, 270 | 455 ms | gating | ok |
 | `load_cpu_s` | 0.08 s | 0.09 s | 0.09, 0.10, 0.09, 0.10, 0.09 | 0.5 s | gating | ok |
-| `idle_rss_mib` | 67.41 MiB | 69.73 MiB | 69.73 to 70.34 | 86 MiB | gating | ok |
+| `idle_rss_mib` | 67.41 MiB | 69.73 MiB | 69.38 to 70.34 | 86 MiB | gating | ok |
 | `peak_rss_mib` | 67.54 MiB | 69.82 MiB | 69.07 to 70.30 | 86 MiB | gating | ok |
 | `test_cpu_s` | 1.37 s | 2.33 s | 2.35, 2.33, 2.33, 2.33, 2.25 | 3.4 s | gating | ok |
 | `startup_wall_ms` | 663 ms | 827 ms | 599 to 940 | 978 ms | reported | |
 | `image_mb` | 96.97 MB | 97.15 MB | | 126 MB | reported | |
 
-- Why the bench A/B was not run again: `main` is 2 commits ahead of side B (`gh api repos/lorenzh/pulse-notify/compare/757e78f...3f120cc`: `ahead_by` 2). The only change in `src/` is `src/ledger.ts` +13 -3, a closed-ledger guard on each mutation. Every notify row is `ok` and below its budget. Nothing suggested a deviation, so the bench numbers stand for `main`. The local measurements below cover what the bench does not measure (see finding 2).
-- Machine: GitHub-hosted runner with 4 vCPU and 16 GB RAM, Bun 1.4.0 (bundled SQLite 3.53.2), Linux. Everything ran on 127.0.0.1 in temporary copies (`mktemp -d`), against a fake pulse-api and a local webhook receiver. No shared or production system was contacted. CPU time comes from `/proc/<pid>/stat` (utime + stime, 10 ms resolution) and memory from `/proc/<pid>/status` (`VmRSS`, `VmHWM`). The numbers are comparable within this report. The bench measures inside a container. Here the process ran on the host, so absolute values differ (for example `startup_cpu_ms` 270 ms in the bench and 100-120 ms here).
+- Why the bench A/B was not run again: `main` is 2 commits ahead of side B (`gh api repos/lorenzh/pulse-notify/compare/757e78f...3f120cc`: `ahead_by` 2). The only change in `src/` is `src/ledger.ts` +13 -3, a closed-ledger guard on each mutation. Every notify row is `ok` and below its budget. Nothing suggested a deviation, so the nightly numbers are retained as a historical baseline at `757e78f`, not measurements of `3f120cc`. The local measurements below examine `3f120cc` and cover what the bench does not measure (see finding 2).
+- Machine: GitHub-hosted runner with 4 vCPU and 16 GB RAM, Bun 1.4.0 (bundled SQLite 3.53.2), Linux. Everything ran on 127.0.0.1 in temporary copies (`mktemp -d`), against a fake pulse-api and a local webhook receiver. No shared or production system was contacted. CPU time comes from `/proc/<pid>/stat` (utime + stime, 10 ms resolution) and memory from `/proc/<pid>/status` (`VmRSS`, `VmHWM`). The numbers are comparable within this report. The bench measures inside a container. Here the process ran on the host, so absolute values differ (for example `startup_cpu_ms` 270 ms in the bench and 100-120 ms here). Budget comparisons for the local stress workloads are reference comparisons, not nightly gate failures: RSS at readiness also differs from the bench's idle sampling point, and the larger ledgers and channel counts differ from its workload. No out-of-memory failure was demonstrated.
 - Helpers (not committed, kept outside the repository):
   - `fakeapi.ts`: a fake pulse-api. It serves `/incidents`, `/checks` (20 checks) and `/manual-incidents` with the header `x-pulse-contract: 1`. Open incidents come first, then the newest. Like the api default, it caps the list at 1000.
   - `sink.ts`: a webhook receiver. It answers 200 on `/ok` and 400 on `/fail`.
@@ -205,7 +205,7 @@ pulse-notify is a background service with no web pages.
 - Value: RSS at ready 107.3 MiB (median), `VmHWM` 120.7 MiB (median). Repetitions: 3 runs, plus one 5-minute run (`VmHWM` 123.0 MiB).
 - Baseline: the 10x ledger (6,030 entries, same feed and channels) gives 68.4-69.2 MiB at ready and 85.1-86.1 MiB `VmHWM`. Bench B gives 69.73 and 69.82 MiB.
 - Budget: `idle_rss_mib` 86 MiB and `peak_rss_mib` 86 MiB (gating). Startup CPU 220-250 ms is within `startup_cpu_ms` 455 ms.
-- Why `P3`: memory and startup time grow linearly with the number of entries kept within 30 days, about 0.65 MiB of RSS per 1,000 entries ((107.3 - 68.8) MiB / 60,000 entries at ready; 48.9 - 10.2 MiB right after `new Ledger()`). The budgets are crossed only with a large ledger: about 22,000 entries per channel, which is some 11,000 incidents in 30 days. Nothing breaks, but a container with a tight memory limit at that size would be at risk.
+- Why `P3`: memory and startup time grow with the number of entries kept within 30 days, about 0.65 MiB of RSS per 1,000 additional entries between the two larger samples ((107.3 - 68.8) MiB / 60,000 entries at ready; 48.9 - 10.2 MiB right after `new Ledger()`). The larger tested ledger has about 22,000 entries per channel, or some 11,000 incidents in 30 days. This does not locate the first size that crosses the budget. Nothing breaks, but a container with a tight memory limit at that size would be at risk.
 - Direction: read the rows with `.iterate()` instead of `.all()`, so the whole result is not built at once. Keep less per settled entry, or look settled keys up in SQLite by primary key instead of mirroring them. On the poll path, settled entries are read by `has()` (detection), `entries()` and `#olderReminders` (reminders) and `prune()`.
 
 ### performance-notify-2026-11-03-2 (P3): the nightly bench runs notify with no incidents, so its gating notify metrics do not cover the feed work; with the default page of 1000 incidents, load CPU is 2.3 times higher and peak RSS 13 MiB higher, close to the 86 MiB budget
@@ -226,7 +226,7 @@ pulse-notify is a background service with no web pages.
 - Value: 230 ms of CPU per 60 s window (median) and `VmHWM` 78.4 MiB (median), with a feed of 1000 incidents. Repetitions: 3 runs per side.
 - Baseline: the bench case (feed of 0 incidents) gives 100 ms (100, 100, 120) and 65.4 MiB. Bench B gives `load_cpu_s` 0.09 s and `peak_rss_mib` 69.82 MiB.
 - Budget: `load_cpu_s` 0.5 s and `peak_rss_mib` 86 MiB (gating). With 3 channels and a 6,030-entry ledger, `VmHWM` was 85.1, 85.2 and 86.1 MiB (item 3) and 84.5 MiB after 5 minutes (item 4). That is 98-100 % of the budget, a level the bench never reaches.
-- Why `P3`: no behavior breaks and every value is within the budget. But the gate measures an idle poller. A regression in feed parsing, validation or detection would pass the nightly bench and show up only in installs with incidents.
+- Why `P3`: no behavior breaks. The one-channel feed comparison stays below budget; the three-channel stress run reaches 86.1 MiB, 0.1 MiB above the 86 MiB reference budget. These local stress measurements do not establish a nightly gate failure. The gate measures an idle poller, so it does not exercise feed parsing, validation or detection at incident-loaded sizes.
 - Direction: let the bench api hold incidents, for example a seed of 1000 incidents or a probe target that fails some checks. Then notify's `load_cpu_s` and `peak_rss_mib` include the feed, and the notify budgets can be set again from that run.
 
 ## Notes
@@ -237,3 +237,43 @@ pulse-notify is a background service with no web pages.
 - Bench `startup_cpu_ms` (270 ms) and local CPU at ready (100-120 ms with the bench config) differ because the bench measures PID 1 inside a container from `compose up`. Compare only within one setting.
 - `test_cpu_s` went from 1.37 s (A, `v0.1.0`) to 2.33 s (B) in the nightly, +70.5 %. It is within the 3.4 s budget, whose floor was set for this spread (pulse-api `bench/README.md`, "Temporary test floors").
 - The SQL capture saw the first prune with nothing to remove. A prune that removes entries runs the same `DELETE ... WHERE channel_id = ? AND key = ?` (a `SEARCH`), once per key in one transaction.
+
+## Audit review (2026-11-03)
+
+Review started at 14:59:04 UTC on report commit `6eced6ee917679e1c09086d4d018726c36b51102`. Its parent is the audit's meta base `ef3473d`. Both product clone HEADs match the examined notify and api commits above. There are no P1 or P2 findings. All three P3 findings were spot-checked and retained at P3, with the same two candidates; none was removed or regraded.
+
+`jq . audits/performance/notify.json`, required-field and candidate-count assertions, and a Python comparison of the two reports all exit 0: every required performance field exists, the same three finding ids and severities appear, and the six checklist statuses agree (five checked and website not applicable). `git -C .repos/notify rev-parse HEAD`, the equivalent api command, and `git rev-parse HEAD^` all exit 0 and confirm the commits above. The website exclusion holds because notify serves ops endpoints, not web pages.
+
+The latest nightly was independently verified with `gh api 'repos/lorenzh/pulse-api/actions/workflows/bench.yml/runs?branch=main&event=schedule&per_page=1'` (exit 0). It is successful run `41612366764`. GitHub artifact download `13221114457` and a Python ZIP/JSON read of `table.json` and `samples.json` (exit 0) confirm all seven notify medians. The B idle RSS rounds are 69.73046875, 69.828125, 69.37890625, 69.6015625 and 70.34375 MiB; the range above was corrected. The GitHub compare endpoint confirms that `757e78f` is two commits behind `3f120cc`, with the stated closed-ledger guard as the only source change.
+
+Finding 2's workload premise holds: `rg -n 'status: "up"' .repos/api/bench/load.ts`, `head -2 .repos/api/bench/fixtures/target.mjs`, and `rg -n 'INSERT INTO|upsertChecks' .repos/api/bench/seed.ts` all exit 0. They show the `up` result at line 213, the always-200 target, and the results-only insert at line 53. Its original feed-0 versus feed-1000 timing comparison was not repeated.
+
+The old temporary helpers were removed by the audit. A new temporary `review.ts` independently rebuilt the ledger and service spot-checks after `rsync -a` of notify and `bun install --frozen-lockfile` (exit 0). `timeout 60 bun review.ts seed` (exit 0) seeded 6,030 entries through the notifier's first poll from 1,000 resolved incidents and five resolved manual incidents, across the same three channel types. `Ledger.seed` added 20,000 settled keys per channel for the 66,030-entry side, all inside retention. No seed errors occurred.
+
+`timeout 30 bun review.ts explain` (exit 0) explains the 17 DML variants extracted from source, including a duplicate `reminders_from` update. The only scan plans are `SCAN channels` and `SCAN entries`; all other plan rows use the two primary-key indexes. No plan uses a temporary B-tree. This independently confirms the query conclusion.
+
+`timeout 30 bun review.ts ledger 6030` and `timeout 30 bun review.ts ledger 66030`, interleaved for two rounds per size (all exit 0), give:
+
+| Cost | 6,030 entries (rounds 1 / 2) | 66,030 entries (rounds 1 / 2) |
+| --- | --- | --- |
+| Ledger open | 9.97 / 8.53 ms | 68.67 / 69.57 ms |
+| RSS delta at open | 9.53 / 7.91 MiB | 47.25 / 47.10 MiB |
+| Cold `pending()` x3, median of five calls | 2.44 / 1.93 ms | 2.58 / 2.81 ms |
+
+These cold medians include JIT warm-up and are not the audit's timing series. The last two calls in each process were 0.468/0.435 and 0.440/0.758 ms for 6,030 entries, versus 2.584/2.029 and 2.806/2.372 ms for 66,030. Source inspection confirms that `pending()` traverses every entry and `#rebuildLegacyPending` calls it once per channel.
+
+`timeout 200 bun review.ts service-ab` (exit 0) ran one interleaved comparison with two rounds per side: the same 1,000-incident plus five-manual-incident feed, three channels (webhook, webhook with reminders, file), a 1,000 ms poll, a five-second warm-up and a 30-second measurement window. All four service processes exit 0, with zero error log lines and 30 polls per window:
+
+| Cost | 6,030 entries (rounds 1 / 2) | 66,030 entries (rounds 1 / 2) |
+| --- | --- | --- |
+| RSS at readiness | 72.27 / 72.50 MiB | 111.80 / 108.59 MiB |
+| `VmHWM` | 86.98 / 86.12 MiB | 126.25 / 122.05 MiB |
+| CPU at readiness | 250 / 260 ms | 360 / 380 ms |
+| CPU per 30-second window | 510 / 500 ms | 740 / 700 ms |
+| CPU per poll | 17.00 / 16.67 ms | 24.67 / 23.33 ms |
+
+This confirms findings 1 and 3 directionally. Absolute CPU times differ from the audit. The accelerated polling window is not a `load_cpu_s` measurement at the default five-second interval. Both larger-ledger runs exceed the 86 MiB reference memory budgets, with startup CPU below 455 ms; this does not establish a nightly gate failure or a broken user flow.
+
+`/usr/bin/time -f 'review suite user=%U sys=%S wall=%e exit=%x' timeout 60 bun test` in the temporary copy exits 0: 375 pass, 0 fail, 38 files, 2.16 s user + 0.99 s system = 3.15 s CPU, 4.57 s wall. This single run remains below the 3.4 s test CPU budget.
+
+Corrections are limited to the nightly RSS range, the 86.1 MiB versus 86 MiB comparison, distinguishing historical nightly values from measurements of the current commit, and avoiding an unsupported claim about the first ledger size that crosses the budget. Limitations: this review spot-checked P3 findings; it did not repeat the startup profile, five-minute churn series, per-file test timings or feed-0/feed-1000 comparison. The audit already records those checks; no checklist item is missing or blocked. The independent host measurements and cold microbenchmarks have different timing conditions. All measurement processes and local fake servers completed, and the temporary copy and helpers were removed.
