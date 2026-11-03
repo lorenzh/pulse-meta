@@ -118,16 +118,16 @@ No new names. The change adds no exported symbol, field, key, route or type. The
 ## Repository: contract
 
 Files:
-- `src/validate-core.ts`: compiled own-data walk and fast path in `problem`, new comment on `problem`.
-- `src/validate.ts`: `arrayProblem` reads `ownValue(value, i)`.
+- `src/validate-core.ts`: compiled own-data walk and fast path in the problem function, new comment on that function.
+- `src/validate.ts`: the arrayProblem function reads each element with ownValue(value, i).
 - `test/validate.test.ts`: counterexamples 1-10 and 12 for the uptime and latency history validators, and the item 7 polluted-prototype case.
 - `test/tokens.test.ts`: replace the descriptor/get Proxy test (lines 313-338) as required behavior 5 says.
 - `test/validate-cpu.ts` (new): the A/B script.
 - `test/validate.bench.test.ts`: only if the shared fixture shapes are moved into `test/validate-cpu.ts` and imported from there. Otherwise leave it alone.
 - `docs/index.md`: in "Validators" (around lines 357-360) and "Error format" (around lines 400-404), say that array elements at every level count only as own data, and that Proxy inputs are out of scope.
-- `README.md`: only if it repeats the own-data or Proxy rule (it does not on `7ce23aa`; check again).
-- `package.json`: `version` `1.7.0` → `1.7.1`.
-- `dist/validate-core.js`, `dist/validate-core.d.ts`, `dist/validate.js`, plus any other `dist/` file that `bun run build` regenerates.
+- `README.md`: only if it repeats the own-data or Proxy rule (it does not on commit 7ce23aa; check again).
+- `package.json`: the version field goes from 1.7.0 to 1.7.1.
+- `dist/validate-core.js`, `dist/validate-core.d.ts`, `dist/validate.js`, plus any other file under dist that the build script regenerates.
 
 Behavior change: yes. The validator core gets a fast path, and top-level arrays now reject inherited elements.
 
