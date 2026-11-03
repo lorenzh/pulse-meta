@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Qualify the admin auth interval bound for backward clock steps",
+      "files": [
+        "docs/operation.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: api, Behavior (Required behavior item 5) and all Checks and completion evidence. Edit only the Admin auth throttle Bound bullet. Retain 10 per window, 10 001 live windows, 200 020 per 60 000 ms, factor 2 and not 100 010. State that the interval bound holds while the system clock does not go backwards, and explain in one or two short sentences that a manual clock change or NTP step after windows ended can admit more failures in that interval. Preserve the per-client limit and 429 response. No runtime or kit-pin change and no dependency on the kit task. Publish completion evidence in the PR body.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint, typecheck and full tests pass with existing coverage requirements."
+        },
+        {
+          "command": "rg -n -F -e '200 020' -e 'does not go backwards' docs/operation.md",
+          "expected": "exit 0; the same Admin auth throttle Bound bullet contains both literal phrases 200 020 and does not go backwards, as required by the spec."
+        },
+        {
+          "command": "git diff origin/main -- docs/operation.md",
+          "expected": "Review shows only the Bound bullet changed. It retains the literals 10 per window, 10 001 live windows, 2 × (10 000 + 1) × 10 = 200 020, 60 000 ms, factor 2 and not 100 010. It qualifies the interval bound for a system clock that does not go backwards and explains that a manual clock change or NTP step after cleanup can admit more failures; the per-client limit and 429 response still apply."
+        },
+        {
+          "command": "git diff --check origin/main && git diff --name-only origin/main",
+          "expected": "exit 0; no whitespace errors and the only changed path is docs/operation.md. Source, tests, constants, package.json and the current kit pin c6d2cba7d90c981b884dcac2a9288dd9eccad8b5 remain unchanged."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names issue #660 and closes its child issue, records commands and result lines, and states the known limit: no interval bound for a clock that goes backwards. It records Security impact: no with the changed-path evidence that no runtime code or dependency changed, and no performance A/B run is needed per the spec. No Compose end-to-end check is specified for this documentation section."
+        }
+      ]
+    }
+  ]
+}
