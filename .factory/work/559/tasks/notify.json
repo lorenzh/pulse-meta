@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Waiting retries release the channel for later ready notifications",
+      "files": [
+        "src/delivery.ts",
+        "test/delivery.test.ts",
+        "README.md",
+        "docs/channels.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Behavior R1; Acceptance evidence 1 and its controls; retry ordering documentation and applicable Counterexamples. Keep this task independent of recipient progress and storage migration.",
+      "acceptance": [
+        {
+          "command": "bun test test/delivery.test.ts",
+          "expected": "0 fail in the selected tests (the focused run may fail the global coverage threshold). With A's timer held, B is delivered, A is pending with exactly 1 attempt; releasing the timer runs A's attempt 2 without resending B. Cover unlimited retries, independent attempt limits, duplicate waiting keys, FIFO ready ordering B,C,A, one send in flight, stale reminders after waiting, and stop with 2 unresolved timers releasing each key exactly once. Rewrite the existing FIFO test to the new policy. Record the regression's failing assertion on main 3a0b4c8 and passing branch run as required by Acceptance evidence 1."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with line coverage >= 0.8. Retry defaults, delay formula, permanent failure handling, final outcome counts and durable pending claims remain covered."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Ledger mutations commit changed SQLite rows and migrate JSON state atomically",
+      "files": [
+        "src/ledger.ts",
+        "src/types.ts",
+        "src/index.ts",
+        "src/notifier.ts",
+        "test/ledger.test.ts",
+        "test/ledger.v2.test.ts",
+        "test/ledger.race.test.ts",
+        "test/ledger-cost.test.ts",
+        "test/security-atomic-errors.test.ts",
+        "test/security-review.test.ts",
+        "test/manual-upgrade.test.ts",
+        "test/reminders.test.ts",
+        "test/failed-cli.test.ts",
+        "test/index.lock.test.ts",
+        "test/index.test.ts",
+        "test/channels.test.ts",
+        "test/permanent.test.ts",
+        "README.md",
+        "AGENTS.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md",
+        "docs/configuration.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Behavior R4 in full; R2 RecipientProgress type and ledger persistence/resend API; R3 ledger fingerprint storage/readers/seed marks only; What each file changes (all JSON-state and removed-option test adaptations); Acceptance evidence 4 and its controls, migration log test, and storage portions of Security impact. Implement the complete storage contract together, including caller catches and close-after-flush; defer SMTP consumption to T3 and routing detection to T4.",
+      "acceptance": [
+        {
+          "command": "bun test test/ledger.test.ts test/ledger.v2.test.ts test/ledger.race.test.ts test/failed-cli.test.ts test/index.test.ts test/index.lock.test.ts test/manual-upgrade.test.ts test/reminders.test.ts test/channels.test.ts test/permanent.test.ts",
+          "expected": "0 fail in the selected tests (coverage gate belongs to the full suite). Format 3 has the exact STRICT schema, user_version 3, WAL and synchronous FULL from R4. Each mutation commits its affected rows in one transaction and changes memory only after commit. Preserve claim order, statuses, payloads, marks and pending legacy rebuilds. setRecipients survives reopen; pending/failed return recipients; resend retains delivered and clears refused. All removed options and raw-JSON assertions listed in the spec are adapted without dropping their behavioral coverage, and permanent tests close the previous ledger before replacing its path."
+        },
+        {
+          "command": "bun test test/ledger-cost.test.ts",
+          "expected": "0 fail and 0 skipped on Linux with /proc/self/io (a focused coverage failure is not a test failure). For each of claim, settle plus flush, resend, and seed of 5 keys: use 5 fresh-key samples per N at N=100 and N=10000, take the 3rd-smallest wchar delta, require the N=10000 median <= 65536 bytes and growth <= 16384 bytes. Record the same public-API regression failing on main 3a0b4c8 because claim rewrites the whole file, and passing on the branch. Fixture reductions are permitted only under Performance impact's explicit rule and must still fail on main."
+        },
+        {
+          "command": "bun test test/ledger.test.ts test/ledger.v2.test.ts test/security-atomic-errors.test.ts test/security-review.test.ts test/index.test.ts",
+          "expected": "0 fail in selected tests. Acceptance evidence 4 controls pass: v1/v2 migration preserves data and byte-equal backups, beforePublish leaves original JSON intact and the next open migrates, a second open has migration undefined, fresh/JSON publication removes stale destination and migrating sidecars, and a v2 fixture logs ledger migrated with from=2 and its literal entry count. beforeCommit failures roll back seed, claim, resend and setRecipients in memory and disk; prune retains protected rows; after close a claim throws LedgerClosedError and writes nothing; flush truncates WAL to 0 bytes. Security impact's user_version=4, missing table, status='sent', payload=[1] and malformed recipients fixtures fail startup with exit 2 and cannot use state file while preserving bytes. A .migrating symlink leaves its victim equal to DO_NOT_OVERWRITE; error text excludes secret-sentinel."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and all tests pass with line coverage >= 0.8 after removal of batching, schedule/onError/fs/beforeRename options, and addition of the R4 notifier error catches, migration logging and service/CLI connection cleanup. No dependency or tooling pin changes."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "SMTP retries and recovery send only to recipients still needing delivery",
+      "files": [
+        "src/types.ts",
+        "src/errors.ts",
+        "src/channels/mailer.ts",
+        "src/channels/smtp-send.ts",
+        "src/channels/email.ts",
+        "src/delivery.ts",
+        "src/notifier.ts",
+        "test/delivery.test.ts",
+        "test/email-smtp.test.ts",
+        "test/channels.test.ts",
+        "test/failed-cli.test.ts",
+        "test/security-review.test.ts",
+        "README.md",
+        "docs/channels/email.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Behavior R2 in full using T2's recipient persistence; Acceptance evidence 2 and all controls; SMTP portions of Security impact and Counterexamples. Extend Sender, define PartialDeliveryError/SendMailResult/envelopeTo/recipientId, map trusted per-recipient outcomes, retain progress per scheduler job, recover it for ordinary and held pending notifications, and document SMTP semantics and safe diagnostics.",
+      "acceptance": [
+        {
+          "command": "bun test test/email-smtp.test.ts test/channels.test.ts test/delivery.test.ts test/failed-cli.test.ts",
+          "expected": "0 fail in selected tests (focused coverage may fail). Acceptance evidence 2's loopback regression has exactly 1 RCPT TO in transaction 2, for b@example.test, exactly 2 messages, identical Message-ID headers and both addresses in each To header; event is delivered after 2 attempts. Record the baseline failing assertion on main 3a0b4c8 (2 RCPT TO lines on retry) and branch pass. Cover mixed 2xx/4xx/5xx with only b retried and final failed recipients {delivered:[a,b],refused:[c]}, all-4xx unchanged progress/retryable SmtpError, all-5xx failure after 1 attempt, DATA 451 retrying both, independent progress for 2 jobs, reopen recovery sending only b, and failed resend sending only c."
+        },
+        {
+          "command": "bun test test/email-smtp.test.ts test/channels.test.ts test/delivery.test.ts test/security-review.test.ts",
+          "expected": "0 fail in selected tests. Ops <Alice@Example.TEST> maps to Alice@example.test; changing configured recipients preserves delivered ids while added recipients are tried and removed recipients are omitted. No connection occurs when remaining is empty. Partial progress write failure logs ledger recipient write failed but retains in-memory progress for the next attempt. Every partial attempt logs delivery attempt partly refused with counts and sorted distinct numeric codes; metrics retain one outcome per event. Secret marker and CR/LF SMTP reply text appear in none of logs, errors or ledger. An unexpected accepted address is never recorded as delivered. Other SMTP failures retain R2's existing classification and change no progress. Fake SendMail returns SendMailResult and all direct MailMessage fixtures use the new envelope recipient list."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and full tests pass with line coverage >= 0.8; no dependency pin changes. R1 scheduling controls remain green with progress stored per job and all pending recovery paths."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Routing changes skip newly visible history and the complete change passes release checks",
+      "files": [
+        "src/channels/routing.ts",
+        "src/notifier.ts",
+        "test/routing-change.test.ts",
+        "README.md",
+        "docs/channels.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Behavior R3 in full using T2's fingerprint persistence; Acceptance evidence 3 and controls; Checks and Completion evidence for the whole R1-R4 change, Acceptance evidence 5-7, Performance impact, Security impact checklist and hostile inputs, Risks and Rollout order. Final checks cover all four tasks; retain notify-only scope and the documented upgrade, backup, ordering and crash limits.",
+      "acceptance": [
+        {
+          "command": "bun test test/routing-change.test.ts",
+          "expected": "0 fail in selected tests (focused coverage may fail). Acceptance evidence 3 sends exactly 0 notifications for incident 7 after widening, records 7:opened and 7:resolved as seeded, stays quiet on a second poll/restart, and sends 9:opened. Record the main 3a0b4c8 failing assertion and branch pass. Cover exclusion removal, glob widening, both component include/exclude widening, manual history and later updates/resolutions, due reminder seeding and next-interval delivery, failed feeds/404, failed baseline commit then retry, equivalent normalized lists writing nothing, unchanged-config downtime catch-up, and migrated v2 adopting without seeding. Fingerprints and keys commit together; existing pending/failed/delivered entries, payloads and recipient progress survive, and previously claimed work is not cancelled. Automatic and manual feed handling remain independent."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; all R1-R4 tests, lint and typecheck pass; line coverage >= 0.8 with unchanged thresholds, configuration and dependency pins."
+        },
+        {
+          "command": "bun test test/security-atomic-errors.test.ts test/security-review.test.ts test/ledger.test.ts test/ledger.v2.test.ts test/email-smtp.test.ts test/routing-change.test.ts",
+          "expected": "0 fail in selected tests. Review every applicable Security impact checklist item against the final diff and record the result: atomic path-safe publication and backups, all corrupt/unsupported SQLite fixtures rejected unchanged with exit 2, transaction rollback/no writes after close, .migrating symlink victim unchanged, unknown SMTP results narrowed and unmatched addresses ignored, no addresses/SMTP reply text/secrets in partial errors or logs, filter-only fingerprints and migration diagnostics restricted to version/count/backup. No new runtime package; nodemailer stays 10.3.1."
+        },
+        {
+          "command": "for sample in 1 2 3 4 5; do for checkout in \"$NOTIFY_MAIN_DIR\" \"$NOTIFY_BRANCH_DIR\"; do (cd \"$checkout\" && bun -e 'const p = Bun.spawn([\"bun\", \"run\", \"test\"], { stdout: \"ignore\", stderr: \"ignore\" }); const code = await p.exited; const u = p.resourceUsage(); console.log(process.cwd(), code, ((Number(u.cpuTime.user) + Number(u.cpuTime.system)) / 1e6).toFixed(2)); process.exit(code)') || exit; done; done",
+          "expected": "With NOTIFY_MAIN_DIR pointing to a disposable installed checkout of main 3a0b4c8 and NOTIFY_BRANCH_DIR to the candidate checkout, all 10 runs exit 0. Record 5 alternating samples per checkout and their 3rd-smallest medians; branch median minus main median <= 0.25 s. State that startup/RSS/load budgets will be confirmed by the next nightly Bench as Performance impact requires."
+        },
+        {
+          "command": "PULSE_NOTIFY_CONFIG=\"$NOTIFY_SMOKE_CONFIG\" PULSE_NOTIFY_STATE=\"$NOTIFY_SMOKE_STATE\" bun run start",
+          "expected": "Using disposable file-channel config and v2 JSON state fixtures as Acceptance evidence 6 specifies, observe ledger migrated with from=2 and a byte-equal <state>.v2.bak. Send SIGTERM; service exits 0 and <state>-wal is empty (0 bytes). Record exact fixture setup, command, signal, output and post-stop check in the PR."
+        },
+        {
+          "command": "docker build --tag pulse-notify:candidate .",
+          "expected": "exit 0; build the final candidate from the notify PR head, with no changes to the published deploy pin."
+        },
+        {
+          "command": "git clone https://github.com/lorenzh/pulse-deploy.git /tmp/deploy-559",
+          "expected": "exit 0; disposable deploy main clone prepared as Acceptance evidence 7 requires. Before the next check, use file tools to replace only its common/services.yaml notify image line with pulse-notify:candidate; preserve other pins and do not edit .repos/deploy."
+        },
+        {
+          "command": "cd /tmp/deploy-559 && scripts/init-secrets.sh && bash e2e/compose-e2e.sh",
+          "expected": "exit 0; last line ==> All checks passed. This run uses the locally built candidate notify image, not the published 0.1.0 image."
+        },
+        {
+          "command": "git rev-parse HEAD && docker image inspect -f '{{.Id}}' pulse-notify:candidate && git -C /tmp/deploy-559 rev-parse HEAD",
+          "expected": "Record the full notify PR-head SHA, candidate sha256 image ID and deploy SHA alongside the passing E2E final line, as independent provenance required by Acceptance evidence 7."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0 on the notify PR; check and both docker matrix jobs (ubuntu-24.04 and ubuntu-24.04-arm) succeed. The ubuntu-24.04 test log shows ledger-cost.test.ts ran with 0 skipped; include CI evidence in the PR."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains all Completion evidence: the 4 baseline regression names/commands/failing assertions on main 3a0b4c8, green runs and bun run check output, 5+5 CPU samples/medians, bun run start transcript, candidate E2E SHAs/image ID/result, security checklist findings, and limits of once-only routing replay on upgrade (upgrade before widening), stopped-service backups, non-FIFO completion, and at-least-once delivery after a crash. Report any unavailable gate honestly rather than counting it as passed."
+        }
+      ]
+    }
+  ]
+}
