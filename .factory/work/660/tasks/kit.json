@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "target": "kit",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Document the clock assumption and pin the rollback counterexample",
+      "files": [
+        "src/failure-limiter.ts",
+        "dist/failure-limiter.d.ts",
+        "docs/index.md",
+        "test/failure-limiter.test.ts"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: kit, Behavior (Required behavior items 1-4), Counterexamples and all Checks and completion evidence. First add one fake-clock test inside the existing backward-clock-jump describe and observe it pass on unchanged runtime code. Follow all seven fixture steps, including both cleanup checks and both 2 ms rollbacks; assert each unblocked check before recording and count only admitted failures by raw timestamps in the half-open interval. Hard-code the timestamps, 10 and 8 from Counterexamples, without deriving expectations from a model or the limiter. Name the test with nondecreasing and explain in a short comment pointing to the docs that it pins a known limit outside the assumption. Preserve every existing test expectation. In the source module comment and docs Bound paragraphs retain the check-before-record condition, the formula and factor 2, state valid while now() does not decrease, and explain that rollback after cleanup reopens budgets at earlier epoch times without restoring ended windows. Explicitly retain the per-window limit, maxKeys + 1 table bound and retryAfterMs in 1..windowMs for any clock. Regenerate dist/failure-limiter.d.ts with bun run build, never by hand. Preserve runtime code, exports, cleanup ordering, retry clamping and dependencies; no monotonic clamp. Include all completion evidence in the PR body. This task is independent of api.",
+      "acceptance": [
+        {
+          "command": "bun test test/failure-limiter.test.ts --test-name-pattern 'nondecreasing'",
+          "expected": "1 pass, 0 fail, both before editing the docs and after the complete change. Coverage may cause a nonzero exit for this focused run; the full suite owns the coverage gate. The new test asserts every fixture checkpoint, literal admitted timestamps [0, 0, 59999, 59999, 59999, 59999, 59999, 59999, 119997, 119997, 119997, 119997], exactly 10 admitted failures in [59999, 119999), and 10 greater than literal 8, from the spec Counterexamples. Cleanup checks record no failures."
+        },
+        {
+          "command": "bun run build && bun run check",
+          "expected": "exit 0; generated declarations match source; lint, build, typecheck and all tests pass, including the dist smoke test and the existing coverage gate of 0.8 lines. Existing fixed-window bound expectations remain 5 and at most 18, and existing rollback cleanup and retry-delay tests remain unchanged and pass."
+        },
+        {
+          "command": "grep -c 'does not decrease' src/failure-limiter.ts dist/failure-limiter.d.ts docs/index.md",
+          "expected": "exit 0; each of the three files reports at least 1 occurrence of the literal does not decrease required by the spec."
+        },
+        {
+          "command": "rg -n -F '2 × (maxKeys + 1) × limit' src/failure-limiter.ts dist/failure-limiter.d.ts && rg -n -F '2 * (maxKeys + 1) * limit' docs/index.md",
+          "expected": "exit 0; both source and generated declaration retain the literal 2 × (maxKeys + 1) × limit, and docs retain 2 * (maxKeys + 1) * limit."
+        },
+        {
+          "command": "git diff origin/main -- src/failure-limiter.ts dist/failure-limiter.d.ts docs/index.md",
+          "expected": "Review shows changes confined to the source and emitted module comments and the docs Failure limiter Bound paragraph. Both prose locations retain the record-after-unblocked-check condition and factor 2, qualify only the interval bound while now() does not decrease, and explain earlier epoch budgets after ended windows were discarded. Both state that at most limit failures per window, at most maxKeys + 1 live windows and retryAfterMs in 1..windowMs hold for any clock."
+        },
+        {
+          "command": "git diff --exit-code origin/main -- dist/failure-limiter.js dist/index.js dist/index.d.ts package.json && git diff origin/main -- src/failure-limiter.ts",
+          "expected": "exit 0; compiled runtime JS, index exports and package.json are byte-identical to origin/main. The source diff touches only the leading module comment, with no runtime change, clamp, new export, dependency, timer or I/O."
+        },
+        {
+          "command": "git diff origin/main -- test/failure-limiter.test.ts | grep -c '^-[^-]'",
+          "expected": "prints 0 (grep exits 1 for zero matches); the test diff adds only the new regression and changes no existing line or expectation."
+        },
+        {
+          "command": "git diff --check origin/main && git diff --name-only origin/main",
+          "expected": "exit 0; no whitespace errors; exactly src/failure-limiter.ts, dist/failure-limiter.d.ts, docs/index.md and test/failure-limiter.test.ts changed."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body names #660 and its child issue, records commands and results including the test passing before the documentation edits, and states the known limit: no interval bound for a clock that goes backwards. It records Security impact: no and unchanged runtime paths and dependencies, and no performance A/B run needed per the spec. No Compose end-to-end check is required by this library section."
+        }
+      ]
+    }
+  ]
+}

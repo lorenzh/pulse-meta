@@ -30,7 +30,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR body names issue #660 and closes its child issue, records commands and result lines, and states the known limit: no interval bound for a clock that goes backwards. It records the mutation exemption for a docs-only change, Security impact: no with the changed-path evidence that no runtime code or dependency changed, and no performance A/B run is needed per the spec. No Compose end-to-end check is specified for this documentation section."
+          "expected": "The PR body names issue #660 and closes its child issue, records commands and result lines, and states the known limit: no interval bound for a clock that goes backwards. It records Security impact: no with the changed-path evidence that no runtime code or dependency changed, and no performance A/B run is needed per the spec. No Compose end-to-end check is specified for this documentation section."
         }
       ]
     }
