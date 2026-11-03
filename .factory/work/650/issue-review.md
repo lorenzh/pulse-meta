@@ -1,0 +1,38 @@
+# Issue review: #650 — manual update keys in the deploy Compose E2E
+
+## Disposition
+
+Ready for `plan`. No question blocks the spec. The only implementation target is `deploy`; notify is read-only context. This is a compatibility fix to the E2E's event matching, with no notify behavior change, image-pin bump or new dependency.
+
+## Request and earlier decisions
+
+Read [#650](https://github.com/lorenzh/pulse-meta/issues/650) and all its comments on 2026-11-03. The only comment is the current Factory claim; there are no earlier decisions to carry forward. The issue requires compatibility with both the pinned notify's positional update key and main's digest key, while retaining exactly-once assertions through restart.
+
+## Evidence from the cloned repositories
+
+- Read meta's `AGENTS.md` and `README.md`, deploy's `AGENTS.md`, and notify's `AGENTS.md`. Inspected deploy at `d4fa0eeb4ff2639e17248d813046ac9e5968cf39` and notify at `757e78f27cfdbb89109c216dcba829158ea7b5c3`.
+- Deploy `e2e/compose-e2e.sh:264–268`: `manual_count` reads a notify file channel's JSONL output and counts lines containing the exact quoted `key` field. `manual_sent` requires the count to equal `1`. These are delivered notification records, rather than queries against notify's internal state ledger.
+- Deploy `e2e/compose-e2e.sh:501,521–524,531–534`: `update:1` is hard-coded in the update wait, the catch-all channel's exactly-once loop before restart, and the web channel's exactly-once loop after restart. All three uses must adopt compatible matching; changing the wait alone is insufficient.
+- The scenario creates one manual incident, posts one non-resolving update (`Cause found.`), then resolves it (`Fixed.`). The creation and resolution each have their own event. There is exactly one update event to count, even though the API lists three update messages including creation and resolution.
+- Notify `src/detector.ts:107–144`: `manualUpdateKey` hashes `[at, status, message]` using SHA-256 and takes the first 32 lowercase hex characters. Opened and resolved keys remain `manual:<id>:opened` and `manual:<id>:resolved`. The final resolving update produces a resolved event, rather than another update event.
+- Notify `test/manual-incidents.test.ts` asserts literal digest keys and the opened/update/resolved event sequence. `test/manual-upgrade.test.ts` includes legacy `manual:7:update:1` fixtures. The request identifies that positional format as the behavior of pinned `0.1.0`; the release image was not executed during this review.
+- Deploy `common/services.yaml:34–35` pins notify `0.1.0` by digest. `e2e/notify.json` defines catch-all (`incidents.jsonl`), web (`manual-web.jsonl`) and public-api (`manual-public-api.jsonl`) file channels. Notify `src/channels/file.ts` writes one serialized notification per line.
+- Deploy has Docker-free shell helper tests (`e2e/metric-is.test.sh`, `e2e/published-port.test.sh`) that extract the real helper and stub its I/O. Its CI lint job runs these alongside shellcheck, shell syntax and setup checks.
+
+## Non-blocking open points and assumptions for the spec
+
+1. **Key grammar.** Match the requested manual incident and event exactly. For the single update event, accept the legacy suffix `1` and a nonempty lowercase hex suffix. Main currently emits 32 hex characters, but the request does not require the E2E to enforce that width or reproduce the hash algorithm; accepting `[0-9a-f]+` is a reasonable assumption and includes the legacy `1`. Reject uppercase, non-hex, empty and partially matched suffixes. Keep exact opened/resolved matching. The helper interface and choice of existing grep or jq are implementation details.
+2. **Exactly once means aggregate event count.** Count all matching lines for this incident's update event. Do not choose one observed digest and ignore other matching entries. Two identical digest records, two different valid digest records, or a legacy record plus a digest record must yield `2` and fail the exactly-one condition. Records belonging to other incident IDs or events must not contribute. Matching text in a message must not substitute for the `key` field.
+3. **Restart coverage.** Preserve at least the existing catch-all assertions before restart and web assertions after restart for all three events. The web update must still have count `1` after notify is healthy, has polled, and the existing settling interval has elapsed. Checking both intended channels at both points is compatible with the request, but adding more incidents, updates or restart modes is unnecessary.
+4. **Scope and related issues.** [#646](https://github.com/lorenzh/pulse-meta/issues/646) addresses a separate probe-main incompatibility. This feature can be specified and tested with the probe still pinned, so it does not depend on #646. Notify's cloned main already contains the digest implementation and PR #41's changes from #649; do not redo them or add a notify child task.
+5. **Candidate-image validation.** The script overwrites `COMPOSE_FILE` with its two fixed files and starts Compose with `--pull missing`. An inherited Compose override alone will not select a candidate image. For the second acceptance run, build notify from a recorded main SHA and substitute only its image reference in a disposable deploy working copy's `common/services.yaml`, keeping the other services pinned. Record the selected image and restore/discard that substitution afterward. No committed pin change, permanent image-selection interface or all-main CI matrix is required. Follow deploy's rule that committed pins live only in `common/services.yaml`.
+6. **Testing scope.** A small Docker-free regression test should exercise the actual counting helper with both key forms and duplicates, following the existing helper-test convention. It supplements the two requested full Compose runs. Changes to that test's CI registration, if needed, belong only to deploy; no package is needed.
+
+## Derived acceptance check
+
+1. Run a focused helper regression check using representative JSONL from a stubbed Docker command. One legacy update record and one digest update record, tested separately, each count as `1`; no match counts as `0`; duplicate and mixed-format records count as `2`. Test exact incident/event boundaries and invalid hex suffixes, and retain exact opened/resolved counts. Verify `manual_sent` accepts only count `1`.
+2. From the implementation checkout, run `bash e2e/compose-e2e.sh` with the unchanged published image pins. It must exit `0` and reach `==> All checks passed`. The update wait and existing exactly-once assertions must pass for the legacy counter form, including after notify restart.
+3. Build a notify image from main, recording the source SHA and image identity. Run the same E2E in a clean, disposable deploy copy with only notify's image reference substituted. Verify Compose actually selects that image. It must exit `0` and reach `==> All checks passed`, exercising a lowercase hex update key and the same restart assertions. Leave other service pins unchanged to isolate this compatibility fix.
+4. Retain routing, API, status/feed and secret-leak checks. Run the checks required by deploy's `AGENTS.md` for every changed CI job, including shellcheck and Bash syntax for changed shell files and any new helper test.
+
+Only this review artifact was written in meta. No target files, labels or issue comments were changed. Compose execution is acceptance work for implementation, not evidence claimed by this review. A guessed notify test filename was absent; inspection was corrected to the existing `test/manual-incidents.test.ts` and `test/manual-upgrade.test.ts` files.
