@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "target": "kit",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Export a bounded failure limiter and normalized client keys",
+      "files": [
+        "src/failure-limiter.ts",
+        "src/index.ts",
+        "dist/failure-limiter.js",
+        "dist/failure-limiter.d.ts",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "test/failure-limiter.test.ts",
+        "test/smoke.test.ts",
+        "docs/index.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: kit, Behavior R4, all Checks and Completion evidence; Required behavior R4 and the limiter, Overflow, Overflow recovery, Global bound and IPv6 Counterexamples. Implement the limiter and clientKeyOf together; reuse normalizeAddress and MAX_TIMER_DELAY_MS, export the public types and helpers, update both smoke-test lists and regenerate committed dist. Both methods use the same routing rule: a live own window wins; otherwise use overflow while the table is full OR overflow is live. Never open an own window during a live overflow window. Keep insertion order equal to window start order. Document recovery and the fixed-window bound with its factor 2 in the module and docs/index.md, and list the helper in README.md. No timers, I/O or auth concepts; no existing export changes. Keep the complete limiter algorithm, client-key normalization and their tests in this one task; the overflow and global-bound examples are checks of the same behavior.",
+      "acceptance": [
+        {
+          "command": "bun test test/failure-limiter.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). With limit 10 and window 60000 ms: 9 failures are unblocked, 10 are blocked, retryAfterMs is 60000 at t0 and 999 at t0+59001, and exactly t0+60000 is unblocked with the next failure starting count 1. 100 check calls consume no budget. With maxKeys 3 and limit 2, a/b/c each have one failure, d fills overflow, e is blocked but a is not; expiry frees capacity without early eviction. Backwards-clock retry is clamped to 1..60000. Invalid limit 0, maxKeys 1.5 and windowMs 2147483648 throw RangeError; all R4 option bounds are enforced."
+        },
+        {
+          "command": "bun test test/failure-limiter.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). Overflow recovery with maxKeys=1, limit=2, windowMs=60000: a fails at 0 and 1, d fails twice at 1; at 60000 both d and a are blocked with retryAfterMs=1 despite the free slot, and no own window exists. At 60001 d is unblocked and its failure opens an own window; exactly 3 evaluated failures lie in [1,60001). Global bound: a fails at 0 and 59999, then twice at 60000; d fails twice at 60000. Exactly 5 evaluated failures lie in [59999,119999), above 4 and within 8. A deterministic trace over 3 windows with maxKeys=2, limit=3 and keys a..f caps each window at 3 and every half-open windowMs interval at 18 evaluated failures, and never opens an own window during a live overflow window. Ended own windows free capacity once overflow has also ended."
+        },
+        {
+          "command": "bun test test/failure-limiter.test.ts test/smoke.test.ts",
+          "expected": "0 fail after building dist (focused coverage may exit nonzero). 127.0.0.1, ::ffff:127.0.0.1 and ::FFFF:7f00:1 yield 127.0.0.1; [2001:db8::1] yields 2001:db8:0:0::/64; 2001:DB8:0:1:aa::1 yields 2001:db8:0:1::/64; fe80::1%eth0 yields fe80:0:0:0::/64; ::1 yields 0:0:0:0::/64; undefined, empty and not-an-ip yield unknown. Root exports include clientKeyOf and createFailureLimiter; every new dist file matches a fresh build."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and the full suite pass with at least 80% line coverage. Module comment and docs/index.md describe the common routing rule, overflow recovery and the factor 2 in the bound 2 x (maxKeys+1) x limit per windowMs interval; README lists the helper. Runtime state is bounded by maxKeys+1."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after staging/committing the generated artifacts; regenerating dist makes no changes."
+        },
+        {
+          "command": "gh pr view --json url,body,statusCheckRollup,mergeCommit",
+          "expected": "CI is green and the PR body contains bun run check output and clean dist regeneration evidence. The full merged kit commit SHA on main is the downstream api pin after the owner merges this PR, as specified in Rollout order."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Return a quiet 400 for unparseable request targets",
+      "files": [
+        "src/server.ts",
+        "src/server.target.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Behavior R1, the src/server.target.test.ts Check and the 400 documentation bullets; Required behavior R1.1-R1.6 and malformed-target, catch-all, ops-looking and echo Counterexamples. Guard only the URL construction at the top of handle, before ops/auth/body handling; keep the admin handler parse. Capture the raw-socket regression failing on main c9e23af16e95494311cdbc8cc57f1f94c75b3af7 before implementing and preserve that evidence for T3's PR body.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.target.test.ts",
+          "expected": "0 fail on the branch (focused coverage may exit nonzero). A real server on 127.0.0.1:0 receives raw GET targets //[, //%zz and //[/healthz: each answers 400 with exactly {\"error\":\"invalid request target\"}, JSON content type and all four SECURITY_HEADERS including nosniff and the independent contract wire version. No auth/body read, target echo or logError call occurs. The isolated malformed cases count unmatched/400 with no 500 sample. The first malformed case fails on baseline with 500 and a logError call."
+        },
+        {
+          "command": "bun test src/server.target.test.ts src/server.test.ts src/server.ops.test.ts src/server.allow.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). A fake listChecks throwing Error still answers 500 internal error and calls logError exactly once; /healthz is 200. Parseable /checks?x and //host/x keep their previous behavior; malformed check-id escapes remain 400 bad check id, query checks stay intact, wrong methods remain 405 with Allow, and unknown paths remain 404."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage. README, REST overview and troubleshooting document the fixed 400 body without exposing request data."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Require 32-character admin secrets at import and authentication",
+      "files": [
+        "src/admin-tokens.ts",
+        "src/tokens.ts",
+        "src/admin-auth-failures.ts",
+        "src/admin-tokens.test.ts",
+        "src/admin-auth-failures.test.ts",
+        "src/start.token-import.test.ts",
+        "src/start.test.ts",
+        "src/server.auth.test.ts",
+        "src/config-admin.test.ts",
+        "src/config.examples.test.ts",
+        "src/server.allow.test.ts",
+        "src/server.scopes.test.ts",
+        "src/server.audit.test.ts",
+        "src/server.rotation.test.ts",
+        "src/server.tokens.test.ts",
+        "src/security-review.test.ts",
+        "src/start.audit-log.test.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "src/config-write.audit.test.ts",
+        "src/docs-claims.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Behavior R2, admin-minimum/startup/upgrade documentation, admin-tokens, startup, file-based upgrade, SCHEMA_VERSION and stored-secret upgrade Checks; Required behavior R2.1-R2.6 and admin length, probe, ignored-file, overlap and Rollback claim Counterexamples. Parameterize shared token rules only if needed in src/tokens.ts; preserve the 16-character probe rule. Add short after the probe check and before scope in adminAccess, retaining failure recording. Update listed tests only where admin fixtures or claims change, keeping length/error precedence meaningful. Capture the 31-character import regression red on main c9e23af16e95494311cdbc8cc57f1f94c75b3af7 for T3. Add no migration; SCHEMA_VERSION stays 5. Document separate file-based v0.1.0/schema-3 and database-based/schema-5 upgrade and recovery paths, including migration committed before a rejected import and the equal-schema restriction on backup-free rollback. Replace the incorrect Upgrades warning about opening older database files with the unsupported-downgrade rule: older releases refuse a higher schema with exit 2; backup-free rollback requires equal SCHEMA_VERSION, otherwise restore the backup. Keep the existing Schema explanation.",
+      "acceptance": [
+        {
+          "command": "bun test src/admin-tokens.test.ts src/admin-auth-failures.test.ts src/tokens.test.ts",
+          "expected": "0 fail on the branch (focused coverage may exit nonzero). A 31-character admin token is refused with tokens[0] and at least 32 characters and without the token; 32 characters are accepted. Placeholder, whitespace, public example, duplicate and cross-role protections stay. Probe tokens of 16 characters are still accepted. Auth order is 403 probe, then 401 short, then 403 scope; all non-probe scopes are covered. Baseline accepts the 31-character admin token, failing the new regression."
+        },
+        {
+          "command": "bun test src/start.token-import.test.ts src/start.test.ts src/server.rotation.test.ts src/server.auth.test.ts src/server.manual-incidents.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). Pending 31-character admin input makes startApi reject with StartupError naming at least 32 characters and PULSE_API_ADMIN_TOKENS_FILE=<path>, without the secret. A fresh database gains 0 api_tokens, token_secrets, audit_log and token_bootstrap rows; an earlier probe-only import stays unchanged. A 32-character token starts and GET /admin/config answers 200. Completed imports ignore short, missing or broken files. A stored 20-character source:file admin secret gets 401 unauthorized, WWW-Authenticate: Bearer and kind short; its rotated 49-character secret gets 200 while the old secret stays 401 during overlap. A 16-character probe secret gets 403 on POST /manual-incidents."
+        },
+        {
+          "command": "bun test src/start.token-import.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). Starting from the v0.1.0 schema-3 layout with pending probe/admin imports and a 31-character admin file, startApi rejects via StartupError with at least 32 characters and the admin setting/path, without the secret. PRAGMA user_version is then 5 and api_tokens has 0 rows; no token_secrets, audit_log or token_bootstrap import rows are added. Replacing the admin value with 32 characters and starting again imports both files and GET /admin/config answers 200. This proves fixing a pending file works although migration already committed."
+        },
+        {
+          "command": "bun -e 'import { SCHEMA_VERSION } from \"./src/migrations.ts\"; console.log(SCHEMA_VERSION)'",
+          "expected": "exit 0; stdout is exactly 5, the literal schema version in R2.6. No migration step is added."
+        },
+        {
+          "command": "grep -c 'Do not open a database file of an older version' docs/operation.md",
+          "expected": "stdout is exactly 0 (grep exits 1 for no matches); the incorrect Upgrades sentence is absent."
+        },
+        {
+          "command": "grep -c 'downgrades are not supported' docs/operation.md",
+          "expected": "stdout is at least 2; the existing Schema explanation and replacement Upgrades rule both describe unsupported downgrades. Review confirms a schema-3 database can upgrade to schema 5 and backup-free rollback requires the same SCHEMA_VERSION."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage after updating affected admin fixtures. Docs state admin minimum 32, exit 2 and ignored completed imports. docs/operation.md Upgrades has before, recovery and going-back instructions for each predecessor: v0.1.0/schema 3 rotates every admin file entry by file on v0.1.0, backs up, then upgrades; a rejected import leaves schema 5 and no imports, so fix the pending file and restart, or restore the backup to run v0.1.0 (which otherwise exits 2 on schema 5). A database-based/schema-5 predecessor rotates every short source:file admin-side secret over HTTP before upgrade and distributes generated 49-character secrets during the 10-minute overlap; editing an imported file does nothing. Recovery without restoring a backup requires a predecessor with SCHEMA_VERSION 5, then rotation and another upgrade; a backup also works. Short old secrets remain 401 during overlap. Token rotation text states the new strength rule; replace the incorrect warning about opening older database files with the unsupported-downgrade rule: an older release refuses a higher schema with exit 2, backup-free rollback requires the same SCHEMA_VERSION, and otherwise the backup must be restored. The existing Schema explanation stays. Probe and heartbeat rules remain 16."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "Share a bounded admin auth throttle and prove the complete security fix",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/admin-auth-throttle.ts",
+        "src/admin-routes.ts",
+        "src/server.ts",
+        "src/metrics.ts",
+        "src/start.ts",
+        "src/admin-auth-throttle.test.ts",
+        "src/server.throttle.test.ts",
+        "src/admin-auth-failures.test.ts",
+        "src/start.test.ts",
+        "src/server.auth.test.ts",
+        "src/config-admin.test.ts",
+        "src/server.allow.test.ts",
+        "src/server.scopes.test.ts",
+        "src/server.audit.test.ts",
+        "src/server.rotation.test.ts",
+        "src/server.tokens.test.ts",
+        "src/security-review.test.ts",
+        "src/start.audit-log.test.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "src/config-write.audit.test.ts",
+        "src/docs-claims.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Behavior R3 and metrics, throttle documentation, throttle Checks, all whole-change Checks and Completion evidence; Required behavior R3 with revised R4, Performance impact, Security impact, Acceptance evidence and all throttle Counterexamples. Pin kit's merged full main SHA and refresh bun.lock with bun install. Keep the limiter policy, auth decision, recording, Retry-After, metric and suppressed warning together; synchronously check -> adminAccess -> record with one startup instance shared by both auth sites and defaults for standalone factories. R2's short denial counts too. Document routing to overflow while full OR overflow is live, including clients whose own window just ended, and the bound 200020 evaluated failures per 60000 ms per process (factor 2), never 100010. Isolate existing multi-denial tests with independent server/limiter state or fake-time windows, never a production throttle bypass. Capture the eleventh-request regression red on main c9e23af16e95494311cdbc8cc57f1f94c75b3af7. T1 and T2 evidence plus this regression form the three red/green findings. Deploy owns compose-e2e against the merged candidate under ## Repository: deploy; api retains CI, Bench, image, bun start and security evidence here. Bench must measure the pushed implementation commit: resolve B_SHA before invoking the harness, confirm the remote branch points to it, use that full SHA for both local --b and hosted b, and record the measured SHA equal to the PR head. Any later commit requires a new local and hosted run; never pass HEAD or a branch name as --b.",
+      "acceptance": [
+        {
+          "command": "bun test src/admin-auth-throttle.test.ts",
+          "expected": "0 fail (focused coverage may exit nonzero). Policy is limit 10, window 60000 ms from the first failure, capacity 10000 clients plus one overflow budget. Failures 1..10 retain 401/403; subsequent attempts get 429 until exactly t0+60000 unless R4 routes the client into live overflow. Retry-After rounds up and stays 1..60, including backwards time; blocked attempts do not extend the window. Success does not reset; every denial kind including short and scope shares the budget; independent peers do not. At 10 failures plus 3 blocked requests the failure metric is 10 and the throttle metric is 3, with no throttle series before blocking. Warn admin auth throttled logs once per route per 60000 ms with the suppressed count and no client/credential data."
+        },
+        {
+          "command": "bun test src/server.throttle.test.ts",
+          "expected": "0 fail on the branch (focused coverage may exit nonzero). Real HTTP with fake now proves 10 failures followed by 429 {\"error\":\"too many requests\"}, Retry-After and security headers, no WWW-Authenticate, and no-store on token/audit routes. Budgets are shared across config, tokens, audit and manual writes, reconnects and spoofed forwarding headers. A valid blocked credential has no authenticate/lastUsedAt change; a blocked write reads no body and changes no revision or audit. 50 concurrent wrong-token requests give exactly 10 x 401 and 40 x 429. Public/ops/probe/heartbeat routes and feature-off/method/id/unknown-route answers before auth are unchanged. HTTP metrics record 429; captured logs and metrics expose no client address, raw path, header, secret, digest or secret length. Baseline returns 401 on request 11, failing the regression."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage; the lockfile resolves the full merged kit SHA named in the PR. All T1/T2 regressions remain green and no existing denial matrix exhausts shared test state accidentally."
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "exit 0; all benchmark harness selftests pass."
+        },
+        {
+          "command": "docker compose -f bench/compose.bench.yaml config --quiet",
+          "expected": "exit 0."
+        },
+        {
+          "command": "docker build --tag pulse-api:local . && bash scripts/image-dotenv.sh pulse-api:local",
+          "expected": "exit 0; the image builds and ignores dotenv files. CI's separate image test-file checks are also green."
+        },
+        {
+          "command": "bun start",
+          "expected": "Using the prepared example checks/probe files and pending admin file from the api section, a 31-character admin token exits 2 with pulse-api: ... at least 32 characters (PULSE_API_ADMIN_TOKENS_FILE=<path>) and no secret. Retrying with a 64-character admin token starts normally. Record commands, environment setting names and sanitized outputs for both exercises."
+        },
+        {
+          "command": "printf 'GET //[ HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n' | nc 127.0.0.1 3000",
+          "expected": "Against the running bun start instance: 400 with exactly {\"error\":\"invalid request target\"}, normal headers and no error-level stack."
+        },
+        {
+          "command": "for attempt in $(seq 1 11); do curl -s -o /dev/null -w '%{http_code}\\n' -H 'Authorization: Bearer wrong' http://127.0.0.1:3000/admin/config; done",
+          "expected": "Against the same fresh instance inside 60 seconds: exactly ten lines 401, then one line 429."
+        },
+        {
+          "command": "curl -s http://127.0.0.1:3000/metrics | grep admin_auth_throttled",
+          "expected": "pulse_api_admin_auth_throttled_total{route=\"/admin/config\"} 1; HELP text is Admin requests refused with 429 by the auth throttle, by route pattern."
+        },
+        {
+          "command": "git push origin HEAD && B_SHA=$(git rev-parse HEAD) && test \"$(git ls-remote origin \"refs/heads/$(git branch --show-current)\" | cut -f1)\" = \"$B_SHA\" && printf 'Measured B_SHA=%s\\n' \"$B_SHA\" && bun bench/run.ts --a c9e23af16e95494311cdbc8cc57f1f94c75b3af7 --b \"$B_SHA\"",
+          "expected": "exit 0; push the implementation commit first, resolve the full B_SHA, and confirm origin's implementation branch points to it before running Bench. Record the printed measured B_SHA and complete local A/B table in the PR body; B_SHA equals the PR head at measurement time. No gating failure; retain the existing budgets, including startup_cpu_ms 325, idle_rss_mib 88, peak_rss_mib 115 and test_cpu_s 5.6. Never pass HEAD or a branch name as --b; a later commit requires a new run."
+        },
+        {
+          "command": ": \"${B_SHA:?set to the full implementation SHA recorded by the local Bench run}\" && test \"$(git rev-parse HEAD)\" = \"$B_SHA\" && test \"$(git ls-remote origin \"refs/heads/$(git branch --show-current)\" | cut -f1)\" = \"$B_SHA\" && gh workflow run bench.yml -R lorenzh/pulse-api --ref \"$(git branch --show-current)\" -f a=c9e23af16e95494311cdbc8cc57f1f94c75b3af7 -f b=\"$B_SHA\"",
+          "expected": "The hosted Bench run completes green using the same full B_SHA as the local run, with no missing metrics or gating failure. Record measured B_SHA, run link and comparison table in the PR; it must still be the PR head. If a later commit changes the head, push, resolve and verify the new SHA and rerun both comparisons. A gating failure is a hold with the run link; budgets stay unchanged. Dispatch success alone is not acceptance."
+        },
+        {
+          "command": "gh pr view --json url,body,statusCheckRollup",
+          "expected": "CI check, bench-selftest and both docker jobs are green. PR body includes all three red-then-green test names and baseline failing assertions, check and selftest output, bun start commands/results, the measured B_SHA equal to the PR head, local Bench A/B table and hosted Bench link/table for that same SHA, full kit SHA and limits (per-process reset, NAT/proxy sharing and overflow, including recently expired own windows). Security checklist covers secret-free fixed errors/logs/metrics, auth ordering, blocked/denied body and write prevention, edge validation and full dependency pin. Operator docs include the 400, 32-character rule, 429 policy/Retry-After/metric, overflow recovery, factor-2 bound of 200020 per 60000 ms, and both upgrade paths with equal-schema backup-free rollback. Health/metrics docs include increase(pulse_api_admin_auth_throttled_total[5m]) > 0."
+        }
+      ]
+    }
+  ]
+}
