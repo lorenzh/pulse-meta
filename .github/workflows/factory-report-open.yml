@@ -17,8 +17,12 @@ concurrency:
 permissions: {}
 
 jobs:
+  runner:
+    uses: ./.github/workflows/runner-pick.yml
+
   open-issue:
-    runs-on: ubuntu-24.04
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.runs-on) }}
     permissions:
       contents: read
       issues: write

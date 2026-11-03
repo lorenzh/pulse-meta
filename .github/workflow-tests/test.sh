@@ -436,4 +436,16 @@ mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
 source "$here/task-loop.sh"
 source "$here/app-token.sh" || fail=1
 
+# runner-pick.yml: self-hosted only with a fresh heartbeat and an idle runner, else hosted.
+pickscript="$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["jobs"]["pick"]["steps"][0]["run"])' "$workflows/runner-pick.yml")"
+pick() { # <idle> <beat age in s> <force>
+  local out="$tmp/pick.out"; : > "$out"
+  IDLE="$1" BEAT="$(( $(date +%s) - $2 ))" FORCE="$3" GITHUB_OUTPUT="$out" bash -c "$pickscript" > /dev/null; cat "$out"
+}
+check "runner pick: fresh heartbeat, idle runner" 'runs-on=["self-hosted","pulse-meta","bwrap"]' "$(pick 2 30 '')"
+check "runner pick: no idle runner" 'runs-on="ubuntu-24.04"' "$(pick 0 30 '')"
+check "runner pick: stale heartbeat" 'runs-on="ubuntu-24.04"' "$(pick 2 600 '')"
+check "runner pick: forced hosted" 'runs-on="ubuntu-24.04"' "$(pick 2 30 hosted)"
+check "runner pick: heartbeat never written" 'runs-on="ubuntu-24.04"' "$(IDLE='' BEAT='' FORCE='' GITHUB_OUTPUT="$tmp/p2" bash -c "$pickscript" >/dev/null; cat "$tmp/p2")"
+
 exit "$fail"

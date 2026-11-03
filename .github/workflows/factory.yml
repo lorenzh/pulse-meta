@@ -7,9 +7,13 @@ on:
 permissions: {}
 
 jobs:
+  runner:
+    uses: ./.github/workflows/runner-pick.yml
+
   admit:
     if: ${{ startsWith(github.event.label.name, 'factory/') && github.event.sender.login != vars.FACTORY_GITHUB_ACTOR && github.event.sender.login != 'lorenzh-factory-bot' }}
-    runs-on: ubuntu-24.04
+    needs: runner
+    runs-on: ${{ fromJSON(needs.runner.outputs.runs-on) }}
     permissions:
       actions: write
       issues: write

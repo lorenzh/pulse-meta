@@ -12,7 +12,7 @@ for name in ('factory.yml', 'factory-run.yml', 'factory-unblock.yml'):
     workflow = yaml.safe_load((workflows / name).read_text())
     for job in workflow['jobs'].values():
         minted = set()
-        for step in job['steps']:
+        for step in job.get('steps', []):
             if step.get('uses', '').startswith('actions/create-github-app-token@'):
                 assert step['uses'] == pin
                 assert "vars.FACTORY_APP_ID != ''" in step['if']
