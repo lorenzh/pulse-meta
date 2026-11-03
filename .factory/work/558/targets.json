@@ -1,0 +1,6 @@
+[
+  { "name": "kit", "dependsOn": [] },
+  { "name": "api", "dependsOn": ["kit"] },
+  { "name": "console", "dependsOn": [] },
+  { "name": "deploy", "dependsOn": ["api"] }
+]
