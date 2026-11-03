@@ -10,10 +10,11 @@
         "e2e/compose-e2e.sh",
         "e2e/compose.e2e.yaml",
         "docs/cli.md",
+        "README.md",
         "full/README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior R6, all Checks and Completion evidence; Required behavior R6 and Rollout order step 4. Change both defaults to e2e-admin-token-sentinel-0123456789abcdef, keep E2E_ADMIN_TOKEN overrides, accept exactly 401 or 403 for the probe-token write while keeping unauthenticated writes exactly 401, and update the ok message. Keep the two failed admin attempts below the throttle limit. Correct admin rotation docs to API rotation then updating the console's secrets/admin-token; retain the 16-character init/secret-init rule and explain the api first-import 32-character minimum. No committed image pins/build/image lines change. Candidate validation depends on the merged api child; use only a scratch deploy worktree for its temporary image replacement as the spec directs.",
+      "spec": "## Repository: deploy, Behavior R6, all Checks and Completion evidence; Required behavior R6, Ignored-file rotation in deploy Counterexample and Rollout order step 4. Change both defaults to e2e-admin-token-sentinel-0123456789abcdef, keep E2E_ADMIN_TOKEN overrides, accept exactly 401 or 403 for the probe-token write while keeping unauthenticated writes exactly 401, and update the ok message. Keep exactly two failed admin attempts. docs/cli.md and README.md split rotation guidance by predecessor: keep file rotation for pinned api 0.1.0; for a database-store build, rotate both probe and admin tokens over HTTP, write the returned secret to secrets/probe-token[-<location>] or secrets/admin-token within the 10-minute overlap, then restart using the existing command so secrets-init distributes it. Link api docs/operation.md#token-rotation and explain first-start-only import; no file-only probe or admin rotation instruction may apply to the database store. Preserve the 16-character init/secrets-init rule, explain the api first-import 32-character admin minimum and CLI generation of 64 characters, and update full/README.md. No committed image pins/build/image lines change. Candidate validation depends on the merged api child; use only a scratch deploy worktree for its temporary image replacement as the spec directs.",
       "acceptance": [
         {
           "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
@@ -52,8 +53,12 @@
           "expected": "exit 1 with no output; the old default is absent."
         },
         {
+          "command": "grep -n 'admin/tokens/<id>/rotate' docs/cli.md README.md",
+          "expected": "At least one matching line per file. PR diff review shows each rotation instruction explicitly associates its method with api 0.1.0 or the database token store. Both files retain file rotation for pinned 0.1.0 and use HTTP rotation, then writing the returned secret within 10 minutes, then their existing restart command for database-backed probe and admin tokens. The ignored-file/401 warning and operation.md#token-rotation link are present; full/README.md states 32 characters and first-start-only import. CLI init keeps its 16-character preservation rule and generates 64-character values."
+        },
+        {
           "command": "git diff --exit-code origin/main -- common/services.yaml",
-          "expected": "exit 0; no image pin or candidate-image change is committed. Docs explain API admin rotation and console file replacement, not rotation by editing an ignored bootstrap file; full/README.md says at least 32 characters."
+          "expected": "exit 0; the api 0.1.0 pin is unchanged and no candidate-image change is committed. The PR diff also contains no new image: or build: line."
         },
         {
           "command": "bash e2e/compose-e2e.sh",
@@ -81,7 +86,7 @@
         },
         {
           "command": "gh pr view --json url,body,statusCheckRollup",
-          "expected": "CI is green, including full against the committed pinned api 0.1.0. PR body contains shell/JSON/setup/check evidence and CI link, plus the changed-api candidate's API_SHA, image ID and last 20 run lines including ==> All checks passed. Security review confirms no secret output, only the intended 401/403 compatibility change, and no committed image pin changes."
+          "expected": "CI is green, including full against the committed pinned api 0.1.0. PR body contains shell/JSON/setup/check evidence and CI link, plus the changed-api candidate's API_SHA, image ID and last 20 run lines including ==> All checks passed. Security review confirms no secret output, exactly two failed admin authentications, only the intended 401/403 compatibility change, no committed image pin changes, and version-specific rotation instructions for both probe and admin tokens in docs/cli.md and README.md."
         }
       ]
     }

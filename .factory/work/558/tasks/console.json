@@ -15,7 +15,7 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, Behavior R5, all Checks and Completion evidence. Raise the minimum and both messages, update affected fixtures and the docker CI sentinel to console-ci-sentinel-token-0123456789ab, and document the rule. Preserve trimming, optional sources, error secrecy and the existing order of validation rules; update expectations when a shorter invalid fixture now hits the length rule first. README is included to satisfy console AGENTS.md's requirement to document changed settings there as well as docs/configuration.md. Capture the 31-character regression failing on console main c93f61cee3568e23e35233927f1aa1e3e015312a and passing on the branch.",
+      "spec": "## Repository: console, Behavior R5, all Checks and Completion evidence. Raise the minimum and both messages, update affected fixtures and the docker CI sentinel to console-ci-sentinel-token-0123456789ab, and document the 32-character rule in both README.md settings rows (PULSE_CONSOLE_ADMIN_TOKEN and PULSE_CONSOLE_ADMIN_TOKEN_FILE) and docs/configuration.md. Preserve trimming, optional sources, error secrecy and the existing order of validation rules; update expectations when a shorter invalid fixture now hits the length rule first. The docs change together as required by console AGENTS.md and revised R5. Capture the 31-character regression failing on console main c93f61cee3568e23e35233927f1aa1e3e015312a and passing on the branch.",
       "acceptance": [
         {
           "command": "bun test src/admin-token.test.ts src/settings.test.ts",
@@ -31,7 +31,7 @@
         },
         {
           "command": "gh pr view --json url,body,statusCheckRollup",
-          "expected": "CI including both docker jobs is green with the new sentinel, /readyz 200 and the existing no-token-in-logs/page assertions. PR body contains bun run check output, red-then-green evidence and the CI link."
+          "expected": "CI including both docker jobs is green with the new sentinel, /readyz 200 and the existing no-token-in-logs/page assertions. PR body contains bun run check output, red-then-green evidence, the CI link and the README.md and docs/configuration.md diff lines stating at least 32 characters for both token sources."
         }
       ]
     }
