@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Every ledger mutation rejects after close without writing, and downgrade names the matching backup",
+      "files": [
+        "src/ledger.ts",
+        "test/ledger.test.ts",
+        "test/ledger.closed.test.ts",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all Behavior bullets, Checks and Completion evidence; Required behavior; Acceptance evidence 1-8; Security impact checklist. Keep the whole fix together. Add the public-method regression suite in test/ledger.closed.test.ts, using an injected clock, a cleaned-up mkdtemp directory and the format 1 migration fixture for the failed entry without payload. Exercise all 17 calls in acceptance 3, including both prune paths, duplicate claim, resend result paths and settlement/recipient error precedence. Capture independent public-read and file-existence/byte baselines immediately after close, compare them after the rejected calls before reopening SQLite, then verify the reopened persisted state and close it. Assert LedgerClosedError, its literal name and fixed message, and zero beforeCommit calls after close. Add open-ledger equal-reminder and no-candidate-prune no-write assertions to test/ledger.test.ts, preserving existing tests. Put the closed guard first in all seven mutations, retain the transaction guard, and preserve the synchronous API, transaction/rollback ordering, format, queries and lifecycle behavior. Change only the downgrade step in docs/operation.md to choose .v1.bak for source format 1 or .v2.bak for source format 2, retaining stop/restore, WAL/SHM removal and the replay warning. Record red/green results, required checks, scope and security evidence in the PR as specified.",
+      "acceptance": [
+        {
+          "command": "bun test test/ledger.closed.test.ts",
+          "expected": "Before changing src/ledger.ts, run the new suite against notify 757e78f27cfdbb89109c216dcba829158ea7b5c3: the equal and absent/undefined setRemindersFrom cases, no-candidate prune, absent and delivered settle, and absent setRecipients fail the LedgerClosedError assertion, as specified in Acceptance evidence 5. Record the failures by case for the PR; a coverage-only failure is not the required red evidence. After the fix, 0 test failures, including all 17 mutation calls and the unchanged-memory, unchanged-file and reopened-state assertions. The focused run may still fail the global coverage threshold; the full-suite coverage gate is bun run check."
+        },
+        {
+          "command": "bun test test/ledger.test.ts",
+          "expected": "0 test failures; existing ledger behavior stays green. The added open-ledger checks assert equal reminder marks return undefined and prune with no candidates returns 0, with zero beforeCommit calls during those no-ops. The existing closed claim/seed test still passes. A focused coverage-threshold failure is not a test failure; bun run check owns the coverage gate."
+        },
+        {
+          "command": "bun test test/ledger.race.test.ts test/ledger.v2.test.ts test/prune.test.ts test/reminders.test.ts test/reminders.enable.test.ts",
+          "expected": "0 test failures with these existing suites unchanged, including closed settlement during flush/lock loss, migration and backup assertions, pruning, and reminders. The independent migration tests retain literal .v1.bak and .v2.bak expectations. A focused coverage-threshold failure is permitted here; bun run check owns the coverage gate."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import { readFileSync } from \"node:fs\"; const line = readFileSync(\"docs/operation.md\", \"utf8\").split(\"\n\").find((text) => text.startsWith(\"- Downgrade to a JSON version:\")); assert.ok(line); for (const name of [\"<state>.v1.bak\", \"<state>.v2.bak\", \"<state>-wal\", \"<state>-shm\", \"Events settled after the migration may then be sent again.\"]) assert.ok(line.includes(name), name);'",
+          "expected": "exit 0; the downgrade step contains both literal backup names required by the issue and independently asserted by the existing migration tests, both sidecar names and the existing replay warning."
+        },
+        {
+          "command": "git diff -- src/ledger.ts test/ledger.test.ts test/ledger.closed.test.ts docs/operation.md",
+          "expected": "Review against Required behavior, Acceptance evidence 1-7 and the Security impact checklist confirms: the first statement of seed, claim, settle, resend, setRecipients, setRemindersFrom and prune checks closed; #transact retains its guard; no closed call reaches a commit or changes memory, database, sidecars or backup files; LedgerClosedError retains the fixed text ledger is closed without identifiers, payloads or paths. The docs diff changes only the downgrade step, maps each backup to its original JSON format and the migration log backup field, and preserves stopping, restoring to <state>, removing sidecars and the replay warning. Open-ledger behavior, flush after close, repeated close, reads, migration and SQLite format 3 remain as specified."
+        },
+        {
+          "command": "git diff --stat",
+          "expected": "Only src/ledger.ts, test/ledger.test.ts, test/ledger.closed.test.ts and docs/operation.md are changed, as listed in ## Repository: notify; package.json and bun.lock are unchanged and no dependency is added. Include the new test file in the diff before collecting this evidence."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete test suite pass with the existing 80 percent line coverage gate unchanged."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The final PR body contains the Completion evidence: all 17 closed-mutation cases, the post-close public-read and file baselines and reopened-state comparison, the named red failures on 757e78f27cfdbb89109c216dcba829158ea7b5c3 and subsequent green results, the matching backup correction, the limited diff and unchanged dependencies, and passing bun run check output. It records both applicable Security impact checklist results (no writes after close and the fixed error text without secrets), the spec's possible extra caught log after lock loss, and no measurable performance impact expected. No compose test or benchmark is required by this notify section."
+        }
+      ]
+    }
+  ]
+}
