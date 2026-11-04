@@ -315,8 +315,19 @@ One repository: only `website` changes. It reads console and deploy `main` at pi
 
 ## Contract fields
 
-No new names in contract or config. The new identifiers are website-internal. Searches run at planning time:
-- `grep -rn -E "CLI_WIZARD_PROMPTS|CONSOLE_SETUP|preview-grid|coming-next" .repos/contract/src .repos/config .repos/website/src` returns nothing.
+No new names in contract or config. The new identifiers are website-internal. Searches run at planning time (website `7d17f14`), from the meta root:
+- New exports, files, CSS classes, section IDs and the nav group title. Each line returns 0 matches:
+  ```
+  for n in isOnlyComment InActionPreviews CLI_WIZARD_PROMPTS CONSOLE_SETUP \
+           in-action in-action-title next-title preview-grid preview-screen \
+           diagram-optional previews.tsx 'Coming soon'; do
+    grep -rn -F -- "$n" .repos/contract/src .repos/config .repos/website/src \
+      .repos/website/scripts .repos/website/site.config.ts --exclude-dir=node_modules | wc -l
+  done
+  ```
+- Section ID `next`: `grep -rn -E 'id="next"|"#next"' .repos/contract/src .repos/config .repos/website/src --exclude-dir=node_modules` returns nothing.
+- CSS class `preview` (on `<figure className="card preview">`): `grep -rn "preview" .repos/website/src/styles` returns nothing. The existing ID `preview-title` (status band) and the island name `live-preview` (`src/build/assets.ts:13`) are different names and stay as they are.
+- The full list of `id=` values in `src/content/*.tsx` and `src/components/*.tsx` today is: `arch-arrow`, `arch-desc`, `arch-title`, `compare-title`, `docs-nav`, `docs-title`, `faq`, `faq-title`, `features`, `features-title`, `how`, `how-title`, `included-title`, `main`, `oss`, `plans`, `plans-title`, `preview-title`, `site-nav`, `start-title`, `waitlist`, `waitlist-email`, `waitlist-note`, `waitlist-title`. None of `in-action`, `in-action-title`, `next`, `next-title` is in it.
 - `grep -n -E "^\s+(grid|rss|zap|database|panel):" .repos/website/src/components/Icon.tsx` returns nothing, so the five icon keys are free.
 - `grep -n -E '"(console|deploy)"' .repos/website/docs.config.json .repos/website/src/docs/*.ts` returns nothing, so the two docs keys are free.
 - No new route in any service. The new site routes `/docs/console/`, `/docs/console/configuration/`, `/docs/console/development/` and `/docs/deploy/cli/` do not exist in `dist/` today, because `docs.config.json` has no `console` or `deploy` key.
@@ -349,13 +360,22 @@ Tool facts (verified at website `7d17f14`):
   - The website `biome.json:2` extends `@lorenzh/pulse-config/biome.json` at pin `86896e9ff02e6458e431aa3417ee81d3b1cbc335` (`package.json:39`).
   - That pinned file excludes `!**/*.html` and `!**/test/fixtures` (pinned `biome.json:15-16`). The website adds `!**/.build`, `!**/.cache`, `!**/.repos` and `!**/src/styles/tokens.css` (`biome.json:4`).
   - The pinned file equals the config clone on main (`diff` empty).
-- **Lint**: `biome check . && pulse-eslint .` (`package.json:22`). The ESLint config is `eslint.config.js`, which ignores `.repos/**`, `.build/**` and `.cache/**` and spreads the shared base (`@lorenzh/pulse-config/eslint.config.js`). It does not ignore `test/fixtures`, so the fixtures use a `.txt` suffix.
-- **Typecheck**: `tsc --noEmit` through `typescript7` (`package.json:20`). `tsconfig.json` includes only `src`, `scripts` and `site.config.ts`.
+- **Lint**: `biome check . && pulse-eslint .` (`package.json:22`).
+  - `pulse-eslint` is the bin of the pinned config (pinned `package.json:11-12`). It passes no `--config` when a local `eslint.config.js` exists (pinned `bin/pulse-eslint.js:8-9`, `:20-24`). The website has one, so the local file is used. The pinned bin equals the clone.
+  - Local `eslint.config.js:1` imports `@lorenzh/pulse-config/eslint.config.js`, and `:3` adds only `ignores: [".repos/**", ".build/**", ".cache/**"]` before `...base`. It does not ignore `test/fixtures`.
+  - Pinned `eslint.config.js` (equals the clone): `:7` ignores `**/dist/**`, `**/node_modules/**`, `**/public/**`, `**/coverage/**`. `:10-17` apply `sonarjs.configs.recommended` with `cognitive-complexity` 15 to `files: ["**/*.ts", "**/*.js"]` (`:11`). `:13` sets `reportUnusedDisableDirectives: "error"`. `:20-51` add the type-aware `@typescript-eslint` rules for `**/*.ts` only.
+  - Consequences: `.tsx` files (`home.tsx`, `previews.tsx`, `hosted.tsx`, `architecture.tsx`, `Icon.tsx`) are not in an ESLint glob and are checked by Biome only. `markdown.ts`, `facts.ts`, `bump.ts`, `nav.ts` and all `*.test.ts` are. A `.txt` fixture matches no ESLint glob.
+  - `sonarjs/super-linear-regex` is active: the plugin is `eslint-plugin-sonarjs@4.2.2` (`bun.lock:143`, `:257`), and the repo carries working `eslint-disable-next-line sonarjs/super-linear-regex` directives (`src/docs/markdown.ts:28`, `src/content/hosted.test.ts:30`, `:35`) that would fail lint as unused under pinned `:13` if the rule were off. A new test regex over generated HTML needs the same directive with a reason, or a string method instead.
+- **Typecheck**: `bun node_modules/typescript7/bin/tsc --noEmit` (`package.json:20`). `tsconfig.json:2` extends `@lorenzh/pulse-config/tsconfig.base.json`, and `:8` sets `"include": ["src", "scripts", "site.config.ts"]`. The pinned base (equals the clone) has no `include` and sets `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` and `verbatimModuleSyntax` (pinned `tsconfig.base.json:8-13`). `test/fixtures/*.txt` lies outside `include` and is not a TypeScript file.
 - **Tests**: `bun test` (`package.json:21`), with `coverage = true` and `coverageThreshold = { lines = 0.8, functions = 0 }` (`bunfig.toml:3-4`).
 - **CI**:
   - Job `check` uses `lorenzh/pulse-config/.github/workflows/check.yml@86896e9…` with no `with:` (`ci.yml:16-17`). So `build` defaults to `false` (pinned `check.yml:6-9`), and the job runs install, lint, typecheck and test (pinned `check.yml:25-38`). The pinned file equals the clone.
   - Job `site` runs `bun install --frozen-lockfile`, `bunx playwright install --with-deps chromium`, `bun run build`, `check:links`, `check:budget` and `check:a11y` (`ci.yml:29-35`).
-- **`check:all`** = `check` + `check:site` (`package.json:19`, `:26`). `docs:bump` is `bun scripts/bump-docs.ts` (`package.json:15`) and takes repo keys as arguments (`scripts/bump-docs.ts`, `process.argv.slice(2)`).
+- **`check:all`** = `check` + `check:site` (`package.json:19`, `:26`). `docs:bump` is `bun scripts/bump-docs.ts` (`package.json:15`).
+  - `scripts/bump-docs.ts:36` reads the keys from `process.argv.slice(2)` and drops `--`. `:37` falls back to all of `Object.keys(DOC_REPOS)` only when no key is given, so `docs:bump console deploy` touches only those two.
+  - `:39` resolves each key with `repoForKey` from `src/docs/bump.ts`, so `console` and `deploy` must be in `DOC_REPOS` before the bump runs.
+  - `:40-45` take the SHA from `git ls-remote https://github.com/<repo>.git refs/heads/main`. `:46-49` read the docs file list and commit date from the GitHub API at that SHA. `:50` merges the entry with `withRepo`, and `:53` writes `docs.config.json` once at the end.
+  - `withRepo` (`src/docs/bump.ts:64-74`) spreads the existing `repos`, sets only the given key, and orders the result by `DOC_REPOS` order. So the six existing entries stay byte-equal, and `console`, `deploy` land after `kit`. An unknown key throws in `repoForKey` (`src/docs/bump.ts:18-26`).
 
 Steps:
 1. `bun install --frozen-lockfile`. Check `gh api repos/lorenzh/pulse-deploy/releases --jq length` (decision 5).
