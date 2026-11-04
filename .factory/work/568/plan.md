@@ -157,7 +157,8 @@ token; `403` for a token without both scopes; `429` from the shared throttle), t
 `ManualIncidentDraftInput` = `{title, impact, componentIds, status?, message, visibility}`, strict
 (an unknown key is `400`). `status` defaults to `investigating` and may not be `resolved`.
 `visibility` is required. `componentIds` must exist in the configured components (`400`
-`componentIds: unknown component "<id>"`, the existing text).
+`componentIds: unknown component "<id>"`, the existing text). Write bodies use the existing
+`MANUAL_INCIDENT_MAX_BODY_BYTES` (16 KiB, `contract/src/schema.ts:792`); it is not a new name.
 
 Publish, inside one `BEGIN IMMEDIATE` transaction that re-reads the row:
 
@@ -249,14 +250,25 @@ their notes by cascade; draft incidents are never resolved and are bounded by
 ### R6 Contract guard and projection
 
 - `isPublicManualIncident(value: unknown): boolean` decides on raw JSON, before validation. It
-  reads own data properties only (the existing `ownValue`, `contract/src/validate-core.ts:15-21`),
-  never runs a getter and never throws. True exactly when the value is a non-array object, its
-  `visibility` is absent or the string `"public"`, and its `publishedAt` is absent or a finite
-  number. Everything else is false (fail closed): `visibility` `"internal"`, `"Public"`, `null`,
-  `1`; `publishedAt` `null`, a string, `NaN`; a getter-defined `visibility` (counts as absent and
-  the getter does not run, so a getter that throws or returns `"internal"` is not executed).
-  Rationale for "absent means public": the public feed of the api and every older api carry
-  neither field.
+  never runs a getter or setter and never throws. For each of the two keys `visibility` and
+  `publishedAt` it reads the own property descriptor (`Object.getOwnPropertyDescriptor`, as the
+  existing `ownValue` does, `contract/src/validate-core.ts:15-21`) and classifies the key:
+  - no own property (also when the name is only inherited from a prototype): **absent**;
+  - own data property (the descriptor has `value`): its **value**;
+  - own accessor property (the descriptor has `get` or `set` and no `value`): **accessor**. The
+    accessor is not called.
+
+  The result is true exactly when the value is a non-array object, `visibility` is absent or the
+  string `"public"`, and `publishedAt` is absent or a finite number. Every other case is false
+  (fail closed), in particular: `visibility` `"internal"`, `"Public"`, `null`, `1`; `publishedAt`
+  `null`, a string, `NaN`, `Infinity`; **an accessor on either key, whatever the getter would
+  return** (this is where the guard differs from `ownValue`, which would treat an accessor as
+  absent and so as public); a `Proxy` whose `getOwnPropertyDescriptor` trap throws (caught,
+  false). The one rule for accessors in this whole spec: an accessor-defined privacy key makes the
+  item non-public, and its getter never runs. Rationale for "absent means public": the public feed
+  of the api and every older api carry neither field, and `JSON.parse` never produces an accessor
+  or a proxy, so the accessor and proxy cases only reach the guard from a hostile or buggy
+  in-process caller.
 - `publicManualIncident(incident: ManualIncident): ManualIncident` returns a new object with exactly
   the eight public fields and each update as `{at, status, message}`. Consumers use it so that a
   `draft` or `notes` field of an upstream item can never reach their output.
@@ -348,8 +360,9 @@ Checklist items that apply:
 - **Input validation:** strict draft and note inputs; the legacy create refuses `visibility` and
   `draft` keys; ids `^\d{1,15}$` (the existing rule, `api/src/server.ts:422-426`) for incident and
   note ids.
-- **Accessor execution:** `isPublicManualIncident` reads own data properties only and never runs a
-  getter (R6), as the contract validators do.
+- **Accessor execution:** `isPublicManualIncident` inspects own property descriptors and never
+  runs a getter; an accessor on `visibility` or `publishedAt` makes the item non-public (R6). The
+  validators keep their existing rule (accessors count as absent, never run).
 - **Dependency pins:** api, status and notify move their contract pin to the merged 1.8.0 SHA on
   contract `main` with `bun install` updating `bun.lock`; no other dependency changes.
 - Not applicable: SSRF and redirects (no new outbound request; notify and status keep their
@@ -397,9 +410,16 @@ Privacy (each must be absent from every public surface):
 - Upstream item `{..., "visibility": "Internal"}` (wrong case): dropped by status and notify
   (fail closed). Upstream item `{..., "visibility": "public", "publishedAt": null}`: dropped.
   Upstream item without both fields: kept (older api).
-- Upstream item with `visibility` defined by a getter that returns `"public"` on first read and
-  `"internal"` later: counted as absent, the getter never runs (direct contract test with
-  `Object.defineProperty`).
+- Item with `visibility` defined by `Object.defineProperty` with a getter that returns
+  `"public"` (and counts its calls): guard returns false, call count 0. A wrong implementation
+  that reuses `ownValue` treats it as absent and returns true. The same with a getter on
+  `publishedAt`, and with a getter that throws: false, no throw, call count 0.
+- Item `Object.create({visibility: "internal"})` with own `publishedAt: 5`: the inherited
+  `visibility` counts as absent, guard returns true (inherited names are never read, as in
+  `ownValue`; a JSON body has no such prototype).
+- `new Proxy({}, {getOwnPropertyDescriptor() { throw new Error("x") }})` and a revoked proxy
+  (`Proxy.revocable({}, {})` after `revoke()`, where even `Array.isArray` throws): false, no
+  throw.
 - 50 internal incidents resolved within 14 days and 1 public one resolved earlier within 14 days:
   the public list still holds the public one (the limit counts after the filter).
 
@@ -442,20 +462,32 @@ Validation and limits:
 Metrics (exact): `pulse_api_manual_incidents_created_total` increases by exactly 1 per published
 incident (legacy create or publish of a draft incident), by 0 for draft save, edit, discard, note
 and delete. `pulse_api_manual_incidents_resolved_total` increases by exactly 1 per resolving
-write (legacy resolve, legacy update with `resolved`, publish of a resolving draft update). No
-statistic over time windows is defined by this spec.
+write (legacy resolve, legacy update with `resolved`, publish of a resolving draft update). The
+counters live in memory and start at 0 on every api start (`api/src/metrics.ts:58`,
+`:133-134`); this spec does not change that. So a check across an api restart asserts literal
+values counted from that restart, never lifetime totals: a wrong check that expects the run's
+lifetime totals after a restart fails on a correct api. No statistic over time windows is defined
+by this spec.
 
 ## Contract fields
 
 New names, all in contract `src/` (field names on the new `InternalManualIncident` shape and new
-exports). Searches of the contract and config clones, run from the meta checkout:
+exports, including every lowercase schema constant and the new module file). Every name of the
+table below is searched by its full text; `grep` is case-sensitive, so `publicManualIncident`
+does not match `isPublicManualIncident`. Searches of the contract and config clones, run from
+the meta checkout:
 
 ```
 $ for n in visibility publishedAt savedAt author notes '"draft"' 'draft:' \
     MANUAL_INCIDENT_VISIBILITIES MANUAL_INCIDENT_MAX_NOTES MANUAL_INCIDENT_MAX_DRAFTS \
-    InternalManualIncident ManualIncidentNote ManualIncidentDraft ManualIncidentVisibility \
-    isPublicManualIncident admin/manual-incidents manual-incident.publish manual-incident.edit \
-    manual-incident.draft manual-incident.note; do
+    InternalManualIncident InternalManualIncidentsResponse ManualIncidentNote \
+    ManualIncidentNoteInput ManualIncidentDraft ManualIncidentDraftInput ManualIncidentVisibility \
+    manualIncidentDraftSchema manualIncidentNoteSchema internalManualIncidentSchema \
+    manualIncidentDraftInputSchema manualIncidentNoteInputSchema \
+    validateInternalManualIncident validateInternalManualIncidentsResponse \
+    validateManualIncidentDraftInput validateManualIncidentNoteInput \
+    isPublicManualIncident publicManualIncident manual-incident-public admin/manual-incidents \
+    manual-incident.publish manual-incident.edit manual-incident.draft manual-incident.note; do
     printf '%s: ' "$n"; grep -rn -- "$n" .repos/contract/src .repos/config | wc -l; done
 visibility: 0
 publishedAt: 0
@@ -468,10 +500,24 @@ MANUAL_INCIDENT_VISIBILITIES: 0
 MANUAL_INCIDENT_MAX_NOTES: 0
 MANUAL_INCIDENT_MAX_DRAFTS: 0
 InternalManualIncident: 0
+InternalManualIncidentsResponse: 0
 ManualIncidentNote: 0
+ManualIncidentNoteInput: 0
 ManualIncidentDraft: 0
+ManualIncidentDraftInput: 0
 ManualIncidentVisibility: 0
+manualIncidentDraftSchema: 0
+manualIncidentNoteSchema: 0
+internalManualIncidentSchema: 0
+manualIncidentDraftInputSchema: 0
+manualIncidentNoteInputSchema: 0
+validateInternalManualIncident: 0
+validateInternalManualIncidentsResponse: 0
+validateManualIncidentDraftInput: 0
+validateManualIncidentNoteInput: 0
 isPublicManualIncident: 0
+publicManualIncident: 0
+manual-incident-public: 0
 admin/manual-incidents: 0
 manual-incident.publish: 0
 manual-incident.edit: 0
@@ -479,9 +525,15 @@ manual-incident.draft: 0
 manual-incident.note: 0
 $ grep -rn 'MANUAL_INCIDENT_MAX_UPDATES' .repos/contract/src .repos/config | wc -l
 4
+$ grep -rn 'manualIncidentSchema' .repos/contract/src .repos/config | wc -l
+5
 ```
 
-The last line is the positive control: the same search finds an existing name. Full list:
+The last two lines are positive controls: the same search finds existing names, one uppercase
+constant and one lowercase schema constant. `manual-incident.draft` and `manual-incident.note`
+are prefixes of the four new draft and note actions, so their 0 covers
+`manual-incident.draft-save`, `.draft-discard`, `.note-add` and `.note-delete`. Not new:
+`MANUAL_INCIDENT_MAX_BODY_BYTES` (exists, `contract/src/schema.ts:792`, reused). Full list:
 
 | Name | Kind |
 | --- | --- |
@@ -492,7 +544,9 @@ The last line is the positive control: the same search finds an existing name. F
 | `InternalManualIncident` `{id, title, componentIds, impact, visibility, status, createdAt, publishedAt, resolvedAt, updates, draft, notes}`, `InternalManualIncidentsResponse` | schema, type |
 | `ManualIncidentDraftInput` `{title, impact, componentIds, status?, message, visibility}`, `ManualIncidentNoteInput` `{message}` | schemas, types |
 | `validateInternalManualIncident`, `validateInternalManualIncidentsResponse`, `validateManualIncidentDraftInput`, `validateManualIncidentNoteInput` | validators |
+| `manualIncidentDraftSchema`, `manualIncidentNoteSchema`, `internalManualIncidentSchema`, `manualIncidentDraftInputSchema`, `manualIncidentNoteInputSchema` | zod schema constants |
 | `isPublicManualIncident`, `publicManualIncident` | functions |
+| `src/manual-incident-public.ts` | module file |
 | audit actions `manual-incident.edit`, `.draft-save`, `.draft-discard`, `.publish`, `.note-add`, `.note-delete` | `AUDIT_ACTIONS` values |
 | routes `/admin/manual-incidents`, `/:id`, `/:id/draft`, `/:id/publish`, `/:id/notes`, `/:id/notes/:noteId` | api routes |
 
@@ -502,20 +556,17 @@ contract name.
 ## Repository: contract
 
 Files:
-- `src/schema.ts` (new constants, `manualIncidentDraftSchema`, `manualIncidentNoteSchema`,
-  `internalManualIncidentSchema`, `manualIncidentDraftInputSchema`,
-  `manualIncidentNoteInputSchema`, types)
-- `src/validate.ts` (four validators)
-- `src/manual-incident-public.ts` (new: `isPublicManualIncident`, `publicManualIncident`)
-- `src/audit.ts` (six actions)
-- `src/index.ts` (exports)
-- `test/manual-incidents.test.ts` (schemas, invariants, guard, projection)
-- `test/audit.test.ts` (new actions and their kind rule)
-- `test/types.fixture.ts` (every new exported type)
-- `docs/index.md` (types table, constants, audit actions)
-- `README.md` (if it lists the manual incident types)
-- `package.json` (`version` 1.7.1 to 1.8.0)
-- `dist/` (rebuilt with `bun run build`)
+- `src/schema.ts`: the new constants, the five new schemas and their types
+- `src/validate.ts`: the four validators
+- `src/manual-incident-public.ts`: new module with the guard and the projection
+- `src/audit.ts`: the six actions
+- `src/index.ts`: exports
+- `test/manual-incidents.test.ts`: schemas, invariants, guard, projection
+- `test/audit.test.ts`: the new actions and their kind rule
+- `test/types.fixture.ts`: every new exported type
+- `docs/index.md`: types table, constants, audit actions
+- `package.json`: version 1.7.1 to 1.8.0
+- `dist/`: rebuilt with the build script
 
 Behavior change: yes
 New exported validators, guard and audit actions change what consumers accept.
@@ -557,8 +608,10 @@ Checks:
   when `dist/` is stale.
 - Tests that fail on current `main` (the exports do not exist): guard true for `{}`-like public
   items without the fields and for `visibility:"public", publishedAt:<number>`; false for each
-  counterexample of R6 and "Counterexamples"; getter not executed (a getter that throws leaves the
-  guard returning false without throwing); projection drops `draft`, `notes`, `visibility` and
+  counterexample of R6 and "Counterexamples"; for an accessor on `visibility` and on
+  `publishedAt` (returning `"public"` and `5`, and throwing) the guard returns false, does not
+  throw, and the getter's call counter is 0 (literal); the inherited-name case returns true and the
+  throwing-proxy case false; projection drops `draft`, `notes`, `visibility` and
   unknown update fields; each internal invariant 1-5 rejects one bad record and accepts one good
   record per state of the R1 table; strict inputs reject `"draft": true`; audit validator accepts
   `manual-incident.publish` with kind `manual-incident` and rejects it with kind `check`.
@@ -569,31 +622,30 @@ the pre-change `main` SHA; `dist/` committed; `test/types.fixture.ts` compiles e
 ## Repository: api
 
 Files:
-- `src/migrations.ts` (step 6, R5)
-- `src/manual-incidents.ts` (store: drafts, publish, notes, visibility, public projection,
-  draft-aware `hasOpenIncidentFor`, resolve deletes the draft)
-- `src/manual-incident-routes.ts` (new, if `server.ts` would hold a second responsibility: the
-  `/admin/manual-incidents` handler; otherwise in `src/server.ts`)
-- `src/server.ts` (dispatch of `/admin/manual-incidents*` before the `/admin/` delegation at
-  `src/server.ts:602-606`, `routeOf` labels, legacy create refuses `visibility`/`draft`, legacy
-  update/resolve on a draft `409`, `emptyManualIncidents` gains the new methods)
-- `src/token-scopes.ts` (`incident-read` = `admin` and `incidents`)
-- `src/start.ts` (wiring, unchanged deps)
-- `src/manual-incidents.test.ts` (new: store rules, publish, limits, clock step back, migration of a
-  step-5 database)
-- `src/server.manual-incidents.test.ts` (public projection and legacy behavior)
-- `src/server.manual-incidents.private.test.ts` (new: private routes over HTTP, auth order, R3
-  table, restart persistence by reopening the database file)
-- `src/server.manual-incidents.audit.test.ts` (new actions, rollback on audit failure)
-- `src/db.migrations.test.ts` (step 6 on a step-5 file with incidents: identical public JSON)
-- `src/server.scopes.test.ts` (`incident-read`)
-- `src/docs-claims.test.ts` (if it checks the route table)
-- `docs/rest-api.md` (route table, private routes, state rules, `curl` examples for draft, edit,
-  publish, draft update, note, internal-only)
-- `docs/operation.md` (log actions, downgrade needs a backup)
-- `docs/concepts.md` (drafts, notes, visibility)
-- `README.md` (endpoint list)
-- `package.json`, `bun.lock` (contract pin to the merged 1.8.0 SHA)
+- `src/migrations.ts`: step 6 of R5
+- `src/manual-incidents.ts`: the store with drafts, publish, notes, visibility, the public
+  projection, the draft-aware open-incident check of decision 8, resolve deletes the draft
+- `src/manual-incident-routes.ts`: new module with the handler of the private routes, so the
+  server module keeps only dispatch
+- `src/server.ts`: dispatch of the private routes before the admin delegation (server.ts lines
+  602-606), the route labels of R4, the legacy create refuses the two privacy keys, legacy update
+  and resolve of a draft answer 409, the empty store stub gains the new methods
+- `src/token-scopes.ts`: the incident-read permission (admin and incidents scopes)
+- `src/start.ts`: wiring, no new dependency
+- `src/manual-incidents.test.ts`: new; store rules, publish, limits, clock step back
+- `src/server.manual-incidents.test.ts`: public projection and legacy behavior
+- `src/server.manual-incidents.private.test.ts`: new; private routes over HTTP, auth order, the
+  R3 table, persistence by reopening the database file
+- `src/server.manual-incidents.audit.test.ts`: new actions, rollback on audit failure
+- `src/db.migrations.test.ts`: step 6 on a step-5 file with incidents gives identical public JSON
+- `src/server.scopes.test.ts`: the incident-read permission
+- `docs/rest-api.md`: route table, private routes, state rules, curl examples for draft, edit,
+  publish, draft update, note, internal-only
+- `docs/operation.md`: log actions, a downgrade needs a backup
+- `docs/concepts.md`: drafts, notes, visibility
+- `README.md`: endpoint list
+- `package.json`: contract pin to the merged 1.8.0 SHA
+- `bun.lock`: updated by the install of that pin
 
 Behavior change: yes
 New routes, storage, migration, audit actions and a filtered public projection.
@@ -650,16 +702,17 @@ pre-change SHA; the bench or `test_cpu_s` numbers of "Performance impact".
 ## Repository: status
 
 Files:
-- `src/api-filter.ts` (drop non-public manual incident items before cleaning)
-- `src/poller.ts` (filter, validate, project)
-- `src/syndication.ts` (`parseManualIncidents` skips non-public items)
-- `src/manual-incidents.test.ts` (poller, render and component state with private items)
-- `src/api-filter.test.ts` (filter cases)
-- `src/server.privacy.test.ts` (proxy, SSR page, feed and badge over HTTP with a fake api)
-- `src/server.syndication.test.ts` (feed entries and badge state)
-- `README.md` (manual incidents paragraph: private items are dropped; needs contract 1.8.0)
-- `docs/operation.md` (same, where manual incidents are described)
-- `package.json`, `bun.lock` (contract pin to the merged 1.8.0 SHA)
+- `src/api-filter.ts`: drop non-public manual incident items before cleaning
+- `src/poller.ts`: filter, validate, project
+- `src/syndication.ts`: the manual incident reader of feed and badge skips non-public items
+- `src/manual-incidents.test.ts`: poller, render and component state with private items
+- `src/api-filter.test.ts`: filter cases
+- `src/server.privacy.test.ts`: proxy, SSR page, feed and badge over HTTP with a fake api
+- `src/server.syndication.test.ts`: feed entries and badge state
+- `README.md`: manual incidents paragraph says private items are dropped and needs contract 1.8.0
+- `docs/operation.md`: the same, where manual incidents are described
+- `package.json`: contract pin to the merged 1.8.0 SHA
+- `bun.lock`: updated by the install of that pin
 
 Behavior change: yes
 Status drops upstream items marked private.
@@ -701,12 +754,14 @@ the pre-change SHA.
 ## Repository: notify
 
 Files:
-- `src/api.ts` (`fetchManualIncidents` skips non-public items, projects accepted ones)
-- `test/manual-incidents.test.ts` (detection with private items)
-- `test/api.test.ts` or `test/feeds.test.ts` (skip is not `rejected`)
-- `README.md`, `docs/channels.md`, `docs/operation.md` (drafts, notes and internal incidents are
-  never sent; needs contract 1.8.0)
-- `package.json`, `bun.lock` (contract pin to the merged 1.8.0 SHA)
+- `src/api.ts`: the manual incident fetch skips non-public items and projects accepted ones
+- `test/manual-incidents.test.ts`: detection with private items
+- `test/api.test.ts`: a skipped item is not rejected and logs nothing
+- `README.md`: drafts, notes and internal incidents are never sent; needs contract 1.8.0
+- `docs/channels.md`: the same for channel routing
+- `docs/operation.md`: the same for operation
+- `package.json`: contract pin to the merged 1.8.0 SHA
+- `bun.lock`: updated by the install of that pin
 
 Behavior change: yes
 Notify ignores upstream items marked private.
@@ -727,8 +782,10 @@ Checks:
      published internal `I` (`visibility: "internal"`) and a draft `D` (`publishedAt: null`, one
      update, valid as `ManualIncident`). Both channels hold exactly one `manual:A:opened` (the
      positive barrier) and no line for `I` or `D`. Fails on current `main` (it sends `I` and `D`).
-  2. `A` with `notes` and a `draft` holding sentinel text: no payload line contains a sentinel;
-     no update event for the draft.
+  2. `A` with `notes` and a `draft` holding sentinel text, served together with a new public
+     marker `B`: after the awaited poll that read this body, both channels hold exactly one
+     `manual:B:opened` (positive barrier: the poll read this body and finished its writes), no
+     payload line contains a sentinel, and there is no update event for `A`.
   3. Draft `D` is in the first poll (as a draft) and is a published public item in a later poll
      (same id, `publishedAt` set, `createdAt` = `publishedAt`): exactly one `manual:D:opened` is
      sent. Fails on current `main`: its first poll seeds `manual:D:opened` as handled, so the
@@ -743,13 +800,15 @@ SHA.
 ## Repository: deploy
 
 Files:
-- `e2e/compose-e2e.sh` (`E2E_SETUP=full|dev`, the privacy step)
-- `e2e/compose.e2e.yaml` (only if the dev mode needs a change there; no `image:` line)
-- `scripts/check-setup.sh` (resolve the `dev` + e2e overlay combination too, if rule checks need it)
-- `scripts/check-setup.test.sh` (a failing case if `check-setup.sh` changes)
-- `.github/workflows/ci.yml` (new job `e2e-dev`)
-- `README.md` (End-to-end test: the dev mode and the new job)
-- `AGENTS.md` (commands table: the dev mode command)
+- `e2e/compose-e2e.sh`: the E2E_SETUP mode switch full or dev, and the privacy step
+- `e2e/compose.e2e.yaml`: its header comment names both base files (full and dev); any fix the
+  dev base needs; never an image line
+- `scripts/check-setup.sh`: rule 5 also resolves the dev base with the e2e overlay and compares
+  its published ports with a literal row
+- `scripts/check-setup.test.sh`: a case that fails when the dev plus e2e ports differ
+- `.github/workflows/ci.yml`: the new job e2e-dev
+- `README.md`: End-to-end test section names the dev mode and the new job
+- `AGENTS.md`: commands table gains the dev mode command
 
 Behavior change: yes
 A test mode, a scenario and a CI job change.
@@ -769,16 +828,38 @@ Behavior:
   (`ci.yml:179-216`), `scripts/init-secrets.sh`, then `E2E_SETUP=dev bash e2e/compose-e2e.sh`
   with `timeout-minutes` large enough for the build (45). Triggers as the workflow (`ci.yml:3-10`).
   Actions only by the SHAs already used in the file, `persist-credentials: false`.
-- New step `Manual incident privacy`, after the metric assertions of the step `Manual incidents`
-  (`e2e/compose-e2e.sh:558-560`), so those literal counts stay valid.
+- `scripts/check-setup.sh` rule 5 (`scripts/check-setup.sh:76-128`) gains the combination
+  `dev/compose.yaml` + `e2e/compose.e2e.yaml` with the literal expected rows `api 127.0.0.1 3000
+  3000`, `console 127.0.0.1 8082 8082`, `status - 8080 8080` (the same rows as the existing e2e
+  row, `scripts/check-setup.sh:81`). `scripts/check-setup.test.sh` gets a case that changes one
+  port of that combination and expects the check to fail.
+- New step `Manual incident privacy`, placed after `ok: the container logs show no admin token`
+  (`e2e/compose-e2e.sh:567`) and before the step `Probe outage` (`e2e/compose-e2e.sh:581`). At
+  that point the step `Manual incidents` has asserted its literal counters (created 1, resolved
+  1, `e2e/compose-e2e.sh:558-559`) and deleted its incident (`e2e/compose-e2e.sh:561-563`; a delete
+  changes no counter). The later steps do not depend on api uptime before `Probe outage`, which
+  stops and starts the api itself (`e2e/compose-e2e.sh:583-584`), so the api restart of this step
+  changes no later literal (the config write counter at `e2e/compose-e2e.sh:621-622` is counted
+  after that outage restart).
   - **Gate:** `GET /admin/manual-incidents` with the e2e admin token. `200`: run. `404` with
     `E2E_SETUP=full`: print `skip: manual incident privacy (api has no /admin/manual-incidents)`
     and go on. `404` with `dev`, or any other status: fail.
-  - Sentinels (literals): `e2e-draft-7f3a`, `e2e-internal-5d17`, `e2e-note-2b8e`,
-    `e2e-update-9c41`, `e2e-public-0a62`.
+  - Sentinels (literals): private `e2e-draft-7f3a`, `e2e-internal-5d17`, `e2e-note-2b8e`,
+    `e2e-update-9c41`; public `e2e-public-0a62` (control `P`) and `e2e-marker-31c5` (marker `M`).
+  - Helper `notify_polls_ok`: prints the value of `pulse_notify_polls_total{outcome="ok"}` read
+    as `notify_has_polled` reads it (`e2e/compose-e2e.sh:169-173`).
+  - **Why a marker:** notify reads every manual incident with one `GET /manual-incidents` per poll
+    (`notify/src/api.ts:216-218`), and status serves the proxy, page, feed and badges from its
+    cached api answers (`status/src/answer-cache.ts`, `status/src/syndication.ts:160-166`), which
+    are only replaced by newer answers. So a public incident `M` created by a legacy write
+    **after the last private write** is the proof: a surface that shows `M` was built from an api
+    answer produced after every private write before it. Seeing `P` alone is not proof, because
+    `P` was published before its draft update was saved.
   - Steps and literal expectations:
     1. `GET /admin/manual-incidents`: no token `401`; probe token `403`.
     2. Precondition: wait until `/badge/component/public-api.svg` does not say `down`.
+       Metrics (literals): `pulse_api_manual_incidents_created_total 1`,
+       `pulse_api_manual_incidents_resolved_total 1` (the values the step `Manual incidents` left).
     3. Draft `D`: `POST /admin/manual-incidents` `{title: "e2e-draft-7f3a", impact: "major",
        componentIds: ["public-api"], message: "e2e-draft-7f3a", visibility: "public"}` → `201`,
        `.publishedAt == null`. `PUT` with the same body → `200`.
@@ -788,36 +869,63 @@ Behavior:
     5. Public control `P`: create `{title: "e2e-public-0a62", impact: "none", componentIds:
        ["web"], message: "e2e-public-0a62", visibility: "public"}`; note
        `{message: "e2e-note-2b8e"}` → `201`; publish → `200`; draft update `{status: "resolved",
-       message: "e2e-update-9c41"}` → `200`.
-    6. Barrier (positive): wait until `manual-web.jsonl` holds `manual:<P>:opened` once, the
-       proxy lists `P`, and `/feed.atom` has `manual:<P>:0`.
-    7. Absence: `GET /manual-incidents`, `?status=open`, `?status=all` hold none of the four
-       private sentinels; `GET /manual-incidents/<D>` and `/<I>` → `404`; `P` in the public list
-       has `status != "resolved"`, `resolvedAt == null`, one update. Status
-       `/api/manual-incidents`, `GET /` and `/feed.atom` hold none of the four private sentinels.
-       The `public-api` badge still does not say `down`. `incidents.jsonl`, `manual-web.jsonl`
-       and `manual-public-api.jsonl` hold 0 lines with `manual:<D>:` or `manual:<I>:` and 0 lines
-       with any private sentinel.
-    8. Restart: `docker compose restart api notify`, wait healthy and `notify_has_polled`.
-       `GET /admin/manual-incidents/<D>` still has `.publishedAt == null`; `<P>` still has the note
-       and `.draft.message == "e2e-update-9c41"`.
-    9. Publish the draft update of `P` → `200`, `.status == "resolved"`; again → `409`. Wait until
-       `manual-web.jsonl` holds `manual:<P>:resolved` exactly once and `/feed.atom` has
-       `manual:<P>:1`; the proxy shows `P` resolved with 2 updates and `e2e-update-9c41`; no
-       surface holds `e2e-note-2b8e`.
-    10. Publish `D` (saved before the notify restart) → `200`. Wait until
+       message: "e2e-update-9c41"}` → `200`. This draft update save is the last private write.
+    6. Marker `M`: `POST /manual-incidents` (legacy create) `{title: "e2e-marker-31c5", impact:
+       "none", componentIds: ["web"], message: "e2e-marker-31c5"}` → `201`, sent after the `200`
+       of step 5.
+    7. Barrier (positive, all must hold before any absence check):
+       - notify: wait until `manual-web.jsonl` holds `manual:<M>:opened` exactly once; then read
+         `n=$(notify_polls_ok)` and wait until `notify_polls_ok` is greater than `n`, then sleep
+         `POLL_INTERVAL * 3` seconds (the settle time of `e2e/compose-e2e.sh:549`). So at least
+         one poll has completed whose single read came after step 6, and its channel writes are
+         done. `manual-web.jsonl` also holds `manual:<P>:opened` exactly once.
+       - status: wait until `/api/manual-incidents` lists `M`, `/feed.atom` has `manual:<M>:0`, and
+         `GET /` holds `e2e-marker-31c5` (manual incidents are rendered on the page also with
+         hide-details on, `status/src/sections.ts:124`).
+    8. Absence (each read after the barrier):
+       - api: `GET /manual-incidents`, `?status=open`, `?status=all` hold none of the four private
+         sentinels; `GET /manual-incidents/<D>` and `/<I>` → `404`; `P` in the public list has
+         `status != "resolved"`, `resolvedAt == null`, exactly 1 update.
+       - status: `/api/manual-incidents`, `GET /` and `/feed.atom` hold none of the four private
+         sentinels; `/feed.atom` has no `manual:<P>:1`; `/badge/component/public-api.svg` does not
+         say `down` (read after the feed barrier from the same cached answer).
+       - notify: `incidents.jsonl`, `manual-web.jsonl` and `manual-public-api.jsonl` hold 0 lines
+         with `manual:<D>:` or `manual:<I>:`, 0 lines with any private sentinel,
+         `manual_update_count manual-web.jsonl <P>` = 0 and 0 lines with `manual:<P>:resolved`.
+    9. Metrics before the api restart (literals): `pulse_api_manual_incidents_created_total 4`
+       (1 left by the step `Manual incidents`, plus `I`, `P`, `M`; the draft save and edit of `D`
+       count nothing), `pulse_api_manual_incidents_resolved_total 1` (the draft update of `P` is
+       not published).
+    10. Restart: `docker compose restart api notify`, wait until both are healthy, `/readyz` is
+        `ok` and `notify_has_polled`. Metrics right after the restart, before any write
+        (literals): `pulse_api_manual_incidents_created_total 0`,
+        `pulse_api_manual_incidents_resolved_total 0` (counters live in memory and reset on
+        restart, `api/src/metrics.ts:58`, initialized to 0 at `api/src/metrics.ts:133-134`).
+        `GET /admin/manual-incidents/<D>` still has `.publishedAt == null`; `<P>` still has the
+        note `e2e-note-2b8e` and `.draft.message == "e2e-update-9c41"`.
+    11. Publish the draft update of `P` → `200`, `.status == "resolved"`; again → `409`. Wait until
+        `manual-web.jsonl` holds `manual:<P>:resolved` exactly once and `/feed.atom` has
+        `manual:<P>:1`; the proxy shows `P` resolved with exactly 2 updates and `e2e-update-9c41`;
+        then no status surface and no channel file holds `e2e-note-2b8e`.
+    12. Publish `D` (saved before the notify restart) → `200`. Wait until
         `manual-public-api.jsonl` holds `manual:<D>:opened` exactly once and the `public-api`
-        badge says `down` (positive control for step 7). Then
-        `POST /manual-incidents/<D>/resolve` → `200`.
-    11. Discard: create a draft `X` and `DELETE /admin/manual-incidents/<X>` → `204`; then
-        `GET /admin/manual-incidents/<X>` → `404`.
-    12. `docker compose restart notify`, wait polled plus `POLL_INTERVAL * 3` seconds: `P`
-        opened 1, resolved 1, `D` opened 1 in their channels; 0 lines for `I` in every file.
-    13. Metrics (literals, counted from the start of the run): `pulse_api_manual_incidents_
-        created_total` = 4 (the #340 incident, `I`, `P`, `D`), `..._resolved_total` = 3 (the
-        #340 incident, `P`, `D`).
-  The script prints no token. Every negative check comes after a positive barrier that proves the
-  surface or channel was read after the private write.
+        badge says `down` (positive control for the badge check of step 8). Then
+        `POST /manual-incidents/<D>/resolve` → `200` and `POST /manual-incidents/<M>/resolve` →
+        `200`.
+    13. Discard: create a draft `X` (title `e2e-discard-4e90`, `visibility: "public"`) and
+        `DELETE /admin/manual-incidents/<X>` → `204`; then `GET /admin/manual-incidents/<X>` →
+        `404`.
+    14. `docker compose restart notify`, wait `notify_has_polled` plus `POLL_INTERVAL * 3`
+        seconds: exactly 1 line each of `manual:<P>:opened`, `manual:<P>:resolved`,
+        `manual:<M>:opened` in `manual-web.jsonl` and of `manual:<D>:opened` in
+        `manual-public-api.jsonl`; 0 lines with `manual:<I>:` and 0 lines with `e2e-internal-5d17`
+        in every channel file.
+    15. Metrics after the restart (literals, counted from the restart of step 10):
+        `pulse_api_manual_incidents_created_total 1` (`D`; the draft `X` counts nothing),
+        `pulse_api_manual_incidents_resolved_total 3` (`P`, `D`, `M`).
+  The script prints no token. Every absence check comes after a positive barrier that proves the
+  surface or channel read the api after the last private write before it (step 7 for step 8; the
+  publications of steps 11 and 12 for the checks after them).
 
 Checks:
 
