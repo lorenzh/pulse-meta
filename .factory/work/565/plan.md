@@ -646,9 +646,27 @@ What changes in each file (the new source and test files are new; all others exi
   the literal `{ user_version: 6 }` in the same change as step 6 (written out, not read from
   `SCHEMA_VERSION`). Every other assertion of that file stays as it is: the refused short token,
   the row counts `{ tokens: 0, secrets: 0, audit: 0, bootstrap: 0 }`, and the import after the fix.
-  The other version assertions in the api tests read `SCHEMA_VERSION` or set an explicit older
-  version (`src/db.migrations.test.ts:84`, `:168`, `:196`, `:230`; `src/backup.test.ts:46` reads
-  the version from the database it compares) and need no change for the version number.
+- src/db.migrations.test.ts: the historical test "migration 5: token listing uses the token id
+  index after upgrading version 4" (line 175) opens the version 4 file with `openDb(path)` at
+  line 178, which runs all migrations, and expects the literal `5` at line 188. With step 6 that
+  open reaches version 6 and the test fails. In the same change as step 6, line 178 becomes
+  `openDb(path, MIGRATIONS.slice(0, 5))`, so the test still upgrades exactly from 4 to 5. Its
+  literal `expect(version(db)).toBe(5)` and its index assertion
+  (`USING INDEX token_secrets_by_token_id (token_id=?)`) stay unchanged. The new migration 6 test
+  of check 5 is added to this file next to it, in the same style (`openDb(path,
+  MIGRATIONS.slice(0, 5))`, then `openDb(path, MIGRATIONS.slice(0, 6))`, literal `6`).
+  The remaining version assertions of the api tests need no change for the version number: they
+  read `SCHEMA_VERSION` (`src/db.migrations.test.ts:84`, `:196`, `:210`, `:230`), open with an
+  explicit older step list and expect its literal (`:110` and `:143` the fixture versions 2 and
+  3, `:116` expects `3` after `MIGRATIONS.slice(0, 3)`, `:147` expects `4` after
+  `MIGRATIONS.slice(0, 4)`, `:170` expects the version 5 refusal under `MIGRATIONS.slice(0, 4)`),
+  expect `0` after a rolled-back step (`:221`, `:268`), set a foreign version on purpose
+  (`src/start.test.ts:558`, version 99), or read the version from the database they compare
+  (`src/backup.test.ts:46`). The searches
+  `grep -rn 'version(' .repos/api/src --include=*.test.ts` and
+  `grep -rn 'user_version' .repos/api/src --include=*.test.ts` list only these lines, the
+  `version` helper (`src/db.migrations.test.ts:74`), a fixture comment (`:15`) and the two
+  fixed ones (`src/db.migrations.test.ts:188`, `src/start.token-import.test.ts:329`).
 - src/check-store.ts (new): the SQL for definitions, generation and snapshot, in the way the token
   store and the audit log keep their own SQL.
 - src/effective-checks.ts (new): the pure merge of file set and definitions into the effective
@@ -767,7 +785,10 @@ Checks:
    an empty `check_definitions`, generation `0`, and unchanged results and incidents. In the
    same task `bun test src/start.token-import.test.ts` passes with the literal expected
    `{ user_version: 6 }` and its token-import assertions unchanged (only line 329 of that file
-   changes).
+   changes), and the historical test "migration 5: token listing uses the token id index after
+   upgrading version 4" in `src/db.migrations.test.ts` passes with `openDb(path,
+   MIGRATIONS.slice(0, 5))` at line 178 and its literal expected version `5` and its index
+   assertion unchanged (only line 178 of that test changes).
 6. `bun install --frozen-lockfile && bun run check` exits 0. Coverage stays at or above 0.8.
 7. `bun run bench:selftest` exits 0 and `docker build --tag pulse-api:local .` succeeds.
 8. `bun bench/run.ts --a 2d4a6b2 --b <branch sha>` as in "Performance impact"; gating metrics within
