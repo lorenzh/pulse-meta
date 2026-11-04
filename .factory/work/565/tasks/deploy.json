@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Compose E2E verifies database checks and stays green with the pinned API",
+      "title": "Compose E2E proves database check behavior and preserves the pinned API path",
       "files": [
         "e2e/compose-e2e.sh",
         "e2e/compose.e2e.yaml",
