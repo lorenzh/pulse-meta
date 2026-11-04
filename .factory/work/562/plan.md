@@ -274,8 +274,9 @@ The setup code uses a separate instance with the client key only and the same nu
 - The session id is 32 random bytes as base64url, held only in the cookie. The row key is its
   SHA-256 hex digest. `csrf_token` is 32 random bytes as base64url.
 - A request is signed in when the digest of its cookie matches a row and
-  `now < last_seen_at + 2592000000` (30 days of no activity). `last_seen_at` is updated when at
-  least 60000 ms have passed since the stored value.
+  `now < last_seen_at + 2592000000` (30 days of no activity). `last_seen_at` is set to `now` when
+  at least 60000 ms have passed since the stored value. That response refreshes the session
+  cookie (see Cookies), so an active session outlives the 30 days after its sign-in.
 - Expired rows are deleted at start and on each successful sign-in. Sessions survive a restart.
 - `POST /sign-out` with a valid session and its CSRF token deletes the row, clears the cookie
   (`Max-Age=0`) and answers `303` to `/sign-in`. Without a valid session it answers `303` to
@@ -290,6 +291,12 @@ The setup code uses a separate instance with the client key only and the same nu
 - Every cookie has `Path=/; HttpOnly; SameSite=Strict`, plus `Secure` in strict-https mode, and
   never a `Domain`.
 - `Max-Age`: session 2592000, setup 1800. The CSRF cookie has none (a browser-session cookie).
+- **Session cookie refresh.** The cookie lifetime follows the server's idle rule, not the time of
+  sign-in. Whenever a request updates `last_seen_at` (see Sessions), the same response sends the
+  session cookie again, with the same value and `Max-Age=2592000`. So the cookie expires at
+  `last_seen_at + 30 days`, the same moment the server ends the session. A request that does not
+  update `last_seen_at` (less than 60000 ms since the stored value) sends no session cookie. The
+  refresh never changes the cookie value; only sign-in creates a new id.
 
 **Loopback `Host` rule.** In loopback mode, every request outside the ops routes must have a
 `Host` of `127.0.0.1`, `localhost` or `[::1]`, with an optional `:port`. Otherwise the answer is
@@ -351,6 +358,20 @@ Every form renders the CSRF field exactly as
   `aria-describedby`.
 - The sign-in and setup pages have no horizontal scroll at 390 px width: no fixed width over
   360 px, and `meta viewport` as today.
+
+**Intended disclosures.** Exactly three secrets leave the server on purpose, each only to the
+client it belongs to and only in these places:
+
+- the CSRF token: in the hidden field `<input type="hidden" name="csrf" value="…">` of a form
+  page, and in the `pulse_console_csrf` `Set-Cookie` header that sets it (an anonymous token) —
+  for a signed-in form the field holds the session's `csrf_token`, which is in no cookie;
+- the session id: in the `pulse_console_session` `Set-Cookie` header at sign-in and at a cookie
+  refresh;
+- the setup grant: in the `pulse_console_setup` `Set-Cookie` header at unlock.
+
+Nothing else carries them: no other header, no other part of an HTML body, no redirect
+`Location`, no log line, no `/metrics`, no error text, and no response to another client. The api
+token, the passwords and the setup code have no intended disclosure in any response.
 
 **Logs and metrics.**
 
@@ -451,8 +472,14 @@ Each check names where its expected value comes from.
    - Expected: literals from #460 decision 5 (5, 15 min = 900000 ms).
 5. The stored admin token is not readable in the clear. After a completed setup with the sentinel
    token `console-test-sentinel-token-0123456789abcdef`:
-   - the bytes of the database file, `-wal` and `-shm` do not contain the sentinel, the password
-     sentinel, or the plain session cookie value;
+   - the test reads the bytes of the database file with `readFileSync`, which must succeed, and of
+     `-wal` and `-shm`. A sidecar may be absent: only `ENOENT` skips it, any other read error
+     fails the test. The read set holds the database file and every sidecar that exists;
+   - positive control: the concatenated bytes contain the owner email sentinel
+     `owner-sentinel@example.com` at least once (the `users` row is stored in clear), so the scan
+     is shown to read the data;
+   - the concatenated bytes contain the token sentinel, the password sentinel
+     `console-test-password-sentinel-42` and the plain session cookie value exactly 0 times;
    - `password_hash` starts with `$argon2id$v=19$m=19456,t=2,p=1$`;
    - `sessions.id_digest` equals the SHA-256 hex of the cookie value, computed in the test with
      `node:crypto`, independent of the code under test.
@@ -475,7 +502,8 @@ Each check names where its expected value comes from.
    passes. The connection result shows `Checks: <n>.`, where `n` is
    `jq '.checks | length' full/config/api/checks.json`: an independent source, the file that the
    api loads. After `up -d --force-recreate console` the owner still signs in, and `/setup`
-   answers `404`.
+   answers `404`. The database scan (step 10 of `e2e/console-setup.sh`) finds the literal owner
+   email at least once and the admin token exactly 0 times, with every read checked.
 9. deploy: `lint`, `full` (with `e2e/compose-e2e.sh`), `demo`, `dev`, `cli-render`, `cli-stack`
    and the `check` job are green. `scripts/secrets-init.test.sh` covers generate-mode admin.
    `scripts/check-setup.sh` covers `admin-token`.
@@ -484,7 +512,7 @@ Each check names where its expected value comes from.
 
 None expected for any key of `bench/budgets.json` in the api repository (`api`, `probe`,
 `status`, `notify`, `contract`, `kit`, `config` sections; checked at api
-`2d4a6b23d532e66ad30840a778ac21ab465647dc`). The budgets have no console section, and this
+`2bc5910c9c3e223a5a17e654ada9e1e98dd7a0d1`). The budgets have no console section, and this
 change touches no api, probe, status, notify, contract, kit or config code. Startup CPU, load CPU,
 idle and peak RSS, test CPU, build CPU, wall-clock startup, p95 latency, requests per second and
 image size of those services stay unchanged.
@@ -507,10 +535,14 @@ changes.
 
 Checklist items that apply:
 
-- **Secrets in errors, logs and responses.** The api token, passwords, session ids, grants and
-  CSRF tokens never appear in logs, metrics, errors or HTML. The setup code appears only in its
-  one stdout line. Upstream bodies are never echoed. Tests scan logs, responses and the database
-  for sentinels.
+- **Secrets in errors, logs and responses.** The api token, passwords and the setup code never
+  appear in any response, log line (the code's one stdout line excepted), metric or error.
+  Session ids, grants and CSRF tokens appear only in their intended disclosures (Required
+  behavior, "Intended disclosures"): the CSRF token in the hidden `csrf` field and the
+  `pulse_console_csrf` `Set-Cookie`, the session id and the grant in their own `Set-Cookie`
+  headers. They never appear in logs, metrics, errors, a `Location`, another header, or another
+  part of the HTML. Upstream bodies are never echoed. Tests scan logs, responses and the database
+  for sentinels, with the intended disclosures cut out first as defined in Repository: console.
 - **Auth order and status codes.** The fixed POST order (`404`, `421`, `403` origin, `415`, `413`,
   `400`, `403` CSRF, `403` grant, `422`, `429`, `401`, `502`, `303`/`409`/`500`). Unknown and
   known accounts fail alike. The throttle runs before the KDF.
@@ -533,7 +565,7 @@ access on parsed input).
 ## Rollout order
 
 1. **console** merges first. Its pin of pulse-contract
-   (`7ce23aaf3fa3e038f65ecfed755188b83bde143f`) already exists. Other consumers keep working:
+   (`2c4e0e08201c6efcfff1cd1f7835616e1dff9de3`) already exists. Other consumers keep working:
    - deploy `full` and `demo` run the published `0.1.0` console and api, which are not affected.
    - deploy `dev` builds console `main` daily, before the deploy change lands. It passes no token
      and no volume. The console still starts, because the token stays optional and `/data` in the
@@ -596,6 +628,13 @@ access on parsed input).
 - **Sessions.**
   - Idle at `last_seen_at + 2591999999`: valid. At `+ 2592000000`: expired, and `GET /` answers
     `303` with the expired notice.
+  - Active across the first cookie's expiry: sign-in at `t0`; `GET /` at `t0 + 2505600000`
+    (29 days) answers `200` and re-sends the session cookie with the same value and
+    `Max-Age=2592000`; `GET /` at `t0 + 2678400000` (31 days, past the first cookie's expiry at
+    30 days) with that value answers `200`. A wrong implementation that never refreshes the cookie
+    sends no `Set-Cookie` at 29 days, and a browser would drop the cookie at 30 days.
+  - `GET /` at `t0 + 59999` sends no session `Set-Cookie` (no `last_seen_at` update). At
+    `t0 + 60000` it sends one.
   - After sign-out, the old cookie: not signed in.
   - The cookie from before a new sign-in: not signed in (rotation).
   - A fabricated cookie value: not signed in.
@@ -609,11 +648,16 @@ access on parsed input).
   - Loopback mode with `Host: evil.example:8082`: `421` on `GET /sign-in`, and `200` on
     `GET /healthz`.
   - Strict-https `https://console.example.com` with `Origin: http://console.example.com`: `403`.
+- **Disclosure scope.** A session id in the HTML of the landing page, a CSRF token in a
+  `Location` or in `/metrics`, or a grant in a second `Set-Cookie` of another name: each fails the
+  leak scan. The CSRF token in its hidden field and the session id in its own `Set-Cookie` pass.
 - **CSRF.** A form `csrf` that differs from the cookie by one character: `403`, and no state
   changes. A sign-out with the anonymous cookie token instead of the session token: `403`.
 - **Body.** A body of 8193 bytes: `413`. `Content-Type: application/json`: `415`. `email`
   repeated: `400`.
 - **Database.**
+  - A sentinel scan that ignores read errors: a scan of a path it cannot read must fail, not
+    report 0 matches. A scan with no positive control would pass on an empty or wrong file.
   - `PULSE_CONSOLE_DB` in a missing directory: exit `2` with
     `PULSE_CONSOLE_DB=<path>: cannot open (<code>)`.
   - A file of random bytes: exit `2`, and no setup code is printed.
@@ -629,7 +673,8 @@ access on parsed input).
 
 ## Contract fields
 
-New names. None exists in the contract or config clones:
+New names. None exists in the contract clone (`2c4e0e08201c6efcfff1cd1f7835616e1dff9de3`) or the
+config clone (`bc870498cc8e2539a132ce2aac35a09db1deabd8`); search rerun in this revision:
 
 ```text
 $ for n in PULSE_CONSOLE_DB PULSE_CONSOLE_PUBLIC_URL pulse_console_session pulse_console_csrf \
@@ -653,35 +698,67 @@ $ grep -rln -- 'PULSE_CONSOLE_DB\|PULSE_CONSOLE_PUBLIC_URL\|console-data\|pulse_
 
 No contract type, validator or route changes. The console uses the existing `WIRE_VERSION`,
 `WIRE_VERSION_HEADER`, `checkWireVersion`, `fetchJson`, `validateAdminConfigResponse` and
-`validateTokensResponse` from contract `7ce23aaf3fa3e038f65ecfed755188b83bde143f`
-(`src/version.ts:5-28`, `src/client.ts:188-231`, exported in `src/index.ts`).
+`validateTokensResponse` from contract `2c4e0e08201c6efcfff1cd1f7835616e1dff9de3`
+(`src/version.ts:5-28`, `src/client.ts:124-203`, exported at `src/index.ts:39`, `:175`, `:185`, `:188-190`).
 
 ## Repository: console
 
 Files:
-- `package.json`, `bun.lock`: add `"@lorenzh/pulse-contract": "github:lorenzh/pulse-contract#7ce23aaf3fa3e038f65ecfed755188b83bde143f"`, and bump `@lorenzh/pulse-kit` to `github:lorenzh/pulse-kit#0f79e934a0b8d0f78e06c8ffe94206f464ff88f9` (kit `main`; adds `clientKeyOf`, and has committed `dist/`).
-- `Dockerfile`: `ENV … PULSE_CONSOLE_DB=/data/console.db`, `RUN mkdir /data && chown bun:bun /data` before `USER bun`.
-- `.gitignore`: `console.db`, `console.db-*`.
-- `.github/workflows/ci.yml`: `docker` job steps (below).
-- `src/settings.ts`, `src/settings.test.ts`: `PULSE_CONSOLE_DB`, `PULSE_CONSOLE_PUBLIC_URL`, mode.
-- `src/database.ts`, `src/database.test.ts`: open, mode `0600`, pragmas, migration 1, start errors.
-- `src/account-store.ts`, `src/account-store.test.ts`: the instance row, the owner, the setup transaction, sessions (create, find, touch, delete, prune).
-- `src/setup-code.ts`, `src/setup-code.test.ts`: code, normalization, digest compare, grant.
-- `src/connection-test.ts`, `src/connection-test.test.ts`: the two calls and the result or failure text table.
-- `src/auth-throttle.ts`, `src/auth-throttle.test.ts`: limiter with lock, in-flight count and bound.
-- `src/passwords.ts`, `src/passwords.test.ts`: policy, hash parameters, dummy verifier.
-- `src/cookies.ts`, `src/cookies.test.ts`: parse and serialize with mode-dependent names and flags.
-- `src/request-guard.ts`, `src/request-guard.test.ts`: the loopback `Host` rule, the `Origin` rule, the CSRF compare, `next`.
-- `src/forms.ts`, `src/forms.test.ts`: content type, body limit, repeated fields, field rules.
-- `src/pages.ts` (replaces `src/page.ts`, which is deleted), `src/styles.ts`: HTML templates and the stylesheet.
-- `src/server.ts`, `src/server.test.ts`: routes, phases, POST order, CSP, `/console.css`.
-- `src/server.setup.test.ts`, `src/server.sign-in.test.ts`, `src/server.security.test.ts`: HTTP end-to-end tests.
-- `src/metrics.ts`: path labels and the auth counter.
-- `src/main.ts`, `src/main.startup.test.ts`: open the database, print the code, warn lines, wiring.
-- `README.md`, `docs/configuration.md`, `docs/development.md`, `docs/index.md`, `AGENTS.md`.
+- `package.json` (adds the pulse-contract pin and bumps the pulse-kit pin; see Dependencies below)
+- `bun.lock` (regenerated by bun install)
+- `Dockerfile` (database path default and the data directory; see Image below)
+- `.gitignore` (ignores the local database file and its sidecars)
+- `.github/workflows/ci.yml` (docker job steps; see Checks)
+- `src/settings.ts` (two new settings and the mode)
+- `src/settings.test.ts`
+- `src/database.ts` (new: open, file mode, pragmas, migration 1, start errors)
+- `src/database.test.ts` (new)
+- `src/account-store.ts` (new: instance row, owner, setup transaction, sessions)
+- `src/account-store.test.ts` (new)
+- `src/setup-code.ts` (new: code, normalization, digest compare, grant)
+- `src/setup-code.test.ts` (new)
+- `src/connection-test.ts` (new: the two calls and the result or failure text table)
+- `src/connection-test.test.ts` (new)
+- `src/auth-throttle.ts` (new: limiter with lock, in-flight count and bound)
+- `src/auth-throttle.test.ts` (new)
+- `src/passwords.ts` (new: policy, hash parameters, dummy verifier)
+- `src/passwords.test.ts` (new)
+- `src/cookies.ts` (new: parse and serialize with mode-dependent names, flags and refresh)
+- `src/cookies.test.ts` (new)
+- `src/request-guard.ts` (new: loopback Host rule, Origin rule, CSRF compare, next)
+- `src/request-guard.test.ts` (new)
+- `src/forms.ts` (new: content type, body limit, repeated fields, field rules)
+- `src/forms.test.ts` (new)
+- `src/pages.ts` (new: HTML templates; replaces the deleted page module)
+- `src/page.ts` (deleted)
+- `src/styles.ts` (new: the stylesheet served at the console.css route)
+- `src/server.ts` (routes, phases, POST order, CSP, stylesheet route)
+- `src/server.test.ts`
+- `src/server.setup.test.ts` (new: HTTP end-to-end tests of setup)
+- `src/server.sign-in.test.ts` (new: HTTP end-to-end tests of sign-in and sessions)
+- `src/server.security.test.ts` (new: POST order, origin, CSRF, cookies, leak scan)
+- `src/metrics.ts` (path labels and the auth counter)
+- `src/main.ts` (opens the database, prints the code, warn lines, wiring)
+- `src/main.startup.test.ts`
+- `README.md`
+- `docs/configuration.md`
+- `docs/development.md`
+- `docs/index.md`
+- `AGENTS.md`
 
-Behavior change: yes. It adds setup, accounts, sign-in, sessions, new settings and routes, a
-database and a new CSP.
+Behavior change: yes
+It adds setup, accounts, sign-in, sessions, new settings and routes, a database and a new CSP.
+
+Dependencies: `package.json` adds
+`"@lorenzh/pulse-contract": "github:lorenzh/pulse-contract#2c4e0e08201c6efcfff1cd1f7835616e1dff9de3"`
+(contract `main` at planning time, version 1.7.1, committed `dist/`) and bumps `@lorenzh/pulse-kit`
+from `#236df214f9df8658f2992dd6f7c100952c07102b` (`package.json:30` today) to
+`github:lorenzh/pulse-kit#536133f3e8b708179fa01feeb02395a0e1961e07` (kit `main`; exports
+`clientKeyOf` at `src/index.ts:21` and `dist/index.d.ts:4`, and has committed `dist/`).
+
+Image: the `Dockerfile` adds `PULSE_CONSOLE_DB=/data/console.db` to the existing `ENV` line
+(`Dockerfile:9`) and `RUN mkdir /data && chown bun:bun /data` before `USER bun` (`Dockerfile:13`).
+The `.gitignore` (today only `node_modules/`) adds `console.db` and `console.db-*`.
 
 Tool facts, verified:
 
@@ -692,11 +769,28 @@ Tool facts, verified:
   ref `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:22`), that file includes `**`
   minus `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures` (lines 8-17). It is
   identical to the config clone at `bc87049`.
-- Tests: `bun test` with `coverage = true` and a line threshold of `0.8` (`bunfig.toml:1-4`).
+- ESLint: `pulse-eslint .` (`package.json:15`) uses the local `eslint.config.js`, which spreads
+  `@lorenzh/pulse-config/eslint.config.js` (`eslint.config.js:1-4`). At the pinned ref
+  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, that file sets
+  `"sonarjs/cognitive-complexity": ["error", 15]` for `**/*.ts` and `**/*.js`
+  (`eslint.config.js:11` and `:16`, read with
+  `gh api "repos/lorenzh/pulse-config/contents/eslint.config.js?ref=04108fa…"`). It is identical
+  to the config clone at `bc870498cc8e2539a132ce2aac35a09db1deabd8`.
+- Typecheck covers `src` only (`tsconfig.json:3` `"include": ["src"]`), so every test and test
+  helper lives under `src/`.
+- Tests: `bun test` with `coverage = true` and a line threshold of `0.8`; `*.test.ts` files are
+  outside the coverage count (`bunfig.toml:1-4`).
 - CI `check` job: `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa…` (`ci.yml:18`).
-  At that ref the file runs install, `bun run lint`, `bun run typecheck`, `bun run test` (pinned
-  `check.yml:25-38`). It is identical to the clone.
-- The `docker` job builds and smoke-tests the image (`ci.yml:28-112`).
+  At that ref the file runs `bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck`
+  and `bun run test` (pinned `check.yml:26`, `:28`, `:30`, `:38`; the build steps at `:31-36`
+  run only with `inputs.build`). It is identical to the clone.
+- The `docker` job builds and smoke-tests the image on `ubuntu-24.04` and `ubuntu-24.04-arm`
+  (`ci.yml:20-120`). The image is `oven/bun:1.4.0-alpine` (`Dockerfile:1`, `:7`), so busybox
+  `sh`, `grep` and `stat` exist in the container. The container start step is `ci.yml:50-66`. It
+  passes the sentinel token `console-ci-sentinel-token-0123456789ab` (`ci.yml:54`).
+- The image check rejects files named `*.test.ts` or `*.spec.ts` under `/app` (`ci.yml:34-47`),
+  and the image copies all of `src` (`Dockerfile:12`). So no test-only module may have another
+  name pattern; test helpers stay inside the `*.test.ts` file that uses them.
 
 Behavior: everything in "Required behavior" under console. Implementation notes:
 
@@ -709,19 +803,45 @@ Behavior: everything in "Required behavior" under console. Implementation notes:
 - Tests use `mkdtemp` database files, fake api servers on `127.0.0.1:0`, and an injected clock.
   There are no real waits.
 
-Checks (all in `bun run check`, coverage stays ≥ 80 %, cognitive complexity ≤ 15):
+Checks (all in `bun run check`; coverage stays ≥ 80 % per `bunfig.toml:3`; cognitive complexity
+≤ 15 per the pinned `eslint.config.js:16` cited above):
 
 - Unit tests per module for every rule and counterexample above.
 - `src/server.setup.test.ts`: acceptance 2, 3, 5 and 6, concurrent completion, failed commit
   (a store whose transaction throws gives `500`, and setup stays open with the grant valid),
-  missing token.
+  missing token. The database scan of acceptance 5 follows its read rules: `readFileSync` of the
+  database file must succeed, a sidecar is skipped only on `ENOENT`, any other error fails, the
+  positive control `owner-sentinel@example.com` is found at least once, and each forbidden
+  sentinel is found exactly 0 times.
 - `src/server.sign-in.test.ts`: acceptance 4, account and client locks, `X-Forwarded-For`
-  ignored, rotation, sign-out, idle expiry boundary, sessions surviving a second server on the
-  same file, `next`.
+  ignored, rotation, sign-out, the idle expiry boundary, the cookie refresh (the Sessions
+  counterexamples: `200` plus a `Set-Cookie` with the same value and `Max-Age=2592000` at
+  `t0 + 2505600000`, `200` at `t0 + 2678400000`, no session `Set-Cookie` at `t0 + 59999`),
+  sessions surviving a second server on the same file, `next`.
 - `src/server.security.test.ts`: the POST order (one request per step that fails exactly that
   step), `Origin` and `Host` cases, CSRF cases, body limits, the exact CSP header, the cookie
-  attributes in loopback and strict-https mode (literal `Set-Cookie` strings), and no sentinel
-  (token, password, session id, code) in any response body, header or `/metrics`.
+  attributes in loopback and strict-https mode (literal `Set-Cookie` strings), and the leak scan.
+- The leak scan. Its sentinels: the api token `console-test-sentinel-token-0123456789abcdef`, the
+  owner password `console-test-password-sentinel-42`, a wrong password
+  `console-test-wrong-password-43`, the setup code, every session id, every grant and every CSRF
+  token that the run creates. It drives one full flow (unlock, test, complete, failed sign-in,
+  sign-in, landing page, sign-out) and collects every response: status, all headers, body. Then,
+  per response:
+  1. It checks that each intended disclosure is present where the flow expects it: the hidden
+     `csrf` field on every form page, the `pulse_console_session` `Set-Cookie` on the sign-in
+     `303`, the `pulse_console_setup` `Set-Cookie` on the unlock `303`. This is the positive
+     control: a missing one fails.
+  2. It removes exactly those parts: each `Set-Cookie` header whose cookie name matches the
+     secret it carries, and each substring
+     `<input type="hidden" name="csrf" value="<token of this client>">` from the body.
+  3. In what is left (every other header, including `Location`, and the rest of the body), and
+     in `/metrics` and every captured log line, each sentinel occurs exactly 0 times. The setup
+     code is also not in the log lines, apart from its one stdout line, which the test does not
+     capture through the logger.
+  4. A token of client A in a response to client B fails, also in an intended place.
+  The expected counts (≥ 1 for each intended place, 0 elsewhere) are literals of this spec; the
+  sentinels are values the test chose or read from a `Set-Cookie` it received, never from the
+  code under test.
 - `src/main.startup.test.ts` (spawns `bun src/main.ts`):
   - a fresh database prints exactly one `pulse-console setup code:` line, also with
     `PULSE_LOG_LEVEL=error`;
@@ -737,8 +857,20 @@ Checks (all in `bun run check`, coverage stays ≥ 80 %, cognitive complexity �
     `pulse-console setup code: [0-9a-f]{4}(-[0-9a-f]{4}){7}`.
   - New step: `docker exec console stat -c '%u %a' /data/console.db` prints `<uid of bun> 600`
     (uid from `docker exec console id -u bun`).
-  - New step: `docker exec console sh -c "grep -c -F console-ci-sentinel-token-0123456789ab /data/console.db* || true"`
-    prints only `0` counts.
+  - New step "Check the token is not in the database". It runs one script in the container with
+    `docker exec console sh -c '…'` and fails on the first broken rule:
+    1. `/data/console.db` must be a readable regular file (`test -f` and `test -r`), else fail.
+    2. The read set is `/data/console.db` plus each of `/data/console.db-wal` and
+       `/data/console.db-shm` that exists (`test -e`). A sidecar that exists but is not readable
+       fails.
+    3. Positive control: `[ "$(head -c 15 /data/console.db)" = "SQLite format 3" ]`, the first
+       15 bytes of the header string of the published SQLite file format (an independent
+       source; byte 16 is NUL, which a shell string cannot hold). A mismatch fails, so an empty
+       or foreign file cannot pass the scan.
+    4. For each file in the read set, `grep -a -c -F console-ci-sentinel-token-0123456789ab <file>`
+       runs without `|| true`. Its exit status must be exactly `1` (no match) and its output
+       exactly `0`. Exit `0` (a match) fails, and exit `2` (a read error) fails.
+    The expected values (`1`, `0`, the 16-byte header) are literals of this spec.
   - The existing sentinel log and page step stays.
 
 Completion evidence:
@@ -764,18 +896,51 @@ Completion evidence:
 ## Repository: deploy
 
 Files:
-- `full/compose.yaml`, `dev/compose.yaml`, `demo/compose.yaml`: wiring from "Required behavior / deploy".
-- `full/.env.example`, `dev/.env.example`, `demo/.env.example`: `# PULSE_CONSOLE_PUBLIC_URL=`.
-- `scripts/secrets-init.mjs`, `scripts/secrets-init.test.sh`: generate-mode admin.
-- `scripts/init-secrets.sh`, `scripts/init-secrets.test.sh`: `admin-token`, independent of `probe-token`.
-- `scripts/check-setup.sh`, `scripts/check-setup.test.sh`: rule 7 also checks `admin-token` (mode `600`, 64 hex, kept on rerun), with a failing case.
-- `e2e/compose.e2e.yaml`, `e2e/compose-e2e.sh`: shared admin token, `curl -fsSL` for the console page.
-- `e2e/console-setup.sh` (new).
-- `.github/workflows/ci.yml`: `dev` job step `bash e2e/console-setup.sh dev/compose.yaml` after `wait-ready.sh` and before the teardown.
-- `cli/render-compose.ts`, `cli/render-compose.test.ts`, `cli/render-files.ts`, `cli/render-files.test.ts`, `cli/lifecycle.ts`, `cli/lifecycle.test.ts`: console volume, public URL env and `.env` entry, `volumeKeys`, down text.
-- `README.md`, `full/README.md`, `dev/README.md`, `demo/README.md`, `docs/cli.md`.
+- `full/compose.yaml` (wiring from "Required behavior / deploy")
+- `dev/compose.yaml` (same wiring)
+- `demo/compose.yaml` (same wiring, generate mode)
+- `full/.env.example` (a commented PULSE_CONSOLE_PUBLIC_URL line)
+- `dev/.env.example` (same)
+- `demo/.env.example` (same)
+- `scripts/secrets-init.mjs` (generate-mode admin token)
+- `scripts/secrets-init.test.sh`
+- `scripts/init-secrets.sh` (creates the admin token file, independent of the probe token)
+- `scripts/init-secrets.test.sh`
+- `scripts/check-setup.sh` (rule 7 also checks the admin token file)
+- `scripts/check-setup.test.sh` (a failing case for that rule)
+- `e2e/compose.e2e.yaml` (drops its own admin token import)
+- `e2e/compose-e2e.sh` (shared admin token, redirect-following console checks)
+- `e2e/console-setup.sh` (new: the setup flow e2e)
+- `.github/workflows/ci.yml` (dev job step)
+- `cli/render-compose.ts` (console volume and public URL env)
+- `cli/render-compose.test.ts`
+- `cli/render-files.ts` (the .env entry)
+- `cli/render-files.test.ts`
+- `cli/lifecycle.ts` (volume keys and the down text)
+- `cli/lifecycle.test.ts`
+- `README.md`
+- `full/README.md`
+- `dev/README.md`
+- `demo/README.md`
+- `docs/cli.md`
 
-Behavior change: yes. Compose setups, secrets scripts, CLI output and CI change.
+Behavior change: yes
+Compose setups, secrets scripts, CLI output and CI change.
+
+File details:
+
+- The three `.env.example` files each get the line `# PULSE_CONSOLE_PUBLIC_URL=`.
+- `scripts/init-secrets.sh` creates `<dir>/admin-token`; `scripts/check-setup.sh` rule 7 checks
+  it (mode `600`, 64 hex characters, kept on rerun).
+- `e2e/compose.e2e.yaml` drops `PULSE_API_ADMIN_TOKENS_FILE` and the `admin-tokens` config;
+  `e2e/compose-e2e.sh` uses `curl -fsSL` for the console page.
+- `.github/workflows/ci.yml`: the `dev` job gets the step `bash e2e/console-setup.sh dev/compose.yaml`
+  (with `working-directory: pulse-deploy`) after `scripts/wait-ready.sh dev/compose.yaml 900`
+  (`ci.yml:221-222`) and before "Stack state and logs" and "Teardown" (`ci.yml:223-232`), so it
+  runs while the stack is up.
+- The CLI files change the console service (`console-data:/data`,
+  `PULSE_CONSOLE_PUBLIC_URL: ${PULSE_CONSOLE_PUBLIC_URL:-}`), the `.env` entry, `volumeKeys` and
+  the text of `pulse down --volumes`.
 
 Tool facts, verified:
 
@@ -820,17 +985,32 @@ unused.
   2. `GET /setup`: `200`.
   3. `POST /setup` with a wrong code: `401`.
   4. `POST /setup` with the code: `303`, `Location: /setup/owner`.
-  5. `POST /setup/owner` with `action=test` and API URL `http://api:3000`: `200`, and the page
+  5. `POST /setup/owner` with `action=test`, API URL `http://api:3000`, email
+     `e2e-owner@example.com`, name `E2E Owner` and the password twice: `200`, and the page
      holds `Checks: <n>.` with `n` from `jq '.checks | length' full/config/api/checks.json` (the
      file that `dev` mounts into the api).
-  6. `action=complete`: `303`, `Location: /sign-in?setup=done`.
+  6. The same fields with `action=complete`: `303`, `Location: /sign-in?setup=done`.
   7. `POST /setup` with the same code: `404`.
   8. `POST /sign-in` with a wrong password: `401`. With the right one: `303`. Then `GET /`: `200`
      and the page holds `Signed in as`.
   9. `docker compose up -d --force-recreate console`, then wait for `/readyz`. The logs since the
      recreate hold no `setup code:`. `GET /setup` answers `404`. Sign-in answers `303` again.
-  10. `docker compose exec -T console sh -c 'grep -c -F -f /run/pulse/admin-token /data/console.db* || true'`
-      prints only `0` counts.
+  10. Database scan, one `docker compose -f <file> exec -T console sh -c '…'` script that fails
+      on the first broken rule and prints no token:
+      1. `/run/pulse/admin-token` holds exactly 64 lowercase hex characters
+         (`grep -qxE '[0-9a-f]{64}'`; the format that `init-secrets.sh` writes), else fail. So the
+         pattern can never be empty.
+      2. `/data/console.db` is a readable regular file, else fail. The read set is that file plus
+         each of `/data/console.db-wal` and `/data/console.db-shm` that exists; an existing but
+         unreadable sidecar fails.
+      3. Positive control: across the read set, `grep -a -c -F e2e-owner@example.com` (the owner
+         email that step 6 submitted) counts at least 1 in total. A total of 0 fails, so the scan
+         is shown to read the stored rows.
+      4. For each file in the read set, `grep -a -c -F -f /run/pulse/admin-token <file>` runs
+         without `|| true`. Its exit status must be exactly `1` and its output exactly `0`.
+         Exit `0` (a match) fails, and exit `2` (a read error) fails. (Passwords are covered by
+         the console's own database scan, acceptance 5.)
+      The expected values (`1`, `0`, at least 1, the literal email) are literals of this spec.
 
 Checks:
 
