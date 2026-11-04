@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Compose E2E verifies both pinned file writes and database checks without moving pins",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/compose.e2e.yaml",
+        "full/compose.yaml",
+        "full/README.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior 1-7, Checks 1-4 and Completion evidence Runs A/B; Security impact for E2E credentials and unchanged pins. Detect the API kind exactly once from GET /admin/config having file and shadowed; retain shared CRUD/probe/status steps and use literal create counts for each path. Add the ordered database-only file-hash, literal Authorization/body GET-edit-PUT, shadow/unshadow, broken-file-write/repair and restart persistence scenarios of 3a-3e. Use the section's literal targets, sentinels, ids and statuses, not values fetched from the API as expected values. Update the read-only secondary API to check its fresh ETag: database check POST 201 and component POST 503, versus legacy check POST 503. Preserve existing log redaction and add the svc-token log absence check after the database scenarios; never print credentials. Update only the listed comments/docs with the version-specific writable-directory requirement. No pin, image line or unrelated step changes. Run A uses the unchanged pinned api; Run B builds merged api main and selects it only in a disposable deploy copy as specified, then deletes that copy. Record api SHA, image ID, actual path ok lines and all checks for the PR. If feature detection/scenarios already exist use the section's hold condition; if Run B fails outside this change, hold needs-input with the failing step. Report Docker unavailability without claiming a pass.",
+      "acceptance": [
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh",
+          "expected": "exit 0; every E2E helper test of CI job lint passes."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; all static setups pass and malformed setup fixtures are rejected."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; all remaining script tests of CI job lint pass, including the Docker secrets-init checks."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; repository lint, typecheck and full CLI tests pass."
+        },
+        {
+          "command": "git diff --exit-code \"$(git merge-base origin/main HEAD)\" HEAD -- common/services.yaml",
+          "expected": "exit 0; no committed pin or shared image changed."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Run A in the unchanged-pin checkout exits 0 and ends ==> All checks passed; output includes ok: the api writes admin checks to the file (older api) and ok: the read-only mount answers 503. Existing create counter is the literal count 1 at its check."
+        },
+        {
+          "command": "docker build -t pulse-api:e2e-<sha> <api checkout at sha>",
+          "expected": "Run B preparation succeeds for the recorded merged api main SHA; record its image ID and use this tag only in the disposable deploy copy required by the section."
+        },
+        {
+          "command": "COMPOSE_FILE=full/compose.yaml:e2e/compose.e2e.yaml docker compose config --images",
+          "expected": "In the disposable Run B deploy copy, the selected api image is pulse-api:e2e-<recorded merged api SHA>; the only temporary image edit is common/services.yaml's api image value."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Run B in that copy exits 0 and ends ==> All checks passed; output includes ok: the api stores admin checks in the database and ok lines for 3a-3e and 4. File hash stays equal across CRUD; e2e-db-post has an up result, keep markers and the literal Authorization/body after PUT; shadow is E2E file shadow with PUT 409 then database restoration; broken bytes { survive POST 201 and DELETE 204; repaired state is ok; e2e-db-keep persists with source database. Secondary read-only API returns check 201 and component 503. Admin/svc tokens are absent from logs and never printed. Use literal per-path create counts. Delete the disposable copy after recording evidence."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR lists #565, merged api SHA and image ID, both runs' actual ok lines and Checks 1-4 results, plus the security review of credential redaction, no secret output, unchanged pins and limited scope. Any unavailable Docker evidence is explicitly reported; an unrelated Run B failure causes needs-input naming the step."
+        }
+      ]
+    }
+  ]
+}
