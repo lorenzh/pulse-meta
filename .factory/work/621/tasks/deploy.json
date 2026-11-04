@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Published api and probe images pass strict auth, token, audit and restart e2e checks",
+      "title": "Released api and probe images pass scoped-token, audit and restart e2e with secret-safe failures",
       "files": [
         "e2e/compose-e2e.sh",
         "common/services.yaml",
@@ -13,7 +13,7 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior (Required behavior items 1-7 and implementation notes), Checks and Acceptance evidence 1-7; Release prerequisites, Risks, Counterexamples, Performance impact, Security impact and Rollout order. One task keeps the single-script integration checks, both qualifying image pins and the README change together. scripts/bump-images.sh is included because the section's Files parenthetical names it as the pin-writing tool; use it unchanged, with no edit to the helper itself. Check release prerequisites first; request a needs-input hold naming any missing qualifying release. Also hold on changed probe reason texts or rejected fixtures as Risks requires; do not weaken checks or silently reshape fixtures.",
+      "spec": "## Repository: deploy, Behavior (Required behavior items 1-8 and implementation notes), Checks and Acceptance evidence 1-8; Release prerequisites, Risks, Counterexamples, Performance impact, Security impact and Rollout order. One task keeps the changes to the single e2e script, its failure redaction, both qualifying image pins and the README together for integrated acceptance. scripts/bump-images.sh is included because the section's Files parenthetical names it as the pin-writing tool; run it unchanged, with no edit to the helper. Check release prerequisites first; request a needs-input hold naming any missing qualifying release. Also hold on changed probe reason texts, rejected fixtures or changed CLI admin status codes as the spec requires; do not weaken comparisons, skip checks or silently reshape fixtures.",
       "acceptance": [
         {
           "command": "gh api repos/lorenzh/pulse-api/git/refs/tags/v<api-version> --jq .object.sha; gh api repos/lorenzh/pulse-api/compare/e1153f99ba3466f6509d29760896e2cdf5061fb5...v<api-version> --jq .status; gh api repos/lorenzh/pulse-probe/git/refs/tags/v<probe-version> --jq .object.sha; gh api repos/lorenzh/pulse-probe/compare/a5dc88d5473a9c63cfd984988201da32cd15ec5c...v<probe-version> --jq .status",
@@ -44,8 +44,12 @@
           "expected": "Exit 0 for every helper test and static setup check of the lint job."
         },
         {
-          "command": "bun install --frozen-lockfile && bun run check && bun run build && git diff --exit-code -- dist",
-          "expected": "Exit 0; CLI lint, typecheck, full tests with the existing coverage gate and build pass. No tracked dist changes."
+          "command": "bun install --frozen-lockfile && bun run check && bun run build",
+          "expected": "Exit 0 using Bun 1.4.0. package.json defines check as lint, typecheck and the full bun test --coverage cli suite; bunfig.toml requires line coverage of at least 0.8, with functions threshold 0. Include the full coverage summary in PR evidence. The CLI tests read embedded common/services.yaml and validate the pin shape, never pin values. Build succeeds locally; the reusable CI check job runs install, lint, typecheck and test only, since its build input defaults to false and deploy passes no override. Do not claim that this job runs build or dist checks."
+        },
+        {
+          "command": "bash cli/test/stack.sh full",
+          "expected": "Exit 0 after bun run build; the CLI starts and exercises a live full stack using the new embedded pins. Preserve cli/test/stack.sh unchanged, including its literal GET /admin/config expectations (200 with the admin token, 401 without a token, 403 with a probe token) used by its admin checks. If one changes, request a needs-input hold rather than edit stack.sh. This command tears its stack down before the next live-stack run."
         },
         {
           "command": "In separate baseline-main and implementation checkouts, run scripts/init-secrets.sh && docker compose -f full/compose.yaml pull && scripts/measure.sh full; tear each stack down with docker compose -f full/compose.yaml down -v before starting the next run or the e2e",
@@ -57,7 +61,11 @@
         },
         {
           "command": "Inspect the audit, export, secrecy and throttle assertions and the output of the same successful bash e2e/compose-e2e.sh run (Required behavior 2.3-2.6 and 3)",
-          "expected": "Audit query /admin/audit?action=check.create&targetId=e2e-api gets 200 and holds a check.create entry with target.kind check, target.id e2e-api and actor.name e2e; retain its id. Query targetKind=token&targetId=<rotated token id> holds token.create, token.rotate and token.revoke, each attributed to e2e. Export gets 200, is nonempty, each line independently passes jq -e 'type == \"object\"', and includes the retained check.create id. Fixed-string checks find none of the four secrets (e2e admin, read/checks, A, B) in either query body, export or pre-restart compose logs; fail messages name place and role only. No pulse_api_admin_auth_throttled_total series is above 0; only the four specified failed admin authentications are sent. After down/up, the same e2e admin token gets 200 on /admin/config, the retained audit id is returned by the check.create query, and after every service is healthy new-container logs contain none of the four secrets. Secrets stay in shell variables; token-bearing responses are parsed with jq -e without printing secrets or whole responses. Existing assert_absent needles and all other assertions, publishing, cleanup and clean stop stay intact. Output includes the new persistence successes and ends with '==> All checks passed'."
+          "expected": "Audit query /admin/audit?action=check.create&targetId=e2e-api gets 200 and holds a check.create entry with target.kind check, target.id e2e-api and actor.name e2e; retain its id. Query targetKind=token&targetId=<rotated token id> holds token.create, token.rotate and token.revoke, each attributed to e2e. Export gets 200, is nonempty, each line independently passes jq -e 'type == \"object\"', and includes the retained check.create id. Fixed-string checks find none of the four secrets (e2e admin, read/checks, A, B) in either query body, export or pre-restart compose logs; fail messages name place and role only. No pulse_api_admin_auth_throttled_total series is above 0; only the four specified failed admin authentications are sent. After down/up, the same e2e admin token gets 200 on /admin/config, the retained audit id is returned by the check.create query, and after every service is healthy new-container logs contain none of the four secrets. Secrets stay in shell variables; token-bearing responses are parsed with jq -e without printing secrets or whole responses. Existing assert_absent needles and all other assertions, loopback publishing, restore/teardown order and clean stop stay intact; its failure text and the cleanup log dump change as Required behavior 4 specifies. Output includes the new persistence successes and ends with '==> All checks passed'."
+        },
+        {
+          "command": "Review e2e/compose-e2e.sh cleanup, top-level secret initialization, assert_absent and the new secret checks against Required behavior 4",
+          "expected": "On failure cleanup retains the original exit code, prints the Failure heading and compose ps --all, reads compose logs --no-color once and replaces every literal occurrence of all five credentials before printing the dump. Exact role markers are <redacted:e2e-admin-token>, <redacted:e2e-svc-token>, <redacted:read-checks-secret>, <redacted:rotated-secret-a> and <redacted:rotated-secret-b>. Replacements use quoted bash patterns, never secret-as-regex sed or grep; empty or unset values are skipped, new secret variables are initialized empty near the top, and early failure under set -u still reaches teardown. Body sentinel and header env name remain visible markers. assert_absent keeps its needle list and loop but reports only the e2e svc token, body sentinel or header env name role. No fail text prints a credential. Restore, down -v --remove-orphans, e2e/rw removal and secrets cleanup retain their order."
         },
         {
           "command": "In an uncommitted scratch copy with the new image pins, restore the issue's historical 401-only probe-write assertion and its failure text, then run bash e2e/compose-e2e.sh; discard the scratch change",
@@ -72,16 +80,24 @@
           "expected": "Within 90 seconds e2e-post has state down and lastReason exactly 'header Authorization env PULSE_HEADER_SVC_TOKEN is not bound to host e2e-target', from probe src/client.ts:160. Quote this alongside the green run's 'e2e-post is up' and 'e2e-post is up again'. The committed binding overlay and e2e-post scenario are unchanged; no denial fixture is added."
         },
         {
+          "command": "In an uncommitted scratch copy, follow Acceptance evidence 6: create a mode-600 mktemp secrets_file under /tmp and append each known credential immediately after creation. In run a, plant rotated secret A in e2e-target PID 1 stdout after rotation (Required behavior 2.2), then capture bash e2e/compose-e2e.sh stdout/stderr in run-a.log. In a fresh run b, plant the read-checks secret immediately after creation (2.1), add fail \"planted failure before the scan\" on the next line, and capture run-b.log. Record each exit code without shell tracing. Discard all scratch edits after the runs; keep the temporary secrets file private until the evidence checks below finish",
+          "expected": "Both runs exit 1. Run a fails at the container-log secret scan with a FAIL line naming the role of rotated secret A, never its value. Run b prints exactly FAIL: planted failure before the scan. The dump still shows the planted log entry with the corresponding redaction marker. Neither injection nor a new denial scenario is committed; production secrets remain shell variables only."
+        },
+        {
+          "command": "For each planted-leak run, execute grep -cFf \"$secrets_file\" run-<x>.log; grep -c '^==> Teardown$' run-<x>.log; docker compose -p pulse-e2e ps -a -q | wc -l; docker volume ls -q --filter label=com.docker.compose.project=pulse-e2e | wc -l. Also run grep -c '<redacted:rotated-secret-a>' run-a.log and grep -c '<redacted:read-checks-secret>' run-b.log. Remove the temporary secrets file and private run artifacts after collecting safe evidence",
+          "expected": "For each run the credential-match count is 0 (grep exits 1 for no match), the Teardown heading count is exactly 1, and remaining pulse-e2e container and volume counts are each 0. Each run's corresponding redaction-marker count is at least 1. Quote counts, role-only FAIL lines and redaction-marker lines in the PR; never quote the secrets file, a credential or a whole token response. These outputs prove both scan-detected and pre-scan failure paths redact the leak and still tear down."
+        },
+        {
           "command": "git diff main -- README.md e2e/compose-e2e.sh && git diff --name-only main",
-          "expected": "Changes are limited to e2e/compose-e2e.sh, common/services.yaml and README.md. The README e2e paragraph names token scopes, rotation/revocation, audit query/export and persistence across restart, without image versions. Script changes implement Required behavior 1-3 and preserve items 4 and 7, including existing assertions, exact reason comparisons, secret needle checks, loopback publishing, cleanup and clean stop. No target, workflow, CLI or setup files change."
+          "expected": "Changes are limited to e2e/compose-e2e.sh, common/services.yaml and README.md. The README e2e paragraph names token scopes, rotation/revocation, audit query/export and persistence across restart, without image versions. Script changes implement Required behavior 1-4; items 5-8 preserve the existing header-binding fixture and scenario, all other assertions, exact reason comparisons, secret needle list, loopback publishing, restore/teardown order and clean stop, with only the specified api/probe pins and README updates. scripts/bump-images.sh stays unchanged. No workflow, CLI, overlay or other setup files change; scratch acceptance changes are absent."
         },
         {
           "command": "gh pr checks <pr> --watch",
-          "expected": "Exit 0; CI jobs check, lint, pins, minimal, full, demo, dev and cli-* are green. Include command outputs and the full job result in the PR evidence."
+          "expected": "Exit 0; CI jobs check, lint, pins, minimal, full, demo, dev, cli-build, cli-render, cli-stack (demo, full and minimal) and cli-errors are green. check runs install, lint, typecheck and test; its build/dist steps are skipped. cli-build compiles the CLI with the new pins and runs smoke tests; cli-stack uses them in live stacks. Include command outputs and the full job result in the PR evidence."
         },
         {
           "command": "gh pr view <pr> --json body --jq .body; gh pr view <pr> --json body --jq .body | grep -cF e2e-admin-token-sentinel",
-          "expected": "Body includes release tags, SHAs, marker-compare results, ghcr.io digests and verification; both status-code red runs; green full e2e; binding deny and allowed evidence; before/after full measurements; required check results; and evidence for each applicable Security impact item (secret absence including both log phases, exact auth statuses and dependency pins). It contains no credential or full token response. grep prints 0 (exit 1 for no match)."
+          "expected": "Body includes release tags, SHAs, marker-compare results, ghcr.io digests and verification; both status-code red runs; green full e2e; binding deny and allowed evidence; both planted-leak failure runs with zero credential matches, redaction markers, one teardown and zero remaining containers/volumes; before/after full measurements; required check results including full CLI coverage at the 0.8 line gate and CLI full-stack acceptance; and evidence for each applicable Security impact item (secret absence including both log phases and failure dumps, exact auth statuses and dependency pins). It contains no credential or full token response. grep prints 0 (exit 1 for no match)."
         }
       ]
     }
