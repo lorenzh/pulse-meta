@@ -1,0 +1,243 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Console reads four roles and guards existing routes with the confirmed policy",
+      "files": [
+        "src/database.ts",
+        "src/database.test.ts",
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "src/permissions.ts",
+        "src/permissions.test.ts",
+        "src/two-factor-rule.ts",
+        "src/two-factor-rule.test.ts",
+        "src/people-log.ts",
+        "src/people-log.test.ts",
+        "src/server.ts",
+        "src/pages.ts",
+        "src/server.roles.test.ts",
+        "src/server.security.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Prerequisite check; Behavior bullets 1-3 and the widened predicate in bullet 4; Required behavior: Roles and the permission matrix, Target rules, Where the role is checked, The 403 page, Two-factor requirement, Database and People log; Acceptance evidence 1, 3, 6 (predicate), 8 (append-only store), 10 and existing-route portions of 2. Before any edit, verify merged console main contains #563's TOTP migration and enrolment route. If absent, request needs-input naming #563 and change nothing. If own password change, the organisation requirement or owner recovery already exists, reuse it and request the specified hold for that part. Record the #563 SHA, previous schema and baseline full-test elapsed time. Do not implement #563 cryptography or session UI. Add migration N after the actual latest migration without editing earlier SQL: role triggers, require_2fa_all default 0, invites, reset_links and append-only people_events with exactly the specified columns, constraints and delete behavior. Read and narrow actual stored roles; preserve existing Owner/password/session/factor data and newer-schema errors. Implement the complete 27-row policy, target rules, required-role messages and the two extra actions; future screens remain policy-only. Add the typed appendPeopleEvent interface and durable snapshots, usable inside callers' transactions and later token actions. Integrate the live TOTP predicate with #563's gate, including its existing account-security routes; if the prerequisite gate lives elsewhere, change only its call/export as the plan permits and name that real module in the PR. Declare guards for every currently registered app route, preserve ops behavior, implement existing-route GET/POST order and role-aware 403, and make the route test reject undeclared registrations. Later tasks extend that literal route test when registering their routes. Do not expose unfinished team/link routes or dead navigation. Update README/configuration alongside these changes. This task is one foundation seam because migration, typed role reads, policy and the live gate must agree before any non-owner can be created.",
+      "acceptance": [
+        {
+          "command": "bun test src/database.test.ts src/account-store.test.ts src/people-log.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Previous-version fixtures, including version 1 and the merged #563 schema, migrate without losing the Owner, password hash, existing sessions or factors. The old password and session remain valid subject to the TOTP gate. The default require_2fa_all is 0; inserting or updating role superuser fails. A second Owner is refused. UPDATE and DELETE of people_events fail with people_events is append-only; snapshots survive restart and user removal; an event insert participates in its caller's rollback."
+        },
+        {
+          "command": "bun test src/permissions.test.ts src/two-factor-rule.test.ts src/server.roles.test.ts src/server.security.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. An independent literal 27 x 4 table checks all 108 cells unchanged from the spec. team.view is N,N,Y,Y and team.require-2fa is N,N,N,Y in Viewer,Member,Admin,Owner order. All-Y/all-N rows record the inapplicable counterpart and deferred rows expose no new screen. Owner targets and self team actions are refused; Admin cannot act on Admin or change Member/Viewer roles. GET / is 200 for each enrolled role and 303 without a session. Missing-session guarded POST is 403 Request refused. All registered app routes have their specified guards; live role/requirement changes affect the next request. Owner/Admin without TOTP are restricted to #563 enrolment, sign-out and CSS; optional Member/Viewer are unrestricted until require_2fa_all is on. Existing setup, sign-in, sign-out, raw paths, ops, cookies, headers and guard-order regressions pass."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; no tooling, coverage threshold, runtime dependency or contract/kit pin is weakened or changed."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Owners and admins can manage permitted people with atomic People events",
+      "files": [
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "src/team-store.ts",
+        "src/team-store.test.ts",
+        "src/team-routes.ts",
+        "src/team-pages.ts",
+        "src/server.ts",
+        "src/main.ts",
+        "src/main.startup.test.ts",
+        "src/pages.ts",
+        "src/styles.ts",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/metrics.ts",
+        "src/people-log.ts",
+        "src/people-log.test.ts",
+        "src/server.team.test.ts",
+        "src/server.roles.test.ts",
+        "src/server.security.test.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.sign-in.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/team.md",
+        "docs/index.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior bullets 3-6 and 8 for Team listing, role changes, removal, administrative 2FA reset, ownership transfer and team.require-2fa; Required behavior: Routes for those operations, 2FA reset of another person, Role change, Removal, Ownership transfer, Two-factor requirement, People log and Pages, metrics and logs; Acceptance evidence 2 rows 16-19,23-25 plus team.view/team.require-2fa, 3, 6-8 and 11 for these pages; Counterexamples Roles, Ids, Stale state, Transfer sessions, Promotion, Transfer, Removal and People log. Depends on T1. Wire the real team store and prerequisite factor-removal dependency from main.ts; preserve startup and shutdown behavior and existing test dependency injection. Implement server-rendered /team and its people/pending-list data, adding invite/reset controls only when their handlers land in T3/T4. Add the guarded role/remove/reset-2fa/transfer/require-2fa routes and landing Team link, id/role/confirmation validation and responsive forms. Every mutation re-reads actor and target inside BEGIN IMMEDIATE and writes its People event atomically; failures roll back and return the specified safe 500. Role changes end every target session; 2FA reset deletes factors/recovery material and every target session. Removal preserves history, cascades account links/sessions/factors, invalidates invites by removed issuers and requires the trimmed exact typed name. Transfer only to a TOTP-enrolled Admin: demote old Owner before promoting target, delete every session of both people including requester, delete response cookie and redirect /sign-in?transfer=done with the specified notice. Recheck concurrent/stale state. Implement Owner-only require-2fa with its event and live gate. Include the API-token warning in removal and document that Full access stays A+, canGrant bounds grants by the shared token's scopes, API cannot identify Console people and removal does not revoke API tokens. Add safe committed-change logs and canonical path labels for these routes as they become active. Keep docs/endpoints current and publish docs/team.md with the unchanged matrix and the later-screen registration/person-log handoff. These user-management operations share actor/target transaction rules and confirmation pages, so they stay together.",
+      "acceptance": [
+        {
+          "command": "bun test src/account-store.test.ts src/team-store.test.ts src/forms.test.ts src/people-log.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Unknown/capitalized roles and client owner assignment are refused. IDs 01,1e3,-1,empty and 17 digits are invalid. A stale from role returns conflict without updating the user. Transfer leaves exactly 1 owner, old Owner admin and 0 sessions for either person; concurrent transfers preserve 1 owner. Removal/2FA reset end all target sessions and delete only their specified account state. Append failure rolls back role changes and removals with 0 new events. Successful changes each write exactly 1 specified event with retained safe actor/target identity; failed 403/404/409/422 operations add 0."
+        },
+        {
+          "command": "bun test src/server.team.test.ts src/server.roles.test.ts src/server.security.test.ts src/main.startup.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Acceptance evidence 2 rows 16-19,23-25 and both named actions have their literal allowed/denied HTTP statuses with live sessions and valid CSRF, exercising both Member and Viewer targets. Team GET: Admin 200, Viewer 403 This needs the Admin role. Owner-only actions: Owner 303, Admin 403 This needs the Owner role. Admin removal/reset of Admin is 403; any Owner target is 403 No one can change the owner account in the console. Wrong typed name is 422, transfer to Member is 403, unenrolled Admin is 409. Transfer is 303 to /sign-in?transfer=done; all former cookies subsequently get 303 to sign-in. Reauthenticated former Owner can view Team (200) but cannot require 2FA (403); new Owner can (303). A role change deletes old cookies; after new sign-in a promoted Admin is restricted to enrolment until TOTP is set, then Team is 200. Required Viewer is gated until enrolment; optional Viewer gets 200 on /. Stale deleted-session forms are 403 Request refused, a race after the role step is denied at commit. Denials make 0 fake-api requests and leave all four specified tables unchanged. Append failures are 500 The change could not be saved. CSP is unchanged, forms contain CSRF, and removal displays the literal API-token warning."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; existing auth/setup/startup tests remain compatible with the real dependency wiring; documentation matches the routes introduced in this task."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Copied invitations expire in seven days and create the bound account once",
+      "files": [
+        "src/account-links.ts",
+        "src/account-links.test.ts",
+        "src/team-store.ts",
+        "src/team-store.test.ts",
+        "src/team-routes.ts",
+        "src/team-pages.ts",
+        "src/server.ts",
+        "src/main.ts",
+        "src/pages.ts",
+        "src/styles.ts",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/metrics.ts",
+        "src/server.team.test.ts",
+        "src/server.invite.test.ts",
+        "src/server.roles.test.ts",
+        "src/server.security.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/team.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior invite portions of bullets 3,5,6,8; Required behavior: Invites, invite Routes, Link origin, anonymous public-link GET/POST order and Pages, metrics and logs; Acceptance evidence 2 rows 14-15, 3-4, 4a for invite, 6 for invite enrolment, 8 and 11; all Invite and invite Paths Counterexamples. Depends on T1/T2. Add shared 32-byte base64url token generation, SHA-256 hex digest, raw-path parsing for invite/reset tokens and origin-based link building. Do not enable reset routes until T4. Implement normalized bound email/role, one live invite per email, account conflict, seven-day expiry, pending/expired list, authorized revocation and issuer-authority validity. Add create/revoke/accept People transactions with rollback and rechecks, atomic one-use concurrency and invalid-form retry. Links are copied by hand once in a read-only input and text; no SMTP/email. Add public GET/POST /invite/<token> with no session or role step: valid GET ensures/reuses the anonymous CSRF cookie, invalid GET sets none, POST validates Origin/form/anonymous cookie before lookup and KDF, then validates fields and commits. A session cookie is irrelevant to these public guards. Use the fixed email/role, ignoring extra acceptance fields. Start a fresh session as at sign-in only after successful acceptance; route invited Admin and organisation-required Member/Viewer through #563 enrolment before protected use. Preserve the public-origin/validated-loopback rules and ignore forwarded headers. Add canonical /invite/:token metrics, invalid raw paths labelled other, safe committed logs, no-store and unchanged CSP/referrer policy. Update route guard literals, docs, layout and leak tests with this behavior. The helper, lifecycle, anonymous form and enrolment continuation stay one task because together they make an invitation usable and safe.",
+      "acceptance": [
+        {
+          "command": "bun test src/account-links.test.ts src/team-store.test.ts src/forms.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Tokens encode 32 random bytes as exactly 43 base64url characters and only SHA-256 hex is stored. With created_at 0, invite is valid at 604799999 and expired at 604800000. Bound email/role cannot be overridden; Ann@Example.com with surrounding whitespace conflicts with pending ann@example.com (409), and existing-account email conflicts (409). Lost issuer authority/removal invalidates links; revoked/used links fail. Expired invite can be revoked. Two simultaneous valid redemptions create exactly 1 user; appendPeopleEvent failure rolls back invitation creation. Literal configured-origin or validated-loopback links ignore Forwarded/X-Forwarded headers."
+        },
+        {
+          "command": "bun test src/server.invite.test.ts src/server.team.test.ts src/server.roles.test.ts src/server.security.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Row 14: Admin invites Member/Viewer 200, Member 403 This needs the Admin role; row 15: Owner invites Admin 200, Admin 403 This needs the Owner role. owner or Admin role inputs are 422; repeated role is 400. Anonymous live GET is 200 with a new CSRF cookie when absent and no replacement when present; valid cookie/field POST without a session is 303. Missing cookie, mismatched field, foreign Origin or session-only CSRF is 403 Request refused with 0 changed rows; later correct redemption still works. Invalid GET is 404 with no Set-Cookie or email disclosure. GET and an 11-character-password POST (422) do not consume the link. Expiry, revocation, reuse and lost issuer authority give the same 404 Link not valid page. Concurrent redemptions give exactly one 303 and one 404; restart preserves the invite. Invited Admin cannot reach Team until TOTP enrolment; the org-wide rule also gates Member/Viewer. Noncanonical raw token paths give plain 404 with metric path other. Secret scans find 0 plain-token matches in database bytes/logs/People/metrics and responses except the intended creation page; metrics use /invite/:token. Each create/revoke/accept adds exactly 1 specified People event; append failure is 500 with all other state unchanged."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; all newly active routes have literal guard declarations and docs, no mail dependency/setting or JavaScript is introduced."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Password links work once and own password changes revoke other sessions",
+      "files": [
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "src/account-links.ts",
+        "src/account-links.test.ts",
+        "src/team-store.ts",
+        "src/team-store.test.ts",
+        "src/team-routes.ts",
+        "src/team-pages.ts",
+        "src/server.ts",
+        "src/main.ts",
+        "src/pages.ts",
+        "src/styles.ts",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/metrics.ts",
+        "src/server.team.test.ts",
+        "src/server.reset.test.ts",
+        "src/server.roles.test.ts",
+        "src/server.security.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/team.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, reset/own-password portions of Behavior bullets 3,5,6,8; Required behavior: Password reset links, Own password, their Routes, public-link GET/POST order, People log and Pages, metrics and logs; Acceptance evidence 2 rows 20-22,27, 3, 4a for reset, 5, 8 and 11; Counterexamples Reset time and use, Reset authority, Reset effects, Own password and anonymous reset CSRF. Depends on T3's link helper and T1/T2. Implement copied reset issuance for Member/Viewer by Admin/Owner and Admin by Owner, never Owner through Team. Replace prior unused team links without ending sessions at issue; digest-only storage, 86400000 ms expiry, target-role snapshot and live issuer authority. Public /reset/<token> GET/POST uses the anonymous CSRF cookie exactly as the invite flow, without session/2FA/role checks; invalid links are checked before KDF and share the invalid-link page. Successful use atomically changes password, consumes the link, removes other unused links and every target session, and logs user.password-reset; retain TOTP/recovery codes and create no session. Implement owner-recovery-kind redemption through the same transaction, clearing factors via #563, logging owner.recover with container actor and forcing enrolment at the next sign-in; T5 supplies its container-only issuer. Add /account/password for all four roles, current-password validation, existing email/client throttle, password bounds, atomic password change plus People event and deletion of every other session while preserving current session and factors. Add password-change auth metrics, /reset/:token and account/team-reset labels, safe logs, password link on landing, sign-in reset notice, responsive no-script pages and current docs. Tests cover invalid-form retry, replacement, stale authority, removed accounts and concurrent use as well as the HTTP matrix. These password mutations share the credential/session boundary, so their implementation and regression tests stay together.",
+      "acceptance": [
+        {
+          "command": "bun test src/account-store.test.ts src/account-links.test.ts src/team-store.test.ts src/forms.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Team reset is valid at created_at + 86399999 and invalid at + 86400000; reuse and a replaced link fail. Issuance alone deletes 0 target sessions; use deletes all target sessions, keeps TOTP/recovery rows and leaves 1 user.password-reset event. Changed target role, removed target, demoted/removed issuer or target becoming Owner invalidates the old link. Concurrent redemption succeeds exactly once. Owner-recovery-kind fixtures are valid at + 899999 and invalid at + 900000; redemption clears factors/recovery material and every Owner session, writes owner.recover and starts 0 sessions. Event failure rolls back credential/session/factor changes."
+        },
+        {
+          "command": "bun test src/server.reset.test.ts src/server.team.test.ts src/server.roles.test.ts src/server.security.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Rows 20/21: Admin resetting Member/Viewer is 200 and Owner resetting Admin is 200; lower roles are 403 with the specified Admin/Owner text. Row 22: Admin and Owner targeting Owner get 403 No one can change the owner account in the console. Anonymous valid reset GET is 200 and issues/reuses its cookie; matching anonymous cookie/field POST without a session is 303 to /sign-in?reset=done, second use is 404. Missing cookie, mismatch, foreign Origin and session-only CSRF are 403 Request refused and consume nothing; invalid GET is 404 without Set-Cookie. Invalid-password POST is 422 and leaves a later valid use possible. After use, old password fails, new password works, all old cookies get 303 to sign-in and retained TOTP is still required. Recovered Owner reaches only enrolment until TOTP is set. Row 27: all four roles change their own password with 303 to /account/password?changed=1, current session stays, others end; anonymous POST is 403. Wrong current password is 401; after 5 failures in 15 minutes, attempt 6 is 429 even with the right password; 129-code-point password is 422. All denials leave specified tables unchanged and make 0 API requests. Events/logs/labels/headers meet the spec, with 0 secret sentinel leaks."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; reset and own-account routes have the specified literal guards and updated README/configuration/team documentation."
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "final",
+      "title": "Container recovery restores the Owner and the complete team workflow is verified",
+      "files": [
+        "src/owner-reset.ts",
+        "src/owner-reset.test.ts",
+        "src/settings.ts",
+        "src/settings.test.ts",
+        "src/team-store.ts",
+        "src/team-store.test.ts",
+        "src/account-links.ts",
+        "src/account-links.test.ts",
+        "src/server.reset.test.ts",
+        "src/server.security.test.ts",
+        "src/server.roles.test.ts",
+        "src/server.team.test.ts",
+        "src/server.invite.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/team.md",
+        "docs/index.md",
+        ".github/workflows/ci.yml"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior bullet 7, Checks, Documentation and Completion evidence; Required behavior: Owner recovery command, owner-recovery link issuance/consumption, People log and Pages, metrics and logs; all Acceptance evidence 1-12 including 4a; Performance impact, Security impact, Rollout order and all remaining Counterexamples. Depends on T1-T4. Implement bun --no-env-file src/owner-reset.ts using only PULSE_CONSOLE_DB and PULSE_CONSOLE_PUBLIC_URL and their existing rules, openDatabase modes/migrations and injected effects for tests; it must not require PULSE_API_URL/admin token or load dotenv files. The container-only issuer replaces unused recovery links in one BEGIN IMMEDIATE transaction, writes owner.recovery-link with container actor, and prints exactly the one specified stdout line with 15-minute validity; no Owner/set-up gives exit 2 and the fixed stderr. Link building uses configured origin or the relative /reset/<token> plus the exact open-on-console-address suffix, never forwarding headers. Use T4's shared redemption path, not a second password-reset implementation. Add the one CI Docker step after the existing setup-code step; leave image/job pins and release behavior intact. Finish the docs: recovery as first option, destructive reset last resort, migration/downgrade backup limit, loopback links, complete route table/POST orders, schema/metrics/logs, unchanged matrix, API canGrant/Full access rule, surviving API tokens and person-log handoff. Run the whole security checklist and matrix/route/lifecycle regression across the assembled change; all tests use independent literal expectations and isolated injected fixtures. Capture the 390 px invite/reset/invalid-state browser evidence, required live bun start invite/reset flow, full checks, Docker results, #563 SHA and migration N, before/after test timings and actual commands/results in the PR. Console has no Compose e2e file in this checkout or this spec; its required end-to-end evidence is the real HTTP suites, existing Docker job and specified live service exercise. The final seam is the separate local-operator recovery entry point plus complete release evidence, keeping it after the shared web reset transaction it reuses.",
+      "acceptance": [
+        {
+          "command": "bun test src/owner-reset.test.ts src/settings.test.ts src/server.reset.test.ts src/team-store.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. Tests spawn bun --no-env-file src/owner-reset.ts with no API settings on a temp database. Before setup: exit 2, stderr pulse-console: no owner account: finish setup first. Configured database/open errors keep the existing safe texts. After setup: exit 0 and exactly 1 stdout line matching ^pulse-console owner reset link: \\S*/reset/[A-Za-z0-9_-]{43} \\(valid 15 minutes, one use. With no public URL, link is relative and suffix is (valid 15 minutes, one use; open it on the console address). A second command invalidates the first link. Fake-clock redemption works at + 899999, fails at + 900000 and works once; it removes all Owner sessions/TOTP/recovery codes and forces enrolment on next sign-in. Each issuance/recovery writes exactly 1 specified container-actor event atomically. No Team control issues an Owner reset."
+        },
+        {
+          "command": "bun test src/permissions.test.ts src/server.roles.test.ts src/server.team.test.ts src/server.invite.test.ts src/server.reset.test.ts src/server.security.test.ts",
+          "expected": "0 fail; focused coverage may be below 0.8. All 108 matrix cells, both named actions and every registered route guard match the spec literals; grouped operations and both Member/Viewer targets are exercised. Complete GET/POST guard ordering, anonymous-cookie redemption, raw token paths, body limits, role/target restrictions, stale-state and concurrent commits, link expiry/reuse, session invalidation including both transfer participants, required TOTP and append failure rollback assertions pass. Events survive restart/removal, are append-only and have exactly the specified actions/actor kinds. Sentinel scans find 0 secret matches in database bytes, People events, logs or metrics and any response except its intended link display; HTTP labels are canonical /invite/:token and /reset/:token or other. CSP and referrer policy remain the literal spec values, no new scripts, all forms have CSRF, pages are no-store. API fixture records 0 requests for denied changes; Console removal leaves its independently held API token usable, consistent with the documented canGrant/shared-token boundary."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; Biome/pulse-eslint/pulse-workflows, strict typecheck and full tests pass with line coverage at least 0.8. No coverage, lint, CI or dependency pin is weakened; all existing setup/sign-in/startup/ops regressions remain green."
+        },
+        {
+          "command": "time bun run test",
+          "expected": "exit 0; full suite has 0 fail and line coverage at least 0.8; record actual elapsed test time beside the pre-change measurement required by Performance impact, without inventing a performance budget."
+        },
+        {
+          "command": "docker build --tag pulse-console:local .",
+          "expected": "exit 0; the existing Docker CI job passes on ubuntu-24.04 and ubuntu-24.04-arm, including test/dev-file exclusion, dotenv isolation, readiness 200, non-root UID, headers, one setup-code line, database mode 600 and sentinel scans, stop exit 0 and missing-API-setting exit 2. Record actual job results in the PR."
+        },
+        {
+          "command": "docker exec console bun --no-env-file src/owner-reset.ts",
+          "expected": "In the existing CI container before setup, immediately after the setup-code check: exit 2 and stderr contains pulse-console: no owner account: finish setup first. The new step checks that exact exit/text and the job continues successfully."
+        },
+        {
+          "command": "bun start",
+          "expected": "With supported settings and an isolated database, exercise setup/TOTP, invite a Member, accept in a second browser profile, issue/use a reset link and sign in with the new password. Record actual commands, statuses and results. Check the invite form, reset form, invalid/expired pages and password page at 390 px without JavaScript: 0 horizontal overflow, escaped values and working required-enrolment continuation. Capture screenshots or a Playwright result in the PR as the spec allows."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR records the merged #563 commit and migration N, bun run check output, Docker CI results, browser evidence and live bun start commands/results, before/after bun run test timings and relevant Security impact checklist evidence. It states the one-repository rollout and backup requirement for downgrade, preserves the confirmed matrix and Admin Full access bounded by canGrant, explains shared-token attribution and non-revocation after removal, and names any prerequisite module adapted only for its gate/export. No unrun check is presented as passed and no secret is included."
+        }
+      ]
+    }
+  ]
+}
