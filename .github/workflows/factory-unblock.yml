@@ -101,6 +101,15 @@ jobs:
               -f issue="$issue" -f admission=label
           done
 
+      # Shared findings live only while their feature is open (docs/factory.md). A branch exists
+      # only for a verified feature; a branch that is already gone is fine.
+      - name: Remove the findings branch
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.app-token.outputs.token }}
+          FACTORY_ISSUE: ${{ github.event.issue.number }}
+        run: node scripts/factory-findings.mjs cleanup --issue "$FACTORY_ISSUE"
+
       # A failure before the claim leaves no Factory comment. Say so on the issue, with the failed
       # step and the command that starts it again. Only the run URL and step name are printed.
       - name: Report the failure on the issue

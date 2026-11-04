@@ -235,6 +235,12 @@ jobs:
           printf '%s' "$FACTORY_CODEX_AUTH_JSON" > "$RUNNER_TEMP/codex/auth.json"
           chmod 0600 "$RUNNER_TEMP/codex/auth.json"
 
+      # Shared findings (docs/factory.md): a reused checkout must never publish another issue's
+      # outbox as this one's.
+      - name: Clear the findings outbox
+        if: ${{ inputs.admission != 'cancel' }}
+        run: rm -f -- "$GITHUB_WORKSPACE/.target/.factory/findings-outbox.jsonl"
+
       - name: Run one factory state
         if: ${{ inputs.admission != 'cancel' }}
         id: run
@@ -256,6 +262,42 @@ jobs:
           --run-id "$FACTORY_RUN_ID" --record-author "${FACTORY_GITHUB_ACTOR%'[bot]'}" --chain-limit 24
           --continue-output "$GITHUB_OUTPUT"
           2> >(tee "$RUNNER_TEMP/factory-run.err" >&2)
+
+      # Shared findings (docs/factory.md): publish a child's outbox to factory/findings/<feature>
+      # in pulse-meta. A fresh token, because a chain of states can outlast the first one. Neither
+      # step changes the job result; a failure comments on the issue instead.
+      - name: Create the Factory App token
+        if: ${{ always() && inputs.admission != 'cancel' && steps.run.outcome != 'skipped' && vars.FACTORY_APP_ID != '' }}
+        id: findings-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.FACTORY_APP_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: lorenzh
+          repositories: |
+            pulse-meta
+            pulse-contract
+            pulse-probe
+            pulse-api
+            pulse-status
+            pulse-notify
+            pulse-config
+            pulse-kit
+            pulse-website
+            pulse-console
+            pulse-deploy
+
+      - name: Publish the shared findings
+        if: ${{ always() && inputs.admission != 'cancel' && steps.run.outcome != 'skipped' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ vars.FACTORY_APP_ID == '' && secrets.FACTORY_GITHUB_TOKEN || steps.findings-token.outputs.token }}
+          GIT_ASKPASS: ${{ runner.temp }}/factory-git-askpass
+          GIT_TERMINAL_PROMPT: "0"
+        run: >-
+          node scripts/factory-findings.mjs publish --issue "$FACTORY_ISSUE"
+          --outbox "$GITHUB_WORKSPACE/.target/.factory/findings-outbox.jsonl"
 
       - name: Create the Factory App token
         if: ${{ failure() && inputs.admission != 'cancel' && vars.FACTORY_APP_ID != '' }}
