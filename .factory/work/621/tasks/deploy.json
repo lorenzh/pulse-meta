@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Published api and probe images pass strict auth, token, audit and restart e2e checks",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "common/services.yaml",
+        "scripts/bump-images.sh",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior (Required behavior items 1-7 and implementation notes), Checks and Acceptance evidence 1-7; Release prerequisites, Risks, Counterexamples, Performance impact, Security impact and Rollout order. One task keeps the single-script integration checks, both qualifying image pins and the README change together. scripts/bump-images.sh is included because the section's Files parenthetical names it as the pin-writing tool; use it unchanged, with no edit to the helper itself. Check release prerequisites first; request a needs-input hold naming any missing qualifying release. Also hold on changed probe reason texts or rejected fixtures as Risks requires; do not weaken checks or silently reshape fixtures.",
+      "acceptance": [
+        {
+          "command": "gh api repos/lorenzh/pulse-api/git/refs/tags/v<api-version> --jq .object.sha; gh api repos/lorenzh/pulse-api/compare/e1153f99ba3466f6509d29760896e2cdf5061fb5...v<api-version> --jq .status; gh api repos/lorenzh/pulse-probe/git/refs/tags/v<probe-version> --jq .object.sha; gh api repos/lorenzh/pulse-probe/compare/a5dc88d5473a9c63cfd984988201da32cd15ec5c...v<probe-version> --jq .status",
+          "expected": "All requests exit 0; each compare status is ahead or identical. Chosen releases contain the api #617 and probe #552 marker commits respectively. Record both tags and returned SHAs in the PR. If either qualifying published release is missing, request a needs-input hold naming it; no skipped or version-switched checks against old images. Release creation remains a person's prerequisite."
+        },
+        {
+          "command": "scripts/bump-images.sh api=<api-version> probe=<probe-version> && scripts/bump-images.sh --verify && git diff main -- common/services.yaml",
+          "expected": "Exit 0; --verify prints ok: for all five pulse services, comparing pins to independent ghcr.io digests. The diff changes exactly the api and probe image lines. Status, notify and console remain at 0.1.0; no other image pin changes. Record the api and probe digests and verify output in the PR."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "Exit 0 from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "Exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "Exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "Exit 0."
+        },
+        {
+          "command": "bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/outage-history.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "Exit 0 for every helper test and static setup check of the lint job."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check && bun run build && git diff --exit-code -- dist",
+          "expected": "Exit 0; CLI lint, typecheck, full tests with the existing coverage gate and build pass. No tracked dist changes."
+        },
+        {
+          "command": "In separate baseline-main and implementation checkouts, run scripts/init-secrets.sh && docker compose -f full/compose.yaml pull && scripts/measure.sh full; tear each stack down with docker compose -f full/compose.yaml down -v before starting the next run or the e2e",
+          "expected": "Both measurements exit 0 and report start time in seconds and RSS in MiB. Quote the before/after output in the PR for information only; no new performance budget. Teardown frees the ports before compose e2e."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "Exit 0 on the qualifying images. Manual incidents prints exactly 'ok: a write without a token answers 401, a probe token write answers 403'; missing credentials get exactly 401 and a probe credential exactly 403. The failure text for the latter is 'a probe token write was not refused with 403'. '==> Tokens and audit' runs after the read-only-mount check and before persistence, with an ok: line for each of Required behavior 2.1-2.6. Scope check: create e2e-read-checks with [read,checks] gets 201, secret is a string and token.id matches ^tok_[0-9a-f]{24}$; its valid POST for unused e2e-scope-denied with Content-Type application/json and current If-Match gets exactly 403, with no such check in GET /checks, unchanged config ETag and unchanged check/create/ok counter line. Rotation check: creating the isolated probe token at location e2e-rotated gets 201; A gets 200 on /probe/checks; rotate with {} gets 200, a different secret B and numeric previousValidUntil; A and B each get 200 during overlap, B gets exactly 403 on /admin/audit, revoke gets 200, then A and B each get exactly 401 on /probe/checks. Neither stack bootstrap token is rotated or revoked."
+        },
+        {
+          "command": "Inspect the audit, export, secrecy and throttle assertions and the output of the same successful bash e2e/compose-e2e.sh run (Required behavior 2.3-2.6 and 3)",
+          "expected": "Audit query /admin/audit?action=check.create&targetId=e2e-api gets 200 and holds a check.create entry with target.kind check, target.id e2e-api and actor.name e2e; retain its id. Query targetKind=token&targetId=<rotated token id> holds token.create, token.rotate and token.revoke, each attributed to e2e. Export gets 200, is nonempty, each line independently passes jq -e 'type == \"object\"', and includes the retained check.create id. Fixed-string checks find none of the four secrets (e2e admin, read/checks, A, B) in either query body, export or pre-restart compose logs; fail messages name place and role only. No pulse_api_admin_auth_throttled_total series is above 0; only the four specified failed admin authentications are sent. After down/up, the same e2e admin token gets 200 on /admin/config, the retained audit id is returned by the check.create query, and after every service is healthy new-container logs contain none of the four secrets. Secrets stay in shell variables; token-bearing responses are parsed with jq -e without printing secrets or whole responses. Existing assert_absent needles and all other assertions, publishing, cleanup and clean stop stay intact. Output includes the new persistence successes and ends with '==> All checks passed'."
+        },
+        {
+          "command": "In an uncommitted scratch copy with the new image pins, restore the issue's historical 401-only probe-write assertion and its failure text, then run bash e2e/compose-e2e.sh; discard the scratch change",
+          "expected": "Exit 1 in Manual incidents with 'FAIL: a probe token write was not refused'. Quote the output in the PR and explain that deploy main accepted both 401 and 403, so unchanged main cannot demonstrate this historical red."
+        },
+        {
+          "command": "In an uncommitted scratch copy, restore only the api image line from git show main:common/services.yaml (api 0.1.0), keep the new script and probe pin, then run bash e2e/compose-e2e.sh; discard the scratch pin change",
+          "expected": "Exit 1 in Manual incidents with 'FAIL: a probe token write was not refused with 403'; api 0.1.0 answers 401. Quote the output in the PR. The committed pin remains the qualifying new api release."
+        },
+        {
+          "command": "In an uncommitted scratch copy with the new pins, delete only PULSE_PROBE_HEADER_HOSTS from e2e/compose.e2e.yaml, prepare e2e/rw/checks.json as the script's Setup does, run scripts/init-secrets.sh --dir e2e/.secrets, then COMPOSE_PROJECT_NAME=pulse-e2e COMPOSE_FILE=full/compose.yaml:e2e/compose.e2e.yaml PULSE_SECRETS_DIR=$PWD/e2e/.secrets docker compose up -d; poll GET /checks on the published loopback api port for at most 90 seconds; tear down the same project with down -v and discard the scratch change",
+          "expected": "Within 90 seconds e2e-post has state down and lastReason exactly 'header Authorization env PULSE_HEADER_SVC_TOKEN is not bound to host e2e-target', from probe src/client.ts:160. Quote this alongside the green run's 'e2e-post is up' and 'e2e-post is up again'. The committed binding overlay and e2e-post scenario are unchanged; no denial fixture is added."
+        },
+        {
+          "command": "git diff main -- README.md e2e/compose-e2e.sh && git diff --name-only main",
+          "expected": "Changes are limited to e2e/compose-e2e.sh, common/services.yaml and README.md. The README e2e paragraph names token scopes, rotation/revocation, audit query/export and persistence across restart, without image versions. Script changes implement Required behavior 1-3 and preserve items 4 and 7, including existing assertions, exact reason comparisons, secret needle checks, loopback publishing, cleanup and clean stop. No target, workflow, CLI or setup files change."
+        },
+        {
+          "command": "gh pr checks <pr> --watch",
+          "expected": "Exit 0; CI jobs check, lint, pins, minimal, full, demo, dev and cli-* are green. Include command outputs and the full job result in the PR evidence."
+        },
+        {
+          "command": "gh pr view <pr> --json body --jq .body; gh pr view <pr> --json body --jq .body | grep -cF e2e-admin-token-sentinel",
+          "expected": "Body includes release tags, SHAs, marker-compare results, ghcr.io digests and verification; both status-code red runs; green full e2e; binding deny and allowed evidence; before/after full measurements; required check results; and evidence for each applicable Security impact item (secret absence including both log phases, exact auth statuses and dependency pins). It contains no credential or full token response. grep prints 0 (exit 1 for no match)."
+        }
+      ]
+    }
+  ]
+}
