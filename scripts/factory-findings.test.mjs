@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  failureComment, findingsPath, findingsRef, parentOf, parseMarkers, planAppend, reasonOf, renderEntry,
+  failureComment, findingsPath, findingsRef, outboxLine, parentOf, parseMarkers, planAppend, reasonOf, renderEntry,
   renderHeader, validateOutbox,
 } from './factory-findings.mjs';
 
@@ -92,6 +92,29 @@ test('token patterns are rejected and never echoed', () => {
   // The publisher's own token, when it has at least 8 characters.
   assert.deepEqual(rules(outbox(line({ answer: 'a fixture-tok-1 b' })), 'fixture-tok-1'), ['token-pattern']);
   assert.deepEqual(rules(outbox(line({ answer: 'a short b' })), 'short'), []);
+});
+
+test('duplicate keys are refused, so no value escapes the checks', () => {
+  const tok = 'gh' + 's_' + 'x'.repeat(36);
+  const dup = `{"id":"d1","question":"q?","answer":"${tok}","answer":"ok","command":"c","result":"r"}`;
+  const r = check(outbox(dup));
+  assert.deepEqual(r.errors, [{ line: 1, id: 'd1', rule: 'duplicate-key' }, { line: 1, id: 'd1', rule: 'token-pattern' }]);
+  assert.deepEqual(r.entries, []);
+  assert.ok(!JSON.stringify(r).includes(tok));
+  // Without a token, and with a key spelled through an escape, and with a non-string first value.
+  assert.deepEqual(rules(outbox('{"id":"d1","question":"q?","answer":"a","answer":"b","command":"c","result":"r"}')), ['duplicate-key']);
+  assert.deepEqual(rules(outbox('{"id":"d1","question":"q?","answer":"a","\\u0061nswer":"b","command":"c","result":"r"}')), ['duplicate-key']);
+  assert.deepEqual(rules(outbox('{"id":"d1","question":"q?","answer":["a"],"answer":"b","command":"c","result":"r"}')), ['duplicate-key']);
+  assert.deepEqual(rules(outbox('{"id":"d1","question":"q?","answer":null,"answer":"b","command":"c","result":"r"}')), ['duplicate-key']);
+  // Escaped quotes inside a value are one string literal.
+  assert.deepEqual(rules(outbox(line({ answer: 'say "hi" and \\ back' }))), []);
+});
+
+test('entries keep no raw text; the recovery line is serialized from the parsed fields', () => {
+  const r = check(outbox(' { "id" : "ts7-flag", "question":"Does TS7 accept the old flag?", "answer":"Yes, TS7 accepts it.", "command":"npx tsc --version", "result":"Version 7.0.0" } '));
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.entries[0].raw, undefined);
+  assert.equal(outboxLine(r.entries[0]), line());
 });
 
 test('hostile JSON never throws', () => {

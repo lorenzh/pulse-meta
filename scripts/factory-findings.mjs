@@ -38,6 +38,7 @@ export const MAX_FILE_BYTES = 262144;
 export const MAX_ATTEMPTS = 5;
 const MARKER = /^<!-- finding ([1-9][0-9]{0,9})\/([a-z0-9][a-z0-9-]{0,47}) sha256:([0-9a-f]{64}) -->$/;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/g;
 const BIDI = /[\u202a-\u202e\u2066-\u2069]/;
 export const TOKEN_PATTERNS = [
   /gh[pousr]_[A-Za-z0-9]{30,}/,
@@ -115,7 +116,8 @@ function fieldRule(key, v, token) {
 
 /**
  * Validates outbox bytes. Returns {entries, errors}: entries (one per distinct id, with hash, line and
- * raw text) only when errors is empty. An error is {line?, id?, field?, rule} and never holds a value.
+ * line) only when errors is empty. The raw line is never kept: a later comment serializes the parsed
+ * fields (outboxLine), so text that JSON.parse dropped can never reach it. An error is {line?, id?, field?, rule} and never holds a value.
  */
 export function validateOutbox(bytes, { child, token = '' } = {}) {
   const c = canonical(child);
@@ -151,23 +153,33 @@ export function validateOutbox(bytes, { child, token = '' } = {}) {
       const rule = Object.hasOwn(value, key) ? fieldRule(key, value[key], token) : 'missing';
       if (rule) found.push({ field: key, rule });
     }
+    // JSON.parse keeps only the last of duplicate keys; the dropped value was never checked. A valid
+    // line is a flat object of five strings, so any extra string literal means a duplicate key.
+    if (!found.length && (raw.match(STRING_LITERAL) ?? []).length !== 2 * KEYS.length) found.push({ rule: 'duplicate-key' });
+    const rawToken = TOKEN_PATTERNS.some((p) => p.test(raw)) || (token.length >= 8 && raw.includes(token));
+    if (rawToken && !found.some((e) => e.rule === 'token-pattern')) found.push({ rule: 'token-pattern' });
     const id = found.some((e) => e.field === 'id') ? {} : { id: value.id };
     for (const e of found) errors.push({ line, ...id, ...e });
-    if (!found.length) valid.push({ line, raw, entry: Object.fromEntries(KEYS.map((k) => [k, value[k]])) });
+    if (!found.length) valid.push({ line, entry: Object.fromEntries(KEYS.map((k) => [k, value[k]])) });
   }
   if (errors.length) return { entries: [], errors };
   const seen = new Map();
   const entries = [];
-  for (const { line, raw, entry } of valid) {
+  for (const { line, entry } of valid) {
     const hash = entryHash(entry);
     const before = seen.get(entry.id);
     if (before === undefined) {
       seen.set(entry.id, hash);
-      entries.push({ ...entry, hash, line, raw, identity: `${c}/${entry.id}` });
+      entries.push({ ...entry, hash, line, identity: `${c}/${entry.id}` });
     } else if (before !== hash) errors.push({ line, id: entry.id, rule: 'conflict' });
   }
   if (entries.length > MAX_FINDINGS) errors.push({ rule: 'too-many-findings' });
   return errors.length ? { entries: [], errors } : { entries, errors };
+}
+
+/** The outbox line of a validated entry, serialized from its parsed fields only. */
+export function outboxLine(entry) {
+  return JSON.stringify(Object.fromEntries(KEYS.map((k) => [k, entry[k]])));
 }
 
 /** The reason class of a list of validation errors. */
@@ -260,8 +272,14 @@ function run(cmd, args, { input, env, binary = false } = {}) {
   }
 }
 
-function git(args, opts) {
-  return run('git', ['-c', 'core.hooksPath=/dev/null', ...args], opts);
+// Git runs with the token in its environment, and the agent controls the target clone's .git/config
+// and could write ~/.gitconfig: core.fsmonitor there runs a command even for check-ignore, and
+// url.<x>.insteadOf or credential.helper would redirect or capture the push. So no global or system
+// config, no hooks, no fsmonitor and no pager on any call.
+const GIT_ISOLATION = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+function git(args, { env = process.env, ...opts } = {}) {
+  return run('git', ['--no-pager', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', ...args],
+    { ...opts, env: { ...env, ...GIT_ISOLATION } });
 }
 
 function must(result, what) {
@@ -303,7 +321,9 @@ function outboxShape(outbox) {
 }
 
 function readOutbox(root, outbox) {
-  if (!git(['-C', root, 'check-ignore', '-q', '--', '.factory/findings-outbox.jsonl']).ok) return { rule: 'not-ignored' };
+  // The only git call in the agent-controlled clone: also without the token in its environment.
+  const { GH_TOKEN, GIT_ASKPASS, ...plain } = process.env;
+  if (!git(['-C', root, 'check-ignore', '-q', '--', '.factory/findings-outbox.jsonl'], { env: plain }).ok) return { rule: 'not-ignored' };
   let fd;
   try {
     if (!realpathSync(outbox).startsWith(realpathSync(root) + sep)) return { rule: 'outside-root' };
@@ -421,7 +441,7 @@ function publish(o) {
     console.log('The findings outbox holds no entries: nothing to publish.');
     return 0;
   }
-  lines = entries.map((e) => e.raw);
+  lines = entries.map(outboxLine);
 
   const work = mkdtempSync(join(tmpdir(), 'factory-findings-'));
   try {

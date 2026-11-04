@@ -287,6 +287,25 @@ t675="$(target c675)"; outbox "$t675" "$(entry a675)"; rm -f "$FF_FX/comment-675
 rc="$(GIT_WRAP=reject WRAP_LOG="$F/reject.log" publish 675 "$t675")"
 check "findings: every push rejected: 5 attempts, push-failed with the validated line, outbox kept" "1 5 push-failed 1 outbox-kept" \
   "$rc $(grep -c '^push$' "$F/reject.log") $(reason 675) $(grep -cxF -- "$(entry a675)" "$FF_FX/comment-675.md" || true) $(has_outbox "$t675")"
+# A duplicate key hides a token from JSON.parse; with every push rejected, the old publisher put the
+# raw line into its push-failed comment. Now the line is refused, and no output holds the token.
+printf '{"id":"d1","question":"q?","answer":"%s","answer":"ok","command":"c","result":"r"}\n' "${tokens[0]}" > "$t675/.factory/findings-outbox.jsonl"
+rm -f "$FF_FX/comment-675.md"; : > "$F/dup.log"
+rc="$(GIT_WRAP=reject WRAP_LOG="$F/dup.log" publish 675 "$t675")"
+check "findings: a duplicate key is refused before any push, and no comment holds its hidden token" "1 invalid-outbox 0 0" \
+  "$rc $(reason 675) $(grep -c '^push$' "$F/dup.log" || true) $(cat "$F/out" "$FF_FX/comment-675.md" | grep -cF -- "${tokens[0]}" || true)"
+
+# Git config written by the agent: core.fsmonitor in the target clone and in ~/.gitconfig runs a
+# command during check-ignore while the token is in the environment, and a global url.insteadOf
+# redirects the fetch and the push. The publisher runs git without either.
+issue 680 "" "A feature"; issue 681 target/api "Part of #680: f"; rows 680 681
+rgit clone -q --bare "$FF_BARE" "$F/evil.git"
+printf '#!/bin/sh\necho "fsmonitor ran" >> "%s/fsmonitor.marker"\nexit 1\n' "$F" > "$F/fsmonitor.sh"; chmod +x "$F/fsmonitor.sh"
+mkdir -p "$F/home"; printf '[core]\n\tfsmonitor = %s\n[url "file://%s"]\n\tinsteadOf = %s\n' "$F/fsmonitor.sh" "$F/evil.git" "$FF_REMOTE" > "$F/home/.gitconfig"
+t681="$(target 681)"; rgit -C "$t681" config core.fsmonitor "$F/fsmonitor.sh"; outbox "$t681" "$(entry g1)"
+rc="$(HOME="$F/home" publish 681 "$t681")"
+check "findings: agent git config runs no command and redirects nothing" "0 no-marker 1 none" \
+  "$rc $([[ -e "$F/fsmonitor.marker" ]] && echo marker || echo no-marker) $(tip 680 | grep -c '^[0-9a-f]\{40\}$' || true) $(rgit -C "$F/evil.git" rev-parse -q --verify refs/heads/factory/findings/680 || echo none)"
 
 # --- closure ----------------------------------------------------------------------------------------
 closure() { # <case> <feature> <child>: publish while the wrapper closes the feature around the push
