@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Pure second-factor policy and cryptographic primitives match the independent fixtures",
+      "files": [
+        "src/two-factor-policy.ts",
+        "src/two-factor-policy.test.ts",
+        "src/totp.ts",
+        "src/totp.test.ts",
+        "src/secret-box.ts",
+        "src/secret-box.test.ts",
+        "src/secret-key.ts",
+        "src/secret-key.test.ts",
+        "src/recovery-codes.ts",
+        "src/recovery-codes.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior: pure modules for Second-factor policy, TOTP, Seed encryption and Recovery codes. Acceptance 1 policy cases, 4, 5 matchRecoveryCode unit cases, 8 envelope cases and 9 pure key rules; corresponding Counterexamples. Use injected randomBytes/readFile/now, node:crypto only, no package or CSP changes. matchRecoveryCode compares every unused row without early exit using timingSafeEqual on two 32-byte buffers, returns the matching id or none, and rejects malformed stored digests without throwing; it performs no SQL or I/O.",
+      "acceptance": [
+        {
+          "command": "bun run test",
+          "expected": "Before editing T1, record the unchanged #562 full-suite time for the final PR's before/after comparison; exit 0 with at least 80% line coverage"
+        },
+        {
+          "command": "bun test src/two-factor-policy.test.ts src/totp.test.ts src/secret-box.test.ts src/secret-key.test.ts src/recovery-codes.test.ts",
+          "expected": "0 fail; owner requires 2FA; signInStage covers factor/enrol/full; RFC 6238 SHA-1 vectors yield 287082, 081804, 050471, 005924, 279037, 353130 and base32 GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ; TOTP floor/window/replay/input boundaries follow the spec; recovery sets have 10 distinct formatted codes and independently computed SHA-256 digests; matchRecoveryCode selects row 2 of 3, refuses a last-byte mismatch and 63/66-character or uppercase stored digests; AES-GCM roundtrip works with the specified user-bound AAD and malformed/tampered/wrong-user envelopes fail; strict key-format cases pass. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and full tests stay green with at least 80% line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Schema 2 stores stages and commits factors, recovery consumption and session deletion atomically",
+      "files": [
+        "src/database.ts",
+        "src/database.test.ts",
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "src/factor-store.ts",
+        "src/factor-store.test.ts",
+        "src/cookies.ts",
+        "src/cookies.test.ts",
+        "src/main.startup.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior: Schema 2, persistence of Session stages, Enrolment and replacement, Second factor at sign-in, Recovery codes and Sessions; partial cookie Max-Age. Acceptance 2 storage/migration assertions, 3 atomic step/replay assertions, 5 store cases and 6 deleteOtherSessions unit test; partial-expiry and recovery-lookup Counterexamples. Implement whole BEGIN IMMEDIATE commit operations here, including conditional session deletion, last_step update, user/unused lookup with T1 timing-safe comparison, used_at update by id, full-session insertion and rollback. Implement pending cascade/expiry, code-set replacement, live full-session ordering and deleteOtherSessions as the single user_id/id_digest exclusion DELETE. Keep existing server callers and tests green while adding the explicit stage API consumed in T3; update the existing startup newer-schema fixture to version 3 and literal error '(2)' now, rather than leaving it broken until T3.",
+      "acceptance": [
+        {
+          "command": "bun test src/database.test.ts src/account-store.test.ts src/factor-store.test.ts src/cookies.test.ts src/main.startup.test.ts",
+          "expected": "0 fail; migration 1 stays unchanged, fresh and schema-1 databases end at user_version 2, migration removes legacy sessions while owner/password/API URL remain byte-equal, schema 3 is refused as newer than console (2); full idle expiry is 2592000000 ms, partial and pending expiry is 900000 ms with no partial touch and partial Max-Age=900; conditional commits rotate sessions and roll back on failure; one recovery code consumed twice yields one success and one failure both on one store and two stores sharing a file; replacement discards the old factor/codes and other sessions; deleteOtherSessions returns 3 for other full/factor/enrol rows and preserves the kept row and a second user's row. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the new store/cookie APIs preserve existing callers; lint, typecheck and all tests pass with at least 80% line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Owner setup and sign-in require a second factor through one access gate",
+      "files": [
+        "src/settings.ts",
+        "src/settings.test.ts",
+        "src/main.ts",
+        "src/main.startup.test.ts",
+        "src/http-context.ts",
+        "src/server.ts",
+        "src/sign-in-factor.ts",
+        "src/account-routes.ts",
+        "src/account-pages.ts",
+        "src/styles.ts",
+        "src/metrics.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.sign-in.test.ts",
+        "src/server.security.test.ts",
+        "src/server.factor.test.ts",
+        "src/server.recovery.test.ts",
+        "src/server.upgrade.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior: key settings/start wiring and cleanup; Session stages/access gate and Before setup rules; Setup step, Password sign-in, Enrolment/replacement and Second factor at sign-in; shared HTTP rules, intended disclosures, auth metrics/logs and responsive factor/enrol/codes pages. Acceptance 1-4, 5 sign-in/race/wrong-code portions, 7-9 and 10 for implemented flows; related Counterexamples. Complete the coupled auth flows together, reusing #562's setup/password/throttle foundations. Register the six new route access/phase/method rules; T4 supplies account security, regeneration and session management. Use fixture F1 for isolated failures, F2 for fresh partial sessions at lock boundaries, F3 for independent codes at injected time; password success cannot reset factor failures and factor success clears only the account key. Preserve the pre-setup root redirect test and Docker page/header step unchanged. Include authenticator replacement password recheck and atomic replacement/rotation, missing/unreadable-key behavior, one-time TOTP and recovery-code commits, no-JS forms and documented new settings/auth behavior. No roles, password-change endpoint, passkeys or new runtime package.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts src/server.factor.test.ts src/server.upgrade.test.ts",
+          "expected": "0 fail; Acceptance 1-4 and 7 hold: Finish setup 303 to /account/authenticator, partial owners cannot reach protected pages or mutate protected state, successful confirmation grants access, pre-setup GET/HEAD / and /sign-in stay 303 to /setup with and without a forged cookie, POST /sign-in is 404, POST /sign-out is 303 to /sign-in, allowed methods of the six new routes are 404, disallowed methods 405, session count 0; schema-1 owner/hash/API URL survive, old cookie fails and password leads to enrolment. TOTP use rotates the cookie, replay/window/clock rollback and concurrent use give the literal 401/303 outcomes; separate factor limiter locks at failure 5, Retry-After is 900 at t5 and 1 at t5+899999 using a fresh password session, and succeeds at t5+900000 with another fresh session; client failures survive a success. F1-F3 prevent unintended 429/expiry failures. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "bun test src/server.recovery.test.ts src/server.factor.test.ts src/settings.test.ts src/main.startup.test.ts src/server.security.test.ts",
+          "expected": "0 fail; Acceptance 5 sign-in cases show 10 distinct hashed codes, one code 303 then 401 also after reopening, another unused code 303, and a code cannot replace the password. Two browsers using one code concurrently yield exactly one 303 and one 401, 1 used row and 9 unused, with only the winner reaching GET / 200; repeat across two servers on one file. A wrong same-length code yields 401 without changing any row, then the correct code succeeds. Acceptance 8-10 prove ciphertext format, same-key restart 303, wrong-key TOTP 500 without mutation while recovery succeeds, missing-key 503 without protected access, strict startup errors exit 2 after admin-token validation, unset warning and hasSecretKey false, and no secret leaks outside intended disclosures. Invalid input is 422 without counting, POST validation/gate ordering is preserved and expired enrol sessions redirect before pending-state checks. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and all new and existing tests pass with at least 80% line coverage; the existing 'GET / before setup redirects to /setup' test remains unchanged"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Account management keeps this browser signed in while ending other sessions",
+      "files": [
+        "src/account-routes.ts",
+        "src/account-pages.ts",
+        "src/server.ts",
+        "src/http-context.ts",
+        "src/pages.ts",
+        "src/styles.ts",
+        "src/metrics.ts",
+        "src/server.test.ts",
+        "src/server.security.test.ts",
+        "src/server.factor.test.ts",
+        "src/server.recovery.test.ts",
+        "src/server.sessions.test.ts",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "docs/configuration.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior: Account security page and landing link, New recovery codes, Sessions/sign out all, remaining HTTP rules/metrics/logs/docs; Acceptance 5 regeneration, 6, final 10 leak scan, 11 and 13; every Checks and Completion evidence item, Performance impact evidence and Security impact checklist. New recovery codes require password recheck and replace the set atomically; try old codes in fresh-server batches 4/4/2 without 429. Sign out all uses T2 deleteOtherSessions for every other stage, cascades their pending authenticators and retains the current row/cookie/CSRF without Set-Cookie; plain Sign out ends only the current session. Document the later password-change rule, which must call deleteOtherSessions inside its hash-update transaction, without adding that endpoint. Add Docker malformed-key check and deploy-dev using the approved checkout pin, persist-credentials false, contents read, no repository secrets and E2E_CONSOLE_FLOW=two-factor against deploy main after deploy merges. Preserve the existing root/header Docker check and release dependencies. A deploy-side two-factor defect means needs-input and a shared finding with the failed step/spec citation, never a cross-repository edit or weakened CI. Finish responsive/no-JS checks, documentation and public evidence with no live secrets.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.sessions.test.ts src/server.recovery.test.ts src/server.factor.test.ts src/server.security.test.ts",
+          "expected": "0 fail; Acceptance 5 regeneration makes all 10 old codes return 401 in new-server batches 4/4/2, none 429, then a new code gives 303; wrong/empty replacement passwords give 401/422 without changing the codes. Acceptance 6 lists 3 full sessions with This browser, refuses missing/another session's CSRF with 403, then gives 303 to /account/sessions?signed-out=others with no Set-Cookie; B/D fail GET / with 303 to /sign-in?next=%2F and C's factor POST gives 303 to /sign-in. A's identical cookie still gets GET / 200 and its unchanged CSRF permits another POST; list has 1 row, kept id_digest/csrf_token are byte-equal, pending rows 0; restart preserves these outcomes and another user's session survives. Separate 'Sign out ends only this browser' case gives A 303 to /sign-in, A's old cookie fails and B still gets 200 with 1 row left. Replacement invalidates old factor/codes and other sessions while this browser continues with a rotated full cookie; final leak scans find no unintended disclosures. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "grep -n 'timingSafeEqual' src/recovery-codes.ts",
+          "expected": "exit 0; at least 1 line, quoted in PR evidence; review confirms equal 32-byte buffers and comparison of every unused row without early exit"
+        },
+        {
+          "command": "grep -rnE 'recovery_codes[^;]*digest *= *\\?' src --include='*.ts' --exclude='*.test.ts'",
+          "expected": "exit 1 and no output; review confirms no SQL filters recovery_codes by digest and lookup/comparison/conditional update by id all occur inside the consuming BEGIN IMMEDIATE transaction"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; full lint, typecheck and tests pass with at least 80% line coverage; Acceptance 1-10 and the spec's Counterexamples are covered using F1-F3; report full-suite time before and after"
+        },
+        {
+          "command": "docker build --tag pulse-console:local .",
+          "expected": "exit 0; CI docker runs the existing checks on both architectures unchanged, including curl -L on / reaching the setup page and x-frame-options DENY; new malformed-key step with PULSE_API_URL=http://api.invalid:3000 and PULSE_CONSOLE_SECRET_KEY_FILE=/run/key holding not-a-key exits 2 and stderr contains 'PULSE_CONSOLE_SECRET_KEY_FILE=/run/key: must hold 64 lowercase hex characters' without not-a-key"
+        },
+        {
+          "command": "PULSE_CONSOLE_DB=<temporary-db> PULSE_CONSOLE_SECRET_KEY_FILE=<temporary-key-file> PULSE_API_URL=http://127.0.0.1:3000 bun start",
+          "expected": "service starts against the local fake/dev API with a temporary valid key; Acceptance 11 is exercised with agent-browser: setup, manual TOTP enrolment, 10 recovery codes, sign out, password/TOTP, wrong-code refusal, password/recovery, two browsers signing out others while keeping the current browser, then current-only Sign out; record exact commands/results without live keys or codes"
+        },
+        {
+          "command": "agent-browser set viewport 390 844 && agent-browser eval 'document.documentElement.scrollWidth <= 390'",
+          "expected": "true on each of /sign-in/factor, /account/authenticator and the recovery-code page when run there during Acceptance 11; browser evidence also records both confirmation forms completing with JavaScript disabled"
+        },
+        {
+          "command": "E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "In deploy main's dev stack with this console checkout, as CI job deploy-dev specifies: exit 0; Acceptance 13 prints 'ok: 6 POST /setup/owner complete 303 flow two-factor' and every later two-factor ok line; independent helper self-check is 287082, enrolment yields 10 codes, TOTP works, recovery reuse is 401, sign out all keeps jar A GET / 200 and revokes B/C with 303, and restart/same-key sign-in and secret scans pass"
+        },
+        {
+          "command": "git diff --check && git diff -- src .github/workflows/ci.yml README.md docs/configuration.md AGENTS.md",
+          "expected": "exit 0; audit the applicable Security impact checklist: secret-safe errors/logs/responses, gate and POST order, equal-length timing-safe comparison inside atomic transactions, body/input/throttle limits, legacy-session revocation, sign out all preserving current state, and approved read-only CI without secrets. Docs cover routes, startup errors/order, schema/stages, metrics/logs, NTP and limits, database/key backup, lost-key recovery, sign-out semantics and the future password-change rule; AGENTS names the new end-to-end tests"
+        },
+        {
+          "command": "gh pr checks && gh pr view --json body",
+          "expected": "check, docker on both architectures and deploy-dev are green; PR body lists bun run check, browser commands/results, timingSafeEqual and no-digest-SQL static results, required security evidence, before/after full-test time, deploy-dev duration and all two-factor ok lines; no live secret or code is published"
+        }
+      ]
+    }
+  ]
+}

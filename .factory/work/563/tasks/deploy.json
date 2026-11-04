@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Provision and preserve the console encryption key in shared Compose setups",
+      "files": [
+        "scripts/init-secrets.sh",
+        "scripts/init-secrets.test.sh",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "full/compose.yaml",
+        "dev/compose.yaml",
+        "demo/compose.yaml"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: Host key; secrets-init files and generate modes; Compose. Checks: init-secrets, check-setup rule 7, secrets-init cases and Compose config. Deploy merges first; preserve the existing console and legacy setup e2e. Validate every files-mode input before any write, preserve valid generated keys and refuse invalid existing ones. The minimal setup, image pins, ports, volumes and depends_on stay as specified.",
+      "acceptance": [
+        {
+          "command": "bash scripts/init-secrets.test.sh && bash scripts/check-setup.test.sh && scripts/check-setup.sh",
+          "expected": "exit 0; console-secret-key has mode 600 and 64 lowercase hex characters followed by one newline; a rerun preserves its sha256; rule 7 rejects a missing key; existing symlink and setup checks pass"
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0; files mode writes secret-key equal to the host value without its newline, owner/mode 1000:1000 400; missing, uppercase or token-equal input fails before any file write with the spec's literal error; no console output directory needs no key; generate mode creates a key, preserves its sha256 on rerun and refuses an invalid existing key without replacing it"
+        },
+        {
+          "command": "docker compose -f full/compose.yaml config && docker compose -f dev/compose.yaml config && docker compose -f demo/compose.yaml config",
+          "expected": "exit 0; each console has PULSE_CONSOLE_SECRET_KEY_FILE=/run/pulse/secret-key; published ports, volumes and depends_on retain the spec's existing values"
+        },
+        {
+          "command": "shellcheck -x scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/check-setup.sh scripts/check-setup.test.sh scripts/secrets-init.test.sh && node --check scripts/secrets-init.mjs && bun run check",
+          "expected": "exit 0; shell and helper checks pass and existing CLI lint, typecheck and full tests remain green with at least 80% line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "CLI installs create a console key and keep it safely on forced initialization",
+      "files": [
+        "cli/tokens.ts",
+        "cli/tokens.test.ts",
+        "cli/init.ts",
+        "cli/init.test.ts",
+        "cli/write-install.ts",
+        "cli/write-install.test.ts",
+        "cli/render-compose.ts",
+        "cli/render-compose.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: CLI and Checks: CLI tests. Build on T1's embedded secrets-init helper. Add isSecretKeyContent and KNOWN_FILES coverage; draw the key after tokens and before installId, write it only with console enabled, render the console key env, preserve a valid existing key byte-for-byte on --force, and refuse invalid keys during preflight before any write. Keep the console-disabled minimal render unchanged.",
+      "acceptance": [
+        {
+          "command": "bun test --coverage cli/tokens.test.ts cli/init.test.ts cli/write-install.test.ts cli/render-compose.test.ts",
+          "expected": "0 fail; key content matches ^[0-9a-f]{64}\\n$ and mode 600 only with console on; deterministic random draw order matches tokens, key, installId; --force keeps a valid key byte-equal and refuses an invalid one with 'secrets/console-secret-key: is not a valid key (64 lowercase hex characters); fix or remove it' and no writes; rendered console env is /run/pulse/secret-key; minimal without console is unchanged. Focused coverage may miss the global threshold"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; CLI lint, typecheck and the full test suite pass with at least 80% line coverage"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "Deploy supports both setup flows and documents a compatible rollout",
+      "files": [
+        "e2e/console-setup.sh",
+        "e2e/totp.mjs",
+        "README.md",
+        "full/README.md",
+        "dev/README.md",
+        "demo/README.md",
+        "docs/cli.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: e2e/totp.mjs, e2e/console-setup.sh and repository rules; remaining Checks and all Completion evidence. Acceptance 12; Acceptance 13's script side; Rollout order step 1; applicable Security impact checklist. Preserve legacy steps 7-10, detect the flow from Finish setup Location, support auto/legacy/two-factor and fail a forced mismatch. Implement two-factor steps 7-13 with isolated jars, Origin and CSRF, recovery-code reuse rejection, sign out all keeping jar A and ending B/C, restart using the same key, and secret scans. Two-factor execution first occurs in the console child's deploy-dev job, never require an unavailable console feature for this deploy PR. Document key format, upgrade, database/key backup, lost-key recovery, both flows and later release/pin rollout without changing a pin.",
+      "acceptance": [
+        {
+          "command": "node e2e/totp.mjs GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+          "expected": "exit 0; one line matches ^[0-9]+ [0-9]{6}$; the helper first checks its algorithm against literal 287082 at T=59 for RFC 6238 Appendix B's SHA-1 seed"
+        },
+        {
+          "command": "node e2e/totp.mjs",
+          "expected": "exit 2; usage: e2e/totp.mjs <base32 key>"
+        },
+        {
+          "command": "node e2e/totp.mjs abc1",
+          "expected": "exit 2; usage: e2e/totp.mjs <base32 key>"
+        },
+        {
+          "command": "E2E_CONSOLE_FLOW=bogus bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 2; E2E_CONSOLE_FLOW must be auto, legacy or two-factor; validation precedes all requests and docker compose calls, with no running stack required"
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0; all shell scripts pass, including e2e/console-setup.sh"
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0"
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; includes the new e2e/totp.mjs"
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; all lint job helper and static setup regressions pass, including T1 key provisioning cases"
+        },
+        {
+          "command": "bun run check && bun run build && bash cli/test/smoke.sh && bash cli/test/errors.sh dist/pulse && bash cli/test/render-variants.sh",
+          "expected": "exit 0; full CLI lint/typecheck/test coverage gate passes at 80% or greater; compiled binary smoke, stub Docker error paths and Compose render variants pass"
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the existing pinned images; the extra console key does not break full stack readiness or the existing end-to-end assertions"
+        },
+        {
+          "command": "scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml && bash cli/test/stack.sh dev",
+          "expected": "exit 0 with current service main checkouts in the CI dev layout; setup detection prints 'ok: 6 POST /setup/owner complete 303 flow legacy', then the unchanged legacy steps 7-10 pass; the key is ignored by the #562 console; teardown follows the dev job's always step"
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "lint, check, full, demo, dev, cli-render and cli-stack are green; full/demo/CLI consumers keep working before console merges"
+        },
+        {
+          "command": "git diff --check && git diff -- e2e/console-setup.sh e2e/totp.mjs scripts cli full dev demo README.md docs/cli.md",
+          "expected": "exit 0; review against the spec's Security impact checklist confirms no public secrets, path-safe writes, strict key validation, Origin and CSRF on every POST, independent literal e2e expectations and no image-pin or port changes; two-factor step 11 requires jar A GET / 200 while B/C each get 303 to /sign-in?next=%2F"
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "PR body lists the required green CI jobs and dev legacy ok lines, states that the first real two-factor run is console deploy-dev, and records the key provisioning, migration/backup/lost-key documentation and applicable security evidence without any live secret"
+        }
+      ]
+    }
+  ]
+}
