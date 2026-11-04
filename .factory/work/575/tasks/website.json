@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "target": "website",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Console and deploy docs publish under Coming soon with safe comment handling and pinned preview facts",
+      "files": [
+        "src/docs/bump.ts",
+        "src/docs/bump.test.ts",
+        "docs.config.json",
+        "src/docs/nav.ts",
+        "src/docs/nav.test.ts",
+        "src/docs/markdown.ts",
+        "src/docs/markdown.test.ts",
+        "src/content/facts.ts",
+        "src/content/facts.test.ts",
+        "test/fixtures/deploy-cli-prompt.ts.txt",
+        "test/fixtures/console-pages.ts.txt",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: website — Steps 1–4 and the docs/facts portion of Step 5; Required behavior: Docs, Facts and fixtures, README; Decisions 5, 7–8; Counterexamples: Nav, Comment dropping, Pins; Acceptance evidence 2–5; initial Performance impact measurement. Before the first edit, install Bun 1.4.0 dependencies, check both repositories for releases, and capture build/budget and gzip measurements on unmodified main. Record the CLI route as absent before the change. A release triggers the spec's needs-input hold, naming its tag. Write the specified failing tests first. Add console/deploy after kit in DOC_REPOS, update the eight-repository comment and existing repoForKey error/constructor-order test literals, and generate only their pins with docs:bump console deploy, recording independent full main refs at bump time. Append the exact four-entry Coming soon group and its header comment; assert previous label Development · notify. Preserve NavEntry, navProblems, pager logic and DOC_FILE. Implement the exported isOnlyComment with string methods: trim, startsWith <!--, endsWith -->, length >= 7, and first closing delimiter at or after index 4 at the final position. Drop only matching HTML tokens; preserve escaping and URL handling for every other input. Test all seven Comment dropping counterexamples through the helper and renderMarkdown, including hostile markup and no raw script/img/comment output. Copy both upstream fixtures byte for byte from the new docs pins, retaining the .ts.txt suffixes; add CLI_WIZARD_PROMPTS, CONSOLE_SETUP, named source comments and the spec's literal/fixture tests. Follow the updated Tool facts: .ts code/tests use Biome and ESLint/SonarJS; .tsx uses Biome; .txt fixtures are outside TypeScript include and both lint scopes. Update README's eight-repository list and the three requested explanatory sentences. If upstream main gained docs, include them once with unique labels and record the exception; an upstream link/anchor rejected by check:links requires needs-input naming the page/link. Keep all six existing pin entries unchanged. Preserve baseline measurements, independent refs and fixture comparisons for T2's final PR evidence. T1 must leave lint, typecheck and the complete unit suite green.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0 using Bun 1.4.0; no lockfile or dependency change"
+        },
+        {
+          "command": "gh api repos/lorenzh/pulse-deploy/releases --jq length",
+          "expected": "0 before implementation; if nonzero, request needs-input naming the release tag, as Decision 5 requires"
+        },
+        {
+          "command": "gh api repos/lorenzh/pulse-console/releases --jq length",
+          "expected": "0 before implementation; a new release is handled by the release-state needs-input risk in the spec"
+        },
+        {
+          "command": "bun run build && bun run check:budget",
+          "expected": "Before the first edit on unmodified main: exit 0, budget ok; record gzip sizes for dist/index.html, dist/hosted/index.html and the CSS bundle, and record dist/docs/deploy/cli/index.html as absent rather than inventing a baseline size"
+        },
+        {
+          "command": "bun -e 'import {readFileSync,readdirSync,existsSync} from \"node:fs\"; import {gzipSync} from \"node:zlib\"; import assert from \"node:assert/strict\"; for(const file of [\"dist/index.html\",\"dist/hosted/index.html\",\"dist/docs/deploy/cli/index.html\",...readdirSync(\"dist/assets\").filter(f=>f.endsWith(\".css\")).map(f=>\"dist/assets/\"+f)]) { if(!existsSync(file)) { assert.equal(file,\"dist/docs/deploy/cli/index.html\"); console.log(file+\": absent\"); continue; } const bytes=gzipSync(readFileSync(file)).length; console.log(file+\": \"+bytes+\" B gzip\"); assert.ok(bytes <= (file.endsWith(\".css\")?20000:60000),file); }'",
+          "expected": "Before the first edit, after the baseline build: exit 0; print Home, Hosted and CSS gzip bytes and dist/docs/deploy/cli/index.html: absent. Preserve output for before/after PR evidence. HTML is at most 60000 B gzip and CSS at most 20000 B."
+        },
+        {
+          "command": "git ls-remote https://github.com/lorenzh/pulse-console.git refs/heads/main && git ls-remote https://github.com/lorenzh/pulse-deploy.git refs/heads/main",
+          "expected": "Record both full refs at bump time as independent evidence; each SHA must equal its repository's generated docs.config.json pin"
+        },
+        {
+          "command": "bun run docs:bump console deploy",
+          "expected": "exit 0; console publishes [\"docs/configuration.md\",\"docs/development.md\",\"docs/index.md\"] and deploy [\"docs/cli.md\"]; if main gained a docs file, follow the explicit nav/PR exception in Risks; no existing repository is bumped"
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import {readFileSync} from \"node:fs\"; import {execFileSync} from \"node:child_process\"; const current=JSON.parse(readFileSync(\"docs.config.json\",\"utf8\")).repos; const baseline=JSON.parse(execFileSync(\"git\",[\"show\",\"main:docs.config.json\"],{encoding:\"utf8\"})).repos; for(const key of [\"api\",\"probe\",\"status\",\"notify\",\"contract\",\"kit\"]) assert.deepEqual(current[key],baseline[key],key); assert.deepEqual(current.console.files,[\"docs/configuration.md\",\"docs/development.md\",\"docs/index.md\"]); assert.deepEqual(current.deploy.files,[\"docs/cli.md\"]);'",
+          "expected": "exit 0; all six existing repository entries deep-equal main, console has exactly the three specified files and deploy exactly docs/cli.md; only the documented main-gained-docs exception permits a different new-file list"
+        },
+        {
+          "command": "git diff main -- docs.config.json",
+          "expected": "Only console and deploy entries are added; no line inside api, probe, status, notify, contract or kit changes. Their SHA values remain the six independent baseline pins specified in Acceptance evidence 3."
+        },
+        {
+          "command": "bun -e 'import {execFileSync} from \"node:child_process\"; import {readFileSync} from \"node:fs\"; import assert from \"node:assert/strict\"; const {repos}=JSON.parse(readFileSync(\"docs.config.json\",\"utf8\")); for(const [key,path,file] of [[\"deploy\",\"cli/prompt.ts\",\"deploy-cli-prompt.ts.txt\"],[\"console\",\"src/pages.ts\",\"console-pages.ts.txt\"]]) { const upstream=execFileSync(\"curl\",[\"-fsS\",\"https://raw.githubusercontent.com/\"+repos[key].repo+\"/\"+repos[key].sha+\"/\"+path]); assert.deepEqual(readFileSync(\"test/fixtures/\"+file),upstream,file); }'",
+          "expected": "exit 0; both fixtures are byte-equal to the independently fetched upstream files at their docs.config.json pins"
+        },
+        {
+          "command": "bun test src/docs/bump.test.ts src/docs/nav.test.ts src/docs/markdown.test.ts src/content/facts.test.ts",
+          "expected": "0 fail; DOC_REPOS has the literal eight-key order, repoForKey errors name those eight keys, constructor follows all eight known keys, the last nav group and previous label Development · notify match the spec, nav coverage is complete, all seven comment cases pass through both helper and renderer, and both fixture tests pass. A focused coverage-threshold exit is assessed by test results; the coverage gate runs on the full suite."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage"
+        },
+        {
+          "command": "bun run build && bun run check:links",
+          "expected": "exit 0; all four new routes build with valid links and anchors; any upstream page/link defect follows the needs-input risk"
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import {readFileSync,readdirSync} from \"node:fs\"; import {join} from \"node:path\"; const labels=[\"Console · in progress\",\"Configuration · console\",\"Development · console\",\"pulse CLI · coming soon\"]; function walk(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):[join(dir,e.name)]);} for(const file of [\"dist/docs/console/index.html\",\"dist/docs/console/configuration/index.html\",\"dist/docs/console/development/index.html\",\"dist/docs/deploy/cli/index.html\"]) { const html=readFileSync(file,\"utf8\"); assert.ok(html.includes(\"<p class=\\\"side-title\\\">Coming soon</p>\"),file); assert.ok(html.includes(\"Generated from <a href=\\\"https://github.com/lorenzh/pulse-\"),file); console.log(file); } for(const file of walk(\"dist/docs\").filter(f=>f.endsWith(\".html\"))) { const html=readFileSync(file,\"utf8\"); for(const label of labels) assert.ok(html.includes(label),file+\": \"+label); } assert.equal((readFileSync(\"dist/docs/deploy/cli/index.html\",\"utf8\").match(/verify-download/g)||[]).length,0);'",
+          "expected": "exit 0; print the four new docs output paths, all have Coming soon and source attribution, every docs page has all four literal nav labels, and verify-download occurs 0 times in the CLI output"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Home and Hosted show the new features, optional console and previews and pass all site gates",
+      "files": [
+        "src/content/home.tsx",
+        "src/content/previews.tsx",
+        "src/content/architecture.tsx",
+        "src/content/hosted.tsx",
+        "src/components/Icon.tsx",
+        "src/styles/components.css",
+        "src/content/home.test.ts",
+        "src/content/hosted.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: website — remaining content/icon/CSS portion of Step 5, Step 6, all Home and Hosted tests, and final Acceptance evidence 1–9; Required behavior: Home, Architecture, Icons and Hosted; Performance impact and Security impact checklists. Depends on T1's generated docs routes and verified facts. Implement the four exact feature cards in the specified 15-card order, component-first status copy, optional fifth console in SVG/list with dashed outline/admin API arrow and the exact accessible description, all five icon paths, the new InActionPreviews component and responsive token-based styles. Use the collision-checked section IDs in-action/in-action-title and next/next-title. Write failing content tests before changing presentation. Insert the three noninteractive status/CLI/console figures and the two Coming next cards in the exact section order, using T1 facts for preview strings and the exact labels/captions/links. Add the Hosted fifth included card and comparison row with AVAILABILITY/PARITY. Add the full literal content and counterexample assertions prescribed by the section; update old counts to 15 feature cards and 4 text links, plus Hosted bounds to at least 7 rows and 5 cards. Keep #487 content/regressions, hero Terminal/COMPOSE_SERVICES, the single live-preview island, status-mock, existing service copy, plans, waitlist and all 16 placeholder names unchanged. No dates, download links, visitor-facing agent text, new island/runtime dependency, raster preview, inline styles/scripts or external runtime requests. Run the whole-change gates and review all three security checklist areas (input validation, links, secrets in responses). In the final PR body record T1's independent refs/pin integrity/fixture provenance and baseline, before/after gzip measurements (CLI was absent before), all four generated docs routes and a11y coverage, Security impact: yes with checklist evidence, checks/limits and any permitted upstream-doc additions; obtain green check and site CI jobs.",
+      "acceptance": [
+        {
+          "command": "bun test src/content/home.test.ts src/content/hosted.test.ts",
+          "expected": "0 fail; all issue-575 literal strings, icons, 15-card order, 5 diagram rects and 5 service-name spans, optional console, 3 labelled static figures with the exact preview strings and no input/button/form/link, 1 live-preview island, exactly 2 roadmap links with no date, section order, 4 text links, Hosted card/row/placement/placeholders, disabled actionless waitlist and 0 agent matches pass; existing v27/v28 regressions stay green. A focused coverage-threshold exit is assessed by test results; the coverage gate runs on the full suite."
+        },
+        {
+          "command": "bunx playwright install --with-deps chromium && bun run check:all",
+          "expected": "exit 0; lint, typecheck, full tests with at least 80% line coverage, build, check:links, check:budget (budget ok) and check:a11y (a11y ok) pass. Browser checks include all four new docs routes, light/dark, desktop/mobile, keyboard/focus, mobile overflow, no-JS, reduced motion, CSP and external-request blocking; HTML <= 60000 B gzip and CSS <= 20000 B gzip, with all other existing budget limits intact"
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import {readFileSync,readdirSync} from \"node:fs\"; import {join} from \"node:path\"; const labels=[\"Console · in progress\",\"Configuration · console\",\"Development · console\",\"pulse CLI · coming soon\"]; function walk(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(dir,e.name)):[join(dir,e.name)]);} for(const file of [\"dist/docs/console/index.html\",\"dist/docs/console/configuration/index.html\",\"dist/docs/console/development/index.html\",\"dist/docs/deploy/cli/index.html\"]) { const html=readFileSync(file,\"utf8\"); assert.ok(html.includes(\"<p class=\\\"side-title\\\">Coming soon</p>\"),file); assert.ok(html.includes(\"Generated from <a href=\\\"https://github.com/lorenzh/pulse-\"),file); console.log(file); } for(const file of walk(\"dist/docs\").filter(f=>f.endsWith(\".html\"))) { const html=readFileSync(file,\"utf8\"); for(const label of labels) assert.ok(html.includes(label),file+\": \"+label); } assert.equal((readFileSync(\"dist/docs/deploy/cli/index.html\",\"utf8\").match(/verify-download/g)||[]).length,0);'",
+          "expected": "exit 0; all four new docs routes exist with Coming soon/source attribution, all docs pages contain the four exact nav labels, and the deploy CLI page contains 0 verify-download markers; list these routes in the PR evidence with the passing browser run"
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import {readFileSync} from \"node:fs\"; const home=readFileSync(\"dist/index.html\",\"utf8\"); const hosted=readFileSync(\"dist/hosted/index.html\",\"utf8\"); for(const html of [home,hosted]) assert.equal((html.match(/agent/gi)||[]).length,0); assert.equal((hosted.match(/<form[^>]*(action|method)=/g)||[]).length,0); for(const text of [\"Components\",\"Feed and badges\",\"CDN-ready caching\",\"Hot backups\",\"Every component with its state written as a word,\",\"The page, the wizard and the console\",\"What we are building now\"]) assert.ok(home.includes(text),text); assert.ok(hosted.includes(\"The same open-source console\")); assert.ok(hosted.includes(\"<th scope=\\\"row\\\">Web console</th>\"));'",
+          "expected": "exit 0; built Home contains the four feature headings, component copy and both new section headings, Hosted contains its console card and row, both pages have 0 agent matches and Hosted has 0 form action/method attributes; the content tests establish every remaining Required behavior literal"
+        },
+        {
+          "command": "bun -e 'import {readFileSync,readdirSync} from \"node:fs\"; import {gzipSync} from \"node:zlib\"; import assert from \"node:assert/strict\"; for(const file of [\"dist/index.html\",\"dist/hosted/index.html\",\"dist/docs/deploy/cli/index.html\",...readdirSync(\"dist/assets\").filter(f=>f.endsWith(\".css\")).map(f=>\"dist/assets/\"+f)]) { const bytes=gzipSync(readFileSync(file)).length; console.log(file+\": \"+bytes+\" B gzip\"); assert.ok(bytes <= (file.endsWith(\".css\")?20000:60000),file); }'",
+          "expected": "exit 0; print final gzip bytes for Home, Hosted, the CLI guide and CSS; HTML values are at most 60000 B and CSS at most 20000 B. Include these alongside T1's before values in the PR; explicitly mark the baseline CLI route absent"
+        },
+        {
+          "command": "bun -e 'import {execFileSync} from \"node:child_process\"; import {readFileSync} from \"node:fs\"; import assert from \"node:assert/strict\"; const {repos}=JSON.parse(readFileSync(\"docs.config.json\",\"utf8\")); for(const [key,path,file] of [[\"deploy\",\"cli/prompt.ts\",\"deploy-cli-prompt.ts.txt\"],[\"console\",\"src/pages.ts\",\"console-pages.ts.txt\"]]) { const upstream=execFileSync(\"curl\",[\"-fsS\",\"https://raw.githubusercontent.com/\"+repos[key].repo+\"/\"+repos[key].sha+\"/\"+path]); assert.deepEqual(readFileSync(\"test/fixtures/\"+file),upstream,file); }'",
+          "expected": "exit 0; both shipped fixtures remain byte-equal to upstream at the pinned SHAs; final PR carries the independent bump-time refs and fixture provenance from T1"
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import {readFileSync} from \"node:fs\"; import {execFileSync} from \"node:child_process\"; const current=JSON.parse(readFileSync(\"docs.config.json\",\"utf8\")).repos; const baseline=JSON.parse(execFileSync(\"git\",[\"show\",\"main:docs.config.json\"],{encoding:\"utf8\"})).repos; for(const key of [\"api\",\"probe\",\"status\",\"notify\",\"contract\",\"kit\"]) assert.deepEqual(current[key],baseline[key],key); assert.deepEqual(current.console.files,[\"docs/configuration.md\",\"docs/development.md\",\"docs/index.md\"]); assert.deepEqual(current.deploy.files,[\"docs/cli.md\"]);'",
+          "expected": "exit 0; the original six entries still deep-equal main and both new file lists match the literals, subject only to the documented added-docs exception named in the PR"
+        },
+        {
+          "command": "git diff --exit-code main -- biome.json tsconfig.json eslint.config.js budget.json bunfig.toml .github package.json bun.lock src/build/url-safety.ts src/docs/links.ts src/build/csp.ts src/content/status-mock.tsx",
+          "expected": "exit 0 and empty diff; tooling gates, budgets, dependencies, URL safety, link resolution, CSP policy and live status mock remain unchanged"
+        },
+        {
+          "command": "git diff main -- src/docs/markdown.ts src/docs/markdown.test.ts src/content src/components/Icon.tsx src/styles/components.css",
+          "expected": "Security review covers the spec's complete checklist: exact-comment validation and all hostile inputs stay escaped as required, new links use unchanged URL safety, and previews expose labels only with no secret values/prompts. Record Security impact: yes and input-validation/links/secrets evidence in the PR body alongside passing checks, size/pin evidence and limits; CI jobs check and site must be green"
+        }
+      ]
+    }
+  ]
+}
