@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Migration 6 persists check definitions and snapshots while historical upgrades stay green",
+      "files": [
+        "src/migrations.ts",
+        "src/check-store.ts",
+        "src/db.migrations.test.ts",
+        "src/start.token-import.test.ts",
+        "src/config-db.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, migration and definition-store changes; Inputs and decisions 1 and 5-7; Required behavior 9 and 31 at the storage boundary; counterexample 34; Check 5, including the historical migration-5 test and startup token-import regression, and the storage/reopen portion of Check 3. Add migration step 6 without editing released steps: check_definitions has id, check_json, secret_sha256, created_at and updated_at; singleton config_state has id=1, database_generation initially 0, file_revision, file_applied_at and file_snapshot_json. In the same task, change only src/start.token-import.test.ts line 329 from { user_version: 5 } to the literal { user_version: 6 }, never deriving the expectation from SCHEMA_VERSION. In the same migration task, change the historical test \"migration 5: token listing uses the token id index after upgrading version 4\" in src/db.migrations.test.ts line 178 from openDb(path) to openDb(path, MIGRATIONS.slice(0, 5)). Only this opening changes in that historical test: preserve its literal expect(version(db)).toBe(5) and the literal index-plan assertion USING INDEX token_secrets_by_token_id (token_id=?). Add the separate migration-6 regression beside it, opening with MIGRATIONS.slice(0, 5), then MIGRATIONS.slice(0, 6), and expecting the literal version 6. Preserve every token-import assertion, including the refused short token, zero row counts and successful import after fixing the file. Never copy checks runtime rows into definitions or change results/incidents. Implement the SQL store in the style of token-store/audit-log, with definition ordering preserved on replacement, persisted generation and snapshot, and operations that participate in the caller's transaction. Accept only materialized definitions (no keep markers or plaintext heartbeat secrets); snapshots retain file literal headers, env references and bodies, with heartbeat digests only, as permitted by Where values may appear. Put store tests in config-db.test.ts and migration tests in db.migrations.test.ts. This is an additive persistence seam: keep the existing contract pin, live file-only routes and startup implementation unchanged until T2. T2 expands the database tests to HTTP and wires snapshot writes; this task does not introduce an alternate runtime path. The current api baseline is 2bc5910; its source and tooling match the earlier baseline, and the pre-cutover contract pin remains unchanged in this additive task.",
+      "acceptance": [
+        {
+          "command": "bun test src/db.migrations.test.ts src/config-db.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. The historical migration-5 test upgrades 4 to 5 using openDb(path, MIGRATIONS.slice(0, 5)), keeps literal version 5 and the literal plan USING INDEX token_secrets_by_token_id (token_id=?), and changes only that open call. The separate migration-6 test opens with MIGRATIONS.slice(0, 5), then MIGRATIONS.slice(0, 6), and expects literal version 6. A literal step-5 database becomes step 6; check_definitions count is 0, the singleton database_generation is 0, and the fixture's results/incidents are unchanged. Definition create/replace/delete, creation order, generation and snapshot survive close/reopen. An injected rollback leaves all store values unchanged. Plaintext heartbeat secrets and keep markers are absent from stored definitions/snapshots."
+        },
+        {
+          "command": "bun test src/start.token-import.test.ts",
+          "expected": "All token-import tests pass, 0 fail; focused coverage may be below the global threshold. The v0.1.0 upgrade test expects the literal { user_version: 6 } after migration. The short admin token is still refused, the failed import leaves { tokens: 0, secrets: 0, audit: 0, bootstrap: 0 }, and fixing the file still imports successfully with { tokens: 4, secrets: 4, audit: 4, bootstrap: 2 }. No other assertion in this file changes."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; the existing API and file writer tests remain green and full-suite line coverage is >= 0.8. The contract dependency remains at the pre-cutover SHA 7ce23aaf3fa3e038f65ecfed755188b83bde143f."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Admin checks use atomic database writes while file precedence and recovery stay effective",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/check-store.ts",
+        "src/effective-checks.ts",
+        "src/check-write.ts",
+        "src/config.ts",
+        "src/config-reload.ts",
+        "src/config-holder.ts",
+        "src/config-write.ts",
+        "src/admin-routes.ts",
+        "src/start.ts",
+        "src/server.ts",
+        "src/service.ts",
+        "src/config-db.test.ts",
+        "src/config-file-state.test.ts",
+        "src/start.file-fallback.test.ts",
+        "src/config-admin.test.ts",
+        "src/config-write.audit.test.ts",
+        "src/config-write.crash.test.ts",
+        "src/server.heartbeat.test.ts",
+        "src/start.test.ts",
+        "src/security-review.test.ts",
+        "src/docs-claims.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, all Behavior bullets except the export endpoint; Required behavior 1-32, counterexamples 1-30 and 35-39; Checks 1a-1d, 2 except export, 3 and 4 except export. Pin the merged contract 2.0.0 main full SHA in package.json and bun.lock together with adapting all affected API producers/tests. Export a single-check parser that preserves the file field rules. Merge applied file order first, then unshadowed definitions in creation order, keeping a separate shadowed list and effective heartbeat digest map; runtime identity/history stay keyed by id and no shadow transition deactivates an id. Wire startup, file apply/adopt and database writes to that same effective set and in-memory holder (no SQL per admin read beyond today). Move check routes to check-write; file-only ids are read-only 409, creates collide with applied file/DB ids, shadowed PUT is 409 and shadowed DELETE is 204. Materialize markers case-insensitively only from the same database definition, retain omitted heartbeat secrets as digests, rotate explicit secrets, remove omitted headers/body, and validate the materialized check using file rules. Preserve exact statuses/order, ETag, Location, audit actions, metrics and safe messages from items 8-18. Share the writer lock; commit definition, generation +1, upsertChecks and audit in one SQLite transaction. Change service reconcile so it can join the caller transaction; publish holder/cache changes and effects only after commit. Rollback leaves every SQL row, audit entry, revision and in-memory state unchanged. Use 'sha256-' plus lowercase hex SHA-256 of UTF-8 '<applied file revision>\\n<database generation>' (one newline between the inputs) for the admin revision; invalid/unreadable/pending file bytes do not change it. Every committed check write advances the generation by exactly 1; every following write needs its success ETag or a freshly fetched revision, including read-only-mount counterexample 24. Preserve the full temp/pending-audit/fsync/rename/resolvePending protocol for component/window writes with admin If-Match plus applied disk-revision checks; DB-only references are 422 and a broken disk is 412 naming its state. Move existing file protocol/crash tests to components/windows. Implement file status, safe message, lastAppliedAt, retry/deduplicated logging, snapshot persistence atomically with each file reconcile, DB-before-file startup and broken/missing-file fallback; no snapshot still exits 2. Pings compare digests in constant time with unchanged public outcomes; definitions and file-heartbeat pings survive fallback/reopen. Add listening fileState/databaseChecks fields and the exact service removal log text from Contract fields. Update README and all listed docs for the behavior shipped here, including downgrade backup, the GET-edit-PUT example and file-only component/window references; keep docs-claims tests green. Record the four red regressions on baseline 2bc5910 before fixing them. Use temp databases/127.0.0.1:0, injected clock/reloads and typed contract-validated responses. Implement the non-export cells of the sentinel table with literal fixtures and independent node:crypto digests; T3 adds its export cells and performs the whole-change security/evidence review. If admin-created checks are already stored in the database at task start, obey the section's needs-input condition. Check 2 also requires every GET /admin/config response in these HTTP tests, including shadowed entries and all four file states, to pass validateAdminConfigSummary as well as the strict 2.0.0 response validator. Counterexample 41's compatibility is completed by the live console regression in T3 Check 10; the api depends on both the merged contract and merged console.",
+      "acceptance": [
+        {
+          "command": "bun test src/config-db.test.ts src/config-admin.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Check 1a: POST on a read-only file returns 201 and probes receive the literal definition. 1b: file name wins at public/probe reads; shadowed reports source database. 1c: name-only GET-edit-PUT retains literal header/body sentinels. 1d: broken bytes remain unchanged after POST 201 with the fresh revision. Retain evidence that these cases failed on baseline 2bc5910 for the specified behavioral reasons, rather than import/type errors."
+        },
+        {
+          "command": "bun test src/config-db.test.ts src/config-admin.test.ts src/config-file-state.test.ts src/start.file-fallback.test.ts src/server.heartbeat.test.ts src/start.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Cover counterexamples 1-30 and 35-39: conflicts 409, absent ids 404, marker/materialization/reference errors 422, stale/racing writes 412, injected transaction failure 500 with unchanged SQL and in-memory state. The first concurrent PUT is 200 and the stale second is 412. Invalid/unreadable/written-not-applied/ok are distinct; ok alone has null message. DB writes keep lastAppliedAt and broken file bytes. Reopen keeps definitions, source, revision and heartbeat credentials; fallback serves snapshot file checks and accepts its heartbeat secret; no-snapshot broken start exits 2. Every GET /admin/config response also passes validateAdminConfigSummary, including shadowed entries and file states ok, invalid, unreadable and written-not-applied."
+        },
+        {
+          "command": "bun test src/config-write.audit.test.ts src/config-write.crash.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Existing pending-audit, fsync, rename, resolver and power-loss coverage passes using component/maintenance writes and the new admin revision. On a valid read-only mount, GET the current revision and POST a valid database check for 201; GET /admin/config again and POST a valid file component with that fresh revision for 503. A 412 at either request fails counterexample 24. Database check writes never return 503. File-protocol failures never change database definitions."
+        },
+        {
+          "command": "bun test src/security-review.test.ts src/docs-claims.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Every non-export cell of Where values may appear has an assertion using lit-db-sentinel-1, lit-file-sentinel-1, body-db-sentinel-1, body-file-sentinel-1, PULSE_HEADER_SENTINEL_DB_ENV, PULSE_HEADER_SENTINEL_FILE_ENV and the two literal heartbeat secrets of Check 4. Probe responses contain literals/bodies/env names and no keep key or secret; admin views contain env names and exact keep markers. Public/audit/log/metric/error/file.message surfaces contain none of the protected values. After checkpoint, storage columns/raw file bytes follow the table: file literals/bodies are allowed in file_snapshot_json, neither heartbeat plaintext occurs anywhere, and digests equal independent node:crypto hashes of the literal secrets. Docs no longer assert file-only checks or unavoidable startup failure with an existing snapshot."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; all existing and new tests pass with line coverage >= 0.8. No public/probe/wire shape, auth throttle, scope, size-limit, metric name/label or unrelated dependency changes. This runnable stage exposes the database behavior and file recovery; the separate export endpoint is added in T3."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "Effective checks export safely and merged Console connects with verified rollout evidence",
+      "files": [
+        "src/config-export.ts",
+        "src/config-export.test.ts",
+        "src/admin-routes.ts",
+        "src/start.ts",
+        "src/security-review.test.ts",
+        "src/docs-claims.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, export builder/route and documentation changes; Required behavior 33-35; counterexamples 31-33; remaining export cells of Check 4; completion of Check 2 (counterexamples 1-39); Checks 6-10 and Completion evidence; the entire Security impact and Performance impact sections. Add the pure export builder and authenticated GET /admin/config/export under config-read (read or checks scope), wired to the already-effective in-memory set and applied file components/windows. Keep effective order, file precedence and env references, omit source/hasSecret/markers, remove literal headers, bodies and heartbeat secrets, convert windows to ISO UTC, and add a nonempty redacted list only when needed, in check order. Shadowed definitions never appear. Match content headers, ETag, two-space JSON and final newline exactly; query parameters are 400 and other methods 405 Allow GET, with existing feature/auth/throttle/size protections. A clean export is file-loadable; redacted exports are rejected by the unchanged strict file parser until values are restored and redacted removed. Add localhost HTTP tests with contract validators and final export sentinel assertions; do not introduce a new contract module or runtime dependency. Finish export docs and claims in the listed docs, including manual restoration with new heartbeat secrets and no import. Run the whole-repository checks, Docker/bench checks, live bun start session and review every applicable security checklist item. Gather final PR evidence including the four baseline red cases, full green checks, A/B benchmark numbers and compatibility/rollback limits. Compose E2E belongs to the dependent deploy task, whose Run A/Run B prove the complete stack; do not edit deploy from this task. Perform Check 10 against the api branch using merged console main, then console f320e5d, in separate writable implementation checkouts. Start with exactly file-a and file-b, create db-a and db-b with fresh revisions, add file db-b and SIGHUP; effective order is file-a, file-b, file db-b, db-a, with the database db-b only in shadowed. The merged console must return the literal success with checkCount 4; f320e5d must return the literal invalid-answer failure, proving the merge order. This is evidence over HTTP, not an import of console code into the api. Include both outputs and the merged console SHA in the PR, without credentials.",
+      "acceptance": [
+        {
+          "command": "bun test src/config-export.test.ts src/security-review.test.ts src/docs-claims.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Export GET is 200 for read/checks scope; a probe token is 403, any query is 400, other methods are 405 with Allow GET. Headers equal application/json; charset=utf-8, attachment; filename=\"checks.json\", no-store and the quoted admin revision; JSON uses two spaces and ends with newline. Literal redacted fields are headers.x-token, body and secret in check order. Env names PULSE_HEADER_SENTINEL_DB_ENV and PULSE_HEADER_SENTINEL_FILE_ENV remain while literal/body/heartbeat sentinels, digests and keep keys are absent. File D appears exactly once and shadowed DB D never appears. A clean export has no redacted key and parses as a checks file; a redacted export is rejected. Responses pass validateAdminConfigExport. All cells of Check 4's response/storage table now have assertions."
+        },
+        {
+          "command": "bun test src/config-db.test.ts src/config-file-state.test.ts src/config-export.test.ts src/start.file-fallback.test.ts src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts src/server.heartbeat.test.ts src/start.test.ts src/db.migrations.test.ts src/start.token-import.test.ts src/security-review.test.ts src/docs-claims.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. All 39 literal counterexamples and API Checks 1-5 pass with typed contract-validated HTTP responses on 127.0.0.1:0, temp databases/files and injected clock/reloads. Preserve existing ingest, history, cache and crash-protocol regressions. Every GET /admin/config in Check 2 also passes validateAdminConfigSummary; shadowed entries never contribute to its check count."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; repository lint, typecheck and full tests pass, line coverage >= 0.8. The contract dependency is a full merged main SHA for 2.0.0; no other dependency or check configuration changes."
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "exit 0; all benchmark harness self-tests pass."
+        },
+        {
+          "command": "docker compose -f bench/compose.bench.yaml config --quiet",
+          "expected": "exit 0, matching the bench-selftest CI compose configuration check."
+        },
+        {
+          "command": "docker build --tag pulse-api:local .",
+          "expected": "exit 0; the production image builds with the new contract pin and no new runtime dependency."
+        },
+        {
+          "command": "bash scripts/image-dotenv.sh pulse-api:local",
+          "expected": "exit 0; all five existing cases (control, .env, .env.production, .env.local and image-config) pass, proving the production command and healthcheck ignore dotenv files."
+        },
+        {
+          "command": "docker run --rm --entrypoint sh pulse-api:local -c \"find /app -type f \\( -name '*.test.ts' -o -name '*.spec.ts' \\) -not -path '*/node_modules/*'\"",
+          "expected": "exit 0 and empty output; no application test/spec files are in the image, matching the Docker CI job."
+        },
+        {
+          "command": "bun bench/run.ts --a 2bc5910 --b <branch sha>",
+          "expected": "exit 0; report A/B startup_cpu_ms, idle_rss_mib, peak_rss_mib, load_cpu_s and test_cpu_s plus all gating verdicts from bench/budgets.json, as required by Performance impact. Startup CPU budget is 325 ms and API test CPU budget is 5.6 s; contract test/build CPU budgets are 9.0/6.4 s. A gating metric over budget causes a hold, never a budget change."
+        },
+        {
+          "command": "bun start",
+          "expected": "With temp PULSE_DB, a copied checks.example.json whose placeholder heartbeat secret is replaced and an admin-token import, record actual curl/jq commands/statuses: create 201; GET-edit-PUT 200 with kept header/body values; break the file, GET config 200 with file.state invalid, POST with fresh revision 201 and broken bytes unchanged; repair and observe ok; GET export 200 with redacted fields. Record startup/restart and heartbeat outcomes without printing protected values."
+        },
+        {
+          "command": "bun -e 'import { testConnection } from \"./src/connection-test.ts\"; console.log(JSON.stringify(await testConnection(process.env.API_URL, { fetch, token: process.env.ADMIN_TOKEN })))'",
+          "expected": "Check 10: run from a writable checkout of the merged console main SHA after bun install --frozen-lockfile, against the api branch running with a temporary database and an applied file initially containing exactly file-a and file-b. Create db-a and db-b with a fresh revision for each request; add file db-b and SIGHUP so its database copy is shadowed. Exit 0 and print the literal {\"isOk\":true,\"wireVersion\":1,\"checkCount\":4,\"adminScope\":\"confirmed\"}. Repeat from console f320e5d with its frozen dependencies against the same api: exit 0 and print the literal {\"isOk\":false,\"text\":\"pulse-api sent an invalid answer.\"}. The PR records both lines, the merged console SHA and the explicit file checks. Neither run prints a token; shadowed db-b is not counted."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names #565, the merged contract SHA, four red baseline 2bc5910 runs for Checks 1a-1d, green repository/CI checks, actual benchmark numbers and gating verdicts, and live bun start commands/statuses. Record review of every applicable Security impact item: response/storage sentinel table, auth/throttle/status order, strict input/marker/accessor safety, limits and materialized validation, host binding policy, atomic SQL/file protocols and rollback, digest credentials and unchanged pins/dependencies beyond contract. State components/windows remain file-only, import is absent and rollback needs a backup. Identify deploy Run A/Run B as the dependent compose acceptance; report unavailable evidence honestly. Include the two literal outputs of Check 10 and merged console SHA; explain console-before-api rollout, compatibility with older APIs via the summary validator, and the unreleased older console checkout's limitation."
+        }
+      ]
+    }
+  ]
+}

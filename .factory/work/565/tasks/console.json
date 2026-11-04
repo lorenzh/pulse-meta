@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Console connection and owner setup work with both admin API shapes",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/connection-test.ts",
+        "src/connection-test.test.ts",
+        "src/server.setup.test.ts",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, all What changes in each file and Behavior bullets, Checks 1-5 and Completion evidence; Inputs and decisions 10, counterexamples 40-42, Rollout order 2 and Security impact for response validation and dependency pins. Move only the contract pin in package.json and bun.lock to a full merged main SHA for contract 2.0.0. Replace validateAdminConfigResponse by validateAdminConfigSummary in src/connection-test.ts, preserving checkCount = checks.length, all error texts, timeout, 5 MiB cap, manual redirects, wire checks and token call. Retain today's configBody and setup config(checks) fixtures as 1.x coverage. Add independent literal 1.x and 2.0.0 fixtures and malformed-summary cases exactly as counterexamples 40-42: two legacy checks including headers [authorization] and hasBody; three new effective checks with source/keep markers plus one shadowed entry and file state invalid. Count 2 and 3 respectively, never 4 for the shadowed fixture. Missing/malformed revision, non-array checks, non-object entries and missing/empty/numeric ids must yield the existing invalid-answer text without sentinel leakage. Add an owner-setup HTTP regression next to the existing completion test: against the new fixture, Test connection returns 200 and Checks: 3, then Finish setup returns 303. Keep form validation, CSRF, pages, tokens and other contract validator use unchanged. Add the single compatibility sentence to docs/configuration.md: the connection test reads only revision and check ids and accepts APIs before and after database-owned checks. Capture the new fixture's red failure on console f320e5d before switching validators, and show legacy cases green both before and after. Run the real older-api connection of Check 5 and a live console Test connection as required by Completion evidence. Review relevant Security impact items (safe errors, own-data summary validation, body cap, redirects, wire check, no token/setup-code/password leaks, full contract SHA pin), and record actual evidence in the PR. The api child waits for this console to merge. If the current connection test already uses a tolerant summary validator, obey the section's needs-input condition. Keep this one task because one validator call, its contract pin, tests and one docs sentence are one small compatibility change.",
+      "acceptance": [
+        {
+          "command": "bun test src/connection-test.test.ts",
+          "expected": "All connection tests pass, 0 fail; focused coverage may be below the global threshold. The literal 1.x fixture returns isOk true and checkCount 2; the literal 2.0.0 fixture returns isOk true and checkCount 3 despite one shadowed entry. Existing configBody cases stay green. Counterexample 42 cases each return {\"isOk\":false,\"text\":\"pulse-api sent an invalid answer.\"} and disclose no sentinel or token. Existing timeout, manual redirect, size cap, wire and token-call tests stay green. Record a red run of the 2.0.0 fixture on console f320e5d with the stated invalid-answer failure; 1.x cases pass on that baseline and on the branch."
+        },
+        {
+          "command": "bun test src/server.setup.test.ts",
+          "expected": "All owner-setup HTTP tests pass, 0 fail; focused coverage may be below the global threshold. With the literal 2.0.0 fixture, Test connection answers literal 200 with Checks: 3, then Finish setup answers literal 303. Existing 1.x setup coverage and secret absence assertions pass."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck and full tests pass with line coverage >= 0.8. package.json and bun.lock pin contract 2.0.0 at the same full merged main SHA; no other dependency or tooling configuration changes."
+        },
+        {
+          "command": "git diff --name-only $(git merge-base origin/main HEAD) HEAD -- src",
+          "expected": "Exactly src/connection-test.ts, src/connection-test.test.ts and src/server.setup.test.ts; no page or server implementation changes."
+        },
+        {
+          "command": "bun -e 'import { testConnection } from \"./src/connection-test.ts\"; console.log(JSON.stringify(await testConnection(process.env.API_URL, { fetch, token: process.env.ADMIN_TOKEN })))'",
+          "expected": "Check 5: against real api 2bc5910, installed with frozen dependencies and running with bun start on a free fixed PORT, temporary PULSE_DB, a PULSE_CHECKS_FILE with exactly 2 explicitly documented checks, probe token import and admin token import granting read/checks/incidents/admin. From the console branch with API_URL and ADMIN_TOKEN set for that api, exit 0 and print exactly the literal {\"isOk\":true,\"wireVersion\":1,\"checkCount\":2,\"adminScope\":\"confirmed\"}. No token is printed; write the two check definitions and actual command/result in the PR."
+        },
+        {
+          "command": "bun start",
+          "expected": "Before handoff, start the console branch against the older api of Check 5 with a temporary console database and its admin token supplied through supported settings, run Test connection once in owner setup, and report actual command and page text including Checks: 2. Token, setup code and passwords do not appear in errors, logs or pages except the existing one-time setup-code stdout line."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names #565 and the merged contract SHA, records the f320e5d red case, legacy and new-shape green tests, the literal Check 5 output, bun run check result and live console Test connection page text. Include relevant Security impact review and the rollout limit: this console merges before the api; strict older unreleased console checkouts need an older api, while the pinned released console 0.1.0 has no admin call."
+        }
+      ]
+    }
+  ]
+}
