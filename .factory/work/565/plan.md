@@ -170,14 +170,37 @@ The open points of the review are decided as follows.
 16. The materialized check (markers resolved, `source` and `hasSecret` dropped) passes the same
     field rules as a file check (api `src/config.ts:86-287`, the contract limits behind them). So
     a body with `GET` or `HEAD`, more than 20 headers, a probe-controlled header name, a duplicate
-    name or more than 16 KiB of names and literal values answers `422`. Markers never reach the
-    stored row, a probe or a response.
+    name or more than 16 KiB of names and literal values answers `422`. Markers exist only in
+    admin views (item 12) and admin write bodies (item 13). They never reach a stored row,
+    `GET /probe/checks`, a public read or the export (see "Where values may appear").
 17. Heartbeat: `POST` needs `secret` with the file rules (16 to 128 characters from
     `A-Z a-z 0-9 . _ ~ -`, not starting with `replace-with-`: api `src/config.ts:43-45`,
     `:196-201`, `src/tokens.ts:8`). `PUT` without `secret` keeps the stored digest when the stored
     definition is a heartbeat check; otherwise it answers `422` (`check.secret is required`). `PUT`
     with `secret` rotates it: the old one fails at the next ping.
 18. Messages never quote a header value, body or secret.
+
+### Where values may appear
+
+This table is the single rule for every surface; items 12, 16, 31, 33, the security checklist
+and the sentinel test (api check 4) refer to it. "yes" means the value may or must appear there;
+"no" means it must never appear there.
+
+| Surface | Literal header value | Request body | `{ env }` name | `{ "keep": true }` marker | Heartbeat secret (plaintext) | Heartbeat secret digest |
+|---|---|---|---|---|---|---|
+| Public reads (`/checks`, `/checks/:id/*`, `/components*`, `/incidents`, `/maintenance`) | no | no | no | no | no | no |
+| `GET /probe/checks` (probe token, unchanged from today, api `docs/rest-api.md:134`) | yes | yes | yes | no | no | no |
+| Admin views: `GET /admin/config` (`checks`, `shadowed`) and admin write responses | no | no | yes | yes | no (`hasSecret: true`) | no |
+| `GET /admin/config/export` | no | no | yes | no | no | no |
+| Audit entries, log lines, `/metrics`, error bodies, `file.message` | no | no | no | no | no | no |
+| Column `check_definitions.check_json` (database checks) | yes | yes | yes | no | no | no |
+| Column `check_definitions.secret_sha256` | no | no | no | no | no | yes |
+| Columns `checks.headers_json`, `checks.body` (runtime, as today) | yes | yes | yes | no | no | no |
+| Column `config_state.file_snapshot_json` (file snapshot, item 31) | yes | yes | yes | no | no | yes |
+| Every other column of the database file | no | no | no | no | no | no |
+
+The plaintext heartbeat secret of a database check exists only in the request that sets it; the
+plaintext of a file heartbeat secret exists only in the file and in memory, as today.
 
 ### Admin config view and revision
 
@@ -226,9 +249,13 @@ The open points of the review are decided as follows.
     is created only by a running api, and every running api has applied a file once, which writes
     the snapshot. So no database definition can exist without a snapshot (a restore of an older
     backup aside, which brings its own snapshot or none and no newer definitions).
-31. The snapshot holds the parsed file checks (as the runtime table already stores their header
-    values and bodies), the SHA-256 digests of the file heartbeat secrets, the components, the
-    windows, the file revision and the apply time. It never holds a plaintext heartbeat secret.
+31. The snapshot lives in `config_state.file_snapshot_json`. It holds the parsed file checks with
+    their literal header values, `{ env }` references and bodies (the same values that the
+    runtime columns `checks.headers_json` and `checks.body` already store for file checks, so this
+    adds no new class of plaintext at rest), the SHA-256 digests of the file heartbeat secrets, the
+    components, the windows, the file revision and the apply time. It never holds a plaintext
+    heartbeat secret or a keep marker. This storage is allowed by "Where values may appear" and
+    the sentinel test (api check 4) expects it.
 
 ### Heartbeat pings
 
@@ -265,8 +292,9 @@ The open points of the review are decided as follows.
   `config-write.audit.test.ts`, `config-write.crash.test.ts`, the sentinel test at
   `config-admin.test.ts:770-791` that bans env names from admin output). Tests of the file
   protocol move to component or maintenance writes, so audit-pending and crash coverage stays.
-  The sentinel test keeps banning literal values, bodies and secrets; env names become expected in
-  admin views and the export only.
+  The sentinel test keeps banning literal values, bodies and secrets from admin output; env names
+  become expected in admin views and the export, and stay expected in `GET /probe/checks` (see
+  "Where values may appear").
 - **Downgrade.** Migration step 6 makes an older api refuse the database (api `AGENTS.md`, "A file
   from a newer program is refused"). A rollback needs the backup taken before the upgrade. The
   operation docs say so.
@@ -277,8 +305,9 @@ The open points of the review are decided as follows.
   like a file reload today. With 1,000 checks it is a few ms of SQLite work per admin write;
   admin writes are rare.
 - **Literal values at rest.** Literal header values and bodies of database checks sit in
-  `check_definitions` and in the runtime table, as file values already sit in the runtime table.
-  A database backup holds them. No new class of plaintext at rest; heartbeat secrets are digests.
+  `check_definitions.check_json` and in the runtime table; those of file checks sit in the runtime
+  table (as today) and in `config_state.file_snapshot_json`. A database backup holds them. No new
+  class of plaintext at rest; heartbeat secrets of both sources are stored only as digests.
 
 ## Performance impact
 
@@ -318,10 +347,14 @@ E2E).
 
 Checklist items that apply:
 
-- **Secrets in errors, logs and responses.** Literal header values, bodies and heartbeat secrets
-  never appear in an admin view, the export, an audit entry, a log line, a metric or an error
-  message. Env names appear only in authorized admin views and the export. The file state message
-  never holds the path or a file value (item 24). Sentinel tests prove it (api checks).
+- **Secrets in errors, logs and responses.** The table "Where values may appear" is the rule per
+  surface. In short: literal header values, bodies and heartbeat secrets never appear in an admin
+  view, the export, an audit entry, a log line, a metric or an error message. `GET /probe/checks`
+  keeps serving literal values, bodies and env references to a probe token, as today, and never
+  a marker or a heartbeat secret. Env names appear in admin views, the export and
+  `GET /probe/checks`, never in public reads, audit entries, logs, metrics or errors. Keep
+  markers appear only in admin views. The file state message never holds the path or a file value
+  (item 24). The sentinel test (api check 4) proves each row.
 - **Auth order and status codes.** Throttle and auth come first, unchanged (api
   `src/admin-routes.ts:170-189`). The export uses `config-read`. A probe token gets `403` on every
   admin route. Status order: item 8 and the contract `ADMIN_STATUS_ORDER`.
@@ -397,6 +430,9 @@ Checklist items that apply:
 | 34 | upgrade | database of api `2d4a6b2` with 3 active file checks and history | after migration `check_definitions` is empty; results and incidents kept | imports runtime rows as editable checks |
 | 35 | reference | POST /admin/components with `checkIds: ["db-only"]` | `422` | accepts a reference the file cannot hold |
 | 36 | failed commit | the audit insert fails inside the transaction | `500`, definition, generation, runtime row and revision unchanged | definition stored without audit |
+| 37 | marker never served to probes | PUT with `x-token: {keep: true}` over stored `S1`; GET /probe/checks | `x-token: "S1"`, no `keep` key anywhere in the response | the marker is stored or served |
+| 38 | env names per surface | DB check with header `x-env: {env: PULSE_SENTINEL_DB_ENV}` | name present in GET /admin/config, the export and GET /probe/checks; absent from `/checks`, audit entries, logs and `/metrics` | strips env names from admin views (as today), or logs them |
+| 39 | snapshot storage | file check with literal `x-token: F1` and heartbeat secret `S` applied | `F1` in `config_state.file_snapshot_json`; `S` in no column, its hex SHA-256 in the snapshot | snapshot without literals (fallback serves a broken check), or with `S` |
 
 There are no statistics in this change. The admin revision is the exact formula of decision 5;
 the generation starts at `0` and is raised by exactly `1` per committed database check write.
@@ -423,6 +459,8 @@ api/src/token-store.ts:170:    .query("SELECT secret_sha256, token_id, retires_a
 $ grep -rn 'source' contract/src/admin.ts contract/src/tokens.ts
 contract/src/admin.ts:51:  .regex(ADMIN_REVISION, { error: `must match ${ADMIN_REVISION.source}` });
 contract/src/tokens.ts:106:      source: z.enum(["api", "file"], { error: 'must be one of "api", "file"' }),
+$ grep -rn 'removed from the configuration\|PULSE_SENTINEL' api/src contract/src config/src | wc -l
+0
 ```
 
 - `redacted` appears only in comments, never as a key: no collision.
@@ -448,26 +486,43 @@ Contract (all in `src/admin.ts` and `src/validate-admin.ts`, exported from `src/
 Api names: route `GET /admin/config/export`; tables `check_definitions` (`id`, `check_json`,
 `secret_sha256`, `created_at`, `updated_at`) and `config_state` (one row: `id = 1`,
 `database_generation`, `file_revision`, `file_applied_at`, `file_snapshot_json`); log line
-`config load rejected at start`. Config (`.repos/config`) holds no admin or check names; nothing
+`config load rejected at start`; changed log text `check "<id>" removed from the configuration:
+incident resolved` (was `... removed from the checks file: ...`, api `src/service.ts:1016`,
+`docs/operation.md:262`). Config (`.repos/config`) holds no admin or check names; nothing
 there changes.
 
 ## Repository: contract
 
 Files:
-- `src/admin.ts` (change: sources, keep marker, view and input headers/body, file status, config
-  response, export shapes, status order text)
-- `src/validate-admin.ts` (change: input accepts `source` and `hasSecret`; new
-  `validateAdminConfigExport`)
-- `src/index.ts` (change: new exports)
-- `test/admin.test.ts` (change: new and changed cases)
-- `test/types.fixture.ts` (change: new types)
-- `docs/index.md` (change: section "Admin config api", lines 285-317)
-- `README.md` (change only if it lists admin shapes; check it)
-- `package.json` (change: version `1.7.0` to `2.0.0`)
-- `dist/**` (regenerated by `bun run build`)
+- `src/admin.ts`
+- `src/validate-admin.ts`
+- `src/index.ts`
+- `test/admin.test.ts`
+- `test/types.fixture.ts`
+- `docs/index.md`
+- `package.json`
+- `dist/admin.js`
+- `dist/admin.d.ts`
+- `dist/validate-admin.js`
+- `dist/validate-admin.d.ts`
+- `dist/index.js`
+- `dist/index.d.ts`
 
 Behavior change: yes
 The admin validators accept and reject new shapes; the admin types change incompatibly.
+
+What changes in each file:
+- src/admin.ts: check sources, keep marker, view and input headers and body, file status, config
+  response, export shapes, status order text.
+- src/validate-admin.ts: the check input accepts the source and hasSecret fields; new export
+  validator.
+- src/index.ts: the new names of "Contract fields" (the file lists its exports one by one).
+- test/admin.test.ts and test/types.fixture.ts: new and changed cases and types.
+- docs/index.md: section "Admin config api" (lines 285-317).
+- package.json: version 1.7.0 becomes 2.0.0.
+- dist: the six files above, regenerated by the build; no other dist file may change.
+- The contract README names admin shapes only in its intro sentence (README line 5) and needs no
+  change.
 
 If `src/admin.ts` already has `source` on check views and `{ keep: true }` markers, hold instead
 of a review.
@@ -523,39 +578,76 @@ Completion evidence: the PR lists the new exports, the check output and the vers
 ## Repository: api
 
 Files:
-- `package.json`, `bun.lock` (change: contract pin to the merged contract `main` SHA)
-- `src/migrations.ts` (change: step 6 creates `check_definitions` and `config_state` with its one
-  row, generation `0`)
-- `src/check-store.ts` (new, suggested name: definitions, generation and snapshot in SQLite, like
-  `src/token-store.ts` and `src/audit-log.ts` hold their own SQL)
-- `src/effective-checks.ts` (new, suggested: pure merge of file set and definitions into effective
-  checks, shadowed list and heartbeat digests)
-- `src/check-write.ts` (new, suggested: database check writes, marker resolution, transaction,
-  audit)
-- `src/config-export.ts` (new, suggested: pure builder of `AdminConfigExport`)
-- `src/config.ts` (change: export a single-check parse that the database write reuses; file rules
-  unchanged)
-- `src/config-reload.ts` (change: file state, admin revision input, start fallback)
-- `src/config-holder.ts` (change: holds the effective configuration)
-- `src/config-write.ts` (change: file writer for components and maintenance only; check views of
-  the new shape; `If-Match` against the admin revision plus the disk check)
-- `src/admin-routes.ts` (change: check routes to the database writer, `/admin/config/export`,
-  `503` only for file writes)
-- `src/start.ts` (change: database before file, fallback, wiring)
-- `src/server.ts` (change: heartbeat digests)
-- `src/service.ts` (change only if the reconcile must join the write transaction)
-- tests: `src/config-db.test.ts`, `src/config-file-state.test.ts`, `src/config-export.test.ts`,
-  `src/start.file-fallback.test.ts` (new, suggested names); `src/config-admin.test.ts`,
-  `src/config-write.audit.test.ts`, `src/config-write.crash.test.ts`,
-  `src/server.heartbeat.test.ts`, `src/start.test.ts`, `src/db.migrations.test.ts`,
-  `src/security-review.test.ts`, `src/docs-claims.test.ts` (change)
-- docs: `README.md`, `docs/rest-api.md` (sections "Admin config routes" and "Audit log"),
-  `docs/operation.md` (sections "Changing checks" and "Audit log"), `docs/configuration.md`
-  (where it says the file is the only source), `docs/troubleshooting.md` (a broken file)
+- `package.json`
+- `bun.lock`
+- `src/migrations.ts`
+- `src/check-store.ts`
+- `src/effective-checks.ts`
+- `src/check-write.ts`
+- `src/config-export.ts`
+- `src/config.ts`
+- `src/config-reload.ts`
+- `src/config-holder.ts`
+- `src/config-write.ts`
+- `src/admin-routes.ts`
+- `src/start.ts`
+- `src/server.ts`
+- `src/service.ts`
+- `src/config-db.test.ts`
+- `src/config-file-state.test.ts`
+- `src/config-export.test.ts`
+- `src/start.file-fallback.test.ts`
+- `src/config-admin.test.ts`
+- `src/config-write.audit.test.ts`
+- `src/config-write.crash.test.ts`
+- `src/server.heartbeat.test.ts`
+- `src/start.test.ts`
+- `src/db.migrations.test.ts`
+- `src/security-review.test.ts`
+- `src/docs-claims.test.ts`
+- `README.md`
+- `docs/rest-api.md`
+- `docs/operation.md`
+- `docs/configuration.md`
+- `docs/troubleshooting.md`
 
 Behavior change: yes
 Admin check writes move to the database, a broken file no longer blocks start or writes, and a new
 export route exists.
+
+What changes in each file (the new source and test files are new; all others exist at api
+2d4a6b2):
+- package.json and bun.lock: the contract dependency moves to the merged contract main SHA.
+- src/migrations.ts: step 6 creates the tables check_definitions and config_state (one row,
+  generation 0).
+- src/check-store.ts (new): the SQL for definitions, generation and snapshot, in the way the token
+  store and the audit log keep their own SQL.
+- src/effective-checks.ts (new): the pure merge of file set and definitions into the effective
+  checks, the shadowed list and the heartbeat digests.
+- src/check-write.ts (new): database check writes, marker resolution, the transaction and the
+  audit entry.
+- src/config-export.ts (new): the pure builder of the export document.
+- src/config.ts: exports a single-check parse that the database write reuses; the file rules stay.
+- src/config-reload.ts: file state, admin revision input, start fallback.
+- src/config-holder.ts: holds the effective configuration.
+- src/config-write.ts: the file writer serves component and maintenance writes only; check views
+  of the new shape; the precondition compares with the admin revision and checks the disk.
+- src/admin-routes.ts: check routes go to the database writer; the export route; 503 only for
+  file writes.
+- src/start.ts: database before file, fallback, wiring.
+- src/server.ts: heartbeat digests.
+- src/service.ts: the reconcile can run inside the caller's transaction (today it opens its own
+  BEGIN, src/service.ts:770-771 and :1006, and SQLite does not nest BEGIN), and its log line for a
+  resolved incident reads `check "<id>" removed from the configuration: incident resolved`
+  (today "removed from the checks file", src/service.ts:1016), because a database delete also
+  ends a check.
+- The four new test files hold the database, file state, export and start fallback tests; the
+  changed tests move file-protocol coverage to component and maintenance writes (see Risks) and
+  add the new cases.
+- README.md and docs: docs/rest-api.md sections "Admin config routes" and "Audit log";
+  docs/operation.md sections "Changing checks", "Audit log" and the log line list (line 262);
+  docs/configuration.md where it says the file is the only source; docs/troubleshooting.md for a
+  broken file.
 
 If the code already stores admin-created checks in the database, hold instead of a review.
 
@@ -615,18 +707,33 @@ Checks:
       answers `201` and the file bytes stay the broken bytes (on `main`: `412`).
    Expected values are literals in the tests (statuses, sentinel strings, names).
 2. HTTP tests on `127.0.0.1:0` with temp files and a `mkdtemp` database, injected clock and
-   reload calls, cover counterexamples 1-36, every response typed and checked with the contract
+   reload calls, cover counterexamples 1-39, every response typed and checked with the contract
    validators (`validateAdminConfigResponse`, `validateAdminCheckView`,
    `validateAdminConfigExport`).
 3. A reopen test: create database checks (one heartbeat), close, start again with the same
    database and the same file; definitions, revision, heartbeat secret and source are the same.
    Then start with a broken file: the snapshot's file checks are served, a file heartbeat ping with
    its secret is accepted, `file.state` is `invalid`.
-4. Sentinel test: literal header, body and heartbeat secret sentinels are absent from every admin
-   response, the export, audit entries, captured log lines, `/metrics` and error bodies, and from
-   every text column of the database file except `check_definitions.check_json`,
-   `checks.headers_json` and `checks.body` (heartbeat secret: absent everywhere; read the file
-   bytes). Env name sentinels are present in the admin views and the export only.
+4. Sentinel test, one assertion per cell of the table "Where values may appear". Fixture: one
+   database HTTP check and one file HTTP check, each with a literal header sentinel
+   (`lit-db-sentinel-1`, `lit-file-sentinel-1`), an env header (`PULSE_SENTINEL_DB_ENV`,
+   `PULSE_SENTINEL_FILE_ENV`) and a body sentinel (`body-db-sentinel-1`, `body-file-sentinel-1`);
+   one database and one file heartbeat check with the secrets `hb-db-sentinel-0123456789` and
+   `hb-file-sentinel-0123456789`. The sentinels are literals of the test.
+   - Responses and logs: each "no" cell holds for every public read, admin view, admin write
+     response, the export, audit entries, captured log lines, `/metrics`, error bodies and
+     `file.message`. `GET /probe/checks` with a probe token contains both literal sentinels, both
+     body sentinels and both env names, and no `"keep"` key and no heartbeat secret. Admin views
+     contain both env names and `{"keep":true}` for the literal headers and bodies. The export
+     contains both env names and no `"keep"` key.
+   - Storage, read from the column values and from the raw database file bytes after a
+     checkpoint: the database literal and body sentinels are only in `check_definitions.check_json`
+     and `checks.headers_json`/`checks.body`; the file literal and body sentinels are only in
+     `checks.headers_json`/`checks.body` and `config_state.file_snapshot_json`; no column holds a
+     `"keep"` marker. Neither heartbeat secret occurs anywhere in the file bytes;
+     `check_definitions.secret_sha256` equals the hex SHA-256 of `hb-db-sentinel-0123456789`, and
+     `file_snapshot_json` holds the hex SHA-256 of `hb-file-sentinel-0123456789`, both computed in
+     the test with `node:crypto` from the literal (independent of the code under test).
 5. The migration test: a database at step 5 with runtime rows and results migrates to step 6 with
    an empty `check_definitions`, generation `0`, and unchanged results and incidents.
 6. `bun install --frozen-lockfile && bun run check` exits 0. Coverage stays at or above 0.8.
@@ -645,16 +752,23 @@ the file; no import; rollback needs a backup).
 ## Repository: deploy
 
 Files:
-- `e2e/compose-e2e.sh` (change: feature detection, database scenario, read-only step for both api
-  kinds)
-- `e2e/compose.e2e.yaml` (change: comments at lines 10-12 that say the admin routes write the file)
-- `full/compose.yaml` (change: comment at lines 36-37)
-- `full/README.md` (change: line 47)
-- `README.md` (change: the e2e paragraph at line 121 names both paths)
+- `e2e/compose-e2e.sh`
+- `e2e/compose.e2e.yaml`
+- `full/compose.yaml`
+- `full/README.md`
+- `README.md`
 
 Behavior change: yes
 The E2E gains steps and accepts both api kinds; the read-only step changes for an api with
 database checks.
+
+What changes in each file:
+- e2e/compose-e2e.sh: feature detection, the database scenario, the read-only step for both api
+  kinds.
+- e2e/compose.e2e.yaml: the comments at lines 10-12 that say the admin routes write the file.
+- full/compose.yaml: the comment at lines 36-37.
+- full/README.md: line 47.
+- README.md: the e2e paragraph at line 121 names both paths.
 
 If the E2E already detects database checks and runs the database scenario, hold instead of a
 review.
