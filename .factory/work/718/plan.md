@@ -30,6 +30,17 @@ one same-origin script file `/console.js` disables the submit buttons of a form 
 (with JavaScript), every form works without it, and a new single-use form token (Decision 11)
 stops a double submission on the server in both cases. No other script use is added.
 
+Revision after the plan-review of 4 November (P2): the owner decision says every state-changing
+form carries a single-use form token and a replay gets the shared "already submitted" answer.
+The earlier Decision 11 left out setup, sign-in and sign-out. Those exemptions are removed.
+`/setup`, `/setup/owner`, `/sign-in` and `/sign-out` now carry `form_token`. These routes keep
+the order and status of every refused request. They use the token at their commit point,
+directly before their first state change (Decision 11, Required behavior 1a). A replay answers
+`409` `Already submitted`. The rules for setup and sign-in HTML and for existing tests are
+rewritten to allow exactly this change (one hidden field, a token in test request bodies, no
+changed `expect`). pulse-deploy's `e2e/console-setup.sh` posts these forms, and deploy's `dev`
+job builds console `main`, so deploy now has its own section and merges first.
+
 ## Goal
 
 A signed-in user lands on an Overview page inside a shared shell. The shell, the Overview and
@@ -41,8 +52,9 @@ and the states.
 
 ## Scope
 
-Only pulse-console changes. The meta repository changes `docs/approved-packages.md` in this spec
-pull request (see "Dev tooling decision"); no child issue is opened for meta.
+pulse-console changes, and pulse-deploy's e2e script sends the new form field. The meta
+repository changes `docs/approved-packages.md` in this spec pull request (see "Dev tooling
+decision"); no child issue is opened for meta.
 
 - App shell for every signed-in page: header (instance name, signed-in user, role, sign out), a
   main navigation from an ordered registry, a banner slot, the page body.
@@ -61,9 +73,12 @@ pull request (see "Dev tooling decision"); no child issue is opened for meta.
 
 ## Non-goals
 
-- No change to setup, sign-in, sessions, cookies, the CSRF rules, the CSP or the referrer
-  policy. The sign-in page HTML stays as it is; only a CSS change is allowed if the 390 px check
-  needs it.
+- No change to the setup and sign-in flows, sessions, cookies, the CSRF rules, the CSP or the
+  referrer policy. The one change to setup, sign-in and sign-out is the single-use form token
+  that the owner decision of 4 November requires (Decision 11, Required behavior 1a): one hidden
+  field in each form, and one check before the first state change. Apart from that field, the
+  setup and sign-in page HTML stays as it is. A CSS change is allowed if the 390 px check needs
+  it.
 - No role migration and no change of `User.role` (`"owner"` only, `src/account-store.ts:14`,
   `src/database.ts:28`). The four-role type added here is a presentation and route-guard type.
 - No screen of #563, #564, #566, #567, #569 or #572: no Checks, Incidents, Maintenance, Tokens,
@@ -138,7 +153,8 @@ These close the open points of the issue review. Each one is binding for the con
        removes `disabled` and `aria-busy` and clears the busy mark, so a page restored from
        history is usable.
      The file reads no page data, sends no request, and uses no storage or cookie. Setup and
-     sign-in pages do not load it (their HTML stays unchanged, issue constraint).
+     sign-in pages do not load it and have no script element. Their only HTML change is the
+     hidden `form_token` field of Decision 11.
    - Without JavaScript: every form works completely by native submit; the button is not
      disabled while the request runs. CSS never fakes a disabled look on an enabled button.
    - Double submission is stopped on the server in both cases by the form token of Decision 11,
@@ -167,52 +183,69 @@ These close the open points of the issue review. Each one is binding for the con
     does not start with `/__test/` or equals a production route. The fixture implementations
     live in `test/` (outside `src/`, so `Dockerfile:12` never copies them and `.dockerignore`
     lines 9-10 exclude `test`), never in `src/`.
-11. **Single-use form token.** Every form that a protected route renders with `method="post"`
-    carries a hidden field `form_token` next to `csrf`. The session CSRF token is not changed
-    (it stays per session, #562; constraint "no change to sessions").
+11. **Single-use form token on every state-changing form** (owner decision of 4 November: "every
+    state-changing form carries a single-use form token next to the CSRF token"). Every form
+    with `method="post"` carries a hidden field `form_token` directly after `csrf`. This covers
+    every form that a protected route renders, the shell's sign-out form, and the forms of
+    `/setup`, `/setup/owner` and `/sign-in`. No console POST form is exempt. The CSRF tokens do
+    not change: the session CSRF token stays per session and the anonymous CSRF cookie stays as
+    it is (#562; cookie rules unchanged).
     - Value: 32 bytes from `deps.randomBytes`, base64url (43 characters), as the existing
       `newToken` (`src/server.ts:196-198`).
-    - Binding: one token is bound to the session (`sessionDigest(sessionId)`,
-      `src/account-store.ts:48-50`) and to the form's action path (the raw path the form posts
-      to). A page issues one token per form at render time through
-      `request.issueFormToken(actionPath)`; for a `HEAD` it returns an empty string and stores
-      nothing (the body is not sent).
+    - Binding: each token is bound to a binding string and to the form's action path (the raw
+      path the form posts to). There are two kinds of binding:
+      - signed-in forms (protected routes and `/sign-out`): `s:` + `sessionDigest(sessionId)`
+        (`src/account-store.ts:48-50`);
+      - pre-session forms (`/setup`, `/setup/owner`, `/sign-in`): `a:` + the lowercase SHA-256
+        hex of the anonymous CSRF token that the same page puts in its `csrf` field (the
+        value from `ensureCsrf`, `src/server.ts:205-211`).
+      A page issues one token per form at render time (`request.issueFormToken(actionPath)` on
+      protected routes; the server's own pages issue in the same way). For a `HEAD` request it
+      returns an empty string and stores nothing, because the body is not sent.
     - Store: in memory in the server state (`src/form-tokens.ts`, created once per
       `createConsoleServer`), with `now` injected. No database table and no schema change, so
-      it does not collide with the schema 2 of #563. Each entry: token, session digest, path,
-      `issuedAt`, `usedAt` (or none).
-    - Lifetime: `FORM_TOKEN_LIFETIME_MS = 43_200_000` (12 hours) from `issuedAt`; an entry with
-      `now >= issuedAt + 43_200_000` is invalid and removed (on each `issue` and `consume`).
-      A used entry stays until its lifetime ends, so a replay in that time is recognised.
-    - Bounds: at most 100 unused tokens per session (issuing the 101st removes the oldest
-      unused one of that session) and at most 10000 entries in total (issuing beyond that
-      removes the oldest entry). A removed token is simply invalid; it can never be accepted.
-    - Consume: the dispatcher calls `consume(token, sessionDigest, path)` once per protected
-      POST, after the CSRF and role checks and before the handler, in one synchronous step
-      (no `await` between the lookup and setting `usedAt`), so of two concurrent POSTs with
-      one token exactly one is `accepted`. Results:
-      - `accepted`: the entry is marked used and the handler runs;
-      - `replayed`: the entry exists for this session and path and is already used. The
-        handler does not run. The answer is the "already submitted" state (4.11), status
-        `409`;
-      - `invalid`: the field is missing or empty, the token is unknown (for example after a
-        restart), expired, removed, or bound to another session or path. The handler does
-        not run. The answer is the route's form re-rendered with the kept non-secret input, a
-        fresh token and the notice `This form has expired. Your input is kept below. Send it
-        again.`, status `409`.
-    - A token is consumed when the action starts, whatever its outcome. Every answer that shows
-      the form again (422, 409, 412, 503, an api failure) renders it with a fresh token.
-    - Scope: the protected-route dispatcher enforces it for every protected POST route, so every
-      later screen that registers there gets it. `/setup`, `/setup/owner`, `/sign-in` and
-      `/sign-out` keep their code paths (issue constraint); they already refuse a second
-      effect or are harmless twice: a second setup answers `409` `Setup is already complete`
-      (`src/server.ts:510-513`), a second sign-out finds no session and redirects
-      (`:525-530`); a double sign-in can leave one extra session row that no cookie holds,
-      which expires after 30 days idle (`SESSION_IDLE_MS`, `:91`). Routes that #563 adds
-      outside this dispatcher are not migrated here.
-    - Logs, metrics and responses never contain a form token other than the fresh one in the
-      form; a refused token is logged as one `info` `form token refused` with `reason`
-      (`replayed` or `invalid`) and the route path, never the token.
+      it does not collide with the schema 2 of #563. Each entry holds the token, the binding,
+      the path, `issuedAt` and `usedAt` (or none).
+    - Lifetime: `FORM_TOKEN_LIFETIME_MS = 43_200_000` (12 hours) from `issuedAt`. An entry with
+      `now >= issuedAt + 43_200_000` is invalid and is removed (on each `issue`, `consume` and
+      `wasUsed`). A used entry stays until its lifetime ends, so a replay within that time is
+      recognised.
+    - Bounds:
+      - at most 100 unused tokens per binding: issuing the 101st removes the oldest unused
+        token of that binding;
+      - at most 2000 entries with an `a:` binding: issuing beyond that removes the oldest `a:`
+        entry. Anonymous page views can therefore never remove a signed-in token;
+      - at most 10000 entries in total: issuing beyond that removes the oldest entry.
+      A removed token is simply invalid; it can never be accepted.
+    - Consume: `consume(token, binding, path)` runs once per POST, in one synchronous step (no
+      `await` between the lookup and setting `usedAt`). So of two concurrent POSTs with one
+      token, exactly one is `accepted`. Where it runs:
+      - protected routes: in the dispatcher, after the CSRF and role checks and before the
+        handler (Required behavior 1);
+      - `/setup`, `/setup/owner`, `/sign-in`, `/sign-out`: at the commit point, after every
+        existing check of the route and directly before its first state change (Required
+        behavior 1a).
+      Results:
+      - `accepted`: the entry is marked used and the action runs;
+      - `replayed`: the entry exists for this binding and path and is already used. The action
+        does not run. The answer is the "already submitted" state (4.11) with status `409`;
+      - `invalid`: the field is missing or empty, or the token is unknown (for example after a
+        restart), expired, removed, or bound to another binding or path. The action does not
+        run. The answer is the route's form again with the kept non-secret input, a fresh
+        token and the expired notice, with status `409` (Required behavior 1 and 1a).
+    - A token is used up when the action starts, whatever its outcome. Every answer that shows
+      the form again (401, 409, 412, 422, 429, 500, 502, 503, an api failure) renders it with a
+      fresh token.
+    - Existing guards stay as they are. Two submits with two different tokens (two tabs) are
+      not a replay; for setup the database guard still answers the second one with `409`
+      `Setup is already complete` (`src/server.ts:510-513`).
+    - If #563 is on `main` when the console child starts, its state-changing POST forms (for
+      example `/sign-in/factor`, the enrolment, recovery-code and session forms) get the same
+      field and the same commit-point check, each with a replay test. Forms that #563 adds after
+      this child merges are #563's to protect under the same owner rule.
+    - Logs, metrics and responses never contain a form token, except the fresh token in a
+      rendered form. A refused token is logged as one `info` line `form token refused` with
+      `reason` (`replayed` or `invalid`) and the route path, never the token.
 
 ## Dev tooling decision
 
@@ -247,11 +280,57 @@ Protected routes are `/` and every key of `testRoutes`. For them the server appl
 The role check after the CSRF check keeps "CSRF before any other check of the form" and tells a
 cross-site POST nothing. A POST refused at steps 1 to 6 does not consume its form token, so the
 same token still works on a later valid POST. The dispatcher adds `csrf` and `form_token` to the
-known fields of every protected POST route. `/sign-in`, `/sign-out`, `/setup`, `/setup/owner`,
-`/console.css` and the ops routes keep their code paths unchanged. `/console.js` is served like
+known fields of every protected POST route. `/sign-in`, `/sign-out`, `/setup` and `/setup/owner`
+keep their code paths, except for the form-token step of 1a. `/console.css` and the ops routes
+keep their code paths unchanged. `/console.js` is served like
 `/console.css` (`GET`, `HEAD`; the loopback `Host` rule applies; no session needed, in every
 phase). A page result is rendered inside the shell with
 the existing security headers and `cache-control: no-store` (`src/server.ts:57-62`, `:172-178`).
+
+### 1a. Form token on setup, sign-in and sign-out
+
+These routes keep their order and the status of every refused request. Unchanged are: phase,
+loopback `Host`, `readPostForm` (`src/server.ts:341-368`), the grant `403`, the format `422`,
+throttles `429`, wrong code or credentials `401`, the connection test `502`, and the setup
+database guard `409`. The form-token step comes after all of them, directly before the first
+state change. So a failed attempt never uses up a token, and a repeated wrong attempt still
+counts in the throttle. The token field is a known field of each route, so a repeated
+`form_token` is `400` like any repeated field.
+
+| Route | Binding | Commit point (consume runs directly before it) | `invalid` answer (`409`) | `replayed` answer (`409`) link |
+| --- | --- | --- | --- | --- |
+| `POST /setup` | `a:` | after the code matched (`src/server.ts:383-403`), before `gate.createGrant()` (`:406`) | the setup code form, error `This form has expired. Send it again.`, code not refilled | `Open the page again` → `/setup` |
+| `POST /setup/owner`, `action=complete` | `a:` | after the grant, action, field and connection checks (`:444-480`), before `hashPassword` in `commitSetup` (`:497`) | the owner form with the kept `api_url`, `email` and `name`, message `This form has expired. Your input is kept below. Send it again.`, passwords empty | `/setup/owner` |
+| `POST /setup/owner`, `action=test` | `a:` | none: a connection test changes nothing and does not use the token | — | — |
+| `POST /sign-in` | `a:` | after format, throttle admission and credentials (`:542-576`), before `startSession` (`:578`) | the sign-in form with `next` kept, error `This form has expired. Send it again.` | `/sign-in` |
+| `POST /sign-out` with a live session | `s:` | after the session CSRF check (`:531`), before `deleteSession` (`:533`) | a shell page titled `Sign out` with the text `This form has expired. Send it again.` (the header's sign-out form carries a fresh token) | `/` |
+
+- Sign-in with `replayed` or `invalid`: the throttle reservation is released
+  (`admission.attempt.release()`), so it counts as neither a failure nor a success. No auth
+  metric is recorded and no session is started, so the second request has no `Set-Cookie`.
+- Setup code with `replayed` or `invalid`: the reservation is released and no grant cookie is
+  set.
+- The "already submitted" answer of all four routes uses `alreadySubmittedPage(reopenHref)`. It
+  is state 4.11 in the plain document of setup and sign-in, with no shell and no script element.
+  This includes a `/sign-out` replay, because by then the session may already be deleted.
+- `POST /sign-out` without a live session (for example the same request sent again after the
+  first sign-out deleted the session and its cookie). The checks run in this order:
+  1. Origin `403`, content type `415`, body over 8192 bytes `413`, repeated field `400`. There
+     is no CSRF check, because no session token exists to compare.
+  2. If `wasUsed(form_token, "/sign-out")` is true, the answer is `409` with the
+     `alreadySubmittedPage` (link `/sign-in`). `wasUsed` checks only the token and the path,
+     uses nothing up and changes nothing.
+  3. Any other request answers `303` to `/sign-in` without `Set-Cookie`, as today.
+
+  This is a deliberate change: without a session, a bad Origin answered `303` before and
+  answers `403` now. In both cases nothing changes.
+- After setup completes, `POST /setup` and `POST /setup/owner` still answer `404` from the
+  phase rule (`src/server.ts:618-622`) before any form step. The route is closed, so a replay
+  there gets `404`, as deploy `e2e/console-setup.sh:116-120` expects.
+- Rendering: each of the four pages renders `formTokenField(token)` directly after
+  `csrfField`. On setup and sign-in pages the HTML differs from today by exactly that one line
+  `<input type="hidden" name="form_token" value="<43 characters>">`, and by the notice line
+  when the answer is `invalid`.
 
 ### 2. Shell (`src/shell.ts`)
 
@@ -262,8 +341,9 @@ page title and the body. It renders:
 - a "Skip to content" link as the first focusable element, targeting `#main`;
 - `<header>` with the instance name, `Signed in as <name> (<email>)` (this text stays: deploy
   `e2e/console-setup.sh:143` greps `Signed in as`), `Role: <Owner|Admin|Member|Viewer>`, and the
-  existing sign-out form (`POST /sign-out`, hidden `csrf`, no form token: the route keeps its
-  code path), whose button is a `submitButton` with busy label `Signing out…`;
+  existing sign-out form (`POST /sign-out`, hidden `csrf` and `form_token` with an `s:`
+  binding, Required behavior 1a), whose button is a `submitButton` with busy label
+  `Signing out…`;
 - `<nav aria-label="Main">` with a list of the visible registry entries; the current entry has
   `aria-current="page"`;
 - the banner slot, then `<main id="main">` with one `<h1>`;
@@ -274,7 +354,9 @@ page title and the body. It renders:
 Every value goes through kit `escapeHtml`. The document head and the field helpers move from
 `src/pages.ts` to `src/html.ts` so pages, shell, states and confirmations share them; the head
 helper takes a flag for the script element, which only the shell sets. Setup and sign-in output
-stays byte-identical, without a script element (existing tests stay green unchanged).
+has no script element. It is byte-identical to today except for the one `form_token` line of
+Required behavior 1a and the expired notice of an `invalid` answer. The existing assertions
+stay green; the test rule is in the Files list of the console section.
 
 ### 3. Overview (`/`)
 
@@ -365,9 +447,12 @@ leading word in text.
     shell, rendered by the dispatcher for a `replayed` form token (Decision 11): heading
     `Already submitted`, text `This form was already sent. Nothing was changed by this
     request.`, and a link `Open the page again` to `reopenHref` (the request path when the
-    route allows GET, else `/`). The kept-input notice for an `invalid` token is the exported
-    constant `formExpiredNotice` (`This form has expired. Your input is kept below. Send it
-    again.`), shown above the re-rendered form like the other notices.
+    route allows GET, else `/`). `alreadySubmittedPage(reopenHref)` is the same state in the
+    plain document for setup, sign-in and a sign-out without a session (Required behavior
+    1a). The notice for an `invalid` token is the exported constant `formExpiredNotice`
+    (`This form has expired. Your input is kept below. Send it again.`), shown above the
+    re-rendered form like the other notices. Forms that keep no input (setup code, sign-in,
+    sign-out) use `formExpiredResendNotice` (`This form has expired. Send it again.`).
 
 ### 5. Confirmations (`src/confirm.ts`)
 
@@ -434,15 +519,16 @@ does not run the console, so the two reads per Overview page view (`GET /admin/c
 not budgeted: the image is unchanged in content apart from new `src/*.ts` modules (dev packages
 stay out, checked by the image job); `bun test` time grows by the new server tests (a few
 seconds at most). The form-token store is bounded at 10000 entries of about 200 bytes each
-(token, digest, path, two numbers), so at most about 2 MiB of console RSS in the worst case and
-a few KiB in normal use; `/console.js` is a static string of well under 2 KiB. No measurement
+(token, binding, path, two numbers), so at most about 2 MiB of console RSS in the worst case
+(anonymous sign-in and setup page views fill at most 2000 of them) and a few KiB in normal use.
+Each form page view adds one 32-byte random draw and one SHA-256 of a 43-character string; `/console.js` is a static string of well under 2 KiB. No measurement
 run is needed; the implementer reports the `bun run test` duration before and after in the pull
 request.
 
 ## Security impact
 
 Security impact: yes
-New authenticated routes, a role guard, a single-use form token, a same-origin script, error texts built from upstream answers, new dev dependencies and a new CI job.
+New authenticated routes, a role guard, a single-use form token on every POST form including setup, sign-in and sign-out, a same-origin script, error texts built from upstream answers, new dev dependencies and a new CI job.
 
 Checklist items that apply:
 
@@ -468,27 +554,55 @@ Checklist items that apply:
   in any response is exactly `<script src="/console.js" defer></script>` in shell pages; no
   inline script, no `on…=` attribute, no page data in the script. Setup and sign-in pages
   have no script element.
-- **Replay and double submission**: the single-use form token of Decision 11, bound to the
-  session digest and the action path, consumed synchronously after CSRF and role, 12-hour
-  lifetime, bounded store; the token never appears in a log or metric; a token of another
-  session or path is `invalid`. CSRF protection stays the session CSRF token; the form token
-  adds no CSRF exemption.
+- **Replay and double submission**: the single-use form token of Decision 11 is on every POST
+  form, including setup, sign-in and sign-out. It is bound to the session digest (`s:`) or to
+  the anonymous CSRF token's digest (`a:`) and to the action path. It is used up synchronously
+  after CSRF and role (protected routes) or directly before the first state change (setup,
+  sign-in, sign-out). It has a 12-hour lifetime and a bounded store. The token never appears in
+  a log or metric. A token of another binding or path is `invalid`. CSRF protection stays the
+  existing CSRF tokens; the form token adds no CSRF exemption. On sign-in the token step comes
+  after the credential check and releases the throttle reservation, so a replay neither starts
+  a session nor counts as a failure that could lock the owner out. The only route that reads a
+  token without CSRF is a sign-out without a session: `wasUsed` changes nothing and only tells
+  the holder of that token whether it was used.
+- **Store flooding**: unauthenticated `GET /sign-in` and `GET /setup` issue `a:` tokens. They
+  are capped at 2000 entries and never remove an `s:` entry. A flood can at worst remove an
+  open anonymous form's token. That form then answers `invalid` and is shown again; a removed
+  token is never accepted.
 
 The security state after review should try hostile inputs: `next` values (`//evil.example`,
 `/\evil`, 513 characters, control characters), forged `expected`, `role`, `revision` fields,
 replayed, concurrent, cross-session, cross-path, expired, empty and repeated `form_token`
-fields, 101 form views in one session and 10001 in total,
+fields, 101 form views in one session, 2001 anonymous sign-in page views and 10001 in total,
+replayed and concurrent sign-in, setup code, setup completion and sign-out POSTs, a sign-out
+replay without a session cookie, a sign-in form token posted to `/setup`,
 cross-origin and `Origin: null` POSTs to confirmations, a POST with an expired session, an api
 that redirects, answers 401/403/429/503, a 6 MiB body, invalid JSON, a wrong wire header, and
 HTML in user names and upstream status contexts.
 
 ## Rollout order
 
-One repository: only pulse-console changes. It keeps the contract pin `176fb6e` (already
-contract `main`) and needs no api change. pulse-deploy's `e2e/console-setup.sh` keeps working:
-`GET /` still answers `200` with `Signed in as` after sign-in, and an api failure renders inside
-that `200` page. Older pulse-api releases keep working: `validateAdminConfigSummary` accepts 1.x
-and 2.0.0 answers (`contract/src/validate-admin.ts:141-147`) and `GET /checks` is unchanged.
+Two repositories, deploy first:
+
+1. **pulse-deploy** merges its `e2e/console-setup.sh` change. Every POST of the script sends the
+   `form_token` of the page it read `csrf` from, but only when that page has one. Deploy's
+   `dev` job runs on every pull request, push and daily (`deploy/.github/workflows/ci.yml:3-10`).
+   It builds console `main` (`:213-215`) and runs the script (`:225`). Today's console `main`
+   renders no `form_token`, so the script sends none and runs as today. Its replay step prints
+   that it was skipped. The `full` stack does not run the script (`deploy/README.md:128`), so
+   no image pin moves.
+2. **pulse-console** merges second (`dependsOn: deploy`). After the merge, deploy's next `dev`
+   run builds the new console. The script finds `form_token` on each page, sends it, and its
+   replay step expects `409`. Had console merged first, deploy's `dev` job would fail at
+   step 4 (`POST /setup` without a token answers `409`, not `303`).
+
+Older consumers: the console keeps the contract pin `176fb6e` (already contract `main`) and
+needs no api change. `GET /` still answers `200` with `Signed in as` after sign-in, and an api
+failure renders inside that `200` page. Older pulse-api releases keep working:
+`validateAdminConfigSummary` accepts 1.x and 2.0.0 answers
+(`contract/src/validate-admin.ts:141-147`), and `GET /checks` is unchanged. A browser that has a
+sign-in or setup page open from before the console update posts without `form_token`. It gets
+`409` with the form again and a fresh token, and the next submit works.
 
 Integration with in-flight work: #563 (2FA, sessions) and #564 (roles) may land before this
 child. If #563 is on main first, the dispatcher's session step uses its "fully signed in" check,
@@ -498,7 +612,12 @@ in Decision 2. Neither is redone here. The form token is in memory and adds no t
 child takes no schema version and cannot conflict with the schema 2 migration of #563; a
 restart only makes open forms `invalid` (re-rendered with kept input). The `PathLabel` union
 (`src/metrics.ts:4-14`) gains `/console.js`; #563 adds its own labels to the same union, which
-is a textual merge, resolved with `factory start --workflow merge` if it conflicts.
+is a textual merge, resolved with `factory start --workflow merge` if it conflicts. #563's
+deploy child also edits `e2e/console-setup.sh` (flow detection, `two-factor` flow). If it is on
+deploy `main` first, the form-token rule covers every POST of both flows. If #563 changes
+`postSignIn` or `commitSetup` first, the commit point stays "directly before the first state
+change" (before its session creation or its setup transaction). The form token is placed there,
+not redone elsewhere.
 
 ## Counterexamples
 
@@ -551,7 +670,24 @@ is a textual merge, resolved with `factory start --workflow merge` if it conflic
 | Form token | 101 tokens issued in one session, then POST with the first | 409 expired notice (evicted) | accepted |
 | Form token | POST with a valid token and a wrong `csrf`, then the same token with the right `csrf` | first 403 `Request refused`; second accepted, recorder 1 | second refused (token consumed by a refused POST) |
 | Form token | a valid POST of the 409 stale-state fixture, then a fresh submit of the re-rendered form | second POST is not `replayed` (its form carries a new token) | `Already submitted` |
+| Form token | 2001 `GET /sign-in` without cookies, then a POST with a shell form's `s:` token issued before them | `s:` token accepted; the first `a:` token `invalid` | the `s:` token evicted |
+| Sign-in replay | correct sign-in POST (`csrf`, `form_token`, `email`, `password`, `next`) sent twice with the same cookies | first `303` with a session `Set-Cookie`; second `409` `Already submitted`, no `Set-Cookie`, still 1 session row | second `303` and a second session row |
+| Sign-in concurrent | the same correct sign-in body twice with `Promise.all` | one `303`, one `409`; 1 session row; auth metric `result="success"` 1 | two sessions |
+| Sign-in without token | correct credentials, no `form_token` | `409` with `This form has expired. Send it again.`, `next` kept, 0 session rows, no `failure` counted; then a fresh-token sign-in `303` | `303`, or a `401` that counts toward the lock |
+| Sign-in failures | wrong password 5 times with one and the same `form_token` | `401` ×5 (each counted, the token is not used up), then a correct sign-in `429` | `409` after the first, or no lock |
+| Sign-in binding | sign-in token issued under anonymous CSRF A, POST with CSRF cookie and field B | `409` expired notice, 0 sessions | `303` |
+| Cross path | `form_token` from the `/sign-in` page posted with a correct setup code to `/setup` | `409` expired notice, no grant cookie | `303` |
+| Setup code replay | correct setup code POST sent twice | first `303` with `pulse_console_setup` cookie; second `409` `Already submitted`, no `Set-Cookie` | a second grant |
+| Setup complete replay | the same `action=complete` body twice with `Promise.all` | one `303`, one `409` `Already submitted`; 1 user | two commits |
+| Setup complete, two tokens | two `complete` bodies with two different tokens at once | one `303`, one `409` `Setup is already complete` (database guard, unchanged) | two owners |
+| Setup after completion | the completing body sent again after the `303` | `404` `not found` (phase rule) | `409` or a second owner |
+| Setup test action | `action=test` twice with one token | `200` both times (not used up) | `409` |
+| Sign-out replay | sign-out POST, then the same body again with the old session cookie, and again with no session cookie | `303` `/sign-in`; then `409` `Already submitted` twice; 0 session rows | `303` hides the replay, or a `500` |
+| Sign-out concurrent | the same sign-out body twice with `Promise.all` | one `303`, one `409` | two `303` |
+| Sign-out without session | no session, no `form_token`, valid Origin | `303` `/sign-in`, no `Set-Cookie` (unchanged) | `409` or `403` |
+| Sign-out without session | no session, `Origin: http://evil.example` | `403` `Request refused` (changed from `303`; nothing changes either way) | a body read without the Origin check |
 | Script scope | any console response body | `<script` appears only as `<script src="/console.js" defer></script>` and only in shell pages; no `on…=` attribute | an inline script, or a script element on sign-in or setup |
+| Frozen HTML | `GET /sign-in` today and after the change, with the `form_token` line removed and the CSRF value fixed | identical bodies | any other change |
 | Script route | `GET /console.js` | 200, `content-type: text/javascript; charset=utf-8`, the CSP header unchanged | 404, or `text/plain` blocked by `nosniff` |
 | Mobile | 254-character email at 390 px | `scrollWidth` ≤ 390 | 600 |
 | Secret field | 409 after POST with `secret=s3cret-sentinel` | the response does not contain `s3cret-sentinel` | the secret refilled |
@@ -576,14 +712,20 @@ for n in '__test' 'confirm_name' 'instanceName' 'ConsoleRole' 'hasRole' 'roleOf'
   'summarizeChecks' 'overallState' 'check:browser' 'form_token' 'formTokenField' \
   'createFormTokens' 'FormTokens' 'issueFormToken' 'FORM_TOKEN_LIFETIME_MS' 'form token refused' \
   'alreadySubmittedState' 'formExpiredNotice' 'renderForm' 'CONSOLE_JS' 'console.js' \
-  'data-busy-label' 'aria-busy' 'wireLabel' 'revision'; do
+  'data-busy-label' 'aria-busy' 'wireLabel' 'revision' 'formExpiredResendNotice' 'wasUsed' \
+  'alreadySubmittedPage'; do
   printf '%s: ' "$n"
   grep -rn -- "$n" .repos/contract/src .repos/config/src .repos/config/bin .repos/console/src | wc -l
 done
+for n in 'form_token' 'formExpiredResendNotice' 'wasUsed' 'alreadySubmittedPage'; do
+  printf '%s: ' "$n"; grep -rn -- "$n" .repos/deploy/e2e .repos/deploy/scripts | wc -l
+done
 ```
 
-Result (rerun in this revision with the form-token and script names added): `0` for every
-name except two that are reused on purpose:
+Result (rerun in this revision with `formExpiredResendNotice`, `wasUsed` and
+`alreadySubmittedPage` added; the second loop covers deploy at `e3c2eb5`, whose e2e script
+gains `form_token`): `0` for every name in both loops, except two console names that are reused
+on purpose:
 
 - `wireLabel`: `2` hits, both in `console/src/connection-test.ts:40` and `:77`. It is the same
   private console function; moving it to `src/api-failure.ts` and importing it back is a move,
@@ -605,21 +747,80 @@ name except two that are reused on purpose:
 New routes: the production route `GET`/`HEAD` `/console.js` (0 hits above) and the `/__test/…`
 paths of Required behavior 6 (test-created servers only). New metrics label value: `path` gains
 `/console.js`. Other new names outside source code: CI job `browser`, folders `test/` and
-`e2e/`, the flag `--serve` of `e2e/run.ts`. Fixture fields `choice`, `action`, `note`, `secret`
+`e2e/`, the flag `--serve` of `e2e/run.ts`, and in deploy the step `8b` and the helper
+`form_token_args` of `e2e/console-setup.sh` (0 hits for `form_token` in deploy above). Fixture fields `choice`, `action`, `note`, `secret`
 live in `test/` only.
+
+## Repository: deploy
+
+Files:
+- `e2e/console-setup.sh` (sends `form_token` when the page has one; new replay step 8b)
+- `README.md` (the paragraph on `e2e/console-setup.sh`, `README.md:128`, names the form token and
+  the replay step)
+
+Behavior change: yes
+The console e2e script sends a new form field and gains a replay check.
+
+### Verified tool facts
+
+- CI `.github/workflows/ci.yml:34-37` runs `shellcheck -x` and `bash -n` on every tracked `*.sh`.
+  The `dev` job (`:179`) runs on `pull_request`, `push` to `main`, `workflow_dispatch` and
+  daily (`:3-10`). It checks out console `main` (`:213-215`) and runs
+  `bash e2e/console-setup.sh dev/compose.yaml` (`:225`).
+- The script reads `csrf` with `sed` from the last response body (`e2e/console-setup.sh:50-55`).
+  It posts with `req` (`:41-48`), prints only `ok:` lines and never prints a token
+  (`:5`).
+
+### Behavior
+
+- A helper `form_token_args` reads the `form_token` value from the same body as `csrf()`, with
+  the same `sed` pattern (`name="form_token" value="…"`, first match). When the value is not
+  empty, every POST that uses that `csrf` gets `--data-urlencode "form_token=<value>"`. When
+  the page has no such field (console `main` before this feature), nothing is added and the POST
+  is byte-identical to today. This covers every POST: steps 3, 4, 5 and 6 (`owner_post`), 7
+  and `sign_in`. If #563's deploy change is on `main` first, it also covers each POST of its
+  `two-factor` flow. The value is never printed.
+- Steps 3 and 5 already read `csrf` again from the answer. The form token is read again at the
+  same places, because each answer that shows a form carries a fresh one.
+- New step 8b, right after the successful step 8 sign-in. If the step-8 sign-in sent a form
+  token, the script sends the identical POST again: same jar, same fields, same `form_token`.
+  It expects status `409` and the body text `Already submitted`, and prints
+  `ok: 8b POST /sign-in replay 409 Already submitted`. If no form token was sent, it prints
+  `ok: 8b replay check skipped: console without form_token`. Step 8's `GET /` check then runs
+  as today: it still answers `200` with `Signed in as`, because the replay did not end the
+  session.
+- No other step, status or text changes.
+
+### Checks
+
+1. `git ls-files -z '*.sh' | xargs -0 shellcheck -x` and `... | xargs -0 -n 1 bash -n` exit `0`
+   (the CI lint commands, `ci.yml:34-37`).
+2. The deploy pull request's `dev` job is green against console `main` without form tokens. Its
+   log has the literal line `ok: 8b replay check skipped: console without form_token`, and every
+   other `ok:` line of today.
+3. The token path is proven later, by the console child (console check 14). It runs this script
+   from deploy `main` against the console branch and gets the literal line
+   `ok: 8b POST /sign-in replay 409 Already submitted`. The console branch does not exist while
+   this child runs (`dependsOn`).
+
+### Completion evidence
+
+The pull request lists the shellcheck output and the `dev` job result with the skip line.
 
 ## Repository: console
 
 Files:
-- `src/server.ts` (protected-route dispatcher with the form-token step, Overview at `/`, shell
-  404, `/console.js`, `testRoutes` and `roleOf` deps)
+- `src/server.ts` (protected-route dispatcher with the form-token step, the form-token step of
+  `/setup`, `/setup/owner`, `/sign-in` and `/sign-out` (Required behavior 1a), Overview at `/`,
+  shell 404, `/console.js`, `testRoutes` and `roleOf` deps)
 - `src/main.ts` (passes `instanceName`; still no `testRoutes` and no `roleOf`)
 - `src/html.ts` (new: document head with the script flag, `csrfField`, `formTokenField`,
   `field`, `textarea` field, `submitButton`, `formErrorSummary`, moved from `src/pages.ts`)
 - `src/form-tokens.ts` (new: `createFormTokens`, `FormTokens`, `FORM_TOKEN_LIFETIME_MS`)
 - `src/console-script.ts` (new: `CONSOLE_JS`, the static script text served at `/console.js`)
 - `src/metrics.ts` (`PathLabel` gains `/console.js`)
-- `src/pages.ts` (setup and sign-in pages import from `src/html.ts`; `landingPage` removed)
+- `src/pages.ts` (setup and sign-in pages import from `src/html.ts`, take a `formToken` and
+  render `formTokenField` after `csrfField`; `alreadySubmittedPage`; `landingPage` removed)
 - `src/shell.ts` (new)
 - `src/navigation.ts` (new: registry, `visibleNavigation`)
 - `src/roles.ts` (new: `ConsoleRole`, `hasRole`, role labels)
@@ -637,17 +838,13 @@ Files:
 - `src/server.overview.test.ts`, `src/server.states.test.ts`, `src/server.confirm.test.ts`,
   `src/server.form-token.test.ts` (new)
 - `src/server.test.ts` (`depsFor` at `:41` gains `instanceName`; new cases added),
-  `src/server.setup.test.ts` (the `createConsoleServer` call at `:102` gains `instanceName`),
-  `src/server.sign-in.test.ts` (call at `:94` gains `instanceName`; new cases added),
-  `src/server.security.test.ts` (call at `:62` gains `instanceName`; new cases added),
+  `src/server.setup.test.ts` (the `createConsoleServer` call at `:102` gains `instanceName`;
+  the `Client.post` helper at `:172-191` sends a `form_token`),
+  `src/server.sign-in.test.ts` (call at `:94` gains `instanceName`; the `Client.post` and
+  `signIn` helpers at `:163-187` send a `form_token`; new cases added),
+  `src/server.security.test.ts` (call at `:62` gains `instanceName`; raw `send` bodies that
+  must reach a commit point gain a `form_token`; new cases added),
   `src/main.startup.test.ts` (new case for `/__test/` on `bun src/main.ts`)
-
-Rule for these five existing test files: the allowed edits are the constructor wiring (one
-`instanceName: "pulse Console"` line per call above, the only change in
-`src/server.setup.test.ts`) and new `test(...)` cases. No existing `expect` is removed, loosened
-or changed. If an existing assertion fails because `GET /` now reads pulse-api, that is a defect
-of the implementation to fix in `src/`; if it cannot be fixed there, the implementer requests a
-hold instead of changing the assertion.
 - `test/fixture-routes.ts`, `test/fake-api.ts` (new, test only)
 - `e2e/run.ts`, `e2e/tsconfig.json` (new, Chromium checks)
 - `package.json`, `bun.lock` (dev dependencies, `check:browser`, `typecheck` with `-p e2e`)
@@ -656,7 +853,42 @@ hold instead of changing the assertion.
 - `README.md`, `docs/configuration.md`, `docs/development.md`, `AGENTS.md`
 
 Behavior change: yes
-New signed-in shell and Overview at `/`, a shell 404, new renderers, the `/console.js` route, a single-use form token on protected POSTs and a new CI job.
+New signed-in shell and Overview at `/`, a shell 404, new renderers, the `/console.js` route, a single-use form token on every POST form (protected routes, setup, sign-in, sign-out) and a new CI job.
+
+### Rule for the existing test files
+
+This rule covers the five existing test files above. Only these edits are allowed:
+
+1. Constructor wiring: one `instanceName: "pulse Console"` line per call listed above.
+2. Form tokens in requests. Today's tests post success paths (setup code, owner `complete`,
+   sign-in, sign-out) without a form token, and those would now answer `409`. So:
+   - The request helpers (`Client.post`, `signIn`) send a fresh `form_token` with each POST.
+     They get it from a GET of the page that renders that form, sent with only the cookies the
+     form needs:
+     - `/setup`: the anonymous CSRF cookie;
+     - `/setup/owner`: the CSRF and setup cookies;
+     - `/sign-in`: only the anonymous CSRF cookie, so an expired or live session cookie is not
+       sent and not cleared;
+     - `/sign-out`: a GET `/` with the session cookie.
+     The helper reads the token with `/name="form_token" value="([^"]+)"/` and does not store
+     cookies from that GET. A helper that finds no token sends none. A fresh token per POST
+     keeps today's results: for example, the two concurrent completions at
+     `src/server.setup.test.ts:633-656` carry two tokens and still give `303` and `409`
+     `Setup is already complete`.
+   - Raw `send` bodies in `src/server.security.test.ts` that must reach a commit point (the
+     `303` unlocks at `:179-190`, `:286` and `:321`) gain `&form_token=<token>`, taken from a
+     GET `/setup` with the same cookie.
+3. New `test(...)` cases.
+
+No existing `expect` is removed, loosened or changed: `git diff main -- <these files>` has no
+removed line that contains `expect(` (console check 9). Required behavior 1a keeps the order
+and status of every refused request, so a request that was refused before the token step still
+gets today's answer.
+
+If an existing assertion still fails, that is a defect of the implementation, to fix in `src/`.
+Examples: an assertion that fails because `GET /` now reads pulse-api, or because a helper GET
+moved a count. If it cannot be fixed in `src/`, the implementer requests a hold instead of
+changing the assertion.
 
 ### Verified tool facts
 
@@ -707,10 +939,17 @@ this repository:
   notice, without any action. The dispatcher calls `renderForm` for an `invalid` form token and
   answers its result with status `409`. `PageRequest` carries the user, role, session CSRF
   token, parsed fields (POST), query, and `issueFormToken(actionPath): string`.
-- `createFormTokens({ now, randomBytes })` returns `issue(sessionDigest, path): string` and
-  `consume(token, sessionDigest, path): "accepted" | "replayed" | "invalid"`, with the
-  lifetime and bounds of Decision 11 as named constants. It holds a `Map`; it does no I/O and
-  uses no timer (expiry is checked against `now()` on each call).
+- `createFormTokens({ now, randomBytes })` returns three functions:
+  - `issue(binding, path): string`;
+  - `consume(token, binding, path): "accepted" | "replayed" | "invalid"`;
+  - `wasUsed(token, path): boolean`, which uses nothing up.
+  The lifetime and the three bounds of Decision 11 are named constants. The store holds a
+  `Map`, does no I/O and uses no timer: expiry is checked against `now()` on each call. The
+  server builds the binding (`s:` + session digest, `a:` + SHA-256 hex of the anonymous CSRF
+  token with `node:crypto` `createHash`, as `sessionDigest` does).
+- Setup, sign-in and sign-out follow Required behavior 1a, inside their existing functions
+  (`postSetupCode`, `postSetupOwner`/`commitSetup`, `postSignIn`, `postSignOut`). They do not
+  move into the dispatcher.
 - Module size: one responsibility per module (AGENTS.md "Code design"); cognitive complexity at
   most 15 per function (shared lint).
 - `e2e/run.ts` is a plain Bun script (`bun e2e/run.ts`, not `*.test.ts`, so `bun test` does not
@@ -733,6 +972,8 @@ this repository:
   `GET /__test/states/empty` on the running container answers `404`.
 - Docs: README "What works now" and the endpoint table (`/`, unknown path signed in);
   `docs/configuration.md` HTTP routes (protected-route order including the form-token step,
+  the commit-point token step of setup, sign-in and sign-out with their `409` answers, the
+  `403` of a sign-out without a session and with a bad Origin,
   `/console.js`, Overview reads, the log lines `api read failed` and `form token refused`, the
   busy button with and without JavaScript, the form-token lifetime and bounds and that a
   restart makes open forms expire); `docs/development.md` code layout, the `test/` and `e2e/`
@@ -799,13 +1040,33 @@ Every expected value below is a literal written in this spec or in the test.
    path `invalid`; `invalid` at `issuedAt + 43_200_000`, `accepted` at `issuedAt +
    43_199_999`; the 101st `issue` in one session makes the first token `invalid` while the
    second stays valid; with 10000 entries in total the next `issue` makes the oldest entry
-   `invalid`; an unknown and an empty token are `invalid`.
+   `invalid`; with 2000 `a:` entries the next `a:` `issue` makes the oldest `a:` entry
+   `invalid` while an older `s:` entry stays `accepted`; an unknown and an empty token are
+   `invalid`; `wasUsed` is `false` before `consume`, `true` after it for the same path, `false`
+   for another path, and `false` at `issuedAt + 43_200_000`.
 7b. `src/server.form-token.test.ts` (real server, fixtures): every form-token row of
    Counterexamples over HTTP, with literal statuses `200`, `303`, `403` and `409`, the literal
    texts `Already submitted` and `This form has expired. Your input is kept below. Send it
    again.`, and the recorder count (0 or 1) after each case; two POSTs started together with
    `Promise.all` give exactly one `200` and one `409`; a captured log shows `form token
    refused` with `reason` `replayed` and `invalid` and never the token value.
+7c. `src/server.form-token.test.ts`, setup, sign-in and sign-out (real server, temp database,
+   fake api): every row of Counterexamples from "Sign-in replay" to "Sign-out without session".
+   The test checks these literals: statuses `303`, `200`, `401`, `403`, `404`, `409` and `429`;
+   the texts `Already submitted`, `This form has expired. Send it again.`, `Setup is already
+   complete` and `not found`; the session row count (0 or 1, `SELECT id_digest FROM sessions`
+   as `src/server.sign-in.test.ts:194-199`); the user count (1); and whether a `Set-Cookie`
+   header is present.
+   - After a sign-in replay, `/metrics` contains
+     `pulse_console_auth_attempts_total{kind="sign-in",result="success"} 1` and no
+     `result="failure"` line.
+   - `GET /sign-in`, `GET /setup` and `GET /setup/owner` (with grant) contain exactly one match
+     of `/<input type="hidden" name="form_token" value="[A-Za-z0-9_-]{43}">/`, directly after
+     the `csrf` field. Two GETs give two different values.
+   - With that line removed, the `GET /sign-in` body (fixed CSRF cookie) equals a literal HTML
+     string written in the test. The test author copies that string from console `main`'s
+     `signInPage` output with the same CSRF; it is not generated from the code under test.
+   - `HEAD /sign-in` answers `200` with an empty body.
 8. `bun run check:browser` (CI job `browser`): at 390 px every page of Required behavior 7 has
    `scrollWidth ≤ 390`; axe reports 0 violations for tags `wcag2a`, `wcag2aa`, `wcag21a`,
    `wcag21aa`, `wcag22aa` on sign-in, Overview, the shell 404, 403, one typed and one plain
@@ -823,11 +1084,12 @@ Every expected value below is a literal written in this spec or in the test.
    `action` is `go` (the submitter value survived); the browser console reports 0 CSP
    violations on every page; Tab from the top reaches the skip link first, then the sign-out
    button and the Overview link, each with a computed `outline-style` other than `none`.
-9. Existing tests stay green under the rule of the Files list (wiring and new cases only):
-   `src/server.setup.test.ts`, `src/server.sign-in.test.ts` (including `Signed in as Owner
-   &lt;Sentinel&gt;`, the API origin and `action="/sign-out"` on `/`), `src/server.test.ts`,
+9. Existing tests stay green under "Rule for the existing test files": `src/server.setup.test.ts`,
+   `src/server.sign-in.test.ts` (including `Signed in as Owner &lt;Sentinel&gt;`, the API
+   origin and `action="/sign-out"` on `/`), `src/server.test.ts`,
    `src/server.security.test.ts`, and the setup texts of `src/connection-test.test.ts`.
-   `git diff main -- src/server.setup.test.ts` shows only added `instanceName` lines.
+   `git diff main -- src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts
+   src/server.security.test.ts src/main.startup.test.ts | grep -c '^-.*expect('` prints `0`.
 10. CI `docker` job: the extended dev-path loop passes and `/__test/states/empty` answers `404`
     in the container.
 11. Manual smoke (AGENTS.md "End-to-end checks"): `PULSE_API_URL=http://localhost:3000 bun start`
@@ -845,13 +1107,34 @@ Every expected value below is a literal written in this spec or in the test.
     still holds 1 action. (Going back re-fetches the `no-store` page with a fresh token, so it
     is not a replay.) The pull request lists the agent-browser commands
     and results.
+14. Deploy e2e against this branch. Use deploy `main`, which has the deploy child of this spec
+    merged. Set `PULSE_SRC_DIR` so that deploy `dev/compose.yaml:89` builds this console
+    branch. Then run, from the deploy checkout: `scripts/init-secrets.sh`,
+    `docker compose -f dev/compose.yaml up -d --build`,
+    `scripts/wait-ready.sh dev/compose.yaml 900` and
+    `bash e2e/console-setup.sh dev/compose.yaml`. The run exits `0`, prints every `ok:` line of
+    steps 1 to 10, and includes the literal line
+    `ok: 8b POST /sign-in replay 409 Already submitted`. Without this run, deploy's daily `dev`
+    job would be the first to see the token flow after the merge.
 
 ### Completion evidence
 
-The pull request lists: `bun run check` output summary (tests, coverage), `bun run
-check:browser` output (`ok:` lines), the green CI jobs `check`, `docker` (both legs) and
-`browser`, the manual smoke commands and results, the agent-browser commands and results of
-check 13, `bun run test` duration before and after, and the known limits: without JavaScript
-the button is not disabled while the request runs (the form token still refuses a second
-effect); open forms expire after 12 hours or a console restart and are re-rendered with the
-kept input; setup, sign-in and sign-out carry no form token (issue constraint, Decision 11).
+The pull request lists:
+- the `bun run check` output summary (tests, coverage);
+- the `bun run check:browser` output (`ok:` lines);
+- the green CI jobs `check`, `docker` (both legs) and `browser`;
+- the manual smoke commands and results;
+- the agent-browser commands and results of check 13;
+- the deploy e2e commands and output of check 14;
+- the `bun run test` duration before and after.
+
+It also lists the known limits:
+- Without JavaScript, the button is not disabled while the request runs. The form token still
+  refuses a second effect.
+- Open forms, including an open sign-in or setup page, expire after 12 hours or a console
+  restart. They are shown again with the kept input.
+- After setup completes, a replayed setup POST gets the phase `404`, not `Already submitted`
+  (Required behavior 1a).
+- A sign-out without a session and with a bad Origin now answers `403` instead of `303`.
+- State-changing forms that #563 adds after this merge must add the token themselves
+  (Decision 11).

@@ -1,1 +1,1 @@
-[{"name":"console","dependsOn":[]}]
+[{"name":"deploy","dependsOn":[]},{"name":"console","dependsOn":["deploy"]}]
