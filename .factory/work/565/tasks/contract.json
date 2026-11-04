@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Contract 2.0.0 validates lossless admin saves, file state and redacted exports",
+      "title": "Contract 2.0.0 defines lossless admin saves, file status and safe exports",
       "files": [
         "src/admin.ts",
         "src/validate-admin.ts",
@@ -22,7 +22,7 @@
         "dist/index.d.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all Behavior bullets, Checks 1-4 and Completion evidence; Contract fields table; Required behavior 8 and 12-19, 23-25, 33-35 at the schema boundary; Security impact checklist for strict validators, own-data/accessor safety and response redaction. Implement all named sources, keep marker, input/view, file status and export schemas/types/validator and status-order text in the existing admin modules and explicit index exports. Reuse the shared check refinements and header limits; a keep marker contributes 0 literal bytes. Every database view, for all six check types, validates unchanged as input; source accepts database only in input and hasSecret accepts true on heartbeat only. Export checks reject secret, source, hasSecret and markers; redacted, when present, is nonempty. Cover counterexamples 7-15, 18 and 31-33 at schema level. Document the applied-file plus database revision, permissions, new shapes, markers and statuses. Bump package version from 1.7.0 to 2.0.0, keep WIRE_VERSION 1 and add no module file. Regenerate and commit only the six listed dist files. If the starting code already has source on check views and keep markers, follow the section's needs-input hold condition.",
+      "spec": "## Repository: contract, all Behavior bullets, Checks 1-4 and Completion evidence; Contract fields table; Required behavior 8 and 12-19, 23-25, 33-35 at the schema boundary; Security impact checklist for strict validators, own-data/accessor safety and response redaction. Implement all named sources, keep marker, input/view, file status and export schemas/types/validator and status-order text in the existing admin modules and explicit index exports. Reuse the shared check refinements and header limits; a keep marker contributes 0 literal bytes. Every database view, for all six check types, validates unchanged as input; source accepts database only in input and hasSecret accepts true on heartbeat only. Export checks reject secret, source, hasSecret and markers; redacted, when present, is nonempty. Cover counterexamples 7-15, 18 and 31-33 at schema level. Document the applied-file plus database revision, permissions, new shapes, markers and statuses. Bump package version from 1.7.0 to 2.0.0, keep WIRE_VERSION 1 and add no module file. Regenerate and commit only the six listed dist files. If the starting code already has source on check views and keep markers, follow the section's needs-input hold condition. Keep the PULSE_HEADER_ env-name validation unchanged; any sentinel env references must use the corrected fixtures in the current spec. This is one task because schemas, explicit exports, validators, type fixtures and generated dist must change together to keep the build and round-trip tests green.",
       "acceptance": [
         {
           "command": "bun test test/admin.test.ts",
