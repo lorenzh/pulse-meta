@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Contract 1.8.0 defines private incidents and safely projects public ones",
+      "title": "Contract 1.8.0 validates private incidents and safely projects public ones",
       "files": [
         "src/schema.ts",
         "src/validate.ts",

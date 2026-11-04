@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "The store persists private incident state and publishes drafts atomically",
+      "title": "The transactional store persists drafts and notes and filters public reads",
       "files": [
         "src/migrations.ts",
         "src/manual-incidents.ts",
@@ -35,7 +35,7 @@
     {
       "id": "T2",
       "kind": "final",
-      "title": "Authenticated routes manage drafts and notes while public responses stay private",
+      "title": "Authenticated routes manage private state and preserve public incident behavior",
       "files": [
         "src/manual-incident-routes.ts",
         "src/server.ts",
