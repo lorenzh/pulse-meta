@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "CI builds service mains and proves incident privacy across the Compose stack",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/compose.e2e.yaml",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all Files/Behavior/Checks/Completion evidence; decision 12 and Rollout order step 3. Keep one coherent harness change: E2E_SETUP defaults to full, dev builds sibling checkouts through PULSE_SRC_DIR before up, any other value fails immediately; reconcile existing checks for dev while preserving full. Add the Manual incident privacy scenario after existing metric assertions, with the exact gate/skip text, five sentinels and all 13 steps, positive barriers, restart checks and literal metrics. Resolve the dev/e2e overlay in static checks with a negative regression if check-setup.sh changes; overlay changes only as needed and no e2e image line. Add e2e-dev CI with the existing five-main checkout/action SHAs, persist-credentials false, init-secrets, 45-minute timeout and printed checkout revisions. Update command/CI docs. Run every check of the touched CI jobs and provide green full/dev run evidence and applicable Security impact evidence.",
+      "acceptance": [
+        {
+          "command": "E2E_SETUP=invalid bash e2e/compose-e2e.sh",
+          "expected": "nonzero exit immediately with E2E_SETUP must be full or dev; no stack is started."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; both full/e2e and dev/e2e overlays obey the literal published-port, image, profile, networking and secrets-mount rules; if the checker changes, a deliberately broken dev/e2e setup is rejected with the named rule. No image: line is introduced in e2e."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; all helper/security tests of the touched lint CI job pass."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint/workflow checks, CLI typecheck and tests pass with the unchanged 0.8 coverage threshold."
+        },
+        {
+          "command": "E2E_SETUP=full bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the existing 0.1.0 pins; every existing step passes, including created/resolved counters 1/1 before the privacy scenario; an API gate 404 prints exactly skip: manual incident privacy (api has no /admin/manual-incidents). The default command bash e2e/compose-e2e.sh selects the same full overlay."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with sibling service mains built before up; gate 200 runs all 13 privacy steps, whereas gate 404 fails. Auth is 401/403; draft create/edit are 201/200; internal publish is 200; private details are publicly 404; the public control reaches proxy, feed and notify before absence checks. Private sentinels appear 0 times before publication, notes appear 0 times after publication, restart preserves notes/drafts, repeated publish is 409, discarded draft detail is 404. P opened/resolved and D opened each occur exactly 1 time after restart; I has 0 lines in all channels. Final counters are created 4 and resolved 3. The public-api badge becomes down only after D is published. Existing steps pass on main too."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0; all required CI checks complete green, including full and e2e-dev, whose timeout is 45 minutes and which prints git rev-parse HEAD for all five service checkouts."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR links a green e2e-dev run containing the privacy ok: lines and all five image-source revisions, plus a green full run with the literal skip line. It documents the expected dev gate 404 failure against the pre-change API main SHA, all local/CI checks, and Security impact evidence: no printed tokens, existing approved action SHAs with persist-credentials false, throwaway secrets/project isolation, and unchanged common image pins. Any unrelated main drift is fixed compatibly for both modes or reported in a needs-input hold with the failing step as the spec requires."
+        }
+      ]
+    }
+  ]
+}

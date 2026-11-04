@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Private incidents never enter notification detection, seeding or delivery",
+      "files": [
+        "src/api.ts",
+        "test/manual-incidents.test.ts",
+        "test/api.test.ts",
+        "test/feeds.test.ts",
+        "README.md",
+        "docs/channels.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all Files/Behavior/Checks/Completion evidence; R8, R6 consumer use and decision 9. Pin merged contract 1.8.0; fetchManualIncidents skips private raw items before validation without rejected entries/logging/counting, then projects accepted public incidents. Keep config, metrics, ledger, routing and event keys unchanged. Implement all five fake-api/catch-all/component-channel checks: second-poll private suppression with a public positive barrier, note/draft-update payload privacy, draft-to-published delivery after first-start seeding, restart deduplication and silent skips. Update all three docs. Include security, failing-on-main and CPU evidence; deploy owns compose-e2e.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-incidents.test.ts test/api.test.ts test/feeds.test.ts",
+          "expected": "0 fail; after an empty first poll and then A/I/D, catch-all and matching component channels each hold exactly 1 manual:A:opened and 0 lines for I or D. Notes and draft-update sentinels appear in 0 payload lines and cause 0 draft update events. A draft D seen on first start, then published publicly with publication-time createdAt, sends exactly 1 manual:D:opened; restart with the same ledger adds 0 duplicate lines. Private skips produce 0 rejected entries and 0 log entries; existing public manual/routing/upgrade tests pass. Focused coverage may fail the global threshold."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete suite pass with the unchanged 0.8 line-coverage threshold."
+        },
+        {
+          "command": "bun run start",
+          "expected": "With a local fake API and disposable file-channel/ledger configuration, the running service emits the public control once and emits 0 private sentinel lines; the PR records command and output evidence without secrets."
+        },
+        {
+          "command": "/usr/bin/time -f 'test_cpu_s=%U' bun test",
+          "expected": "exit 0; record branch and pre-change main test_cpu_s on the same machine and include both numbers in the PR as requested by Performance impact."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR records the pre-change main SHA and demonstrates Checks 1 and 3 failing there, check results, live file-channel smoke and before/after CPU numbers. It maps each applicable Security impact item to a test/command with output: no note/draft/token leak, raw privacy filtering before validation and a merged contract 1.8.0 full-SHA pin with no unrelated dependency change. It states internal-only incidents reach 0 channels and records unchanged public event keys, seeding, routing and restart behavior."
+        }
+      ]
+    }
+  ]
+}

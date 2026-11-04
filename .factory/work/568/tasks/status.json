@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Every status reader drops private incidents before deriving public output",
+      "files": [
+        "src/api-filter.ts",
+        "src/poller.ts",
+        "src/syndication.ts",
+        "src/manual-incidents.test.ts",
+        "src/api-filter.test.ts",
+        "src/server.privacy.test.ts",
+        "src/server.syndication.test.ts",
+        "README.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, all Files/Behavior/Checks/Completion evidence; R7, R6 consumer use and status Counterexamples. Pin merged contract 1.8.0; apply isPublicManualIncident to raw objects before proxy cleaning, poller validation or feed/badge parsing; project accepted incidents with publicManualIncident where specified. Preserve the proxy's null representation of malformed non-object items, older-api behavior, public feed ids and browser-safe contract imports. Cover proxy, SSR, browser poller, resolved history, feed and component state with hide-details on/off and the four literal sentinels. Update docs and provide security, failing-on-main and test CPU evidence; deploy owns compose-e2e.",
+      "acceptance": [
+        {
+          "command": "bun test src/manual-incidents.test.ts src/api-filter.test.ts src/server.privacy.test.ts src/server.syndication.test.ts",
+          "expected": "0 fail; with hide-details on and off, /api/manual-incidents, GET /, /feed.atom and /badge/component/api.svg contain 0 occurrences of DRAFT-7f3a, INTERNAL-5d17, NOTE-2b8e and UPD-9c41. The public control remains, web is down from its major impact, api retains its check-derived state, and the control feed id is manual:<control id>:0. Poller results, including resolved history, contain only projected public items; malformed non-object proxy items remain null and legacy public items without metadata remain accepted. Focused coverage may fail the global threshold."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both typechecks and the full test suite pass with the unchanged 0.8 line-coverage threshold."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0; the repository's existing browser accessibility checks pass."
+        },
+        {
+          "command": "bun start",
+          "expected": "Against a local fake API with a public control and private sentinels, a live status request shows the control and 0 private sentinel occurrences; the PR records command and response evidence."
+        },
+        {
+          "command": "/usr/bin/time -f 'test_cpu_s=%U' bun test",
+          "expected": "exit 0; record test_cpu_s for the branch and the pre-change main SHA on the same machine, with both numbers in the PR as requested by Performance impact."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names the pre-change main SHA and proves draft/internal tests fail there; explicitly identifies notes/draft-update tests as already-passing regression guards. It records check/check:a11y results, live smoke and before/after CPU evidence, and tests/commands for the applicable Security impact privacy/accessor boundary and dependency-pin checks. Contract is pinned to its merged 1.8.0 full SHA, unrelated pins and the proxy allow-list are unchanged, no credentials or admin routes are forwarded, and browser contract imports remain served through /pulse-contract/index.js."
+        }
+      ]
+    }
+  ]
+}
