@@ -18,15 +18,15 @@
         "demo/compose.yaml"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior: Host key, secrets-init files mode, secrets-init generate mode and Compose; corresponding Checks for init-secrets, check-setup rule 7, secrets-init and Compose config. Implement one coherent provisioning path: make_token creates console-secret-key without overwriting; strict host key validation and comparison with all tokens occurs before any files-mode write when /out/console exists; generate mode keeps a valid key and refuses an invalid existing key without replacing it. Preserve path/permission checks, atomic writes and no-secret output. Set PULSE_CONSOLE_SECRET_KEY_FILE=/run/pulse/secret-key in full/dev/demo with existing volumes, ports and dependencies. Update existing secrets-init console fixtures with valid distinct key inputs. Repository dependency console has merged before this child starts; the new dev console-setup flow is implemented in T3. Keep CLI unit checks green; CLI provisioning joins the shared helper in T2.",
+      "spec": "## Repository: deploy, Behavior: Host key, secrets-init files mode, secrets-init generate mode and Compose; corresponding Checks for init-secrets, check-setup rule 7, secrets-init and Compose config. Implement one coherent provisioning path: make_token creates console-secret-key without overwriting; strict host key validation and comparison with every probe token and the admin token occurs before any files-mode write when /out/console exists; generate mode keeps a valid key and refuses an invalid existing key without replacing it. Preserve path/permission checks, atomic writes and no-secret output. Set PULSE_CONSOLE_SECRET_KEY_FILE=/run/pulse/secret-key in full/dev/demo using existing volumes, ports and dependencies. Update existing secrets-init console fixtures with valid distinct key inputs. Rollout order step 1: deploy merges before console, and the #562 console ignores the key setting and file; no console change is needed for this task. Keep the CLI unit suite green; T2 connects CLI-generated installs to the new shared helper, and T3 preserves the legacy e2e flow.",
       "acceptance": [
         {
           "command": "bash scripts/init-secrets.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh",
-          "expected": "exit 0; host console-secret-key is a regular mode-600 file with 64 lowercase hex characters and one LF, created safely without secret output; second run preserves its SHA-256. Rule 7 covers key mode/content/preservation and the negative missing-key case fails with rule 7. Existing token, symlink and static-setup cases still pass."
+          "expected": "exit 0; host console-secret-key is a regular mode-600 file with 64 lowercase hex characters and one LF, safely created without secret output; a second run preserves its SHA-256. Rule 7 covers key mode/content/preservation and a missing-key case fails with rule 7. Existing token, symlink and static-setup cases still pass."
         },
         {
           "command": "bash scripts/secrets-init.test.sh",
-          "expected": "exit 0; files mode writes /out/console/secret-key byte-equal to the host key minus one LF with ownership/mode 1000:1000 400. Missing/uppercase/token-equal keys fail with the three literal /in/console-secret-key errors and write zero output files; symlink/nonregular/group-or-other access is refused. Without /out/console no key is required. Generate mode creates 64 lowercase hex, preserves its SHA-256 on rerun, and an invalid existing key gives /out/console/secret-key: must hold 64 lowercase hex characters with the old bytes unchanged."
+          "expected": "exit 0; with /out/console, files mode writes /out/console/secret-key byte-equal to the host key without its one LF, owned 1000:1000 mode 400. Missing, malformed and token-equal keys respectively give /in/console-secret-key: is missing; run scripts/init-secrets.sh, /in/console-secret-key: must hold 64 lowercase hex characters, and /in/console-secret-key: must differ from every token, before writing any output file. Include equality with a probe token and with the admin token. Symlink/nonregular/group-or-other access is refused. Without /out/console no key is read. Generate mode creates 64 lowercase hex, preserves its SHA-256 on rerun, and an invalid existing key gives /out/console/secret-key: must hold 64 lowercase hex characters with the old bytes unchanged."
         },
         {
           "command": "docker compose -f full/compose.yaml config --quiet && docker compose -f demo/compose.yaml config --quiet && docker compose -f dev/compose.yaml config --quiet",
@@ -35,6 +35,10 @@
         {
           "command": "shellcheck -x scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/check-setup.sh scripts/check-setup.test.sh scripts/secrets-init.test.sh && bash -n scripts/init-secrets.sh && bash -n scripts/init-secrets.test.sh && bash -n scripts/check-setup.sh && bash -n scripts/check-setup.test.sh && bash -n scripts/secrets-init.test.sh && node --check scripts/secrets-init.mjs && bun run lint && bun run typecheck",
           "expected": "exit 0 from repository root; changed scripts and existing CLI checks remain green"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; existing CLI lint, typecheck and full test suite remain green with at least 80% line coverage after the shared provisioning changes."
         }
       ]
     },
@@ -53,22 +57,22 @@
         "cli/render-compose.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior: CLI; all CLI Checks, including isSecretKeyContent, generation only when console is enabled, random draw after tokens/before installId, KNOWN_FILES, preflight with no writes on invalid key, --force byte preservation and rendered console env. Adapt deterministic comparison fixtures to the specified draw order. Keep valid-file, symlink, permission, lock and atomic-write protections; a valid existing key is preserved rather than treated as an ordinary replaceable token. No-console/minimal rendering remains unchanged. Shared secrets-init implementation is T1.",
+      "spec": "## Repository: deploy, Behavior: CLI; all CLI Checks, including isSecretKeyContent, generation only when console is enabled, random draw after tokens/before installId, KNOWN_FILES, preflight with no writes on an invalid key, --force byte preservation and rendered console env. Adapt deterministic comparison fixtures to the specified draw order. Keep valid-file, symlink, permission, lock and atomic-write protections; a valid existing key is preserved rather than treated as an ordinary replaceable token. No-console/minimal rendering remains unchanged. This completes CLI use of the secrets-init helper from T1 and must work with the unchanged pinned console images.",
       "acceptance": [
         {
           "command": "bun test --coverage cli/tokens.test.ts cli/init.test.ts cli/write-install.test.ts cli/render-compose.test.ts",
           "expected": "0 fail in selected tests; focused coverage may exit nonzero. Console-enabled init writes secrets/console-secret-key matching ^[0-9a-f]{64}\\n$ in mode 600 after drawing tokens and before installId; no-console init writes no key. --force preserves a valid key byte-for-byte and refuses an invalid key with secrets/console-secret-key: is not a valid key (64 lowercase hex characters); fix or remove it before any write. Strict content accepts no LF or one LF only; malformed cases from the spec fail. Rendered console env points to /run/pulse/secret-key; minimal without console remains byte-equal to the existing fixture."
         },
         {
-          "command": "bun run lint && bun run typecheck",
-          "expected": "exit 0; CLI generation/writer/render integration and deterministic fixtures compile without changing shared config, package pins or secrets handling guarantees"
+          "command": "bun run check",
+          "expected": "exit 0; CLI lint, typecheck and the full tests meet 80% line coverage. Generation/writer/render integration and deterministic fixtures remain green without changing packages, pins, configuration conventions or secret-write protections."
         }
       ]
     },
     {
       "id": "T3",
       "kind": "final",
-      "title": "Compose proves two-factor sign-in, recovery replay rejection and session revocation across restart",
+      "title": "The legacy setup e2e stays green and a selectable two-factor flow is ready for the console PR",
       "files": [
         "e2e/console-setup.sh",
         "e2e/totp.mjs",
@@ -79,15 +83,27 @@
         "docs/cli.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior: e2e/totp.mjs and e2e/console-setup.sh steps 1-13; Acceptance evidence 12; all final Checks, Completion evidence and applicable Security impact checklist. Preserve separate cookie jars, Origin/CSRF order, no-secret output, bounded new-step waits and independent RFC helper self-check. The whole e2e algorithm stays in one task, including enrolment, ten codes, TOTP, recovery replay, sign out all, recreation with persisted key and the database/sidecar positive-control scan. Run the touched CI jobs' commands, CLI render/live-stack/build checks and the existing pinned-image compose e2e. Document strict key format, upgrade by rerunning init-secrets for existing full/dev installs, database+key backup and lost-key/recovery path, expected interim dev failure, and full/demo/CLI 2FA activation only after a later console image pin bump. Do not bump images or edit workflows outside the approved Files list.",
+      "spec": "## Repository: deploy, Behavior: e2e/totp.mjs and all e2e/console-setup.sh flow selection and steps; Acceptance evidence 12 and preparation for 13; all final Checks, Completion evidence, Rollout order step 1 and applicable Security impact checklist. Preserve shared steps 1-5 and the #562 legacy steps 7-10; step 6 detects legacy from /sign-in?setup=done or two-factor from /account/authenticator. E2E_CONSOLE_FLOW defaults to auto for unset/empty, can force legacy or two-factor, and invalid values exit 2 before any request or Compose call; unknown Location and forced-flow mismatch use the literal spec errors. Keep the complete two-factor algorithm together (steps 7-13): separate cookie jars, enrolment, ten codes, fresh-step TOTP, recovery replay, sign out all, persisted-key recreation and file/sidecar scans with owner-email positive control. Use Origin and page CSRF, bounded waits and the independent RFC helper self-check; never print secrets. Run deploy main's existing legacy console on a fresh dev volume, the touched CI job commands and pinned-image full/demo/CLI checks. The two-factor flow's first real execution is acceptance 13 in the console PR's deploy-dev job after this child merges; it is not a prerequisite of this deploy PR. Document strict key format, upgrade by rerunning init-secrets for existing full/dev installs, database+key backup, lost-key/recovery path, E2E_CONSOLE_FLOW and both flows, and full/demo/CLI 2FA activation only with a later console pin bump. No interim dev failure is allowed; do not bump images or edit workflows outside Files.",
       "acceptance": [
         {
           "command": "node --check e2e/totp.mjs && node e2e/totp.mjs GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
-          "expected": "exit 0; helper first checks the independent RFC 6238 Appendix B six-digit value 287082 for ASCII seed 12345678901234567890 at T=59; then prints only current integer step and a six-ASCII-digit code. Production algorithm is SHA-1, 30-second step, six digits; helper never prints its key."
+          "expected": "exit 0; helper checks the RFC 6238 Appendix B six-digit value 287082 for ASCII seed 12345678901234567890 at T=59 before printing one line matching ^[0-9]+ [0-9]{6}$. Production algorithm is SHA-1, 30-second step, six digits. The helper prints no key. The base32 test input comes from RFC 4648 section 6 as recorded in Acceptance evidence 4."
+        },
+        {
+          "command": "node e2e/totp.mjs",
+          "expected": "exit 2; stderr is usage: e2e/totp.mjs <base32 key>; no key or code is printed."
+        },
+        {
+          "command": "node e2e/totp.mjs abc1",
+          "expected": "exit 2; stderr is usage: e2e/totp.mjs <base32 key>; only A-Z and 2-7 are accepted, without padding."
+        },
+        {
+          "command": "E2E_CONSOLE_FLOW=bogus bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 2; stderr is E2E_CONSOLE_FLOW must be auto, legacy or two-factor, before any request or docker compose call; run with no stack."
         },
         {
           "command": "scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml",
-          "expected": "exit 0 on fresh console-data and sibling service main checkouts containing console #563; all steps 1-13 emit only nonsecret ok lines. Finish setup 303 /account/authenticator; enrolment gives 10 correctly formatted codes and GET / 200; password gives 303 /sign-in/factor; a fresh-step TOTP gives 303 then / 200. Recovery first use 303 and second use in jar D 401. Sign out all gives 303 /sign-in?signed-out=all and jar B next GET / gives 303 /sign-in?next=%2F. Recreate yields zero new setup-code lines, /setup 404 and TOTP 303 then / 200 with the same key. In every database/sidecar, key/base32 setup key/all ten recovery codes each have grep -a -c -F exit 1 and count 0; owner email is found at least once. The PR includes actual ok lines without secrets."
+          "expected": "exit 0 using a fresh console-data volume and sibling service main checkouts with the #562 console. Auto detection prints ok: 6 POST /setup/owner complete 303 flow legacy; legacy steps 7-10 stay unchanged and pass with the key provisioned and ignored. Unset/empty E2E_CONSOLE_FLOW select auto; on separate fresh-volume runs forced legacy succeeds and forced two-factor fails at step 6 with step 6: console has the legacy flow, E2E_CONSOLE_FLOW=two-factor. Review the two-factor branch against the literal steps 7-13 in this spec; its first real run is console CI deploy-dev (acceptance 13), after this deploy change merges. Record actual legacy ok lines in the PR, with no secrets."
         },
         {
           "command": "bun run check && git ls-files -z '*.sh' | xargs -0 shellcheck -x",
@@ -115,11 +131,11 @@
         },
         {
           "command": "bun run build && bash cli/test/render-variants.sh && bash cli/test/errors.sh dist/pulse && bash cli/test/stack.sh demo && bash cli/test/stack.sh full && bash cli/test/stack.sh minimal && bash cli/test/stack.sh dev",
-          "expected": "exit 0 with service sources available for dev; binary compiles, 8 rendered variants validate and CLI failure-path/live-stack checks pass with persistent keys where console is enabled. Run remaining commands of touched CI jobs, including the demo no-host-secrets/start/readiness assertions and full/dev stack readiness. PR lists lint, check, full, demo, dev (console-setup and CLI), cli-render and cli-stack green, plus touched cli-build/cli-errors results."
+          "expected": "exit 0 with service sources available for dev; binary compiles, 8 rendered variants validate and CLI failure-path/live-stack checks pass with persistent keys when console is enabled. Run every remaining command of touched CI jobs, including demo's no-host-secrets/incident/mail/readiness assertions, full/dev readiness, and cli-build smoke/download/timing checks on their runners. PR lists lint, check, full, demo, dev (legacy console-setup and CLI), cli-render and cli-stack green, plus touched cli-build/cli-errors results."
         },
         {
           "command": "git diff --check && git diff --stat",
-          "expected": "exit 0; review final diff against the spec's Security impact checklist: no key/token output, strict key validation, no files written after failed files-mode/preflight validation, safe permissions/atomic writes, no invalid key replacement, no dependency/image pin changes, unchanged ports and secrets-volume boundaries. PR contains this review, actual CI/e2e results and known rollout limits. All five documentation files explain upgrade, backup, lost-key recovery and deferred pin-bump activation as required by Completion evidence."
+          "expected": "exit 0; review final diff against applicable Security impact checklist: no key/token output, strict key validation, no output files after files-mode/preflight validation failures, safe permissions and atomic writes, no invalid-key replacement, unchanged package/image pins, ports and secrets-volume boundaries. Review flow selection, shared steps 1-5, unchanged legacy steps 7-10 and two-factor steps 7-13 against spec literals; do not claim two-factor runtime evidence before the console PR. PR contains security review, actual CI/e2e results and staged-rollout limits. All five documentation files cover upgrade, backup, lost-key recovery, both flows/E2E_CONSOLE_FLOW and later pin-bump activation as required by Completion evidence."
         }
       ]
     }
