@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Compose setups receive a validated persistent console encryption key through secrets-init",
+      "files": [
+        "scripts/init-secrets.sh",
+        "scripts/init-secrets.test.sh",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "full/compose.yaml",
+        "dev/compose.yaml",
+        "demo/compose.yaml"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: Host key, secrets-init files mode, secrets-init generate mode and Compose; corresponding Checks for init-secrets, check-setup rule 7, secrets-init and Compose config. Implement one coherent provisioning path: make_token creates console-secret-key without overwriting; strict host key validation and comparison with all tokens occurs before any files-mode write when /out/console exists; generate mode keeps a valid key and refuses an invalid existing key without replacing it. Preserve path/permission checks, atomic writes and no-secret output. Set PULSE_CONSOLE_SECRET_KEY_FILE=/run/pulse/secret-key in full/dev/demo with existing volumes, ports and dependencies. Update existing secrets-init console fixtures with valid distinct key inputs. Repository dependency console has merged before this child starts; the new dev console-setup flow is implemented in T3. Keep CLI unit checks green; CLI provisioning joins the shared helper in T2.",
+      "acceptance": [
+        {
+          "command": "bash scripts/init-secrets.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; host console-secret-key is a regular mode-600 file with 64 lowercase hex characters and one LF, created safely without secret output; second run preserves its SHA-256. Rule 7 covers key mode/content/preservation and the negative missing-key case fails with rule 7. Existing token, symlink and static-setup cases still pass."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0; files mode writes /out/console/secret-key byte-equal to the host key minus one LF with ownership/mode 1000:1000 400. Missing/uppercase/token-equal keys fail with the three literal /in/console-secret-key errors and write zero output files; symlink/nonregular/group-or-other access is refused. Without /out/console no key is required. Generate mode creates 64 lowercase hex, preserves its SHA-256 on rerun, and an invalid existing key gives /out/console/secret-key: must hold 64 lowercase hex characters with the old bytes unchanged."
+        },
+        {
+          "command": "docker compose -f full/compose.yaml config --quiet && docker compose -f demo/compose.yaml config --quiet && docker compose -f dev/compose.yaml config --quiet",
+          "expected": "exit 0; full/dev/demo console environment names /run/pulse/secret-key using the existing console secrets volume; minimal, ports, depends_on and image pins are unchanged"
+        },
+        {
+          "command": "shellcheck -x scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/check-setup.sh scripts/check-setup.test.sh scripts/secrets-init.test.sh && bash -n scripts/init-secrets.sh && bash -n scripts/init-secrets.test.sh && bash -n scripts/check-setup.sh && bash -n scripts/check-setup.test.sh && bash -n scripts/secrets-init.test.sh && node --check scripts/secrets-init.mjs && bun run lint && bun run typecheck",
+          "expected": "exit 0 from repository root; changed scripts and existing CLI checks remain green"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "CLI installs generate a console key and refuse to replace an invalid existing key",
+      "files": [
+        "cli/tokens.ts",
+        "cli/tokens.test.ts",
+        "cli/init.ts",
+        "cli/init.test.ts",
+        "cli/write-install.ts",
+        "cli/write-install.test.ts",
+        "cli/render-compose.ts",
+        "cli/render-compose.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: CLI; all CLI Checks, including isSecretKeyContent, generation only when console is enabled, random draw after tokens/before installId, KNOWN_FILES, preflight with no writes on invalid key, --force byte preservation and rendered console env. Adapt deterministic comparison fixtures to the specified draw order. Keep valid-file, symlink, permission, lock and atomic-write protections; a valid existing key is preserved rather than treated as an ordinary replaceable token. No-console/minimal rendering remains unchanged. Shared secrets-init implementation is T1.",
+      "acceptance": [
+        {
+          "command": "bun test --coverage cli/tokens.test.ts cli/init.test.ts cli/write-install.test.ts cli/render-compose.test.ts",
+          "expected": "0 fail in selected tests; focused coverage may exit nonzero. Console-enabled init writes secrets/console-secret-key matching ^[0-9a-f]{64}\\n$ in mode 600 after drawing tokens and before installId; no-console init writes no key. --force preserves a valid key byte-for-byte and refuses an invalid key with secrets/console-secret-key: is not a valid key (64 lowercase hex characters); fix or remove it before any write. Strict content accepts no LF or one LF only; malformed cases from the spec fail. Rendered console env points to /run/pulse/secret-key; minimal without console remains byte-equal to the existing fixture."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; CLI generation/writer/render integration and deterministic fixtures compile without changing shared config, package pins or secrets handling guarantees"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "Compose proves two-factor sign-in, recovery replay rejection and session revocation across restart",
+      "files": [
+        "e2e/console-setup.sh",
+        "e2e/totp.mjs",
+        "README.md",
+        "full/README.md",
+        "dev/README.md",
+        "demo/README.md",
+        "docs/cli.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior: e2e/totp.mjs and e2e/console-setup.sh steps 1-13; Acceptance evidence 12; all final Checks, Completion evidence and applicable Security impact checklist. Preserve separate cookie jars, Origin/CSRF order, no-secret output, bounded new-step waits and independent RFC helper self-check. The whole e2e algorithm stays in one task, including enrolment, ten codes, TOTP, recovery replay, sign out all, recreation with persisted key and the database/sidecar positive-control scan. Run the touched CI jobs' commands, CLI render/live-stack/build checks and the existing pinned-image compose e2e. Document strict key format, upgrade by rerunning init-secrets for existing full/dev installs, database+key backup and lost-key/recovery path, expected interim dev failure, and full/demo/CLI 2FA activation only after a later console image pin bump. Do not bump images or edit workflows outside the approved Files list.",
+      "acceptance": [
+        {
+          "command": "node --check e2e/totp.mjs && node e2e/totp.mjs GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+          "expected": "exit 0; helper first checks the independent RFC 6238 Appendix B six-digit value 287082 for ASCII seed 12345678901234567890 at T=59; then prints only current integer step and a six-ASCII-digit code. Production algorithm is SHA-1, 30-second step, six digits; helper never prints its key."
+        },
+        {
+          "command": "scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 on fresh console-data and sibling service main checkouts containing console #563; all steps 1-13 emit only nonsecret ok lines. Finish setup 303 /account/authenticator; enrolment gives 10 correctly formatted codes and GET / 200; password gives 303 /sign-in/factor; a fresh-step TOTP gives 303 then / 200. Recovery first use 303 and second use in jar D 401. Sign out all gives 303 /sign-in?signed-out=all and jar B next GET / gives 303 /sign-in?next=%2F. Recreate yields zero new setup-code lines, /setup 404 and TOTP 303 then / 200 with the same key. In every database/sidecar, key/base32 setup key/all ten recovery codes each have grep -a -c -F exit 1 and count 0; owner email is found at least once. The PR includes actual ok lines without secrets."
+        },
+        {
+          "command": "bun run check && git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0; CLI lint/typecheck/full tests meet 80% line coverage and shellcheck passes from repository root. Run after adding the new files so git ls-files includes them."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0 for all tracked shell scripts, including updated console-setup.sh"
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0 for all tracked helpers, including e2e/totp.mjs"
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0 for all tracked JSON"
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0 for every test command in CI lint; provisioning, validation, preservation and no-secret-output checks from T1 remain green"
+        },
+        {
+          "command": "docker compose -f full/compose.yaml config --quiet && docker compose -f demo/compose.yaml config --quiet && docker compose -f dev/compose.yaml config --quiet && bash e2e/compose-e2e.sh",
+          "expected": "exit 0; all setups render and the existing full Compose e2e stays green on the unchanged pinned 0.1.0 images, which ignore the extra console key"
+        },
+        {
+          "command": "bun run build && bash cli/test/render-variants.sh && bash cli/test/errors.sh dist/pulse && bash cli/test/stack.sh demo && bash cli/test/stack.sh full && bash cli/test/stack.sh minimal && bash cli/test/stack.sh dev",
+          "expected": "exit 0 with service sources available for dev; binary compiles, 8 rendered variants validate and CLI failure-path/live-stack checks pass with persistent keys where console is enabled. Run remaining commands of touched CI jobs, including the demo no-host-secrets/start/readiness assertions and full/dev stack readiness. PR lists lint, check, full, demo, dev (console-setup and CLI), cli-render and cli-stack green, plus touched cli-build/cli-errors results."
+        },
+        {
+          "command": "git diff --check && git diff --stat",
+          "expected": "exit 0; review final diff against the spec's Security impact checklist: no key/token output, strict key validation, no files written after failed files-mode/preflight validation, safe permissions/atomic writes, no invalid key replacement, no dependency/image pin changes, unchanged ports and secrets-volume boundaries. PR contains this review, actual CI/e2e results and known rollout limits. All five documentation files explain upgrade, backup, lost-key recovery and deferred pin-bump activation as required by Completion evidence."
+        }
+      ]
+    }
+  ]
+}

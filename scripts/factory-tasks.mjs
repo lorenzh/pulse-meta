@@ -56,13 +56,16 @@ export function validateTaskFile(doc, target) {
   return errors;
 }
 
-/** The backticked paths of the `Files:` list of `## Repository: <target>` in plan.md, or null. */
+/** The paths of the `Files:` list of `## Repository: <target>` in plan.md, or null. */
 export function sectionFiles(plan, target) {
   const start = plan.indexOf(`\n## Repository: ${target}\n`);
   if (start < 0) return null;
   const section = plan.slice(start + 1).split(/\n## /)[0];
   const m = /^Files:([\s\S]*?)^Behavior change:/m.exec(section);
   if (!m) return null;
+  // A bullet starts with its path; later code spans describe symbols, routes or status codes.
+  const bullets = [...m[1].matchAll(/^[ \t]*-[ \t]+`([^`\s]+)`/gm)];
+  if (bullets.length > 0) return bullets.map((x) => x[1]);
   return [...m[1].matchAll(/`([^`\s]+)`/g)].map((x) => x[1]);
 }
 

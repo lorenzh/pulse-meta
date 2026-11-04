@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkDir, events, progress, validateTaskFile } from './factory-tasks.mjs';
+import { checkDir, events, progress, sectionFiles, validateTaskFile } from './factory-tasks.mjs';
 
 const BOT = 'pulse-factory[bot]';
 const SHA1 = 'a'.repeat(40);
@@ -135,6 +135,19 @@ test('the verdict is the last verdict line; a short sha does not accept', () => 
   assert.equal(status(three, [accept('T1', 'abc1234')]).next, 'T1');
   // A held task review carries no verdict.
   assert.equal(status(three, [run('task-review', 'hold', [], `task-accepted: T1 @ ${SHA1}`)]).next, 'T1');
+});
+
+test('sectionFiles: bullet descriptions and continuation lines are not file paths', () => {
+  const plan = '# Plan\n\n## Repository: console\n\nFiles:\n' +
+    '- `src/two-factor-policy.ts` (new: `isSecondFactorRequired`, `signInStage`)\n' +
+    '- `src/http-context.ts` (helpers moved out of\n  `server.ts`)\n' +
+    '- `src/server.test.ts` (`404`/`405` of `/sign-in/factor`)\n' +
+    '- `README.md`\n\nBehavior change: yes\n';
+  assert.deepEqual(sectionFiles(plan, 'console'), [
+    'src/two-factor-policy.ts', 'src/http-context.ts', 'src/server.test.ts', 'README.md',
+  ]);
+  assert.deepEqual(sectionFiles('\n## Repository: api\nFiles: `src/a.ts`, `src/b.ts`.\nBehavior change: yes\n', 'api'),
+    ['src/a.ts', 'src/b.ts']);
 });
 
 test('checkDir: one task file per target, Files: coverage, no extra file', () => {
