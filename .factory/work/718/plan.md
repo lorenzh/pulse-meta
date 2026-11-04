@@ -10,12 +10,19 @@ the #460 amendment, the owner-confirmed role matrix of #564
 (issuecomment-6637789309), the #694 referrer decision, `docs/approved-packages.md`, and the
 clones `console` at `edefdbe`, `contract` at `176fb6e`, `api` at `2bc5910`, `status` at
 `d268b5b`, `config` at `bc87049` and `deploy` (`e2e/console-setup.sh`). Shared findings: none
-(`gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/718` answered HTTP 404).
+(`gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/718` answered HTTP 404 again
+in this revision).
+
+Revision after plan-review: the navigation registry has nine entries (eight not available);
+the busy button ships no script, following the #460 rendering rule (Decision 6); the existing
+test files that construct the server, including `src/server.setup.test.ts`, are listed with a
+wiring-only rule; the name search in "Contract fields" covers every new name and documents the
+reuse of `revision` and `wireLabel`.
 
 ## Goal
 
 A signed-in user lands on an Overview page inside a shared shell. The shell, the Overview and
-ten shared state components are reusable modules of pulse-console. Each state renders from its
+the ten shared states of the issue are reusable modules of pulse-console. Each state renders from its
 own test-only route, the two confirmation pages work with JavaScript off, and a Chromium test at
 390 px proves there is no horizontal scroll on sign-in, the shell, the Overview and the states.
 
@@ -32,8 +39,8 @@ pull request (see "Dev tooling decision"); no child issue is opened for meta.
 - Overview at `/`: a summary of `GET /checks` from pulse-api, with the token checked through
   `GET /admin/config`.
 - Shared states, one renderer each (list in "Required behavior" 4).
-- Busy submit button: server-rendered pending variant, plus a same-origin `/console.js`
-  progressive enhancement that disables the button while the request runs.
+- Busy submit button: one renderer with an enabled variant (native form submit) and a
+  server-rendered pending variant (disabled, busy text). No script (Decision 6).
 - Typed-name and plain confirmation pages, with a pure typed-name check.
 - Test-only routes under `/__test/`, registered only by a test-created server.
 - Chromium tests (Playwright library API and axe) in a new CI job `browser`.
@@ -58,9 +65,10 @@ These close the open points of the issue review. Each one is binding for the con
 
 1. **Instance name.** `pulse Console`, passed to the shell as `instanceName`, so a later setting
    can supply it. `main.ts` passes the constant.
-2. **Later navigation entries.** The registry lists all ten entries in this order with a minimum
-   role and an `isAvailable` flag: Overview (`/`, viewer, available), Checks, Incidents,
-   Maintenance (viewer), Tokens, Probes, Team, Activity, System (admin), all nine not available.
+2. **Later navigation entries.** The registry lists all nine entries of the issue in this order
+   with a minimum role and an `isAvailable` flag: Overview (`/`, viewer, available), Checks,
+   Incidents, Maintenance (viewer), Tokens, Probes, Team, Activity, System (admin); the eight
+   entries after Overview are not available.
    Only entries that are available and allowed for the role are rendered. No greyed-out text,
    no dead link. A later screen sets its flag and path in the same change that adds its route.
    The minimum roles come from the #564 matrix: "View status, checks, incidents, maintenance"
@@ -90,14 +98,22 @@ These close the open points of the issue review. Each one is binding for the con
    `combineStates` (`contract/src/components.ts:8-15`), which ranks `up` above `unknown` for
    status-page components: an operator overview must never call a check without a result
    healthy. The rule lives in the console and is not added to the contract.
-6. **Busy button.** One renderer `submitButton`. Without JavaScript the form submits natively and
-   the button is not disabled during the request (a known HTML limit, documented). With
-   JavaScript, `/console.js` disables the clicked button and shows its busy label while the
-   request runs. The server can also render the pending variant (disabled, busy text), for a
-   page that shows a running operation. `script-src 'self'` already allows `/console.js`; the
-   CSP does not change. This follows the issue text ("disabled while the request runs, works
-   without JavaScript"); the issue review's alternative (no script) would not meet "disabled
-   while the request runs".
+6. **Busy button, no script.** The #460 rendering decision allows same-origin scripts "only for
+   copy buttons and the preview" (issuecomment-6589563362, "Rendering and security"), and the
+   issue repeats "copy buttons, preview". This item ships neither, so it ships no script at all:
+   no `/console.js`, no `<script>` element, no route for a script. One renderer `submitButton`
+   has two variants:
+   - enabled: `<button type="submit">` with its label; the form submits natively, with and
+     without JavaScript;
+   - pending (`isPending: true`): the same button with the `disabled` attribute and the busy
+     label as its text, for a page that the server renders while an operation it knows about
+     is still running (a later screen, for example after a `303` to a progress page).
+   Known limit, stated in the docs and the pull request: plain HTML cannot disable an already
+   shown button while the browser waits for the answer of its native submit; the browser's own
+   loading indicator applies then. Duplicate submits are the owning route's concern (revision
+   check, `409`/`412`, or `404` for a target that is gone), not the button's. CSS never fakes a
+   disabled look on an enabled button. A later need for literal in-flight disabling requires an
+   amendment of the #460 script rule first; it is not decided here.
 7. **Confirmations are pages, not modals.** A GET renders a page with heading, consequence text,
    a POST form and a Cancel link. The typed name is checked on the server against the name the
    route reads from its own data at POST time. Rule: `typed.trim().normalize("NFC") ===
@@ -166,7 +182,8 @@ page title and the body. It renders:
 - `<nav aria-label="Main">` with a list of the visible registry entries; the current entry has
   `aria-current="page"`;
 - the banner slot, then `<main id="main">` with one `<h1>`;
-- `<script src="/console.js" defer></script>` in the head; no inline script or style.
+- the existing `/console.css` stylesheet link; no `<script>` element (Decision 6), no inline
+  style, no `style=` attribute.
 
 Every value goes through kit `escapeHtml`. The document head and the field helpers move from
 `src/pages.ts` to `src/html.ts` so pages, shell, states and confirmations share them; setup and
@@ -209,15 +226,11 @@ leading word in text.
 
 1. **Empty state** `emptyState({ title, text, action })`: heading, text, one action (link or
    button form) as the next step. Inline, the page status stays the caller's (200).
-2. **Busy button** `submitButton({ label, busyLabel, name?, value?, isPending?, variant? })`:
-   enabled `<button type="submit" data-busy-label="…">`; with `isPending` the button is
-   `disabled` and shows `busyLabel`. Never render an initially disabled button on a form the
-   user must submit. `/console.js` (Decision 6) on a form's `submit` event with a submitter that
-   has `data-busy-label`: a second submit of the same form is prevented; after the current task
-   (`setTimeout(…, 0)`, so the submitter's name and value are still in the form data) it sets
-   `disabled` and the busy label; on `pageshow` with `persisted` it restores the label and
-   enables the button. Served at `GET`/`HEAD /console.js` as `text/javascript; charset=utf-8`
-   from a string constant in `src/console-script.ts`, with the security headers.
+2. **Busy button** `submitButton({ label, busyLabel, name?, value?, isPending?, variant? })`
+   (Decision 6): enabled `<button type="submit">` showing `label`, with `name` and `value` when
+   given; with `isPending` the button carries `disabled` and shows `busyLabel` as text, so the
+   busy state is text, not colour only. Never render an initially disabled button on a form the
+   user must submit. No script, no `data-*` hook for a script.
 3. **pulse-api cannot be reached** `apiUnavailableState(failure, retryHref)`. `ApiFailure` is a
    console union mapped from contract `FetchJsonError` (`contract/src/client.ts:10-18`) by a pure
    function in `src/api-failure.ts`. Fixed detail texts:
@@ -288,7 +301,7 @@ of fake actions live in the fixture module; nothing calls pulse-api writes.
 | Route | Methods | Shows |
 | --- | --- | --- |
 | `/__test/states/empty` | GET | empty state, 200 |
-| `/__test/states/busy` | GET, POST | enabled form (fields `choice`, button `name="action" value="go"`); POST waits on a test-controlled gate, records `action`, answers 200 with `Submitted: go`; `?pending=1` renders the pending variant |
+| `/__test/states/busy` | GET, POST | enabled form (field `choice`, button `name="action" value="go"`, label `Run`, busy label `Running…`); POST records `action`, answers 200 with `Submitted: go`; `?pending=1` renders the pending variant (`disabled`, text `Running…`) |
 | `/__test/states/api-timeout`, `/__test/states/api-network`, `/__test/states/api-status` | GET | state 3 for timeout, network, HTTP 503; 200 |
 | `/__test/states/token-rejected` | GET | state 4 in the banner slot; 200 |
 | `/__test/states/forbidden` | GET | `requiredRole: "admin"`; real 403 for viewer or member |
@@ -328,12 +341,12 @@ duration before and after in the pull request.
 ## Security impact
 
 Security impact: yes
-New authenticated routes and a role guard, error texts built from upstream answers, a new same-origin script, new dev dependencies and a new CI job.
+New authenticated routes and a role guard, error texts built from upstream answers, new dev dependencies and a new CI job.
 
 Checklist items that apply:
 
-- **Secrets in errors, logs and responses**: the admin token never appears in HTML, `/console.js`,
-  logs, `/metrics` or a fixture; upstream bodies and exception texts are never echoed; failure
+- **Secrets in errors, logs and responses**: the admin token never appears in HTML, logs,
+  `/metrics` or a fixture; upstream bodies and exception texts are never echoed; failure
   texts carry only the API origin and a status number; passwords and secret fields are never
   refilled.
 - **Auth order and status codes**: the fixed order of Required behavior 1; no route acts
@@ -349,6 +362,8 @@ Checklist items that apply:
   only, absent from the image; CI actions pinned by SHA under the shared policy.
 - **Test-route isolation**: fixtures live outside `src/`; an ordinary server and the image
   answer 404 under `/__test/`.
+- **Script scope**: no response body contains `<script`; the CSP stays byte-identical, so a
+  later screen that adds a copy-button script needs no CSP change either.
 
 The security state after review should try hostile inputs: `next` values (`//evil.example`,
 `/\evil`, 513 characters, control characters), forged `expected`, `role`, `revision` fields,
@@ -407,9 +422,10 @@ in Decision 2. Neither is redone here.
 | 404 | raw `GET //healthz` without a session | `404` plain (unchanged) | 200 ops answer |
 | Isolation | `GET /__test/states/empty` on a server without `testRoutes`, and in the image | 404 | 200 |
 | Registry | `testRoutes` key `/checks` | `createConsoleServer` throws | a public route |
-| Busy, JS on | click submit, gate held | button disabled with busy label while pending; `action=go` recorded once | `action` missing (disabled too early) |
-| Busy, JS on | second submit while pending | still 1 recorded submission | 2 |
-| Busy, JS off | submit | 200 `Submitted: go` | blocked by a disabled button |
+| Busy, enabled | GET `/__test/states/busy`, JavaScript off, press Enter on `Run` | 200 `Submitted: go`, `action=go` recorded once | blocked by an initially disabled button |
+| Busy, enabled | the GET answer of `/__test/states/busy` | the button has no `disabled` attribute | `disabled` on load |
+| Busy, pending | GET `/__test/states/busy?pending=1` | button has `disabled` and text `Running…` | enabled, or only a CSS class |
+| Script scope | any console response body | does not contain `<script` | a `/console.js` or inline submit script |
 | Mobile | 254-character email at 390 px | `scrollWidth` ≤ 390 | 600 |
 | Secret field | 409 after POST with `secret=s3cret-sentinel` | the response does not contain `s3cret-sentinel` | the secret refilled |
 
@@ -418,24 +434,51 @@ in Decision 2. Neither is redone here.
 No contract field, key or wire name is new or renamed; the console reads existing contract
 exports only (`fetchJson`, `validateChecksResponse`, `validateAdminConfigSummary`,
 `WIRE_VERSION`, `WIRE_VERSION_HEADER`, types `CheckState`, `ChecksResponse`, `FetchJsonError`).
-New console-local names (routes, form fields, deps, types) and the search that shows no
-collision in the contract, config and console clones:
+Every new console-local name (route prefix, form fields, deps, exported types and functions,
+the log message, the npm script) and the search that shows no collision in the contract, config
+and console clones. Run from the meta checkout on contract `176fb6e`, config `bc87049`, console
+`edefdbe`:
 
 ```sh
-for n in '__test' 'console.js' 'confirm_name' 'ConsoleRole' 'check:browser' 'roleOf' 'testRoutes' 'ProtectedRoute'; do
-  grep -rn -- "$n" .repos/contract/src .repos/config/src .repos/config/bin .repos/console/src
+for n in '__test' 'confirm_name' 'instanceName' 'ConsoleRole' 'hasRole' 'roleOf' \
+  'requiredRole' 'testRoutes' 'ProtectedRoute' 'PageRequest' 'PageResult' 'ApiFailure' \
+  'api read failed' 'shellPage' 'visibleNavigation' 'isAvailable' 'emptyState' \
+  'submitButton' 'busyLabel' 'isPending' 'apiUnavailableState' 'tokenRejectedBanner' \
+  'forbiddenState' 'notFoundState' 'staleState' 'formErrorSummary' 'readOnlyState' \
+  'typedConfirmPage' 'plainConfirmPage' 'isTypedNameConfirmed' 'readOverview' \
+  'summarizeChecks' 'overallState' 'check:browser' 'wireLabel' 'revision'; do
+  printf '%s: ' "$n"
+  grep -rn -- "$n" .repos/contract/src .repos/config/src .repos/config/bin .repos/console/src | wc -l
 done
-# no output for any name (run on contract 176fb6e, config bc87049, console edefdbe)
 ```
 
-Other new names: routes `/console.js` and the `/__test/…` paths above, form field `revision`
-(console-local, never sent to pulse-api), log message `api read failed`, metrics path label
-`/console.js`, npm script `check:browser`, CI job `browser`.
+Result: `0` for every name except two that are reused on purpose:
+
+- `wireLabel`: `2` hits, both in `console/src/connection-test.ts:40` and `:77`. It is the same
+  private console function; moving it to `src/api-failure.ts` and importing it back is a move,
+  not a new name. Its output stays the same.
+- `revision`: `26` hits. The 17 contract hits are all the admin revision `sha256-<hex>`
+  (`contract/src/revision.ts:1-7`, its imports at `admin.ts:2`, `audit.ts:2`, `index.ts:59`,
+  `contract/src/admin.ts:16-19` `if-match`/`etag`, `:37` `412 stale revision`, `:53`, `:240`,
+  `:255-260`, `:338`, `contract/src/validate-admin.ts:141`, `contract/src/audit.ts:88-90`); the
+  7 console hits are test fixtures of that same field (`src/connection-test.test.ts:17`, `:25`,
+  `:42`, `:298-299`, `src/server.setup.test.ts:36`, `:583`); the 2 config hits are OCI image
+  annotations
+  (`config/src/release.test.ts:266`, `:412`), unrelated. The console hidden form field
+  `revision` intentionally reuses the contract meaning: "the version of the target the user saw
+  when the page opened". A later checks-file screen fills it with the contract admin revision
+  and sends it as `if-match`, so a stale write answers the contract `412`; other later screens
+  fill it with their own version string. Here the fixtures use opaque test strings. It is an
+  HTML form field of the console, not a wire field; the contract does not change.
+
+New routes are only the `/__test/…` paths of Required behavior 6 (test-created servers only).
+Other new names outside source code: CI job `browser`, folders `test/` and `e2e/`. Fixture-only
+query `pending` and fixture fields `choice`, `action`, `note`, `secret` live in `test/` only.
 
 ## Repository: console
 
 Files:
-- `src/server.ts` (protected-route dispatcher, Overview at `/`, shell 404, `/console.js`,
+- `src/server.ts` (protected-route dispatcher, Overview at `/`, shell 404,
   `testRoutes` and `roleOf` deps)
 - `src/main.ts` (passes `instanceName`; still no `testRoutes` and no `roleOf`)
 - `src/html.ts` (new: document head, `csrfField`, `field`, `textarea` field, `submitButton`,
@@ -450,16 +493,25 @@ Files:
 - `src/overview.ts` (new: pure summary and overall state, Overview body)
 - `src/overview-read.ts` (new: the two pulse-api reads)
 - `src/confirm.ts` (new: confirmation pages, `isTypedNameConfirmed`)
-- `src/console-script.ts` (new: `CONSOLE_JS`)
 - `src/styles.ts` (shell, nav, banners, states, confirmation and 390 px rules)
-- `src/metrics.ts` (`PathLabel` adds `/console.js`)
 - `src/connection-test.ts` (only if `wireLabel` moves to `src/api-failure.ts`; texts unchanged)
 - `src/html.test.ts`, `src/shell.test.ts`, `src/navigation.test.ts`, `src/roles.test.ts`,
   `src/states.test.ts`, `src/api-failure.test.ts`, `src/overview.test.ts`,
   `src/overview-read.test.ts`, `src/confirm.test.ts` (new)
 - `src/server.overview.test.ts`, `src/server.states.test.ts`, `src/server.confirm.test.ts`
-  (new); `src/server.test.ts`, `src/server.sign-in.test.ts`, `src/server.security.test.ts`,
-  `src/main.startup.test.ts` (extended; existing assertions stay)
+  (new)
+- `src/server.test.ts` (`depsFor` at `:41` gains `instanceName`; new cases added),
+  `src/server.setup.test.ts` (the `createConsoleServer` call at `:102` gains `instanceName`),
+  `src/server.sign-in.test.ts` (call at `:94` gains `instanceName`; new cases added),
+  `src/server.security.test.ts` (call at `:62` gains `instanceName`; new cases added),
+  `src/main.startup.test.ts` (new case for `/__test/` on `bun src/main.ts`)
+
+Rule for these five existing test files: the allowed edits are the constructor wiring (one
+`instanceName: "pulse Console"` line per call above, the only change in
+`src/server.setup.test.ts`) and new `test(...)` cases. No existing `expect` is removed, loosened
+or changed. If an existing assertion fails because `GET /` now reads pulse-api, that is a defect
+of the implementation to fix in `src/`; if it cannot be fixed there, the implementer requests a
+hold instead of changing the assertion.
 - `test/fixture-routes.ts`, `test/fake-api.ts` (new, test only)
 - `e2e/run.ts`, `e2e/tsconfig.json` (new, Chromium checks)
 - `package.json`, `bun.lock` (dev dependencies, `check:browser`, `typecheck` with `-p e2e`)
@@ -468,7 +520,7 @@ Files:
 - `README.md`, `docs/configuration.md`, `docs/development.md`, `AGENTS.md`
 
 Behavior change: yes
-New signed-in shell and Overview at `/`, a shell 404, `/console.js`, new renderers and a new CI job.
+New signed-in shell and Overview at `/`, a shell 404, new renderers and a new CI job.
 
 ### Verified tool facts
 
@@ -505,14 +557,16 @@ this repository:
   ReadonlyMap<string, ProtectedRoute> | undefined` and `roleOf?: ((user: User) => ConsoleRole)
   | undefined`. Existing deps (`fetch`, `schedule`, `now`) feed the Overview reads, so tests use
   a fake `schedule` for the timeout, no real timer.
-- `ROUTES` (`src/server.ts:70-77`) adds `/console.js` (`GET`, `HEAD`); `/` keeps `GET`, `HEAD`.
-  `pathLabel` and `PathLabel` add `/console.js`; `/__test/*` counts as `other`.
+- `ROUTES` (`src/server.ts:70-77`) gets no new production path; `/` keeps `GET`, `HEAD`.
+  `PathLabel` (`src/metrics.ts:4`) does not change; `/__test/*` counts as `other`.
 - Module size: one responsibility per module (AGENTS.md "Code design"); cognitive complexity at
   most 15 per function (shared lint).
 - `e2e/run.ts` is a plain Bun script (`bun e2e/run.ts`, not `*.test.ts`, so `bun test` does not
   pick it up). It starts the fake api and a console server with `testRoutes`, a `mkdtemp`
   database with a completed setup, signs in through the real form, and drives Chromium at
-  390 × 844 and 1280 × 800, with one context `javaScriptEnabled: false` and one with JavaScript.
+  390 × 844 and 1280 × 800. The no-JavaScript checks run in a context with
+  `javaScriptEnabled: false`; axe needs script injection and runs in a separate context with
+  JavaScript on (the pages ship no script, so both contexts render the same HTML).
   It exits non-zero on the first failed assertion and prints `ok:` per check.
 - CI job `browser` on `ubuntu-24.04`, `timeout-minutes: 15`, `permissions: contents: read`:
   checkout (`persist-credentials: false`), setup-bun `1.4.0`, `bun install --frozen-lockfile`,
@@ -521,11 +575,12 @@ this repository:
   The `docker` dev-path loop adds `/app/node_modules/playwright`,
   `/app/node_modules/@axe-core`, `/app/test` and `/app/e2e`, and a new step checks that
   `GET /__test/states/empty` on the running container answers `404`.
-- Docs: README "What works now" and the endpoint table (`/`, `/console.js`, unknown path signed
-  in); `docs/configuration.md` HTTP routes (protected-route order, Overview reads, the log line,
-  the `/console.js` path label, the no-JS busy limit); `docs/development.md` code layout, the
-  `test/` and `e2e/` folders, `bun run check:browser`, the `browser` job and the image check;
-  `AGENTS.md` "This repository" (new modules; scripts limited to `/console.js`), commands
+- Docs: README "What works now" and the endpoint table (`/`, unknown path signed in);
+  `docs/configuration.md` HTTP routes (protected-route order, Overview reads, the log line, the
+  busy-button limit of Decision 6); `docs/development.md` code layout, the `test/` and `e2e/`
+  folders, `bun run check:browser`, the `browser` job and the image check; `AGENTS.md` "This
+  repository" (new modules; no script, and later scripts only for copy buttons and the preview
+  as #460 decides), commands
   (`bun run check:browser`) and replace the rule "Test helpers stay inside the `*.test.ts` file"
   (`docs/development.md:48`) with the `test/` folder rule.
 
@@ -537,8 +592,10 @@ Every expected value below is a literal written in this spec or in the test.
 2. `src/overview.test.ts`: the overall-state and count rows of Counterexamples, as literals.
 3. `src/navigation.test.ts`: table over the four roles: with today's registry every role sees
    exactly `["Overview"]`; with a registry whose entries are all marked available, viewer and
-   member see `Overview, Checks, Incidents, Maintenance`, admin and owner see all ten in the
-   order of Decision 2; no unavailable entry renders an `<a>`.
+   member see exactly the 4 entries `Overview, Checks, Incidents, Maintenance`, admin and owner
+   see exactly the 9 entries `Overview, Checks, Incidents, Maintenance, Tokens, Probes, Team,
+   Activity, System` in that order; the registry has exactly 9 entries, 8 of them not
+   available; no unavailable entry renders an `<a>`.
 4. `src/server.overview.test.ts` (real server, fake api on `127.0.0.1:0`): success, mixed,
    all unknown, all maintenance, empty; timeout (fake `schedule`), network (closed port), 401,
    403, 429, 503, 302 (second server gets 0 requests), missing and wrong `x-pulse-contract`,
@@ -559,23 +616,27 @@ Every expected value below is a literal written in this spec or in the test.
    revision, role, CSRF, Origin and expired-session rows of Counterexamples hold.
 7. `src/server.test.ts` and `src/server.security.test.ts`: a server without `testRoutes` and
    `bun src/main.ts` (`src/main.startup.test.ts`) answer `404` for `/__test/states/empty`;
-   the shell 404, `/console.js`, Overview and every fixture response carry the exact CSP string
-   of `src/server.ts:54-55`, `referrer-policy: same-origin`, `x-frame-options: DENY`,
-   `x-content-type-options: nosniff`, `cache-control: no-store`; no response body holds
-   `<script>` without `src` or a `style=` attribute.
+   `GET /console.js` answers `404` (no script route); the shell 404, Overview and every fixture
+   response carry the CSP string `default-src 'none'; script-src 'self'; style-src 'self';
+   img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` (literal
+   from the issue), `referrer-policy: same-origin`, `x-frame-options: DENY`,
+   `x-content-type-options: nosniff`, `cache-control: no-store`; no response body contains
+   `<script` or `style=`.
 8. `bun run check:browser` (CI job `browser`): at 390 px every page of Required behavior 7 has
    `scrollWidth ≤ 390`; axe reports 0 violations for tags `wcag2a`, `wcag2aa`, `wcag21a`,
    `wcag21aa`, `wcag22aa` on sign-in, Overview, the shell 404, 403, one typed and one plain
    confirmation; with JavaScript off, a typed confirmation completes by typing `Checkout API`
    and pressing Enter, and a plain confirmation completes with Tab and Enter (recorder shows 1
-   action each), and the busy form submits (`Submitted: go`); with JavaScript on, the busy
-   button is `disabled` and shows its busy label while the gate is held, and `action=go` is
-   recorded once after two clicks; Tab from the top reaches the skip link first, then the sign-out
-   button and the Overview link, each with a computed `outline-style` other than `none`.
-9. Existing tests stay green without weakening: `src/server.setup.test.ts`,
-   `src/server.sign-in.test.ts` (including `Signed in as Owner &lt;Sentinel&gt;`, the API
-   origin and `action="/sign-out"` on `/`), and the setup texts of
-   `src/connection-test.test.ts`.
+   action each); on `/__test/states/busy` the `Run` button is not disabled on load, Enter
+   submits and the page shows `Submitted: go` with 1 recorded `action=go`; on
+   `/__test/states/busy?pending=1` the button is disabled (`isDisabled()` true) and its text is
+   `Running…`; Tab from the top reaches the skip link first, then the sign-out button and the
+   Overview link, each with a computed `outline-style` other than `none`.
+9. Existing tests stay green under the rule of the Files list (wiring and new cases only):
+   `src/server.setup.test.ts`, `src/server.sign-in.test.ts` (including `Signed in as Owner
+   &lt;Sentinel&gt;`, the API origin and `action="/sign-out"` on `/`), `src/server.test.ts`,
+   `src/server.security.test.ts`, and the setup texts of `src/connection-test.test.ts`.
+   `git diff main -- src/server.setup.test.ts` shows only added `instanceName` lines.
 10. CI `docker` job: the extended dev-path loop passes and `/__test/states/empty` answers `404`
     in the container.
 11. Manual smoke (AGENTS.md "End-to-end checks"): `PULSE_API_URL=http://localhost:3000 bun start`
@@ -587,4 +648,5 @@ Every expected value below is a literal written in this spec or in the test.
 The pull request lists: `bun run check` output summary (tests, coverage), `bun run
 check:browser` output (`ok:` lines), the green CI jobs `check`, `docker` (both legs) and
 `browser`, the manual smoke commands and results, `bun run test` duration before and after, and
-the known limit that without JavaScript a submit button is not disabled during the request.
+the known limit of Decision 6 (no script, so an enabled submit button is not disabled while
+the browser waits for the answer; the pending variant is server-rendered).
