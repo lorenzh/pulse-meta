@@ -431,7 +431,7 @@ Checklist items that apply:
 | 35 | reference | POST /admin/components with `checkIds: ["db-only"]` | `422` | accepts a reference the file cannot hold |
 | 36 | failed commit | the audit insert fails inside the transaction | `500`, definition, generation, runtime row and revision unchanged | definition stored without audit |
 | 37 | marker never served to probes | PUT with `x-token: {keep: true}` over stored `S1`; GET /probe/checks | `x-token: "S1"`, no `keep` key anywhere in the response | the marker is stored or served |
-| 38 | env names per surface | DB check with header `x-env: {env: PULSE_SENTINEL_DB_ENV}` | name present in GET /admin/config, the export and GET /probe/checks; absent from `/checks`, audit entries, logs and `/metrics` | strips env names from admin views (as today), or logs them |
+| 38 | env names per surface | DB check with header `x-env: {env: PULSE_HEADER_SENTINEL_DB_ENV}` | name present in GET /admin/config, the export and GET /probe/checks; absent from `/checks`, audit entries, logs and `/metrics` | strips env names from admin views (as today), or logs them |
 | 39 | snapshot storage | file check with literal `x-token: F1` and heartbeat secret `S` applied | `F1` in `config_state.file_snapshot_json`; `S` in no column, its hex SHA-256 in the snapshot | snapshot without literals (fallback serves a broken check), or with `S` |
 
 There are no statistics in this change. The admin revision is the exact formula of decision 5;
@@ -459,11 +459,16 @@ api/src/token-store.ts:170:    .query("SELECT secret_sha256, token_id, retires_a
 $ grep -rn 'source' contract/src/admin.ts contract/src/tokens.ts
 contract/src/admin.ts:51:  .regex(ADMIN_REVISION, { error: `must match ${ADMIN_REVISION.source}` });
 contract/src/tokens.ts:106:      source: z.enum(["api", "file"], { error: 'must be one of "api", "file"' }),
-$ grep -rn 'removed from the configuration\|PULSE_SENTINEL' api/src contract/src config/src | wc -l
+$ grep -rn 'removed from the configuration\|PULSE_HEADER_SENTINEL_DB_ENV\|PULSE_HEADER_SENTINEL_FILE_ENV' api/src contract/src config/src | wc -l
 0
 ```
 
 - `redacted` appears only in comments, never as a key: no collision.
+- The test fixtures `PULSE_HEADER_SENTINEL_DB_ENV` and `PULSE_HEADER_SENTINEL_FILE_ENV` match the
+  env-name rule `^PULSE_HEADER_\w{1,115}$` (contract `src/schema.ts:121`), so they pass validation
+  and reach the redaction paths. The only near name in the clones is the test constant
+  `PULSE_HEADER_SENTINEL_ENV_NAME_7731` (api `src/config-admin.test.ts:33`). It is a different
+  string, so the search above finds 0 hits.
 - `secret_sha256` is the column name of `token_secrets`; the new column of the same name in
   `check_definitions` has the same meaning (SHA-256 of a credential) in another table.
 - `source` exists on the admin *token* view (`"api" | "file"`, contract `src/tokens.ts:106`). The
@@ -716,8 +721,8 @@ Checks:
    its secret is accepted, `file.state` is `invalid`.
 4. Sentinel test, one assertion per cell of the table "Where values may appear". Fixture: one
    database HTTP check and one file HTTP check, each with a literal header sentinel
-   (`lit-db-sentinel-1`, `lit-file-sentinel-1`), an env header (`PULSE_SENTINEL_DB_ENV`,
-   `PULSE_SENTINEL_FILE_ENV`) and a body sentinel (`body-db-sentinel-1`, `body-file-sentinel-1`);
+   (`lit-db-sentinel-1`, `lit-file-sentinel-1`), an env header (`PULSE_HEADER_SENTINEL_DB_ENV`,
+   `PULSE_HEADER_SENTINEL_FILE_ENV`) and a body sentinel (`body-db-sentinel-1`, `body-file-sentinel-1`);
    one database and one file heartbeat check with the secrets `hb-db-sentinel-0123456789` and
    `hb-file-sentinel-0123456789`. The sentinels are literals of the test.
    - Responses and logs: each "no" cell holds for every public read, admin view, admin write
