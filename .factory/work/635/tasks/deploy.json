@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "All five CLI diagnostics mask URL user info while preserving readable errors and exit codes",
+      "files": [
+        "cli/docker.ts",
+        "cli/docker.test.ts",
+        "cli/test/fake-docker.ts",
+        "cli/main.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior (Required behavior rules 1-9), Tests items 1-5, Checks and Completion evidence; Counterexamples 1-18 and F1-F4, the five diagnostic rows across COMMANDS, Security impact checklist and Acceptance. Export and document maskUserInfo; call it only after firstLine selects its existing first nonblank line. Use a fixed (hidden) replacement, preserve scheme case and slash count, mask every match through the last authority @, and keep linear runtime. Add optional single-call failure injection to fakeDocker for version, Compose config, docker ps, volume ls and volume inspect without changing defaults. Add the main regression named 'redacts URL user info in Compose config diagnostics', with separate output streams, successful preflight and the exact stderr from Tests item 1. Keep the five diagnostic prefixes, exit codes, no-such-volume exception and existing daemon tests unchanged. Record the regression failing with unmodified docker.ts from deploy 621cbf0, restore the fix, run the whole-change checks, and include the specified evidence and known limits in the PR body.",
+      "acceptance": [
+        {
+          "command": "bun test cli/main.test.ts -t 'redacts URL user info in Compose config diagnostics'",
+          "expected": "With the fix: 1 pass, 0 fail; status --dir exits 1, stderr contains the literal 'pulse status: docker compose config failed: open /x/http:/(hidden)@127.0.0.1:1/x.yaml: no such file or directory', and neither stdout nor stderr contains SENTINEL. Repeat with only cli/docker.ts restored to unmodified deploy 621cbf0ecbd98b7dca1424055fba12f657827410: 1 fail, including failure of the no-SENTINEL assertion; restore the fixed file afterward. Focused runs are judged by test results, not the full-suite coverage exit status."
+        },
+        {
+          "command": "bun test cli/docker.test.ts",
+          "expected": "0 fail; all 18 maskUserInfo counterexamples and F1-F4 match the spec's literal outputs, and the 1,000,000-character counterexample completes in under 1000 ms. All 5 injected failures across up, down, down --volumes and status preserve the literal masked line and prefix, omit SENTINEL, and exit 3 for docker version or 1 for config, docker ps, volume ls and volume inspect. The inspection failure is reached with a declared volume and does not contain 'no such volume'; earlier calls succeed. Existing daemon cases pass unchanged. Security cases cover uppercase and mixed-case schemes, git+ssh://tok@h, http:/u:p@ss@h/x, opaque percent-encoded user info, multiple URLs, leading blank lines, and credentials containing $& or $1 with fixed expected masked output. Focused runs are judged by 0 failing tests, not the full-suite coverage exit status."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0 with Bun 1.4.0; lint, typecheck and the full CLI test suite pass, including the coverage threshold of at least 0.8 lines."
+        },
+        {
+          "command": "bun run build && bash cli/test/errors.sh dist/pulse",
+          "expected": "exit 0; the CLI binary builds and errors.sh prints 'errors: all cases passed', including the unchanged 'cannot reach the Docker daemon' diagnostic with exit 3."
+        },
+        {
+          "command": "grep -n 'firstLine(' cli/docker.ts",
+          "expected": "exit 0; exactly 6 lines: the firstLine definition and its five diagnostic callers for daemon preflight, Compose config, docker ps, volume ls and volume inspect. Inspection confirms firstLine applies maskUserInfo to its selected line, covering every caller."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with Docker Compose >= 2.23, network access, curl and jq; the existing full-setup end-to-end test reaches 'All checks passed'."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "exit 0; the PR names issue lorenzh/pulse-meta#635, lists the new tests and bun run check and errors.sh outputs, records the regression failure on unmodified deploy 621cbf0 and success after the fix, and records the Compose end-to-end result and security checklist evidence for secrets in diagnostics and linear handling of hostile stderr. Known limits explicitly state that query strings, fragments, inherited Compose up/down output and secrets outside URL user info are not masked."
+        }
+      ]
+    }
+  ]
+}
