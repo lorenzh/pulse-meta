@@ -5,13 +5,13 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Console setup e2e supports forms with and without single-use tokens",
+      "title": "Console setup e2e sends optional form tokens and checks sign-in replay",
       "files": [
         "e2e/console-setup.sh",
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, all Behavior bullets, Checks 1-3 and Completion evidence; Rollout order (deploy merges before console). Cover every POST, including the two-factor flow if #563 has merged. Console check 14 owns the later token-enabled integration run.",
+      "spec": "## Repository: deploy, all Behavior bullets, Checks 1-3 and Completion evidence; Rollout order (deploy merges before console). Read form_token from the same response as csrf, refresh it after each form response, and pass it only when present on every POST, including both flows if #563 has merged. Preserve steps 1-10 and capture the successful sign-in fields for an identical replay in step 8b without printing secrets. Console Check 14 owns the later token-enabled integration run; this child proves compatibility with console main without tokens.",
       "acceptance": [
         {
           "command": "bun install --frozen-lockfile && bun run check",

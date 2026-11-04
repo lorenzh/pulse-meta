@@ -1,0 +1,246 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Shared renderers provide the shell, role-aware navigation and UI states",
+      "files": [
+        "src/html.ts",
+        "src/pages.ts",
+        "src/shell.ts",
+        "src/navigation.ts",
+        "src/roles.ts",
+        "src/states.ts",
+        "src/api-failure.ts",
+        "src/connection-test.ts",
+        "src/styles.ts",
+        "src/html.test.ts",
+        "src/shell.test.ts",
+        "src/navigation.test.ts",
+        "src/roles.test.ts",
+        "src/states.test.ts",
+        "src/api-failure.test.ts",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (shared modules and module size); Decisions 1-3, 6 (markup), 9 (404 renderer) and 11 (form-field helper and notices); Required behavior 2, 4 and 7 (markup/CSS); Check 3 and presentation portions of Checks 5 and 7. Extract document/field helpers without changing existing setup/sign-in output; T3 adds their form-token arguments and hidden field together with enforcement. Build shellPage, nine-entry navigation, ConsoleRole/hasRole, all shared state renderers including alreadySubmittedState, formTokenField, submitButton and field/textarea/error-summary helpers. Keep connection-test texts unchanged if wireLabel moves. The shell head alone enables the exact external script element; T3 supplies its asset and first live use. No server-rendered pending button. HTTP integration and fixture routes follow in T3-T4; confirmation renderers follow in T5.",
+      "acceptance": [
+        {
+          "command": "bun test src/html.test.ts src/shell.test.ts src/navigation.test.ts src/roles.test.ts src/states.test.ts src/api-failure.test.ts src/connection-test.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. Navigation has exactly 9 entries and 8 unavailable; today's four roles each see ['Overview']; an all-available registry gives viewer/member exactly Overview, Checks, Incidents, Maintenance and admin/owner exactly Overview, Checks, Incidents, Maintenance, Tokens, Probes, Team, Activity, System. Role checks use viewer < member < admin < owner. Shell renders pulse Console, Signed in as, role text, the first-focusable Skip to content link, aria-current=\"page\", and exactly <script src=\"/console.js\" defer></script>. The submit button starts enabled and carries data-busy-label; field errors have labels, aria-invalid and aria-describedby; state headings and details equal Required behavior 4 literals, including Already submitted, the expired notices, 409/412 and the read-only-specific 503 text; untrusted values are escaped. Existing connection-test assertions pass."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete test suite pass with line coverage at least 80%; existing setup/sign-in HTML and assertions still pass before T3 introduces the hidden field"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Overview reads produce validated counts or a safe failure state",
+      "files": [
+        "src/overview.ts",
+        "src/overview-read.ts",
+        "src/overview.test.ts",
+        "src/overview-read.test.ts",
+        "test/fake-api.ts",
+        "tsconfig.json",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (Overview dependencies and test layout); Decisions 4-5; Required behavior 3 and 4.3-4.4; Checks 2 and 4 (API-reader behavior; real console HTTP wiring is T4); Counterexamples (overall state, counts, precedence, redirects, read-only, wire and body cap); Performance impact (two concurrent reads). Implement readOverview and pure summarizeChecks/overallState plus the Overview body using T1 renderers. Add the reusable fake API outside src and include test in tsconfig. The caller supplies the saved API URL and injected fetch/schedule; no runtime dependency or contract pin change.",
+      "acceptance": [
+        {
+          "command": "bun test src/overview.test.ts src/overview-read.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. Literal cases: [up,unknown] and [maintenance,unknown] give Unknown; [up,maintenance] and [maintenance,maintenance] give Maintenance; [degraded,down,up] gives Down; [] gives No checks yet; [down,down,up] gives Down 2, Degraded 0, Unknown 0, Maintenance 0, Up 1, Total 3. Both reads start before either resolves and each timeout is 5000 ms. /admin/config uses Bearer authorization and validateAdminConfigSummary, /checks has no authorization and uses validateChecksResponse, both redirect modes are manual. No configured token sends 0 requests. Config failure suppresses successful checks; HTTP failures precede missing-header failures as Decision 4 specifies. Timeout/network/401/403/429/503/302, missing or wrong wire header, 6 MiB, invalid JSON and invalid shape map to the literal Required behavior 4 texts; the redirect destination receives 0 requests; a generic 503 never becomes the read-only state."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including test/ and the complete test suite pass with line coverage at least 80%; no protected routing or existing authentication behavior changes in this task"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Setup, sign-in and sign-out accept each form token once",
+      "files": [
+        "src/form-tokens.ts",
+        "src/form-tokens.test.ts",
+        "src/server.ts",
+        "src/main.ts",
+        "src/pages.ts",
+        "src/console-script.ts",
+        "src/metrics.ts",
+        "src/server.form-token.test.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.sign-in.test.ts",
+        "src/server.security.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (form-token store, existing route commit points, instanceName wiring, script route and metrics); Decisions 1, 6 and 11; Required behavior 1a and 2 (first live shell/sign-out integration); Checks 7 (asset/security headers), 7a, 7c and 9; Rule for the existing test files including item 3 (withoutCsrf also strips form_token, equality assertion unchanged); Counterexamples (form-token store, full-store isolation, sign-in replay through sign-out without session, script route, frozen HTML). Implement the entire token-store algorithm with the separate 2000 anonymous and 8000 signed-in pools and commit-point enforcement on all existing account forms. Wire instanceName in main and the four existing server constructors. Replace landingPage with the shell and retained API-origin line so sign-out has its session-bound token; Overview reads and the common protected dispatcher arrive in T4. Serve the only script at /console.js so live shell pages have a working asset. Update only the permitted existing test helpers/raw bodies/normalization plus wiring and new cases; preserve every existing expect. If #563 is already on main, protect each of its additional POST forms at its commit point and add replay tests, using its fully-signed-in gate without rebuilding its flows.",
+      "acceptance": [
+        {
+          "command": "bun test src/form-tokens.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. A token is 43 base64url characters from 32 random bytes, accepted once then replayed; wrong binding/path, unknown and empty are invalid. It is accepted at issuedAt + 43_199_999 and invalid at +43_200_000. The 101st unused token evicts the first of that binding, not the second. Used entries remain replayed until expiry/eviction; wasUsed is false before use, true afterward on the same path, false on another path and at expiry. With 8000 s: tokens (80 sessions x 100) and 2000 a: tokens, one more a: invalidates only the oldest a: and leaves the oldest s: accepted; one more s: from an 81st session invalidates only the oldest s: and leaves the second a: accepted. With 8000 s: and 0 a:, issuing one a: leaves all 8000 s: valid. Oldest means issuedAt then insertion order; the total never exceeds 10000, with no eviction across pools."
+        },
+        {
+          "command": "bun test src/server.form-token.test.ts src/server.setup.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/server.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. Check 7c covers every account-form counterexample: identical and concurrent sign-in give one 303 and one 409 Already submitted, 1 session row and success metric 1, no second Set-Cookie and no failure metric; a missing token gives 409, next kept and 0 sessions, followed by a successful fresh-token 303; five wrong passwords with one token still give 401 x5 then 429. Setup-code replay creates only one grant; concurrent same-token completion gives one 303 and one 409 Already submitted and 1 user; distinct tokens preserve 409 Setup is already complete; after completion setup still returns 404 not found; repeated action=test returns 200 twice. Sign-out replay with old and absent session cookies gives 409 after its first 303 and leaves 0 sessions; concurrent sign-out gives one 303 and one 409; no-session/no-token sign-out remains 303 with no Set-Cookie, bad Origin gives 403. Cross-binding/path tokens are refused. Form rerenders issue fresh tokens and keep only non-secret input; earlier guards retain 403, 415, 413, 400, 422, 429, 401 and 502 and do not consume tokens or mishandle throttle reservations. GET setup/owner/sign-in forms have exactly one form_token line after csrf, two GETs have different tokens, and HEAD has an empty body and issues no stored token. The sign-in body minus that line equals literal main HTML. GET/HEAD /console.js give 200 and text/javascript; charset=utf-8, HEAD has no body, POST gives 405 and allow GET, HEAD; the metric after one GET is pulse_console_http_requests_total{path=\"/console.js\",code=\"200\"} 1. CSP/cookies/referrer rules remain as specified; setup/sign-in contain no script."
+        },
+        {
+          "command": "git diff main -- src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/main.startup.test.ts | grep -c '^-.*expect('",
+          "expected": "stdout is 0; grep returns 1 because there are no removed expect lines; only the explicitly allowed wiring, fresh-token helper/raw-body edits, withoutCsrf normalization and new cases occur in these files"
+        },
+        {
+          "command": "grep -F -c 'expect(withoutCsrf(unknown.body)).toBe(withoutCsrf(wrong.body));' src/server.sign-in.test.ts",
+          "expected": "stdout is 1; the unchanged assertion passes for two 401 responses whose csrf and form_token values differ, and withoutCsrf strips only those two per-render values"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete test suite pass with line coverage at least 80%; existing authentication, setup concurrency, throttle and cookie assertions retain their values"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Protected pages render the Overview and shared states through one guarded shell",
+      "files": [
+        "src/server.ts",
+        "src/protected-route.ts",
+        "src/server.overview.test.ts",
+        "src/server.states.test.ts",
+        "src/server.form-token.test.ts",
+        "src/server.test.ts",
+        "src/server.security.test.ts",
+        "src/main.startup.test.ts",
+        "test/fixture-routes.ts",
+        "test/fake-api.ts",
+        "tsconfig.json",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (ProtectedRoute/PageRequest/PageResult, roleOf, testRoutes, Overview integration and shell 404); Decisions 3-5, 8-11 (protected route use of T3 tokens); Required behavior 1-4, 6 (state routes) and 7; Checks 4-5, 7 (protected responses, production isolation and raw paths), 7b and 9. Apply the exact guard order, including CSRF then role then synchronous token consume. Implement renderForm for invalid tokens, fresh tokens on every form rerender, log redaction, safe next paths and no POST replay after sign-in. Register state fixtures only through the test-only deps map, never production flags; reject keys outside /__test/ or colliding with production paths. Root now uses T2 reads and summary inside T1 shell; no future screen routes or role migration. Keep the Required behavior 1a account handlers outside the dispatcher; use #563's fully-signed-in gate if present. T5 extends fixtures with confirmation families.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.overview.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. All Check 4 cases use the real console and a fake API at 127.0.0.1:0 and return 200 Overview: success, mixed, all unknown, all maintenance, empty, timeout via fake schedule, closed-port network failure, 401/403/429/503/302, missing/wrong wire header, 6 MiB, invalid JSON/shape and no token. Exact summary counts and Required behavior 3/4.3 texts are asserted; the token rejection is a banner and keeps the session; config failure hides the summary. /checks has no authorization, /admin/config has Bearer authorization; the redirect target and the no-token API each see 0 requests. The saved API URL is used; the pulse-api origin line and existing Signed in as assertions pass. Each failed read logs warn api read failed with call/kind and HTTP status only; sentinel token and upstream-body-sentinel occur in 0 response bodies or logs. A corrected fake API makes the next GET / show a summary."
+        },
+        {
+          "command": "bun test src/server.states.test.ts src/server.form-token.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. Every state fixture has the Required behavior 6 literal status 200, 403, 404, 409, 412, 422, 503 or 303 and its own heading; 409/412 keep name and note, remove secret=s3cret-sentinel and issue a different form_token; 422 links summary errors to labelled fields with aria-invalid and aria-describedby; viewer gets 403 naming Admin and Viewer. Session expiry redirects to /sign-in?next=%2F__test%2Fstates%2Fsession-expired and successful sign-in returns there without replaying a POST. Identical busy bodies return 200 Submitted: go then 409 Already submitted, and concurrent bodies give exactly one 200 and one 409 with recorder count 1. Missing, empty, wrong-session, wrong-path, expired and evicted tokens give 409 with This form has expired. Your input is kept below. Send it again., kept choice and recorder count 0; expiry boundaries are 43_199_999 and 43_200_000 ms. A wrong-CSRF 403 leaves the same token usable for one valid POST. Re-rendered stale forms submit with a fresh token. 2001 anonymous sign-in views cannot invalidate a previously issued session form token. Refused-token logs have info form token refused with reason replayed/invalid and path, never the supplied token."
+        },
+        {
+          "command": "bun test src/server.test.ts src/server.security.test.ts src/main.startup.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. Protected order is method/phase/Host/session/Origin/content-type/8192-byte limit/repeated fields/CSRF/role/form-token/handler; prior refusals consume 0 tokens and execute 0 actions. Forged request role values never change the server role. GET / without session is 303 Location /sign-in?next=%2F; protected POST without session is 303 without reading its body or executing an action; unsafe next becomes /. Signed-in unknown GET/HEAD gets shell 404; other unknown paths remain 404 not found\n, including raw //healthz and /%2e%2e/ without session. Ordinary server and bun src/main.ts answer 404 under /__test/; invalid registry keys throw an Error subclass; fixture metrics use path=other. Shell and fixture responses have the exact issue CSP, referrer-policy same-origin, x-frame-options DENY, x-content-type-options nosniff and cache-control no-store. Shell HTML has exactly one <script src=\"/console.js\" defer></script>; setup/sign-in have none; HTML has no inline style or event attribute. Script body contains data-busy-label, aria-busy and pageshow and contains no eval, innerHTML, fetch( or XMLHttpRequest."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete test suite pass with line coverage at least 80%, including all frozen existing assertions from Check 9"
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "step",
+      "title": "All confirmation families validate server data and perform one action",
+      "files": [
+        "src/confirm.ts",
+        "src/confirm.test.ts",
+        "src/server.confirm.test.ts",
+        "test/fixture-routes.ts",
+        "src/styles.ts",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (confirmation modules); Decision 7; Required behavior 5-7 (all confirmation families and fixture action recorder); Check 6; Counterexamples (typed name, revision, role/role change, CSRF, Origin, expired POST and forged expected). Implement typedConfirmPage/plainConfirmPage and isTypedNameConfirmed, together with the complete server-driven fixture workflows. Use T4 dispatcher and T3 tokens on every confirmation form. GET/HEAD/Cancel never act; data read again at POST determines the expected name, revision and target existence. The six typed and five plain families exist only in test fixtures; no production feature screen or confirmation demo route is added.",
+      "acceptance": [
+        {
+          "command": "bun test src/confirm.test.ts src/server.confirm.test.ts",
+          "expected": "0 fail in the focused tests; a coverage-only nonzero exit is not a test failure. All 6 typed and 5 plain families from Required behavior 5 render a consequence, Cancel link, csrf followed by form_token, and revision; typed forms label confirm_name with the server display name. GET/HEAD/Cancel record 0 actions; a correct POST records exactly 1 {family,target} and gives 303 to /__test/confirm/done; identical replay gives 409 Already submitted and still 1 action. The target is Checkout API. Trim and NFC permit equivalent spelling; API for expected api, changed inner whitespace, blanks and forged expected fail 422 with the specified field messages and kept typed input. A renamed target/old revision gives 409 Changed since you opened it with input kept and a fresh token; a missing target gives shell 404. An admin downgraded to viewer between GET and POST gets 403 naming Admin and Viewer with 0 actions; missing/wrong CSRF, cross-origin and Origin null each give 403 with 0 actions; an expired-session POST gives 303 to sign-in and is not replayed after sign-in."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete test suite pass with line coverage at least 80%; confirmations remain native HTML forms and their fixture routes remain absent from ordinary servers"
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "kind": "final",
+      "title": "Browser, image and deploy checks prove the complete console flow",
+      "files": [
+        "e2e/run.ts",
+        "e2e/tsconfig.json",
+        "package.json",
+        "bun.lock",
+        ".github/workflows/ci.yml",
+        "src/console-script.ts",
+        "src/styles.ts",
+        "test/fixture-routes.ts",
+        "test/fake-api.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior (Chromium runner, e2e typecheck, browser job, image checks and docs); Decisions 6 and 10; Required behavior 7; Checks 1 and 8-14; Completion evidence; Dev tooling decision; Security impact checklist and hostile-input matrix; Performance impact and Rollout order. Complete browser checks and --serve fixture mode, mobile/focus corrections, exact test-only dependency pins, release gating and production image isolation. Reconcile all docs with the final behavior and permitted #563/#564 integration. All earlier unit/HTTP behavior and Check 9 test restrictions remain required. The deploy child must be merged before the token-enabled compose check; no other repository is edited.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, source/test and -p e2e typechecks and the complete tests pass, line coverage is at least 80%; playwright 1.64.1 and @axe-core/playwright 4.14.0 are exact devDependencies, with no runtime dependency or contract/schema change"
+        },
+        {
+          "command": "bunx playwright install --with-deps chromium && bun run check:browser",
+          "expected": "exit 0 with ok: lines. At 390 x 844, sign-in, shell Overview success/empty/unreachable/token-banner and every /__test/ page including long-content states/confirmations have scrollWidth <= 390 without overflow:hidden; also exercise 1280 x 800. Axe has 0 violations for wcag2a, wcag2aa, wcag21a, wcag21aa and wcag22aa on sign-in, Overview, shell 404/403 and one confirmation of each kind. With JavaScript disabled, Enter completes typed Checkout API, Tab/Enter completes plain, and busy native submission gives Submitted: go with 1 action; replaying the captured body with the same Origin/cookies gives 409 Already submitted and still 1 action. With JavaScript enabled and the POST held, Run becomes disabled, aria-busy=\"true\" and Running…; three further clicks and Enter produce exactly 1 POST total, and release records exactly 1 action=go. The clicked submitter value survives the deferred disabling. Decision 6's pageshow restoration leaves restored forms usable. The browser reports 0 CSP violations; Tab reaches Skip to content, sign-out and Overview in order, each with computed outline-style other than none."
+        },
+        {
+          "command": "git diff main -- src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/main.startup.test.ts | grep -c '^-.*expect('",
+          "expected": "stdout is 0; grep returns 1 because no existing expect line is removed; all existing-test edits comply with the four allowed categories, including normalization of only csrf and form_token"
+        },
+        {
+          "command": "grep -F -c 'expect(withoutCsrf(unknown.body)).toBe(withoutCsrf(wrong.body));' src/server.sign-in.test.ts",
+          "expected": "stdout is 1 and this unchanged assertion passes in bun run check"
+        },
+        {
+          "command": "docker build --tag pulse-console:local . && bash scripts/image-dotenv.sh pulse-console:local",
+          "expected": "exit 0; the production image builds and all existing dotenv smoke checks pass; the extended docker CI checks also require no playwright, @axe-core, test or e2e paths in /app, GET /__test/states/empty 404 and GET /console.js 200 with content-type text/javascript; charset=utf-8"
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "manual Check 11 against a local pulse-api: setup and real sign-in lead to 200 Overview in the shell with a summary; stopping pulse-api and reloading renders pulse-api cannot be reached; commands and observed results are recorded in the pull request"
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Check 13 fixture mode prints its loopback URL and generated test sign-in, stays running and injects a 3000 ms busy wait. The manual agent-browser run against that URL observes disabled, aria-busy=true and Running… after Run, then Submitted: go. In a separate JavaScript-disabled session the native form succeeds, an identical captured POST replay gives Already submitted, and its recorder remains at 1 action. The pull request records actual agent-browser commands and results for both sessions; back navigation with a fresh token is not accepted as replay evidence."
+        },
+        {
+          "command": "cd \"$PULSE_DEPLOY_CHECKOUT\" && scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 on fresh dev volumes using deploy main with the merged deploy child; set PULSE_SRC_DIR to sibling service checkouts whose pulse-console is this branch. Every ok: line in steps 1-10 passes, including the literal ok: 8b POST /sign-in replay 409 Already submitted; the subsequent signed-in GET / is 200 Signed in as, closed setup is 404, recreation emits 0 setup code lines and the admin token is in no database file. No token, code or password is printed. The pull request records the commands and output as Check 14 evidence."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "exit 0; check, docker on both ubuntu-24.04 and ubuntu-24.04-arm, and browser pass; browser uses ubuntu-24.04, timeout-minutes 15, contents:read, the approved pinned checkout/setup-bun actions and Bun 1.4.0; release needs [check,docker,browser]"
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "the pull request contains the full test/coverage summary, browser ok: lines, all required green CI jobs, manual smoke and agent-browser commands/results, token-enabled deploy e2e output and bun run test duration before/after. It records the Security impact checklist results for secrets, auth/CSRF/role order, limits, safe next, redirects, dependency pins, isolated fixtures, the only script and replay/store flooding, including the three full-store mixed-pool cases. It states all Completion evidence limits: no in-flight disabling without JavaScript, 12-hour/restart expiry with kept non-secret input, completed setup replay 404, bad-Origin no-session sign-out 403 and protection required for #563 forms added after this merge. Documentation covers final routes/metrics/logs, token bindings/lifetime/100-per-binding and 2000/8000 pools, busy behavior, test/e2e layout, browser commands and image/release gating; no unbuilt future screen is claimed."
+        }
+      ]
+    }
+  ]
+}
