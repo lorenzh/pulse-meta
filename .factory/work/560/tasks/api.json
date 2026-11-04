@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "API docs describe reloads, durability, routes and operator safety",
+      "files": [
+        "docs/operation.md",
+        "docs/configuration.md",
+        "docs/install.md",
+        "docs/rest-api.md",
+        "docs/concepts.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: api, all Behavior and edits bullets and Checks/Completion evidence; F1-F4 (F3 already satisfied), R1-R4, W1-W5 and the Probe locations buffer note. Apply Required behavior, Risks, Non-goals and Acceptance evidence N1-N9/P1-P6. Preserve existing anchor headings, doc-test assertions, backup commands/exit codes/temp-directory guidance and heartbeat-secret advice. Only the six listed Markdown files change; no new tests or runtime changes.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "0 changed paths without the .md suffix; changed paths are limited to this task's files."
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the repository's full lint, typecheck and test suite passes, including its coverage gate."
+        },
+        {
+          "command": "rg -n -F -- 'so lost results are mostly sent again' docs/operation.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'After a change to the checks file, restart only the API' docs/operation.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'reads the file once' docs/operation.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'cleared at the next start' docs/configuration.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'Windows are read at start only' docs/configuration.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'reads them at start only' docs/install.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'reads the file at start only' docs/troubleshooting.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'Read routes have no authentication' docs/rest-api.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'Read routes (`GET`) are public' docs/concepts.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/locations'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/manual-incidents'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/manual-incidents/:id'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/config'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/checks'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/components'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/maintenance'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/tokens'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^General rules/' docs/rest-api.md | grep -c -F -- '/admin/audit'",
+          "expected": "P1: count >= 1 in the overview table."
+        },
+        {
+          "command": "awk '/^## Overview/,/^## POST \\/results/' docs/rest-api.md",
+          "expected": "P2 and F4: reviewer verifies all overview methods, section links and auth against src/server.ts dispatch, src/token-routes.ts, src/audit-routes.ts and src/token-scopes.ts:canUse: probe token for /probe/checks; read OR checks for GET /admin/config; admin AND checks for config writes; admin AND incidents for manual writes; none for GET /manual-incidents and /locations. Token and audit rows remain. General rules distinguish public reads from protected routes and link to Network exposure."
+        },
+        {
+          "command": "rg -c -F -- '/heartbeat/' docs/install.md",
+          "expected": "P3: count >= 1; reviewer verifies new Network exposure section before Next steps against W3 and src/server.ts:HEARTBEAT_PATH. Keep API private; external TLS ingress permits only GET/POST /heartbeat/<id>[/<secret>] matched on normalized paths. /admin/*, manual writes, /probe/checks, /results, public reads, /healthz, /readyz and /metrics stay off that ingress; status uses its own proxy."
+        },
+        {
+          "command": "rg -n -i -- 'synchronous = NORMAL' docs/operation.md",
+          "expected": "P4: >= 1 match; reviewer verifies Database distinguishes an application crash (commits survive) from power loss/OS crash (last commits may be lost without corruption), keeps FULL fallback and EXTRA audit commits, and explains probes forget acknowledged 204 results. Sources: src/db.ts:setJournal/withDurableCommit, probe src/buffer.ts and spec F1/counterexamples."
+        },
+        {
+          "command": "rg -c -F -- 'bun run backup' docs/operation.md",
+          "expected": "P5: count >= 1; reviewer verifies W4: consistent snapshot, a copy on /data shares the live volume's failure, copies must leave both volume and host, retain multiple copies and test restore. Existing docker compose cp, exit codes and temp-directory text remain; source src/backup.ts:copyLive."
+        },
+        {
+          "command": "rg -n -i -- 'query' docs/configuration.md",
+          "expected": "P6: >= 1 match in HTTP checks url row or Secrets note. Reviewer verifies W5 in configuration and operation: userinfo rejected; query/path credentials accepted, stored and served raw by GET /checks, /probe/checks and /admin/config; status redaction cannot protect direct reads. Recommend a host-bound env header. Sources: contract src/schema.ts:httpUrl, src/service.ts public check mapping and status src/api-filter.ts:sanitizeUrl."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/operation.md docs/configuration.md docs/concepts.md docs/troubleshooting.md",
+          "expected": "Reviewer verifies remaining api section edits against cited sources: R1 uses docker compose up -d api to apply changed Compose environment/env_file and needs neither restart nor recreate for checks-file reload; R2/F2 apply maintenance and removed-check changes at start, reload and admin write; R3 removed heartbeat check loses its secret; R4 distinguishes protected GETs. W1 states admin AND checks authority reaches secrets only on bound hosts, env storage does not remove that authority, and probe tokens read literal headers/bodies (not probe env values). W2 keeps retries limited to HTTP GET/HEAD, TCP/DNS/domain, judged before redirects, with one request per interval per location for other HTTP methods and a side-effect-free endpoint recommendation. Probe locations notes unsent in-memory results lost on probe restart. Sources: src/start.ts reload onApply, src/service.ts:upsertChecks, src/token-scopes.ts:canUse, probe src/client.ts:resolveHeaders, src/header-hosts.ts:isBound, src/check.ts:isRetryable and src/buffer.ts."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/",
+          "expected": "Reviewer verifies every added/changed relative link resolves to an existing file and heading, including probe operation.md#result-buffer and configuration.md#retries; preserves all api anchors listed in Non-goals. Full bun run check includes src/docs-claims.test.ts and src/tokens.test.ts without edits; existing backup/token/auth doc assertions remain."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains the Required behavior evidence table for F1-F4, R1-R4 and W1-W5 plus the Probe locations buffer note: item, file/section, old text or missing, new statement and source file/symbol at the checked commit. F3 is explicitly already satisfied. Includes N1-N9 outputs, P1-P6 review evidence, bun run check result, Markdown-only changed-file list and resolved-link review. Security guidance is checked against W1-W5 sources; no performance A/B run is required by the spec."
+        }
+      ]
+    }
+  ]
+}

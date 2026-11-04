@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Probe docs explain buffer loss, reloads, token rotation and request side effects",
+      "files": [
+        "docs/operation.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: probe, all Behavior and edits bullets and Checks/Completion evidence; F5, R5-R8 and W2; Acceptance evidence N10-N16/P7-P8; Required behavior, Risks and Non-goals. Keep existing correct Result buffer/Retry guidance and probe token-file restart rules. Only the three listed Markdown files change.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "0 changed paths without the .md suffix; changed paths are limited to this task's files."
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the repository's full lint, typecheck and test suite passes, including its coverage gate."
+        },
+        {
+          "command": "rg -n -F -- 'A restart loses nothing except the results that were dropped' docs/operation.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -i -F -- 'reads its checks file at startup' docs/",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'reads its tokens only at startup' docs/",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'adds the new token and restarts the API' docs/operation.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -i -F -- 'restart only the API' docs/",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- \"with the API's tokens file\" docs/troubleshooting.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'fetches the checks once at startup' docs/configuration.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/operation.md",
+          "expected": "P7/F5: reviewer verifies State says no disk state and buffered results are lost on stop, restart or crash, shutdown logs their count, and nothing replays after restart; consistent with Result buffer and src/buffer.ts:close. R5 links api changing-checks and says API hot reload then probe refresh within PULSE_CHECKS_RELOAD_MS. R6 rotates through POST /admin/tokens/<id>/rotate, installs secret and restarts probe within 10-minute overlap, links api token-rotation, and says API token-file edits after import do nothing; sources api src/token-routes.ts, src/token-import.ts and api docs/operation.md#token-rotation. Retain restart for PULSE_PROBE_TOKEN, PULSE_PROBE_TOKEN_FILE and PULSE_LOCATION."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/configuration.md docs/troubleshooting.md",
+          "expected": "P8/W2: reviewer verifies Retries distinguishes checked request side effects from idempotent POST /results and at-least-once notify; non-GET/HEAD HTTP sends once per interval per location, configured method decides before redirects, and recommends side-effect-free endpoints. Keep existing HTTP GET/HEAD, TCP/DNS/domain retries and TLS exception; source src/check.ts:isRetryable and run loop. R8 states startup fetch plus reload. R7 compares token location through GET /admin/tokens (not imported file); R5 removes restart advice from troubleshooting, including the invalid-check action, and describes API reload followed by probe refresh; sources api src/start.ts, src/token-routes.ts and probe Checks reload."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/",
+          "expected": "Reviewer opens every added/changed link and verifies existing destination files/headings, including api operation.md#changing-checks, operation.md#token-rotation and rest-api.md#tokens; no heading needed by another document is renamed."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains 6 evidence rows for F5, R5-R8 and W2 with item, file/section, old text or missing, new statement, source file/symbol and checked commit; cites src/buffer.ts, src/check.ts:isRetryable and api src/token-routes.ts. Includes N10-N16 outputs, P7-P8/source/link review, bun run check result and Markdown-only file list."
+        }
+      ]
+    }
+  ]
+}

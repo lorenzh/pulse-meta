@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Notify docs describe opaque event keys and feed-poll metrics",
+      "files": [
+        "docs/channels.md",
+        "docs/operation.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: notify, all Behavior and edits bullets and Checks/Completion evidence; F6 and W6; Acceptance evidence N17-N19/P9-P10; Required behavior, Risks and Non-goals. Keep payload example, correct Reminders/Manual incidents paragraphs and valid channels JSON examples. Only the three listed Markdown files change.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "0 changed paths without the .md suffix; changed paths are limited to this task's files."
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the repository's full lint, typecheck and test suite passes, including its coverage gate."
+        },
+        {
+          "command": "rg -n -F -- '<incident id>:<event>' docs/",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- '`<incidentId>:<event>`. Unique per channel' docs/channels.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -n -F -- 'The event key is `<incidentId>:<event>`' docs/channels.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -c -F -- 'opaque' docs/channels.md",
+          "expected": "P9: count >= 1; reviewer verifies automatic opened/resolved keys (<incidentId>:opened and <incidentId>:resolved), reminder <incidentId>:reminder:<n>, manual:<id>:opened, manual:<id>:update:<d> (32 hex content hash), manual:<id>:resolved are described or linked correctly in overview/payload key row. Delivery/retries and troubleshooting require deduplication by the exact opaque idempotency-key, without parsing. Sources: src/detector.ts:eventKey/reminderKey/manualKey/manualUpdateKey and src/channels/webhook.ts."
+        },
+        {
+          "command": "rg -c -F -- 'pulse_notify_deliveries_total' docs/operation.md",
+          "expected": "P10: count >= 2 (table row plus new explanatory prose). Reviewer verifies W6: pulse_notify_polls_total counts feed-read success/failure before detection/enqueue; all 3 feeds answered is ok (manual 404 included), any failed read is error, successful feeds still used. Later detection failure keeps ok here but increments consecutive_failed_polls and fails /readyz. Delivery uses pulse_notify_deliveries_total/pulse_notify_pending_deliveries; feed health uses pulse_notify_feed_polls_total, pulse_notify_consecutive_failed_polls and /readyz. Sources: src/notifier.ts:#poll/tick, src/metrics.ts, src/api.ts."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- docs/operation.md docs/channels.md docs/troubleshooting.md",
+          "expected": "Reviewer verifies metrics explanation follows Health and metrics table, Upgrading has one bullet warning outcome=\"error\" no longer means nothing delivered and gives no invented version. Key examples and correct manual paragraph remain; added/changed links resolve to existing files/headings. Full bun run check retains passing test/config.test.ts 'every channels example in the docs loads' without edits. Security warning W6 matches cited source and spec counterexamples."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains 2 evidence rows for F6 and W6 with item, file/section, old text or missing, new statement, source file/symbol and checked commit, citing src/detector.ts, src/channels/webhook.ts, src/notifier.ts:#poll and src/metrics.ts. Includes N17-N19 outputs, P9-P10/source/link review, bun run check result and Markdown-only file list."
+        }
+      ]
+    }
+  ]
+}
