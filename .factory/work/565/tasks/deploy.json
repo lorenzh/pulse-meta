@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Compose E2E verifies both pinned file writes and database checks without moving pins",
+      "title": "Compose E2E proves database checks and remains green on the pinned file-writing API",
       "files": [
         "e2e/compose-e2e.sh",
         "e2e/compose.e2e.yaml",
@@ -14,11 +14,11 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, Behavior 1-7, Checks 1-4 and Completion evidence Runs A/B; Security impact for E2E credentials and unchanged pins. Detect the API kind exactly once from GET /admin/config having file and shadowed; retain shared CRUD/probe/status steps and use literal create counts for each path. Add the ordered database-only file-hash, literal Authorization/body GET-edit-PUT, shadow/unshadow, broken-file-write/repair and restart persistence scenarios of 3a-3e. Use the section's literal targets, sentinels, ids and statuses, not values fetched from the API as expected values. Update the read-only secondary API to check its fresh ETag: database check POST 201 and component POST 503, versus legacy check POST 503. Preserve existing log redaction and add the svc-token log absence check after the database scenarios; never print credentials. Update only the listed comments/docs with the version-specific writable-directory requirement. No pin, image line or unrelated step changes. Run A uses the unchanged pinned api; Run B builds merged api main and selects it only in a disposable deploy copy as specified, then deletes that copy. Record api SHA, image ID, actual path ok lines and all checks for the PR. If feature detection/scenarios already exist use the section's hold condition; if Run B fails outside this change, hold needs-input with the failing step. Report Docker unavailability without claiming a pass.",
+      "spec": "## Repository: deploy, all Behavior items 1-7, Checks 1-4 and Completion evidence Runs A/B; Security impact for E2E credentials and unchanged pins. Keep this one cohesive change to the existing scenario and its four supporting docs/comments. Detect the API kind exactly once using GET /admin/config with jq has(file) and has(shadowed); neither pins nor environment select a path. Retain shared CRUD/probe/status steps and use the literal create count for each path. Add database-only scenarios 3a-3e in their specified order: unchanged checks.json hash across CRUD; e2e-db-post POST with the specified literal Authorization, Content-Type, body and /status assertion, an up result, keep markers in the admin view and literal values preserved in probes after a name-only PUT; file shadow wins, database entry remains shadowed, PUT 409, restore unshadows; broken bytes { persist across POST 201/DELETE 204, repair sets ok; e2e-db-keep survives down/up with source database. Use the section's literal ids, names, target URL, token fallback and body as expectations rather than fetched values. The secondary API on its read-only mount uses its own fresh revision for each request: new API valid check POST 201 and valid component POST 503, older API retains 503. Keep admin-token log absence and add svc-token absence after the database scenarios; never print credentials. Document writable-directory requirements separately for the pinned older API and the database-check API (components/windows still need it). Change no pin, image line or unrelated step. Run A uses the untouched pin; Run B builds the merged api main SHA and selects its image only in a disposable deploy copy, shows compose's selected image, runs all scenarios and deletes the copy. Record actual api SHA/image ID, both runs' ok lines and all checks for the PR. If detection/database scenarios already exist, follow the section's needs-input condition. If Run B fails outside this scope, hold needs-input naming the step; report unavailable Docker evidence honestly.",
       "acceptance": [
         {
           "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
-          "expected": "exit 0 from the repository root."
+          "expected": "exit 0 from the repository root, so shellcheck source paths resolve."
         },
         {
           "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
@@ -54,7 +54,7 @@
         },
         {
           "command": "bash e2e/compose-e2e.sh",
-          "expected": "Run A in the unchanged-pin checkout exits 0 and ends ==> All checks passed; output includes ok: the api writes admin checks to the file (older api) and ok: the read-only mount answers 503. Existing create counter is the literal count 1 at its check."
+          "expected": "Run A in the unchanged-pin checkout (api 0.1.0) exits 0 and ends ==> All checks passed; output includes ok: the api writes admin checks to the file (older api) and ok: the read-only mount answers 503. Existing create counter is the literal count 1 at its check; no database-only scenario runs."
         },
         {
           "command": "docker build -t pulse-api:e2e-<sha> <api checkout at sha>",
@@ -66,7 +66,7 @@
         },
         {
           "command": "bash e2e/compose-e2e.sh",
-          "expected": "Run B in that copy exits 0 and ends ==> All checks passed; output includes ok: the api stores admin checks in the database and ok lines for 3a-3e and 4. File hash stays equal across CRUD; e2e-db-post has an up result, keep markers and the literal Authorization/body after PUT; shadow is E2E file shadow with PUT 409 then database restoration; broken bytes { survive POST 201 and DELETE 204; repaired state is ok; e2e-db-keep persists with source database. Secondary read-only API returns check 201 and component 503. Admin/svc tokens are absent from logs and never printed. Use literal per-path create counts. Delete the disposable copy after recording evidence."
+          "expected": "Run B in that copy exits 0 and ends ==> All checks passed; output includes ok: the api stores admin checks in the database and ok lines for 3a-3e and 4. File hash stays equal across CRUD. e2e-db-post has an up result, admin headers.Authorization and body equal {keep:true}, and after the name-only PUT its probe Authorization equals Bearer plus the scenario's E2E_SVC_TOKEN value (fallback e2e-svc-token-sentinel) and its body equals the literal {\"ping\":\"e2e-body-sentinel\"}. Shadow name is E2E file shadow with PUT 409 then database restoration; broken bytes { survive POST 201 and DELETE 204; repaired state is ok; e2e-db-keep persists with source database. Secondary read-only API returns check 201 and component 503 using its own current revision for each. Admin/svc tokens are absent from logs and never printed. Use literal per-path create counts. Delete the disposable copy after recording evidence."
         },
         {
           "command": "gh pr view --json body --jq .body",
