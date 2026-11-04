@@ -14,6 +14,11 @@ to notify:
 
 A channel opts in with a new `alerts` list. Channels without it behave exactly as today.
 
+This revision answers the plan-review of the first spec run: plain `Files:` entries,
+restart-safe expiry ordering (R6), the handling of stored incident deliveries for
+`sendIncidents: false` (R1), the cost of enabled alerts (Performance impact), more
+counterexamples, and the ESLint citation (Repository: notify, tool facts).
+
 ## Decisions
 
 The issue review (`.factory/work/571/issue-review.md`) lists twelve open points. No issue comment
@@ -32,23 +37,25 @@ decides any of them. This spec decides them as follows.
    `86 400 000` ms (`nowMs - lastEventMs >= 86400000`). Recovery and a new drop in that time do
    not bypass it. Missed days during downtime give one event, not one per day.
 5. **Expiry milestones and catch-up.** The milestones are fixed at 14 and 3 days, independent of a
-   check's `warnDays`. The first fresh observation in `4..14` gives the 14-day warning; the first
+   check's `warnDays`. The first used observation in `4..14` gives the 14-day warning; the first
    in `0..3` gives the 3-day warning. When the 14-day warning was never sent (first observation
    already `0..3`, or a jump from above 14 to 3 or below), only the 3-day warning is sent.
    Negative values (expired) send nothing.
 6. **Expiry episode.** Suppression is per check and episode, not per day. An episode starts with
-   its first warning and ends (rearms) only with a fresh, newer observation above 14 days. Small
-   increases inside `0..14`, `null`, stale or reordered observations do not rearm. Known limit: a
-   renewal that keeps the remaining days at 14 or below (for example a new certificate valid for
-   10 days) is not recognized; that episode gets no new warnings. The current wire data has no
-   exact expiry time or certificate identity, so this spec does not promise more.
+   its first warning and ends (rearms) only with a used observation above 14 days. A used
+   observation is fresh and strictly newer than every observation already used for that check,
+   and that "newest used" time is stored durably on every use (R6), so restarts, `null`, stale
+   or reordered observations never rearm. Small increases inside `0..14` do not rearm. Known
+   limit: a renewal that keeps the remaining days at 14 or below (for example a new certificate
+   valid for 10 days) is not recognized; that episode gets no new warnings. The current wire
+   data has no exact expiry time or certificate identity, so this spec does not promise more.
 7. **One observation per check.** The observation of a check is `certDaysLeft` of `GET /checks`
-   (the api takes it from the newest result over all locations, `api/src/service.ts:793-796`) and
+   (the api takes it from the newest result over all locations, `api/src/service.ts:791-796`) and
    its time is the largest `locations[].result.timestamp`. No warning per location.
 8. **Evaluator and state owner: notify only.** One evaluation per notify installation, after the
    incident processing of a poll. Its state is a new ledger table, separate from the prunable
-   per-channel delivery history. The api already serves every input (see "Repository: api is not
-   changed" below), so no api, contract or probe change is made.
+   per-channel delivery history. The api already serves every input (see "Unchanged
+   repositories"), so no api, contract or probe change is made.
 9. **Opt-in routing.** `alerts` selects the warning kinds of a channel; check filters route check
    subjects, component filters route component subjects. A new `sendIncidents: false` makes a
    warning-only channel. Old channel files keep their behavior.
@@ -59,6 +66,9 @@ decides any of them. This spec decides them as follows.
 11. **Compose evidence** comes from deploy's unchanged `e2e/compose-e2e.sh`, run by the notify
     implementer against a locally built candidate notify image in a scratch copy of deploy. No
     committed image pin changes. Timing rules are proven by fake-clock tests, not by Compose.
+12. **Incident deliveries of a warning-only channel are dropped, not kept for later.** When a
+    channel runs with `sendIncidents: false`, its stored pending incident deliveries are settled
+    `dropped` at start (R1). Re-enabling incidents later sends no old incident event.
 
 ## Scope
 
@@ -92,10 +102,33 @@ decides any of them. This spec decides them as follows.
   `channel "<id>": sendIncidents false needs alerts`.
 - `sendIncidents: false` with `remindEverySeconds` fails startup with
   `channel "<id>": remindEverySeconds needs sendIncidents`.
-- `sendIncidents: false`: the channel receives no `opened`, `update`, `resolved` or `reminder`
-  event. The incident and manual-incident keys it would have received are recorded as `seeded`
-  in its ledger on each poll (same routing as today), so switching `sendIncidents` back to
-  `true` later sends nothing old. The first-poll seeding of a new channel stays as it is.
+
+A channel with `sendIncidents: false` sends no `opened`, `update`, `resolved` or `reminder`
+event, also none that is already stored:
+
+- **At start, before the pending resend** (`#resendPending`, `notify/src/notifier.ts:254` and
+  `:279-290`): every `pending` entry of that channel whose stored payload has an incident event
+  (`opened`, `update`, `resolved`, `reminder`, automatic or manual), and every `pending` entry
+  without a payload (a legacy key; all of them are incident keys), is settled `dropped` with the
+  existing `ledger.settle(channel, key, "dropped")`. Held reminders are included. Warning entries
+  (`budget-low`, `tls-expiry`, `domain-expiry`) of that channel stay `pending` and are resent.
+  The start logs `incident notifications dropped: channel sends no incidents` with `channel` and
+  `count` once per channel with `count > 0`. A failed settle is logged as today
+  (`ledger settle failed, the key stays pending`); that key is not enqueued and the next start
+  drops it again.
+- **Legacy rebuild** (`#rebuildLegacyPending`) is skipped for such a channel.
+- **Each poll:** routing and seeding stay as today: the first-poll seeding of a new channel
+  (`#seedChannel`), the routing-change seeding and the manual first-read seeding run unchanged.
+  Instead of enqueuing, the keys that automatic and manual detection would enqueue for the
+  channel are recorded as `seeded` with `ledger.seed` (which adds only keys without an entry,
+  `notify/src/ledger.ts:595-621`). So an incident that opens while incidents are off is never
+  sent later.
+- `failed` incident entries of such a channel stay `failed` (they are a record for the operator)
+  and `failed list` shows them. `failed resend` still sets them `pending` (the CLI does not read
+  channel config); the next start drops them by the first rule.
+- **Re-enabling** (`sendIncidents` back to `true` at a restart): `dropped` and `seeded` keys
+  count as handled (`ledger.has`), so nothing old is sent. Only events whose key is new after the
+  restart are sent (for example the `resolved` of an incident whose `opened` was seeded).
 
 ### R2 Threshold setting
 
@@ -113,7 +146,8 @@ decides any of them. This spec decides them as follows.
   `7ce23aaf…`, `src/validate.ts:142`). Only items that pass both enter alert evaluation. A failure
   of the second check is counted with the existing `pulse_notify_skipped_items_total{feed="checks"}`
   and logged once per index with the existing fixed text (`check skipped: malformed data`,
-  `reason: "invalid"`).
+  `reason: "invalid"`). The second validation runs only when at least one channel has an
+  `alerts` entry, so a config without alerts does no extra work.
 - `GET /components`: read only when at least one channel has `budget-low` in `alerts`. It uses the
   same client as the other feeds (no redirects, `PULSE_NOTIFY_API_MAX_BYTES`, wire version check,
   timeout). Each item is validated with `validateComponentWithState` (pin `7ce23aaf…`,
@@ -134,9 +168,13 @@ In each poll, after the per-channel incident and manual processing:
   `/components` answered with data. It runs only when at least one channel has `budget-low`.
 - Expiry evaluation of a check of type `tls` runs only when at least one channel has
   `tls-expiry`; of type `domain` only when at least one has `domain-expiry`. It needs `/checks`.
-- An evaluation of a kind is skipped for the whole poll while any channel that subscribes to that
-  kind has no ledger record yet (`ledger.hasChannel` false, that is, it was not seeded). This keeps
-  the first-poll seeding of new channels intact and lets no subscribed channel miss an event.
+- **Seeding gate.** An evaluation of a kind is skipped for the whole poll while any channel that
+  subscribes to that kind has no ledger record yet (`ledger.hasChannel` false). Reason: claiming
+  a warning entry creates the channel record (`#upsertChannel` in `ledger.claim`,
+  `notify/src/ledger.ts:645-668`), and a channel with a record is no longer seeded on its first
+  poll (`notify/src/notifier.ts:465-468`), so its old incidents would be sent as new. The gate
+  also makes sure that no subscribed channel misses an event. Seeding happens earlier in the same
+  poll, so a channel seeded in poll `n` lets the evaluation run in poll `n`.
 - A failed or skipped evaluation changes no state, so the next poll evaluates again.
 
 ### R5 Budget rule
@@ -154,31 +192,37 @@ For each subject (check or component) with `slo` present, in one poll at `nowMs 
 
 Per check of type `tls` or `domain`, the observation is `(days, observedMs)`:
 `days = check.certDaysLeft`, `observedMs = max(locations[].result.timestamp)`. The observation is
-used only when all hold:
+**used** only when all hold:
 
 - `days` is an integer (not `null`, not absent) and `locations` is not empty;
 - fresh: `nowMs - observedMs <= 2 * intervalMs + 60000` and `observedMs <= nowMs + 60000`
   (`intervalMs` of the check; factor 2 as the api's `WINDOW_INTERVALS`, `api/src/service.ts:49`);
-- newer: `observedMs` is greater than the newest observation time already used for this check
-  (kept in memory during the run, and the stored `observedMs` of the last state change after a
-  restart).
+- newer: `observedMs > observed_at`, where `observed_at` is the stored time of the newest
+  observation ever used for this check (none stored: any fresh observation is newer). Equal is
+  not newer.
+
+**Restart-safe ordering.** Every used observation stores its `observedMs` as the new
+`observed_at` of the check, also when the stage does not change. There is no in-memory-only
+ordering state: the evaluator reads `observed_at` from the ledger mirror, which changes only
+after a commit (R9). So an observation that is older than any observation used before a restart
+is never used after it. The writes of one poll are one transaction (R9); a poll without a newer
+observation writes nothing.
 
 A used observation moves the per-check state `stage ∈ {none, 14, 3}` (start `none`):
 
-| `days`   | stage `none`                     | stage `14`              | stage `3`          |
-| -------- | -------------------------------- | ----------------------- | ------------------ |
-| `> 14`   | nothing                          | rearm: stage `none`     | rearm: stage `none`|
-| `4..14`  | event milestone 14, stage `14`   | nothing                 | nothing            |
-| `0..3`   | event milestone 3, stage `3`     | event milestone 3, stage `3` | nothing       |
-| `< 0`    | nothing                          | nothing                 | nothing            |
+| `days`   | stage `none`                     | stage `14`                   | stage `3`           |
+| -------- | -------------------------------- | ---------------------------- | ------------------- |
+| `> 14`   | nothing                          | rearm: stage `none`          | rearm: stage `none` |
+| `4..14`  | event milestone 14, stage `14`   | nothing                      | nothing             |
+| `0..3`   | event milestone 3, stage `3`     | event milestone 3, stage `3` | nothing             |
+| `< 0`    | nothing                          | nothing                      | nothing             |
 
 - The event kind is `tls-expiry` for a `tls` check and `domain-expiry` for a `domain` check, at
-  the time of the event.
+  the time of the event. A check that changes between `tls` and `domain` keeps its row.
 - The episode start `episodeMs` is the `observedMs` of the observation that left stage `none`.
   A rearm clears it.
-- The state is stored only when it changes (event or rearm), with that observation's
-  `observedMs`. An unchanged stage writes nothing, so a TLS check every 60 s does not write the
-  ledger every minute.
+- An observation that is not used (null, stale, future, not newer) changes nothing, also not
+  `observed_at`.
 
 ### R7 Event keys
 
@@ -243,6 +287,8 @@ fields and JSON. The two new variants (webhook body and file line):
   subject is `<prefix><label>: <name>` as today; the Message-ID derives from the key as today.
 - Persisted pending and failed payloads of the new variants are resent like others. Pending
   payloads written by an older version are incident payloads and stay readable.
+- The stale-reminder check (`isStale`, `notify/src/notifier.ts:222-224`) narrows on the event
+  first; a warning is never stale.
 
 ### R9 Ledger format 4 and alert state
 
@@ -262,30 +308,43 @@ fields and JSON. The two new variants (webhook body and file line):
   ```
 
   Budget rows use `last_event_at`; expiry rows use `stage` (NULL = `none`), `episode_at` and
-  `observed_at`. Rows are validated at open like the other tables; a bad row refuses the file
-  as an unsupported format.
-- A new event and its claims are one transaction: the `alert_state` upsert and a `pending` entry
-  with the payload for every routed channel that has no entry with that key. Then the
-  notification is enqueued on each of those channels; `ChannelDelivery` sees the key as `pending`
-  and sends it (`notify/src/delivery.ts`, `#claim`). A failed transaction changes nothing and
-  the next poll evaluates again. A crash after the commit resends the pending entries at start
-  (`#resendPending`), and no new event is generated.
-- A rearm (R6) is its own transaction on `alert_state` only.
+  `observed_at`. Rows are loaded into the in-memory mirror and validated at open like the other
+  tables; a bad row, or a format-4 file without this table, refuses the file as an unsupported
+  format. `updated_at` is the commit time of the last change of the row.
+- **One transaction per poll evaluation.** All alert changes of one poll are one ledger
+  mutation: every `alert_state` upsert (budget events, expiry events, rearms, `observed_at`
+  advances) and a `pending` entry with the payload for every routed channel that has no entry
+  with that key. Memory changes only after the commit, as for every ledger mutation
+  (`notify/src/ledger.ts:406-415`). Then the notifications are enqueued on each of those
+  channels; `ChannelDelivery` sees the key as `pending` and sends it (`notify/src/delivery.ts:153-157`).
+- A failed transaction (the existing `hooks.beforeCommit` lets a test throw) changes no row and
+  no memory; it is logged with a fixed text (`alert state write failed, the next poll retries`),
+  nothing is enqueued, and the next poll evaluates again from the old state.
+- A crash after the commit resends the pending entries at start (`#resendPending`), and the next
+  evaluation generates no new event, because the state was committed with the entries.
 - Channels are independent: a failure, retry or `failed` status on one channel does not change
   another channel's delivery or the alert state.
-- Opening a format-3 file migrates it: first a consistent copy to `<state>.v3.bak` (for example
-  `VACUUM INTO` after removing an old backup), then one transaction that creates `alert_state`
-  and sets `user_version = 4`. Every channel, mark and entry is kept. The open logs
-  `ledger migrated` with `from: 3` and `backup`, as the JSON migration does. A crash before the
-  commit leaves a format-3 file that the next open migrates again. A JSON ledger (format 1 or 2)
-  is published directly as format 4. Any other `user_version` stays refused.
-- The backup gets mode `0600`, like the ledger (`notify/test/security-ledger-permissions.test.ts`).
-- Pruning (hourly, with the existing prune): an `alert_state` row is removed only when its
-  `updated_at` is older than `PULSE_NOTIFY_STATE_RETENTION_DAYS` and its subject was absent from
-  the last good read of its feed (`/checks` for `budget-check` and `expiry`, `/components` for
-  `budget-component`). Before a good read of that feed, nothing of that kind is pruned.
+- **Format-3 migration** at open:
+  1. The format-3 file is read and validated on the read-only connection, as today. A file that
+     fails validation is refused as unsupported, keeps its bytes, and no backup is written.
+  2. Backup: an existing `<state>.v3.bak` is removed (`unlink`, which does not follow a
+     symlink), then `VACUUM INTO` writes a consistent copy (with committed WAL content) to a new
+     temporary path beside the ledger, which gets mode `0600` and is renamed to
+     `<state>.v3.bak`.
+  3. The format-4 file is built from the validated rows plus an empty `alert_state` through the
+     existing publish path (`<state>.migrating` created with mode `0600` and `wx`, then renamed;
+     `notify/src/ledger.ts:380-400`). Every channel, mark and entry is kept.
+  4. The open logs `ledger migrated` with `from: 3` and `backup`, as the JSON migration does.
+  A crash before the rename leaves the format-3 file, and the next open migrates again (and
+  removes a leftover `.migrating`, as the constructor already does). A JSON ledger (format 1 or
+  2) is published directly as format 4. Any other `user_version` stays refused.
+- **Alert-state pruning** (with the existing hourly prune): an `alert_state` row is removed only
+  when its `updated_at` is older than `PULSE_NOTIFY_STATE_RETENTION_DAYS` and its subject was
+  absent from the last good read of its feed in this run (`/checks` for `budget-check` and
+  `expiry`, `/components` for `budget-component`). Before a good read of that feed in this run,
+  nothing of that kind is pruned. A `404` on `/components` is not a good read.
 - The `failed list` and `failed resend` subcommands work for the new keys unchanged; `list` shows
-  the event name (`budget-low`, `tls-expiry`, `domain-expiry`).
+  the event name from the stored payload (`budget-low`, `tls-expiry`, `domain-expiry`).
 
 ### R10 Routing
 
@@ -297,14 +356,17 @@ A channel gets an event when the kind is in its `alerts` and:
   `components`/`excludeComponents`, as for manual incidents. Component events are never expanded
   to member checks, and check filters do not apply to them.
 - `sendIncidents` does not affect warnings. A warning needs no incident and creates none.
+- An event with no routed channel still advances the alert state (routing decides recipients,
+  not whether an event exists).
 
 ### R11 Docs
 
 README (what notify sends, the new setting), `docs/configuration.md` (setting and channel keys),
 `docs/channels.md` (triggers, keys, payloads, routing, a new "Warnings" section with the rules R5,
 R6 and the known limits), `docs/channels/*.md` (message content per type), `docs/operation.md`
-(ledger format 4, `alert_state`, pruning, upgrade and downgrade) and `docs/development.md` (code
-map). The package description in `package.json` may say "incident and warning notifications".
+(ledger format 4, `alert_state`, pruning, upgrade and downgrade, the `sendIncidents: false`
+drop at start) and `docs/development.md` (code map). The package description in `package.json`
+may say "incident and warning notifications".
 
 ## Risks
 
@@ -315,13 +377,15 @@ map). The package description in `package.json` may say "incident and warning no
 - **Long check intervals.** Freshness is `2 * intervalMs + 60 s`. A domain check every 24 h can
   use a count up to 48 h old, so a warning can come up to two days late. A count is never counted
   down by notify.
+- **Ledger writes with expiry alerts on.** Every poll in which a TLS or domain check has a newer
+  result writes one transaction (R6). With `synchronous = FULL` that is one fsync per such poll,
+  at most one per `PULSE_NOTIFY_POLL_MS` (default 5 s). See "Performance impact".
 - **`test_cpu_s` of notify.** The budget is 3.4 s with a measured 3.095 s (`api/bench/README.md:122`).
   The new tests must use fake clocks and in-memory or temp-dir ledgers, few real servers, and no
   sleeps. See "Performance impact".
-- **Feed load.** `/components` adds one read per poll only when `budget-low` is subscribed.
 - **Late subscribers miss the current warning** (Decision 10). Documented.
-- **Global evaluation with no routed channel** still advances the state; the event is then sent
-  to nobody. Documented: routing decides recipients, not whether an event exists.
+- **Dropped incident deliveries** of a channel switched to `sendIncidents: false` are not sent
+  when it is switched back (Decision 12). Documented.
 
 ## Performance impact
 
@@ -330,23 +394,54 @@ section (`api/bench/budgets.json`, key `notify`) can move:
 
 - `test_cpu_s` (gating, budget 3.4 s, floor 1.5 s): up. Expected about +0.1 to +0.3 s for the
   new tests. This is the tight one: keep the new tests on fake time and in-memory/temp ledgers.
-- `startup_cpu_ms` (gating, 455 ms): unchanged for a format-4 file. One-time cost of the
-  format-3 migration (one `VACUUM INTO` and one `CREATE TABLE`) on the first start: a few ms on
-  a small ledger. No new dependency, so module load is the same.
-- `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib` (gating): none expected. The bench config of
-  notify (`api/bench/compose.bench.yaml`) has no `alerts`, so no extra feed is read and no
-  evaluation runs. With alerts on, evaluation is a linear pass over the checks per poll.
+- `startup_cpu_ms` (gating, 455 ms): for a format-4 file, loading `alert_state` into the mirror
+  adds well under 1 ms for a few hundred rows. One-time cost of the format-3 migration (one
+  `VACUUM INTO` and one publish of all rows) on the first start: a few ms on a small ledger, about
+  the cost of today's JSON migration. No new dependency, so module load is the same.
+- `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib` (gating): none expected in the bench, because the
+  bench config of notify (`api/bench/fixtures/notify.json`) has one file channel without
+  `alerts`. Then no `/components` read, no second validation (R3), no evaluation and no alert
+  write runs.
 - Reported: `startup_wall_ms` none expected; `image_mb` none (no new dependency or file type).
   p95 latency and requests per second are api metrics: none.
 
-How to measure: `bun bench/run.ts` takes api refs, and `--others-ref` pins all other
-repositories to one ref on both sides (`api/bench/README.md:76-81`), so it cannot compare a notify
-branch alone. The notify implementer measures `test_cpu_s` locally: five runs each of
-`/usr/bin/time -f "%U %S" bun run test` on `origin/main` and on the branch, on the same machine,
-and reports the median of user + system seconds of both and the difference. The difference must
-be below 0.3 s (literal limit from this spec: the headroom between 3.095 s and 3.4 s). Startup
-CPU: start once with a format-3 ledger copy and once with format 4 and report both, read from
-`/proc/<pid>/stat` or `/usr/bin/time` until the first `200` of `/readyz`.
+Cost with alerts on (not in the bench; estimates per poll with 200 checks of which 100 are TLS or
+domain checks, and 50 components):
+
+| Cost | Estimate |
+| --- | --- |
+| `/components` read and JSON parse (about 20 KB) | about 0.2 ms CPU, one more HTTP request per poll |
+| `validateCheckWithState` on 200 checks and `validateComponentWithState` on 50 components | about 1 to 2 ms CPU |
+| Budget and expiry evaluation (one linear pass, a SHA-256 per event only) | under 0.5 ms CPU |
+| Alert transaction when observations advanced (up to 100 row upserts) | about 0.5 ms CPU and one fsync |
+| Alert mirror in memory (300 rows) | under 0.1 MiB; the parsed components body is transient |
+
+That is about 3 ms CPU per poll: about 0.04 s per minute at the default 5 s poll, about 0.18 s per
+minute at a 1 s poll. RSS: under 1 MiB more.
+
+How to measure:
+
+1. `test_cpu_s`: `bun bench/run.ts` takes api refs, and `--others-ref` pins all other
+   repositories to one ref on both sides (`api/bench/README.md:76-81`), so it cannot compare a
+   notify branch alone. The notify implementer runs five times each
+   `/usr/bin/time -f "%U %S" bun run test` on `origin/main` and on the branch, on the same
+   machine, and reports the median of user + system seconds of both and the difference. The
+   difference must be below 0.3 s (literal limit from this spec: the headroom between 3.095 s
+   and 3.4 s).
+2. Startup CPU: start once with a format-3 ledger copy and once with format 4 and report both,
+   read from `/proc/<pid>/stat` (utime + stime) at the first `200` of `/readyz`.
+3. Runtime cost with alerts on: a short `Bun.serve` script outside the repository serves `/checks`
+   with 200 checks (100 HTTP checks with `slo.budgetRemaining` 50, 50 TLS and 50 domain checks
+   with `certDaysLeft` 30, every location timestamp set to the request time so every poll has
+   newer observations), 50 components with `slo.budgetRemaining` 50, empty `/incidents` and
+   `/manual-incidents`. Notify runs with `PULSE_NOTIFY_POLL_MS=1000` and a temp state dir in
+   three runs: main with a file channel; branch with the same channel; branch with the channel
+   plus `alerts: ["budget-low","tls-expiry","domain-expiry"]`. After 20 s of warm-up, read
+   utime + stime from `/proc/<pid>/stat` at the start and end of a 60 s window, and `VmRSS` and
+   `VmHWM` from `/proc/<pid>/status` at its end. Literal limits from this spec: branch without
+   alerts minus main at most 0.1 s CPU and 3 MiB `VmHWM`; branch with alerts minus main at most
+   0.3 s CPU (about 1.5 × the estimate) and 3 MiB `VmHWM` (the bench's MiB floor). The PR
+   reports the raw numbers of all three runs.
 
 ## Security impact
 
@@ -359,18 +454,20 @@ Checklist items that apply:
 
 - **Secrets in errors, logs and responses:** config errors never repeat the bad value; no api
   text (names, ids, bodies) reaches a log line: keys use the SHA-256 prefix of the subject id
-  (R7), skipped items are logged with fixed texts and indexes only. Webhook URLs and SMTP
-  passwords stay out of logs as today.
+  (R7), skipped items are logged with fixed texts and indexes only, and new log lines carry only
+  fixed texts, channel ids from the config and counts. Webhook URLs and SMTP passwords stay out of
+  logs as today.
 - **Input validation:** check state and components are validated with the contract validators
   before use; `budgetRemaining` must be finite or null (contract `finite.nullable()`),
-  `certDaysLeft` an integer or null, timestamps integers; stale, future and older observations
-  are rejected (R6). Config values are validated by the zod `strictObject` schemas.
+  `certDaysLeft` an integer or null, timestamps integers; stale, future and not-newer
+  observations are rejected (R6). Config values are validated by the zod `strictObject` schemas.
 - **Body and size limits:** `/components` uses the same capped, no-redirect reader as the other
   feeds (`PULSE_NOTIFY_API_MAX_BYTES`).
 - **SSRF and redirects:** no new outbound target; `/components` follows no redirect.
 - **Atomic, path-safe writes:** the migration writes the backup beside the ledger with mode
-  `0600`, removes an old backup first, and changes the ledger in one transaction; a crash leaves a
-  format-3 file or a format-4 file, never a mix.
+  `0600` through a temporary file and a rename, removes an old backup with `unlink` first, and
+  publishes the format-4 file with the existing `wx`/rename path; a crash leaves a format-3 file
+  or a format-4 file, never a mix.
 - **Output escaping:** subject names pass `cleanText` and the per-channel escaping (Slack `& < >`,
   Teams markdown) as incident names do; a name with `<!channel>` or `**` must not render as markup.
 - Dependency pins: no change (contract `7ce23aaf…`, kit `236df214…` stay).
@@ -380,14 +477,16 @@ control characters and `<!channel>`; an id with `:` and newlines (the key must s
 `budget:check:<ms>:<32 hex>`); `budgetRemaining` given as a string, `NaN` text or `1e999`
 (validator rejects); `certDaysLeft: 3.5`; a `/components` body over the byte cap; a `302` on
 `/components`; `alerts: ["budget-low", {"x":1}]`; `PULSE_NOTIFY_BUDGET_THRESHOLD=25abc`; a
-pre-existing `<state>.v3.bak` symlink (the migration must remove it and not write through it).
+pre-existing `<state>.v3.bak` symlink to a file outside the state dir (the migration must remove
+the link and leave the target's bytes unchanged); a format-4 file with an `alert_state` row of
+`stage` 7 or `kind` `x` (refused).
 
 ## Rollout order
 
 One repository: only notify changes. It keeps its contract pin `7ce23aaf…`, which already
 exports `validateCheckWithState` and `validateComponentWithState` and carries `slo` and
-`certDaysLeft` in the read models (`src/validate.ts:142` and `:270`, `src/schema.ts:593-627` and `:769` at
-that ref, read with `gh api …?ref=7ce23aaf…`).
+`certDaysLeft` in the read models (`src/validate.ts:142` and `:270`, `src/schema.ts:593-627` and
+`:769` at that ref, read with `gh api …?ref=7ce23aaf…`).
 
 Older peers keep working:
 
@@ -405,7 +504,7 @@ Older peers keep working:
 Sources of the expected values: literals in this spec (the request's 25 %, 14 and 3 days, and
 the decisions above). No test may derive an expected value from the code under test.
 
-Budget (threshold 25, check `a` with `slo.target` 99.9 unless said):
+### Budget (threshold 25, check `a` with `slo.target` 99.9 unless said)
 
 | Input | Expected | A wrong implementation that fails it |
 | --- | --- | --- |
@@ -424,7 +523,7 @@ Budget (threshold 25, check `a` with `slo.target` 99.9 unless said):
 | notify down from `t0+1h` to `t0+72h`, low on return | exactly 1 event | one event per missed day |
 | `budget-low` on two channels | 1 alert row, 1 entry per channel with the same key | one evaluation per channel |
 
-Expiry (TLS check, `intervalMs` 60 000, each observation newer than the last and fresh):
+### Expiry (TLS check, `intervalMs` 60 000, each observation newer than the last and fresh)
 
 | Observations in order | Expected events (milestones) |
 | --- | --- |
@@ -447,7 +546,65 @@ Expiry (TLS check, `intervalMs` 60 000, each observation newer than the last and
 | domain check, same sequence as row 1 | `[14, 3]` as `domain-expiry` |
 | two locations, newest at t=2000 with check `certDaysLeft` 10, other at t=1000 | one event, observedMs 2000 |
 
-Routing and config:
+Restart-safe ordering (R6), the case of the plan-review, with the ledger closed and reopened
+between steps 2 and 3:
+
+| Step | `nowMs` | Observation (`days` @ `observedMs`) | Expected |
+| --- | --- | --- | --- |
+| 1 | `t0` | `2 @ t0` | event milestone 3; stored `stage 3`, `observed_at t0` |
+| 2 | `t0+120000` | `2 @ t0+120000` | 0 events; stored `observed_at t0+120000` |
+| restart | | | |
+| 3 | `t0+150000` | `90 @ t0+60000` (fresh: 90 000 ≤ 180 000) | 0 events, no rearm: stage stays `3` |
+| 4 | `t0+160000` | `13 @ t0+125000` | 0 events (stage `3`) |
+| 5 | `t0+300000` | `90 @ t0+290000` | rearm: stage `none` |
+| 6 | `t0+360000` | `14 @ t0+350000` | exactly 1 event milestone 14 |
+
+A wrong implementation that keeps the newest time in memory and stores it only on a stage change
+rearms at step 3 and sends a duplicate milestone at step 4.
+
+### Seeding gate and subscription changes (R4, Decision 10)
+
+| Case | Expected |
+| --- | --- |
+| Old channel `A` with `budget-low` (seeded) and new channel `B` with `budget-low` (no ledger record); poll 1: `/incidents` fails, check `a` low | `B` not seeded; budget evaluation skipped: 0 events to `A` and `B`, no `alert_state` row |
+| Poll 2: all feeds answer, `a` still low; one open incident `7` | `B` seeded first (key `7:opened` `seeded`), then evaluation: exactly 1 `budget-low` to `A` and 1 to `B`, same key; 0 incident events to `B` |
+| A wrong implementation that evaluates in poll 1 | `B` gets a record from the claim, is never seeded, and gets `7:opened` in poll 2 |
+| `A` got `budget-low` for `a` at `t0`; restart at `t0+2h` where `B` adds `budget-low` | 0 events to `B` before `t0+24h`; at `t0+24h` exactly 1 to `A` and 1 to `B`, same key |
+| `A` with `tls-expiry` got milestone 14 for `x`; restart with no channel subscribed to `tls-expiry`; `x` reads `2`; restart with `A` subscribed again | evaluation skipped while unsubscribed; after re-subscribing exactly 1 milestone-3 event, then none |
+| `A` with `checks: ["a"]` and `tls-expiry`; `x` at milestone 14 (generated, routed to nobody); restart with `checks: ["a","x"]`; `x` reads `13`, then `3` | 0 events at `13`; exactly 1 milestone-3 event at `3` |
+
+### Transaction failure and crash recovery (R9)
+
+| Case | Expected |
+| --- | --- |
+| `beforeCommit` throws in the poll at `t0` with `a` low, two channels | 0 `alert_state` rows, 0 entries, 0 requests at the receiver; log `alert state write failed, the next poll retries` once |
+| Next poll at `t0+5000`, hook removed | exactly 1 request per channel, key `budget:check:<t0+5000>:<h>` |
+| Poll at `t0+10000` | 0 requests |
+| Commit at `t0`, then `stop()` while the receiver holds the request; reopen the ledger and start a new notifier | the receiver gets the same key once more (resent from `pending`); a poll at `t0+60000` with `a` still low gives 0 new keys |
+| `beforeCommit` throws in an expiry poll that would advance `observed_at` from `t0` to `t0+60000` | stored `observed_at` stays `t0`; the next poll uses the observation again |
+
+### Alert-state pruning (R9, retention 1 day)
+
+| Case at `nowMs = t0 + 2 days` | Expected |
+| --- | --- |
+| `budget-check` row `gone` with `updated_at t0`; last good `/checks` read lacks `gone` | row removed |
+| same row, `/checks` lists `gone` | row kept |
+| same row, `/checks` has not answered in this run | row kept |
+| `budget-component` row `web` with `updated_at t0`; `/components` answered `404` | row kept |
+| `expiry` row `x` with `updated_at t0`, `x` absent from the last good `/checks` | row removed; if `x` later returns with `13`, exactly 1 milestone-14 event |
+| delivery entry of a `budget:` key older than 1 day | entry pruned; the `alert_state` row stays and no new event before 24 h |
+
+### `sendIncidents: false` (R1, Decision 12)
+
+| Case | Expected |
+| --- | --- |
+| Channel `H` (webhook) has `pending` `7:opened` with payload, `manual:3:…` with payload, a held `7:reminder:2`, a legacy `8:opened` without payload, and `pending` `budget:check:…`; restart with `sendIncidents: false`, `alerts: ["budget-low"]` | at start the four incident keys are `dropped`, log `incident notifications dropped: channel sends no incidents` with `count: 4`; the receiver gets exactly 1 request, the `budget:` key; 0 incident requests over 10 polls |
+| Incident `9` opens while `H` has `sendIncidents: false` | `9:opened` is `seeded` on `H`, 0 requests |
+| `H` has `failed` `5:opened`; `failed resend 5:opened`; restart with `sendIncidents: false` | `5:opened` becomes `dropped` at start, 0 requests |
+| Restart of `H` with `sendIncidents: true` | 0 requests for `7:opened`, `8:opened`, `9:opened`, `5:opened`; when `9` resolves, exactly 1 `9:resolved` |
+| A wrong implementation that only skips enqueue on poll | `#resendPending` sends `7:opened` at start |
+
+### Routing and config
 
 - Channel `{ alerts: ["budget-low"], checks: ["api-*"] }`: check `api-1` low → event;
   check `web-1` low → none; component `web` low → event (component filters absent).
@@ -455,14 +612,20 @@ Routing and config:
   component `web` → none (exclusion wins).
 - Channel with `alerts: ["tls-expiry"]`: a domain check at 14 → none.
 - Channel without `alerts`: no warning at all, and incident payloads byte-identical to main.
-- `sendIncidents: false`: an incident that opens → no `opened` event on that channel, its key is
-  `seeded`; after a restart with `sendIncidents: true` that incident's `resolved` is sent but
-  not its `opened`.
 - Rejected configs: `alerts: ["budget"]`, `alerts: "budget-low"`, `alerts: [1]`,
   `sendIncidents: "no"`, `sendIncidents: false` without `alerts`,
   `sendIncidents: false` with `remindEverySeconds: 60`.
 - `PULSE_NOTIFY_BUDGET_THRESHOLD`: `101`, `-1`, `25.5`, `abc` stop startup; `0` and `100` start.
   With `0`, budget `0` → none, `-0.1` → event.
+
+### Ledger format
+
+- A format-3 file with an entry of status `sent` → refused as unsupported, bytes unchanged, no
+  `<state>.v3.bak` written.
+- A format-3 file with schema and `PRAGMA user_version = 4` (no `alert_state`) → refused.
+- `user_version` 5 → refused.
+- A valid format-3 file → format 4, all channels, marks and entries equal; second open logs no
+  migration.
 
 Statistics: notify computes no statistic. `budgetRemaining` and `availability` are the api's
 values (30 UTC calendar days, result-weighted, `api/src/slo.ts:11-21`, unrounded). Display
@@ -495,7 +658,7 @@ contract source, the config clone and notify's source on the inspected commits (
 
 api: the issue names api, but every input exists on api `main` `2bc5910`:
 `GET /checks` returns `CheckWithState` with `slo` (`api/src/service.ts:993-998`) and, for `tls` and
-`domain` checks, `certDaysLeft` of the newest result (`api/src/service.ts:793-796`);
+`domain` checks, `certDaysLeft` of the newest result (`api/src/service.ts:791-796`);
 `GET /components` returns `slo` per component (`api/src/server.ts:675-682`,
 `api/src/components.ts:37`); `buildSlo` computes `budgetRemaining` (`api/src/slo.ts:15-21`).
 No api task is opened.
@@ -503,38 +666,90 @@ No api task is opened.
 ## Repository: notify
 
 Files:
-- `src/types.ts` (Notification union with `IncidentNotification`, `BudgetNotification`, `ExpiryNotification`; `alerts`, `sendIncidents` on `ChannelBase`)
-- `src/channel-schema.ts` (`alerts`, `sendIncidents` and the cross-field rules of R1)
-- `src/config.ts` (`PULSE_NOTIFY_BUDGET_THRESHOLD`; channel resolution passes the new keys)
-- `src/index.ts` (wires the threshold into the notifier)
-- `src/api.ts` (`fetchChecks` also returns the validated states; new `fetchComponents` with 404 as absent)
-- `src/metrics.ts` (feed label `components`)
-- `src/budget-alerts.ts` (new: pure budget rule R5 and key R7)
-- `src/expiry-alerts.ts` (new: pure observation selection and stage machine R6 and key R7)
-- `src/notifier.ts` (feeds, evaluation order R4, `sendIncidents`, claims and enqueue, pruning, `isStale` narrowing)
-- `src/ledger.ts` (format 4, `alert_state`, v3 migration with backup, the event transaction, alert pruning)
-- `src/channels/routing.ts` (whether a channel wants a warning event, R10)
-- `src/channels/message.ts`, `src/channels/slack.ts`, `src/channels/teams.ts`, `src/channels/email.ts` (labels and lines of R8)
-- `test/support.ts` (fake api: `/components`, checks with state fields)
-- `test/budget-alerts.test.ts`, `test/expiry-alerts.test.ts`, `test/alerts.test.ts` (new: notifier with the fake api and a receiver), `test/ledger.v4.test.ts` (new)
-- `test/config.test.ts`, `test/message.test.ts`, `test/routing.test.ts`, `test/webhook.test.ts`, `test/failed-cli.test.ts`, `test/prune.test.ts`, `test/security-ledger-permissions.test.ts` (new cases)
-- `README.md`, `docs/configuration.md`, `docs/channels.md`, `docs/channels/webhook.md`, `docs/channels/file.md`, `docs/channels/slack.md`, `docs/channels/teams.md`, `docs/channels/email.md`, `docs/operation.md`, `docs/development.md`
-- `package.json` (description text only; no dependency or pin change)
+- `src/types.ts`
+- `src/channel-schema.ts`
+- `src/config.ts`
+- `src/index.ts`
+- `src/api.ts`
+- `src/metrics.ts`
+- `src/budget-alerts.ts`
+- `src/expiry-alerts.ts`
+- `src/notifier.ts`
+- `src/ledger.ts`
+- `src/channels/routing.ts`
+- `src/channels/message.ts`
+- `src/channels/slack.ts`
+- `src/channels/teams.ts`
+- `src/channels/email.ts`
+- `test/support.ts`
+- `test/budget-alerts.test.ts`
+- `test/expiry-alerts.test.ts`
+- `test/alerts.test.ts`
+- `test/send-incidents.test.ts`
+- `test/ledger.v4.test.ts`
+- `test/config.test.ts`
+- `test/message.test.ts`
+- `test/routing.test.ts`
+- `test/webhook.test.ts`
+- `test/failed-cli.test.ts`
+- `test/prune.test.ts`
+- `test/security-ledger-permissions.test.ts`
+- `test/ledger.test.ts`
+- `test/ledger.v2.test.ts`
+- `test/metrics.test.ts`
+- `README.md`
+- `docs/configuration.md`
+- `docs/channels.md`
+- `docs/channels/webhook.md`
+- `docs/channels/file.md`
+- `docs/channels/slack.md`
+- `docs/channels/teams.md`
+- `docs/channels/email.md`
+- `docs/operation.md`
+- `docs/development.md`
+- `package.json`
 
 Behavior change: yes
 New config keys, a new setting, a new feed read, new events and a new ledger format.
 
+What each file holds (plain words, no paths beyond the list above):
+
+- types: the notification union with an incident variant, a budget variant and an expiry
+  variant; the two new channel keys on the channel base.
+- channel schema and config: the two channel keys with the cross-field rules of R1, the threshold
+  setting; index wires the threshold into the notifier.
+- api client: the checks read also returns the validated check states; a new components read with
+  404 as absent. metrics: the new feed label.
+- budget alerts and expiry alerts: new pure modules for R5, R6 (observation selection and stage
+  machine) and the keys of R7, with `nowMs` and stored state passed in.
+- notifier: feed reads, the evaluation order and seeding gate of R4, the R1 start-time drop and
+  per-poll seeding for warning-only channels, enqueue after the alert commit, alert pruning, the
+  narrowed stale check.
+- ledger: format 4, the alert table and its mirror, the format-3 migration with backup, the
+  per-poll alert transaction, alert pruning.
+- routing: whether a channel wants a warning event (R10). message, slack, teams, email: the labels
+  and lines of R8. The failed CLI needs no change (it reads the event from the stored payload); its tests get cases for the new keys.
+- tests: the new suites and new cases named below; docs as in R11; package description text only
+  (no dependency or pin change).
+
 Behavior: R1-R11. Module split: the budget and expiry rules are pure functions over parsed
-contract types and stored state, with `nowMs` passed in (AGENTS.md "Keep logic pure"); the
-notifier does I/O and wiring; the ledger owns persistence. Names of new modules and functions may
-differ if the responsibility split stays. Keep cognitive complexity per function at most 15
-(enforced by the shared ESLint config). Do not change existing tests' expectations, except where
-a test asserts the ledger `user_version` 3 or the exact `FEED_NAMES` list; such a test is updated
-to 4 or the new list, and the PR names each one.
+contract types and stored state, with `nowMs` passed in (notify `AGENTS.md`, "Keep logic pure");
+the notifier does I/O and wiring; the ledger owns persistence. Names of new modules and functions
+may differ if the responsibility split stays. Keep cognitive complexity per function at most 15
+(see tool facts). Do not change existing tests' expectations, except these, which the PR names:
+
+- `test/ledger.test.ts:95-114` asserts the exact format-3 schema and `user_version` 3: update it
+  to the format-4 schema (with `alert_state`) and `user_version` 4.
+- `test/metrics.test.ts:36-48` lists the feed labels of the exposition: add the `components`
+  lines with value 0.
+- `test/ledger.v2.test.ts:211` and `test/index.test.ts:188` refuse a format-3 schema with
+  `user_version` 4. They must keep passing unchanged (that file has no `alert_state`, so it is
+  still refused). Add a `user_version` 5 case in `test/ledger.v2.test.ts`.
 
 TDD order (red first): config rejection of `alerts` (fails on main: `strictObject` rejects the
-unknown key), budget once per 24 h, expiry `[14, 3]`, then the rest. Record the failing run of
-the budget and expiry tests on `main` in the PR (test names and the failure line).
+unknown key), budget once per 24 h, expiry `[14, 3]`, the restart-safe ordering table, then the
+rest. Record the failing run of the budget and expiry tests on `main` in the PR (test names and
+the failure line).
 
 Tool facts (verified at notify `227fd6d649bc71b5291b7cb47eb3adc08f6ff42d`):
 - Bun 1.4.0: `package.json:9` (`engines.bun`) and `package.json:35` (`packageManager`).
@@ -549,6 +764,11 @@ Tool facts (verified at notify `227fd6d649bc71b5291b7cb47eb3adc08f6ff42d`):
   config clone (`bc87049`); `files.includes` (lines 10-17) covers `**` except `dist`,
   `node_modules`, `bun.lock`, `*.html` and `test/fixtures`, so new `src/` and `test/` files are
   linted.
+- ESLint: `eslint.config.js:1-4` spreads `@lorenzh/pulse-config/eslint.config.js` (ignoring only
+  `.repos/**`). The pinned file at `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, read with
+  `gh api "repos/lorenzh/pulse-config/contents/eslint.config.js?ref=04108fa…"`, sets
+  `"sonarjs/cognitive-complexity": ["error", 15]` at line 16 for `**/*.ts` and `**/*.js`
+  (lines 10-17); it is identical to the config clone (`bc87049`, `diff` empty).
 - CI: `.github/workflows/ci.yml:18` uses `check.yml@04108fa…` without `build`; the pinned
   `check.yml` is identical to the clone and runs install, lint, typecheck and test (lines 25-38).
   The `docker` job builds the image (`ci.yml:32`), checks dotenv files (`:34`), the absence of
@@ -560,7 +780,7 @@ Tool facts (verified at notify `227fd6d649bc71b5291b7cb47eb3adc08f6ff42d`):
 
 Checks and completion evidence:
 1. `bun run check` exits 0.
-2. `bun test test/budget-alerts.test.ts test/expiry-alerts.test.ts test/alerts.test.ts test/ledger.v4.test.ts`
+2. `bun test test/budget-alerts.test.ts test/expiry-alerts.test.ts test/alerts.test.ts test/send-incidents.test.ts test/ledger.v4.test.ts`
    passes and covers every row of "Counterexamples" with the literal inputs and expected values
    of this spec. The same budget and expiry behavior tests fail on `origin/main` (shown in the PR:
    names and the failing assertion or the startup error for the unknown `alerts` key).
@@ -571,27 +791,35 @@ Checks and completion evidence:
    `idempotency-key` equal to the body `key`; a channel without `alerts` gets 0. A receiver that
    answers 500 twice and then 204 gets the same key 3 times and no new key. A 404 on
    `/components` leaves incident delivery and check budgets working.
-4. Ledger: a format-3 file made by the `main` code path (or a fixture built with the format-3
+4. `sendIncidents` over HTTP (`test/send-incidents.test.ts`): the `sendIncidents: false` table
+   of "Counterexamples", with a ledger reopened across the restarts and a local receiver; the
+   receiver's request log shows 0 incident keys across the restart, the re-enable and 10 polls,
+   and exactly the literal keys of that table.
+5. Ledger: a format-3 file made by the `main` code path (or a fixture built with the format-3
    schema in the test) opens as format 4 with every entry and mark kept, `PRAGMA user_version`
    is `4`, `<state>.v3.bak` exists with mode `0600` and `user_version` `3`; a second open does
-   not migrate again; a file with `user_version` `5` is refused.
-5. Incident behavior unchanged: the existing suites (`notifier`, `reminders*`, `manual-*`,
+   not migrate again; the "Ledger format" counterexamples hold; a `<state>.v3.bak` symlink is
+   replaced and its target keeps its bytes.
+6. Incident behavior unchanged: the existing suites (`notifier`, `reminders*`, `manual-*`,
    `routing-change`, `ledger*`, `prune`, `webhook`, `channels`) pass without changed
-   expectations, except the version/feed-list cases named in the PR.
-6. Performance: the `test_cpu_s` A/B of "Performance impact" (medians of 5 runs, main and
-   branch) with a difference below 0.3 s, and the startup CPU of a format-3 and a format-4 start.
-7. Run once by hand: `bun run start` with `PULSE_NOTIFY_CONFIG` pointing at a file channel with
+   expectations, except the cases named above.
+7. Performance: the three measurements of "Performance impact" with their literal limits
+   (`test_cpu_s` A/B difference below 0.3 s; startup CPU of a format-3 and a format-4 start;
+   the runtime runs with at most 0.1 s / 0.3 s CPU and 3 MiB `VmHWM` above main), with the raw
+   numbers in the PR.
+8. Run once by hand: `bun run start` with `PULSE_NOTIFY_CONFIG` pointing at a file channel with
    `alerts: ["budget-low","tls-expiry"]`, `PULSE_API_URL` at a local fake api (for example a
    short `Bun.serve` script outside the repository serving the `/checks`, `/incidents`,
    `/manual-incidents`, `/components` bodies of check 3), and `PULSE_NOTIFY_POLL_MS=1000`. Report
    the command and the file lines: exactly one `budget-low` and one `tls-expiry` line after 10
    polls.
-8. Compose: build `docker build -t pulse-notify:candidate .` from the branch. In a scratch copy
+9. Compose: build `docker build -t pulse-notify:candidate .` from the branch. In a scratch copy
    of `lorenzh/pulse-deploy` `main` (not committed), replace the notify `image:` line of
    `common/services.yaml` (line 35 at deploy `c3e340a`) with `pulse-notify:candidate` and run
    `bash e2e/compose-e2e.sh` to completion with exit 0. Report the deploy SHA, the notify commit
    SHA, the candidate image id and the last lines of the output. The api image stays the pinned
    one (api is unchanged). The PR also shows the notify CI `check` and `docker` jobs green.
-9. The PR names the issue, the checks that ran and the known limits: renewal inside 14 days is
-   not seen; late subscribers get the next due event only; downgrade needs `<state>.v3.bak`;
-   warnings can be up to `2 × intervalMs` late.
+10. The PR names the issue, the checks that ran and the known limits: renewal inside 14 days is
+    not seen; late subscribers get the next due event only; incident deliveries of a
+    warning-only channel are dropped; downgrade needs `<state>.v3.bak`; warnings can be up to
+    `2 × intervalMs` late.
