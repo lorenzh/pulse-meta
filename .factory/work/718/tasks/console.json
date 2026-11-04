@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Shared HTML, shell, navigation and state renderers are reusable without scripts",
+      "files": [
+        "src/html.ts",
+        "src/pages.ts",
+        "src/shell.ts",
+        "src/navigation.ts",
+        "src/roles.ts",
+        "src/states.ts",
+        "src/api-failure.ts",
+        "src/styles.ts",
+        "src/connection-test.ts",
+        "src/html.test.ts",
+        "src/shell.test.ts",
+        "src/navigation.test.ts",
+        "src/roles.test.ts",
+        "src/states.test.ts",
+        "src/api-failure.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, shared presentation modules in Files and Behavior; Decisions 1-3 and 6, Required behavior 2 and 4, renderer portions of Required behavior 7, Checks 3 and 9, and Security impact (escaping, safe errors, secret fields, script scope). Measure bun run test duration on the unmodified checkout first and retain the result for Completion evidence. Extract document/field/CSRF helpers into html.ts while keeping setup and sign-in HTML byte-identical. Keep landingPage until T3 replaces its server caller. Add textarea errors, formErrorSummary and native enabled/server-rendered pending submitButton; no script, script hook or fake disabled appearance. Add the four-role ordering, nine-entry navigation registry (eight unavailable), shell with skip link, identity/role/sign-out, banner and main slots, and every new shared state renderer; session expiry continues to use the existing sign-in notice rather than a new renderer. Implement ApiFailure mapping and exact safe texts from Required behavior 4.3, distinguishing token rejection, missing/wrong wire headers, generic HTTP 503 and known read-only writes. Move wireLabel only if shared, preserving connection-test output. Unit-test the public modules with literal fixtures, escaped user/caller data and field associations. Add responsive/focus styles for these components without hiding overflow. This task introduces callable renderers; production routing and removal of landingPage belong to T3.",
+      "acceptance": [
+        {
+          "command": "bun test src/html.test.ts src/shell.test.ts src/navigation.test.ts src/roles.test.ts src/states.test.ts src/api-failure.test.ts src/connection-test.test.ts",
+          "expected": "All selected tests pass, 0 fail; a focused run may fail only the global coverage threshold. The registry has 9 entries and 8 unavailable; all four roles currently see exactly [Overview]. With all entries available, viewer/member see [Overview, Checks, Incidents, Maintenance] and admin/owner see [Overview, Checks, Incidents, Maintenance, Tokens, Probes, Team, Activity, System]. The shell has one h1, first-focusable Skip to content targeting #main, Role: Owner, Signed in as, POST /sign-out with csrf, aria-label=Main and aria-current=page on Overview; unavailable links are absent. Enabled submitButton has type=submit and no disabled attribute; pending has disabled and Running…. Textarea/input errors have aria-invalid=true and aria-describedby referencing the error element, and the summary links to #field-name and #field-note. State headings/texts match Required behavior 4 literally, a generic HTTP 503 renders pulse-api answered 503., no output contains <script or style=, and connection-test texts remain unchanged."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with line coverage >= 80 %. Setup and sign-in HTML remain byte-identical, existing assertions are unchanged, and the existing landing route still works. Record the unmodified checkout's bun run test duration in the task outcome for the final PR."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Overview reads validate both API responses and compute literal state counts",
+      "files": [
+        "src/overview.ts",
+        "src/overview-read.ts",
+        "src/overview.test.ts",
+        "src/overview-read.test.ts",
+        "test/fake-api.ts",
+        "tsconfig.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, overview.ts and overview-read.ts with their tests and fake API; Decisions 4-5, Required behavior 3, Check 2 and the API-client portions of Check 4, Counterexamples (overall state, counts, precedence, redirects, read-only, wire, body cap), Performance impact and Security impact (validation, limits, SSRF, logs). Implement the complete Overview read/result and rendering contract as modules consumed by T3. Start GET /admin/config and GET /checks together with independent 5000 ms timeouts using contract fetchJson, existing validators, manual redirects, wire checks and the default 5 MiB cap. Only /admin/config receives the token; use the supplied saved instance URL, never request data. No token means zero requests. Apply the exact failure precedence of Decision 4 and the warn api read failed fields of Required behavior 3 without sensitive details. Count only the validated public /checks array; implement down > degraded > unknown > maintenance > up with zero checks empty, every zero count visible and the saved API origin line retained. Use the T1 state renderers for empty/failure/token presentations, never a partial summary. Build a reusable loopback fake API with literal contract-valid fixtures, request/header recording and failure modes for unit/integration/browser consumers. Add test to tsconfig.json include so fixture imports pass project-service lint; do not add dependencies or e2e tooling yet. Keep current server routing until T3.",
+      "acceptance": [
+        {
+          "command": "bun test src/overview.test.ts src/overview-read.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may be below the global threshold. [up, unknown] and [maintenance, unknown] give Unknown, [up, maintenance] gives Maintenance, [maintenance, maintenance] gives Maintenance, [degraded, down, up] gives Down, [] gives No checks yet, and [down, down, up] gives Down 2, Degraded 0, Unknown 0, Maintenance 0, Up 1, Total 3. Both reads start before either settles and each scheduled timeout is exactly 5000 ms. /checks has no authorization header and /admin/config receives the configured Bearer token. Missing token yields 0 requests. Failure precedence matches Decision 4; /admin/config 401 suppresses a successful /checks summary, /admin/config 403 gives The console token lacks the read or checks scope., /checks timeout gives pulse-api did not answer within 5 seconds., /checks 503 gives pulse-api answered 503., and missing header gives pulse-api sent no x-pulse-contract header. A 302 reaches the second server 0 times. A 6 MiB body, invalid JSON and invalid shape give pulse-api sent an invalid answer.; wire mismatch is safely labelled. Each failed read produces one warn api read failed with call/kind and HTTP status where applicable; sentinel token, upstream-body-sentinel, full URL and exception text are absent from rendered results and logs."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including test/, and the full suite pass with line coverage >= 80 %. Existing setup/sign-in behavior and assertions remain green, and the contract pin remains 176fb6ed14b2f14b730a9fd1757239f210f97a29."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Authenticated pages use the shell, Overview and ordered server-side guards",
+      "files": [
+        "src/server.ts",
+        "src/main.ts",
+        "src/pages.ts",
+        "src/protected-route.ts",
+        "src/server.overview.test.ts",
+        "src/server.states.test.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.sign-in.test.ts",
+        "src/server.security.test.ts",
+        "src/main.startup.test.ts",
+        "test/fixture-routes.ts",
+        "test/fake-api.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, dispatcher/server integration and test-route portions of Files and Behavior; Decisions 1-3 and 8-10, Required behavior 1-3 and 6 (state routes and busy route), Checks 4-5, 7 and 9, associated Counterexamples, and Security impact (auth order, body limits, input retention and test isolation). Define ProtectedRoute/PageRequest/PageResult and integrate the shared protected-page dispatcher: route/method, setup phase, loopback Host, live session, existing POST Origin/content type/8192-byte body/repeated-known-field/CSRF checks, server role check, handler. Add required instanceName and optional roleOf/testRoutes deps; main supplies pulse Console and neither optional test dep. Remove landingPage only when / serves the real Overview inside the T1 shell using T2 reads. Keep production ROUTES and metric path labels unchanged, make all test paths count as other, validate testRoutes keys at construction, and preserve unknown-path/raw-path behavior except signed-in GET/HEAD shell 404. Safe raw path+query next is retained on expired GET/HEAD/POST without body consumption/action replay. Build all state fixtures in test/ through the real dispatcher (including busy submit, 409/412 retained non-secret forms, accessible 422, known read-only 503 and expiry). Confirmation routes are added in T4. Cover current-server API integration failures with the real loopback fake API; no sentinel leakage and a corrected API recovers on the next GET. In the five existing test files obey the Files rule strictly: only instanceName constructor wiring and new test cases, with server.setup.test.ts receiving only the instanceName line; never alter existing expects or helpers. Update endpoint/configuration docs for the new behavior and the development/AGENTS test-helper convention when test/ fixtures become integrated. Preserve setup/sign-in/session/CSP/cookie/referrer behavior and apply the Rollout order notes if #563 or #564 lands first.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.overview.test.ts src/server.states.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may be below the global threshold. Signed-in GET / is 200 inside the shell for success, mixed, all-unknown, all-maintenance, empty, timeout, network, 401, 403, 429, 503, 302, missing/wrong wire header, 6 MiB body, invalid JSON/shape and no-token cases, with the literal Required behavior 3/4.3 texts and saved pulse-api origin. Fake requests prove token on /admin/config only, 0 requests without a token and 0 requests to a redirect target; sentinel token and upstream-body-sentinel are absent from HTML/logs, and next GET recovers after API correction. State fixture statuses are exactly 200, 403, 404, 409, 412, 422, 503 and 303 as Required behavior 6 specifies; 409/412 retain name/note but exclude s3cret-sentinel; 422 errors and summary links have matching field IDs; viewer on the forbidden route gets 403 and This page needs the Admin role or higher. Your role is Viewer. Expiry redirects to /sign-in?next=%2F__test%2Fstates%2Fsession-expired and successful sign-in returns there. Busy GET enables Run, native POST records action=go once and renders Submitted: go, pending=1 disables the button with Running…."
+        },
+        {
+          "command": "bun test src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/main.startup.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may be below the global threshold. New cases prove method 405 with allow, pre-setup GET/HEAD 303 to /setup and supported POST 404, loopback Host 421, session redirect 303 before POST body parsing, then Origin 403/content type 415/body >8192 bytes 413/repeated known field 400/CSRF 403/role 403 before handlers. Safe next retains query strings; //evil.example, /\\evil, control characters and targets >512 characters fall back to /, including next=%2F for /. Signed-in unknown GET/HEAD is shell 404 Page not found; unauthenticated/raw unknown paths remain 404 not found\n. Server without testRoutes and bun src/main.ts answer 404 at /__test/states/empty, /console.js is 404, and a testRoutes key /checks throws an Error subclass. Overview, shell 404 and state fixtures carry the literal CSP default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none', referrer-policy same-origin, x-frame-options DENY, x-content-type-options nosniff and cache-control no-store; bodies contain neither <script nor style=. All existing setup/sign-in/session/security assertions, including Signed in as Owner &lt;Sentinel&gt;, the API origin and action=\"/sign-out\", remain unchanged and green."
+        },
+        {
+          "command": "git diff main -- src/server.setup.test.ts src/server.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/main.startup.test.ts",
+          "expected": "server.setup.test.ts has exactly the added instanceName: \"pulse Console\" constructor line and no other edits. Other four existing test files have only the permitted instanceName wiring and new test cases; 0 existing expects removed, loosened or changed."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with line coverage >= 80 %. Documentation describes protected routing, Overview reads, safe failure logging and the Decision 6 busy-button limit; production main registers no testRoutes or roleOf, no runtime dependency is added and no setup/sign-in/session/role-model change is made."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Typed and plain confirmation pages enforce names, revisions and authorization on the server",
+      "files": [
+        "src/confirm.ts",
+        "src/confirm.test.ts",
+        "src/server.confirm.test.ts",
+        "src/server.security.test.ts",
+        "src/styles.ts",
+        "test/fixture-routes.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, confirmation modules/tests and fixture extension; Decision 7, Required behavior 5 and confirmation rows of 6, Check 6 and confirmation portion of Check 7, Counterexamples (typed name, revision, role change, CSRF, Origin, expired POST) and Security impact (server-owned expected values, guards, retained input, secret handling). Add typedConfirmPage/plainConfirmPage and the pure trim/NFC/case-sensitive name predicate as one complete confirmation feature. Pages use T1 helpers and the real T3 dispatcher/shell, CSRF and revision hidden fields, consequence text, target display name, submit and Cancel. Fixtures supply all six typed families and five plain families and the done page, server-owned mutable targets/revisions and an action recorder; production has no action route. Re-read the target at POST, reject stale revision with 409 and retained typed input, missing target with shell 404, blank/mismatch with 422 and exact field messages. Ignore unknown forged expected/role fields; enforce the current server role again after CSRF. GET, HEAD, Cancel and every rejected/expired POST execute 0 actions; correct POST executes exactly 1 then 303. Keep header sign-out unchanged. Add confirmation security-header/script-absence coverage using only new cases in server.security.test.ts and the existing-test rule.",
+      "acceptance": [
+        {
+          "command": "bun test src/confirm.test.ts src/server.confirm.test.ts src/server.security.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may be below the global threshold. Typed families are exactly delete-check, delete-incident, revoke-token, revoke-probe, remove-member, transfer-ownership; plain families are exactly resolve-incident, delete-maintenance, reset-2fa, sign-out-all-sessions, new-recovery-codes. Each family's GET/HEAD/Cancel records 0 actions, correct POST records exactly 1 {family, target} then 303 to the Done page. For expected api, API gives 422 while ' api ' succeeds; equivalent NFC names succeed, inner whitespace differs, blank gives 422 Type the name to confirm., mismatch gives The name does not match. Type api exactly. and keeps typed input. confirm_name=x&expected=x does not override the server name and gives 422. Changed revision/renamed target gives 409 Changed since you opened it with kept input, gone target gives 404, admin-at-GET/viewer-at-POST gives 403 and 0 actions, missing/wrong CSRF and null/foreign Origin give 403 and 0 actions. Expired POST gives 303 with safe next, consumes no action and is never replayed after sign-in. Confirmation responses retain the literal CSP and other headers from Check 7 and contain no <script, style= or secret sentinel."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and full tests pass with line coverage >= 80 %. State routes and Overview remain green, existing assertions are unchanged and all fake confirmation actions remain test-only."
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "final",
+      "title": "Browser, image and CI checks prove mobile and no-JavaScript behavior with release evidence",
+      "files": [
+        "e2e/run.ts",
+        "e2e/tsconfig.json",
+        "package.json",
+        "bun.lock",
+        "tsconfig.json",
+        ".github/workflows/ci.yml",
+        "src/styles.ts",
+        "test/fixture-routes.ts",
+        "test/fake-api.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, browser/tooling/CI/docs portions of Files and Behavior, Required behavior 7, Checks 1 and 7-11, Completion evidence, Dev tooling decision, Performance impact, Security impact and Rollout order; final verification of all Required behavior 1-7. Add exact dev-only playwright 1.64.1 and @axe-core/playwright 4.14.0 without changing runtime dependencies or the contract pin. Add check:browser as bun e2e/run.ts, extend typecheck with -p e2e and provide the separate esnext/dom e2e project; test/ stays included by the root project. Implement a plain Bun browser runner (not *.test.ts), real sign-in form, mkdtemp completed setup and loopback fake API/fixture routes, cleanup and nonzero first-failure exit with ok: evidence lines. Use 390x844 and 1280x800 Chromium contexts; no-JavaScript form/keyboard checks and a separate JavaScript-enabled axe context. Finish responsive CSS from actual browser findings, wrapping long names/email/details rather than hiding overflow. Add browser CI on ubuntu-24.04 with timeout 15, contents:read, pinned checkout without persisted credentials, Bun 1.4.0, frozen install, Chromium install and browser command; release needs [check, docker, browser]. Extend both existing docker legs' dev-path exclusions with playwright, @axe-core, test and e2e and assert production /__test/states/empty returns 404. Complete all four docs per Behavior, including script restriction, shared modules/fixtures, endpoints, commands, CI and busy-button limit. Run the full suite and browser suite, the existing image smoke checks, the local real-api smoke and relevant security checklist; report before/after test duration and all Completion evidence in the PR. Console has no compose.e2e.yml; use its specified browser/image checks and real-api smoke rather than inventing a Compose harness or editing pulse-deploy.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck for src/test and e2e, full tests and line coverage >= 80 % pass. Runtime dependencies and contract pin 176fb6ed14b2f14b730a9fd1757239f210f97a29 are unchanged; playwright 1.64.1 and @axe-core/playwright 4.14.0 are dev-only. Existing tests satisfy the Files wiring/new-cases-only rule. Record the final bun run test duration alongside T1's baseline."
+        },
+        {
+          "command": "bunx playwright install --with-deps chromium && bun run check:browser",
+          "expected": "exit 0 with ok: lines for every check. At 390x844, scrollWidth <= 390 for sign-in, shell, Overview success/empty/unreachable/token banner and every /__test/ page, including 100-character names, 254-character unbroken email and long details; desktop 1280x800 is usable. No container hides overflow. Axe has 0 violations for wcag2a, wcag2aa, wcag21a, wcag21aa and wcag22aa on sign-in, Overview, shell 404, 403, one typed and one plain confirmation. With JavaScript disabled, typing Checkout API then Enter completes the typed confirmation with 1 action, Tab/Enter completes plain confirmation with 1 action, enabled Run submits natively with Submitted: go and 1 action=go, and pending=1 isDisabled() is true with Running…. Tab reaches skip link first, sign-out then Overview, each with computed outline-style other than none; every control is keyboard reachable, every field labelled and status conveyed in text."
+        },
+        {
+          "command": "docker build --tag pulse-console:local .",
+          "expected": "exit 0; production-only install and src-only copy still build the image. The CI docker smoke checks verify 0 test files/dev paths, explicitly including /app/node_modules/playwright, /app/node_modules/@axe-core, /app/test and /app/e2e, and literal 404 for GET /__test/states/empty in the running image."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "The console PR's check job, docker ubuntu-24.04 leg, docker ubuntu-24.04-arm leg and browser job are all green. Existing image smoke checks still pass, including the extended dev-path loop and /__test/states/empty=404 in both images. browser uses timeout-minutes 15 and the specified pinned actions/Bun 1.4.0 commands; release needs exactly [check, docker, browser]."
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "Check 11 manual smoke against a running local pulse-api with supported admin-token settings and a temporary console database: setup and sign-in succeed, GET / answers 200 with Overview inside the shell and the real check counts, stopping pulse-api then reloading still answers 200 with pulse-api cannot be reached. Record the actual startup/setup/sign-in/reload commands and observed results in the PR; expose no credentials."
+        },
+        {
+          "command": "git diff main -- src/server.setup.test.ts src/server.test.ts src/server.sign-in.test.ts src/server.security.test.ts src/main.startup.test.ts && gh pr view --json body --jq .body",
+          "expected": "Check 9 still holds: setup test diff is only the added instanceName line, and other existing test edits are only constructor wiring/new cases with 0 changed existing expects. PR includes full check tests/coverage summary, browser ok: output, green check/docker-both-legs/browser evidence, actual manual smoke commands/results, before/after bun run test duration and the Decision 6 limit: native submit cannot disable an already shown button while waiting; pending is server-rendered. PR records relevant Security impact checks with no secrets: auth/POST order, safe next, body limits, typed-name/forged fields, role/revision checks, redirect isolation, token/body/secret non-disclosure, unchanged CSP/referrer/cookies, exact dev pins and test-route isolation. Docs reflect all Behavior requirements, rollout remains console-only and no later product screen or runtime package is introduced."
+        }
+      ]
+    }
+  ]
+}
