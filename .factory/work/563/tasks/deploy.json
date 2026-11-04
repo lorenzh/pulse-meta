@@ -72,7 +72,7 @@
     {
       "id": "T3",
       "kind": "final",
-      "title": "The legacy setup e2e stays green and a selectable two-factor flow is ready for the console PR",
+      "title": "Deploy keeps the #562 setup e2e green and prepares the two-factor flow for the console PR",
       "files": [
         "e2e/console-setup.sh",
         "e2e/totp.mjs",
@@ -135,7 +135,7 @@
         },
         {
           "command": "git diff --check && git diff --stat",
-          "expected": "exit 0; review final diff against applicable Security impact checklist: no key/token output, strict key validation, no output files after files-mode/preflight validation failures, safe permissions and atomic writes, no invalid-key replacement, unchanged package/image pins, ports and secrets-volume boundaries. Review flow selection, shared steps 1-5, unchanged legacy steps 7-10 and two-factor steps 7-13 against spec literals; do not claim two-factor runtime evidence before the console PR. PR contains security review, actual CI/e2e results and staged-rollout limits. All five documentation files cover upgrade, backup, lost-key recovery, both flows/E2E_CONSOLE_FLOW and later pin-bump activation as required by Completion evidence."
+          "expected": "exit 0; review final diff against applicable Security impact checklist: no key/token output, strict key validation, no output files after files-mode/preflight validation failures, safe permissions and atomic writes, no invalid-key replacement, unchanged package/image pins, ports and secrets-volume boundaries. Review flow selection, shared steps 1-5, unchanged legacy steps 7-10 and two-factor steps 7-13 against spec literals; do not claim two-factor runtime evidence before the console PR. Rollout step 1 proves deploy works with the unchanged #562 console and its setup redirects; step 2 is gated by console's deploy-dev job after this deploy change merges. PR contains security review, actual CI/e2e results and these staged-rollout limits. All five documentation files cover upgrade, backup, lost-key recovery, both flows/E2E_CONSOLE_FLOW and later pin-bump activation as required by Completion evidence."
         }
       ]
     }
