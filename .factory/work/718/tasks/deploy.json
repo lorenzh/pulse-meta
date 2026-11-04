@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Console setup e2e supports forms with and without single-use tokens",
+      "files": [
+        "e2e/console-setup.sh",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all Behavior bullets, Checks 1-3 and Completion evidence; Rollout order (deploy merges before console). Cover every POST, including the two-factor flow if #563 has merged. Console check 14 owns the later token-enabled integration run.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; repository lint, typecheck and CLI tests pass with at least 80% line coverage"
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0; no shellcheck diagnostics, including form_token_args, optional curl arguments and replay-body handling"
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0"
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0"
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; the existing CI lint job's helper and static setup checks pass"
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; the remaining existing CI lint job's script checks pass"
+        },
+        {
+          "command": "scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 on fresh dev volumes with sibling service checkouts on main and console without form_token; output contains exactly 'ok: 8b replay check skipped: console without form_token' and preserves the existing steps 1-10, including setup 303, wrong code and password 401, connection test 200, signed-in GET / 200, closed setup 404, recreation with 0 setup code lines and no admin token in database files; no token, setup code or password is printed"
+        },
+        {
+          "command": "bash cli/test/stack.sh dev",
+          "expected": "exit 0 against the dev stack; the remaining dev job's source CLI integration check passes (PULSE_SRC_DIR points to the sibling service checkouts as in CI)"
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "exit 0; the deploy pull request's required checks pass, including dev against console main without form tokens"
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "the pull request records shellcheck output and the green dev job result with the literal 'ok: 8b replay check skipped: console without form_token'; it identifies console check 14 as the later proof of 'ok: 8b POST /sign-in replay 409 Already submitted', without claiming that token-enabled run happened in deploy"
+        }
+      ]
+    }
+  ]
+}
