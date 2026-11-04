@@ -41,7 +41,7 @@ for name in ('factory.yml', 'factory-run.yml', 'factory-unblock.yml'):
                                      f'steps.{token_id}.outputs.token': token}.items():
                         expression = expression.replace(key, repr(val))
                     assert eval(expression, {'__builtins__': {}}, {}) == expected
-assert consumers == 7, consumers
+assert consumers == 9, consumers
 print('ok   App tokens: pinned action, all configured repositories, conditional mint, PAT fallback, no fallback on App failure')
 
 workflow = yaml.safe_load((workflows / 'factory-run.yml').read_text())
