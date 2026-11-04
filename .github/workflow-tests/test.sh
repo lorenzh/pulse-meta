@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Runs the script of factory-sweep.yml, .github/audits/open-issue.sh (factory-audit.yml) and the
 # scripts of the Factory report (.github/report/*.sh) against fixtures, with a stub `gh` that serves
-# canned API answers and records every write. Needs bash, jq, git, node, and python3 with PyYAML.
+# canned API answers and records every write. findings.sh checks the shared-findings publisher
+# against a local bare repository with its own stub `gh`. Needs bash, jq, git, node, and python3
+# with PyYAML.
 # Usage: .github/workflow-tests/test.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -435,6 +437,8 @@ check "pr check: a base without check.mjs checks nothing" "::notice::The base co
 mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
 # The task loop: scripts/factory-tasks.mjs and the timeout restart of factory-run.yml.
 source "$here/task-loop.sh"
+# Shared findings: scripts/factory-findings.mjs, the prompt rules and the findings workflow steps.
+source "$here/findings.sh"
 source "$here/app-token.sh" || fail=1
 
 # runner-pick.yml: self-hosted only with a fresh heartbeat and an idle runner, else hosted.
