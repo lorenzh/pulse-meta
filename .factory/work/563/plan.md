@@ -37,7 +37,8 @@ Engineering choices made here (the issue review lists them as open points; none 
    creation and are never extended.
 2. **One access gate.** Every app route declares the stage it needs in the route table. One
    check in the request path enforces it before the handler runs. Navigation and the password
-   POST do not enforce anything on their own.
+   POST do not enforce anything on their own. The gate runs only after setup; before setup the
+   #562 redirects to `/setup` stay as they are.
 3. **Legacy sessions end.** The migration to schema 2 deletes every session row. A schema-1
    session never had a second factor, so it must not count as one. The owner, the password hash
    and the saved API URL stay.
@@ -123,7 +124,9 @@ Engineering choices made here (the issue review lists them as open points; none 
     when #564 makes an existing user required;
   - otherwise the row's stage.
 - The route table gains an access column. The gate runs after route, method, phase and the
-  loopback `Host`, and before `Origin` and the body. When the stage does not match:
+  loopback `Host`, and before `Origin` and the body. It runs only after setup (an `instance` row
+  exists); before setup no request reaches it (see "Before setup" below). When the stage does
+  not match:
   - anonymous on a route that a `full` session may open (this includes
     `/account/authenticator`): `303` to `/sign-in?next=<encoded path>`, encoded as today
     (`/` gives `/sign-in?next=%2F`);
@@ -132,7 +135,22 @@ Engineering choices made here (the issue review lists them as open points; none 
   - `enrol` on any other protected route: `303` to `/account/authenticator`;
   - `full` on `/sign-in/factor`: `303` to `/`.
   - A POST refused by the gate reads no body and changes nothing.
-- Routes after setup (all answer `404` before setup, like `/sign-in` POST today):
+- Before setup (no `instance` row), each route keeps or gets exactly this answer, and the gate
+  does not run:
+  - `GET` and `HEAD /`: `303` to `/setup`, unchanged from #562 (`sendLanding`,
+    `src/server.ts:241-245` on console `main`; tested at `src/server.test.ts:105-110`; the
+    `docker` CI step `ci.yml:76-80` follows it with `curl -L` to the setup page).
+  - `GET` and `HEAD /sign-in`: `303` to `/setup`, unchanged (`sendSignInForm`,
+    `src/server.ts:303-307`).
+  - `POST /sign-in`: `404`, unchanged (`isClosedInPhase`, `src/server.ts:618-622`).
+  - `POST /sign-out`: unchanged; without a live session it answers `303` to `/sign-in`
+    (`src/server.ts:525-530`).
+  - `/setup`, `/setup/owner` and `/console.css`: unchanged.
+  - The new routes `/sign-in/factor`, `/account/authenticator`, `/account/security`,
+    `/account/recovery-codes`, `/account/sessions` and `/account/sessions/sign-out-all`: `404`
+    for every allowed method, as a phase rule beside `POST /sign-in` (a method that is not
+    allowed still answers `405` first, as for every route).
+- Routes after setup:
 
 | Route | Methods | Access |
 | --- | --- | --- |
@@ -431,7 +449,17 @@ from one loopback client.
    - `isSecondFactorRequired({ role: "owner" })` is `true`; `signInStage` returns `full` for
      `{ isRequired: false, hasAuthenticator: false }`, `enrol` for `{ true, false }`, `factor` for
      `{ true, true }` and `{ false, true }`.
-   - Expected: literals from this spec.
+   - Before setup (`src/server.test.ts`, a new empty database, no cookie, one test case "routes
+     before setup"): `GET /`, `HEAD /`, `GET /sign-in` and `HEAD /sign-in` each answer `303` with
+     `Location: /setup` (not `/sign-in?next=%2F`); `POST /sign-in` answers `404`; `POST
+     /sign-out` answers `303` to `/sign-in`; every allowed method of each of the six new routes
+     answers `404`; the `sessions` table has 0 rows afterwards. The same case repeated with a
+     forged `session` cookie gives the same answers. The existing test at
+     `src/server.test.ts:105-110` stays unchanged and passes, and the unchanged `docker` CI step
+     at `ci.yml:76-80` still finds `pulse Console` and `x-frame-options: DENY` after following
+     `/`.
+   - Expected: literals from this spec; the pre-setup redirects and the `404` of `POST /sign-in`
+     are the #562 behavior cited in "Before setup".
 2. **Upgrade of a #562 database** (`src/server.upgrade.test.ts`). The test builds a schema-1 file
    with `bun:sqlite` and the literal migration-1 SQL of #562 (copied into the test), an owner
    row, the instance row and a session row whose cookie value the test knows. After opening it
@@ -678,6 +706,11 @@ The only consumer that builds console `main` is deploy's `dev` CI job (deploy
 - **Gate:** `POST /account/recovery-codes` with an `enrol` session and a valid CSRF token → `303`,
   no new codes. `GET /sign-in/factor` with a `full` session → `303` to `/`. `GET
   /account/authenticator` with a `factor` session → `303` to `/sign-in/factor`.
+- **Gate before setup:** on an empty database, `GET /` without a cookie → `303` to `/setup`. A
+  wrong implementation that runs the gate before the phase check answers `303` to
+  `/sign-in?next=%2F`, which breaks `src/server.test.ts:105-110` and the `docker` CI step at
+  `ci.yml:76-80`. A wrong implementation that closes every route before setup answers `404`.
+  `GET /account/security` before setup → `404`, not `303` to `/sign-in?next=…` or `/setup`.
 - **Re-authentication:** `POST /account/recovery-codes` from a `full` session with a wrong password
   → `401`, old codes still work; empty password → `422`.
 - **Replacement:** a confirmed replacement makes the old authenticator's code fail (`401`), ends
@@ -1034,7 +1067,8 @@ Files:
 - `src/metrics.ts` (path labels and auth kinds)
 - `src/main.ts` (key wiring, warn line, `hasSecretKey`, expiry at start)
 - `src/main.startup.test.ts`
-- `src/server.test.ts` (route table, `404`/`405` of the new routes)
+- `src/server.test.ts` (route table, `404`/`405` of the new routes, the routes before setup;
+  the existing test "GET / before setup redirects to /setup…" stays unchanged)
 - `src/server.setup.test.ts` (Finish setup now redirects to enrolment)
 - `src/server.sign-in.test.ts` (password stage, partial stages)
 - `src/server.security.test.ts` (POST order and gate of the new routes, leak scan)
@@ -1118,6 +1152,9 @@ Checks:
 - Acceptance 1 to 10 are tests in the listed files, each with the literal expected values of this
   spec and the fixture rules F1 to F3. Tests use the injected clock and random source, port 0,
   `mkdtemp` databases and fake key files; no real timer waits for a TOTP step.
+- The existing `docker` CI step "Check the page and its headers" (`ci.yml:76-80`) and the test at
+  `src/server.test.ts:105-110` stay unchanged and pass: before setup, `/` still redirects to
+  `/setup`.
 - The new `docker` CI step runs the image with
   `-e PULSE_API_URL=http://api.invalid:3000 -e PULSE_CONSOLE_SECRET_KEY_FILE=/run/key` and a
   mounted file that holds `not-a-key`, expects exit code `2`, and greps stderr for the literal
