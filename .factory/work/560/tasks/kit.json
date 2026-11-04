@@ -10,7 +10,7 @@
         "AGENTS.md"
       ],
       "behaviorChange": false,
-      "spec": "## Repository: kit, sole Behavior and edits bullet (F8), Checks and Completion evidence; Acceptance evidence N21/P12; Required behavior and Non-goals. Replace planned-modules claim with runtime helpers only, no service logic, and docs/index.md as the reference for existing exports; do not duplicate module list. Only AGENTS.md changes.",
+      "spec": "## Repository: kit, sole Behavior and edits bullet (F8), Checks and Completion evidence; Acceptance evidence N21/P12; Required behavior and Non-goals. Replace planned-modules claim with runtime helpers only, no service logic, and docs/index.md as the reference for existing exports; do not duplicate module list. Only AGENTS.md changes. Preserve all other conventions; add no tests, dependencies or dist changes.",
       "acceptance": [
         {
           "command": "git diff --name-only origin/main...HEAD",

@@ -12,7 +12,7 @@
         "docs/troubleshooting.md"
       ],
       "behaviorChange": false,
-      "spec": "## Repository: notify, all Behavior and edits bullets and Checks/Completion evidence; F6 and W6; Acceptance evidence N17-N19/P9-P10; Required behavior, Risks, Non-goals and the revised W6 threshold counterexample. A detection failure increments the failed-poll streak; readiness fails only at PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS (default 5, minimum 1). Keep payload example, correct Reminders/Manual incidents paragraphs and valid channels JSON examples. Only the three listed Markdown files change.",
+      "spec": "## Repository: notify, all Behavior and edits bullets and Checks/Completion evidence; F6 and W6; Acceptance evidence N17-N19/P9-P10; Required behavior, Risks, Non-goals and the revised W6 threshold counterexample. A detection failure increments the failed-poll streak; readiness fails when failed >= PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS (default 5, minimum 1). The one-failed-poll-still-ready example applies only at the default threshold, starting from zero failures; threshold 1 fails on the first failed poll. Keep payload example, correct Reminders/Manual incidents paragraphs and valid channels JSON examples. Only the three listed Markdown files change.",
       "acceptance": [
         {
           "command": "git diff --name-only origin/main...HEAD",
@@ -48,7 +48,7 @@
         },
         {
           "command": "awk '/^## Health and metrics/,/^## API validation/' docs/operation.md",
-          "expected": "P10/W6: reviewer reads the NEW paragraph after the metrics table. pulse_notify_polls_total counts feed reads before detection/enqueue: all 3 answered is ok (manual-incidents 404 included), any failed read is error and successful feeds are still used. A later detection failure leaves the counter outcome ok and adds 1 to pulse_notify_consecutive_failed_polls; each error poll also adds 1 and a fully successful poll resets the streak to 0. /readyz fails only when the streak reaches PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS (default 5, minimum 1): at the default, one failed poll leaves it ready and the fifth consecutive failure fails readiness. Do not claim a single failure always fails readiness. The paragraph directs delivery monitoring to pulse_notify_deliveries_total/pulse_notify_pending_deliveries and feed health to pulse_notify_feed_polls_total, pulse_notify_consecutive_failed_polls and /readyz. Sources: src/notifier.ts:311-349 (#poll/tick), src/metrics.ts, src/index.ts:240-246 and src/config.ts:402. The existing threshold mention at line 142 alone does not satisfy this new-paragraph check."
+          "expected": "P10/W6: reviewer reads the NEW paragraph after the metrics table. pulse_notify_polls_total counts feed reads before detection/enqueue: all 3 answered is ok (manual-incidents 404 included), any failed read is error and successful feeds are still used. A later detection failure leaves the counter outcome ok and adds 1 to pulse_notify_consecutive_failed_polls; each error poll also adds 1 and a fully successful poll resets the streak to 0. /readyz fails when failed >= PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS (default 5, minimum 1). At the default threshold of 5, starting from zero failures, one failed poll leaves it ready and the fifth consecutive failure fails readiness; with PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS=1 the first failed poll fails it. Do not claim one failed poll always fails readiness or can never fail it. The paragraph directs delivery monitoring to pulse_notify_deliveries_total/pulse_notify_pending_deliveries and feed health to pulse_notify_feed_polls_total, pulse_notify_consecutive_failed_polls and /readyz. Sources: src/notifier.ts:311-349 (#poll/tick), src/metrics.ts, src/index.ts:240-246 and src/config.ts:402. The existing threshold mention at line 142 alone does not satisfy this new-paragraph check."
         },
         {
           "command": "git diff origin/main...HEAD -- docs/operation.md docs/channels.md docs/troubleshooting.md",
@@ -56,7 +56,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "PR body contains 2 evidence rows for F6 and W6 with item, file/section, old text or missing, new statement, source file/symbol and checked commit, citing src/detector.ts, src/channels/webhook.ts, src/notifier.ts:#poll/tick, src/metrics.ts, src/index.ts:240-246 and src/config.ts:402. Includes N17-N19 outputs, P9-P10/source/link review (including default readiness counterexample), bun run check result and Markdown-only file list."
+          "expected": "PR body contains 2 evidence rows for F6 and W6 with item, file/section, old text or missing, new statement, source file/symbol and checked commit, citing src/detector.ts, src/channels/webhook.ts, src/notifier.ts:#poll/tick, src/metrics.ts, src/index.ts:240-246 and src/config.ts:402. Includes N17-N19 outputs, P9-P10/source/link review (including the default threshold of 5 starting from zero failures, and threshold 1 failing on its first failed poll), bun run check result and Markdown-only file list."
         }
       ]
     }

@@ -10,7 +10,7 @@
         "AGENTS.md"
       ],
       "behaviorChange": false,
-      "spec": "## Repository: contract, sole Behavior and edits bullet (F7), Checks and Completion evidence; Acceptance evidence N20/P11; Required behavior and Non-goals. Boundary says Zod schemas, inferred types, validators on those schemas and wire version, consistently with This repository. Retain only-runtime-dependency zod (exact version) and no-other-repo boundaries. Only AGENTS.md changes.",
+      "spec": "## Repository: contract, sole Behavior and edits bullet (F7), Checks and Completion evidence; Acceptance evidence N20/P11; Required behavior and Non-goals. Boundary says Zod schemas, inferred types, validators on those schemas and wire version, consistently with This repository. Retain only-runtime-dependency zod (exact version) and no-other-repo boundaries. Only AGENTS.md changes. Preserve all other conventions; add no tests, dependencies or dist changes.",
       "acceptance": [
         {
           "command": "git diff --name-only origin/main...HEAD",
