@@ -12,7 +12,7 @@
         "docs/troubleshooting.md"
       ],
       "behaviorChange": false,
-      "spec": "## Repository: probe, all Behavior and edits bullets and Checks/Completion evidence; F5, R5-R8 and W2; Acceptance evidence N10-N16/P7-P8; Required behavior, Risks and Non-goals. Keep existing correct Result buffer/Retry guidance and probe token-file restart rules. Only the three listed Markdown files change.",
+      "spec": "## Repository: probe, all Behavior and edits bullets and Checks/Completion evidence; F5, R5-R8 and W2; Acceptance evidence N10-N16/P7-P8; Required behavior, Risks, Non-goals and the W2 attempts-versus-requests counterexample. Add the 307/308 POST resend warning inside Retries, with one attempt per run on each location, not one request. Keep existing correct Result buffer/Retry guidance and probe token-file restart rules. Only the three listed Markdown files change.",
       "acceptance": [
         {
           "command": "git diff --name-only origin/main...HEAD",
@@ -59,8 +59,12 @@
           "expected": "P7/F5: reviewer verifies State says no disk state and buffered results are lost on stop, restart or crash, shutdown logs their count, and nothing replays after restart; consistent with Result buffer and src/buffer.ts:close. R5 links api changing-checks and says API hot reload then probe refresh within PULSE_CHECKS_RELOAD_MS. R6 rotates through POST /admin/tokens/<id>/rotate, installs secret and restarts probe within 10-minute overlap, links api token-rotation, and says API token-file edits after import do nothing; sources api src/token-routes.ts, src/token-import.ts and api docs/operation.md#token-rotation. Retain restart for PULSE_PROBE_TOKEN, PULSE_PROBE_TOKEN_FILE and PULSE_LOCATION."
         },
         {
+          "command": "awk '/^### Retries/,/^### Schedule/' docs/configuration.md | grep -c -F -- '307'",
+          "expected": "P8: count >= 1 inside Retries (literal threshold from the spec; current main has 0 here). A 307 mention elsewhere in the document does not satisfy this check; reviewer also reads the new paragraph against W2 and the redirect counterexample."
+        },
+        {
           "command": "git diff origin/main...HEAD -- docs/configuration.md docs/troubleshooting.md",
-          "expected": "P8/W2: reviewer verifies Retries distinguishes checked request side effects from idempotent POST /results and at-least-once notify; non-GET/HEAD HTTP sends once per interval per location, configured method decides before redirects, and recommends side-effect-free endpoints. Keep existing HTTP GET/HEAD, TCP/DNS/domain retries and TLS exception; source src/check.ts:isRetryable and run loop. R8 states startup fetch plus reload. R7 compares token location through GET /admin/tokens (not imported file); R5 removes restart advice from troubleshooting, including the invalid-check action, and describes API reload followed by probe refresh; sources api src/start.ts, src/token-routes.ts and probe Checks reload."
+          "expected": "P8/W2: reviewer reads the new Retries text and verifies checked-request side effects are distinct from idempotent POST /results and at-least-once notify delivery. Non-GET/HEAD HTTP gets no retry: one attempt per run on every probe location; the configured method decides before redirects. An attempt can make multiple requests: 307/308 keeps method/body, up to 20 redirect hops (at most 21 requests per attempt); the POST with body in src/check.redirect.test.ts:112-124 produces two POSTs in one attempt. A 301/302 turns a POST without headers/body into GET; with headers/body only same-origin hops are followed and 301-303 stops a non-GET. Text must not promise one request per run or once per interval; recommend side-effect-free endpoints. Preserve existing GET/HEAD (including omitted method), TCP/DNS/domain retries and TLS exception. Sources: src/check.ts:isRetryable, src/check.ts:410/462-549 and src/check.redirect.test.ts:112-124. R8 states startup fetch plus reload. R7 compares token location through GET /admin/tokens (not imported file); R5 removes restart advice from troubleshooting, including the invalid-check action, and describes API reload followed by probe refresh; sources api src/start.ts, src/token-routes.ts and probe Checks reload."
         },
         {
           "command": "git diff origin/main...HEAD -- docs/",
@@ -68,7 +72,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "PR body contains 6 evidence rows for F5, R5-R8 and W2 with item, file/section, old text or missing, new statement, source file/symbol and checked commit; cites src/buffer.ts, src/check.ts:isRetryable and api src/token-routes.ts. Includes N10-N16 outputs, P7-P8/source/link review, bun run check result and Markdown-only file list."
+          "expected": "PR body contains 6 evidence rows for F5, R5-R8 and W2 with item, file/section, old text or missing, new statement, source file/symbol and checked commit; cites src/buffer.ts, src/check.ts:isRetryable, src/check.ts:410/527-549 (redirects), src/check.redirect.test.ts:112-124 (two POSTs in one attempt) and api src/token-routes.ts. Includes N10-N16 outputs, P7-P8/source/link review, bun run check result and Markdown-only file list."
         }
       ]
     }

@@ -22,7 +22,7 @@
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; the repository's full lint, typecheck and test suite passes, including its coverage gate."
+          "expected": "exit 0; the repository's full lint, build, typecheck and test suite passes, including its coverage gate. The subsequent dist-status check has empty output."
         },
         {
           "command": "rg -n -F -- 'Planned modules' AGENTS.md",
