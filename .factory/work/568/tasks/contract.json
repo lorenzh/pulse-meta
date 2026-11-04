@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 1.8.0 defines private incidents and safely projects public ones",
+      "files": [
+        "src/schema.ts",
+        "src/validate.ts",
+        "src/manual-incident-public.ts",
+        "src/audit.ts",
+        "src/index.ts",
+        "test/manual-incidents.test.ts",
+        "test/audit.test.ts",
+        "test/types.fixture.ts",
+        "test/smoke.test.ts",
+        "docs/index.md",
+        "package.json",
+        "dist/"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Behavior bullets, Checks and Completion evidence; R1, R6, Contract fields, Counterexamples and applicable Security impact. Implement the three constants, five schemas and inferred types, response type, four validators, six audit actions and exports as one additive 1.8.0 release. Enforce internal invariants 1-5 with custom issue paths, existing message/component/title limits, strict draft/note inputs and required visibility; preserve existing ManualIncident validators, same-object validator results and WIRE_VERSION 1. The guard inspects own descriptors: either privacy key being an accessor returns false without calling it; inherited keys count as absent; throwing or revoked proxies return false without throwing. The projection copies exactly eight public fields and three fields per update into new objects. Cover every R6 counterexample, each invariant and each R1 state, audit kind matching and every new type. Update docs and the existing exact-export/dist smoke test for the new exports/module; build and commit dist. Deploy owns the later compose-e2e evidence.",
+      "acceptance": [
+        {
+          "command": "bun run build && bun test test/manual-incidents.test.ts test/audit.test.ts test/smoke.test.ts",
+          "expected": "Build exits 0 and these suites report 0 fail; the guard returns true for absent privacy keys and public/finite publication metadata, false for every R6 invalid value, either accessor, throwing proxy and revoked proxy. Getter call counts are exactly 0, including throwing getters; inherited visibility with own publishedAt 5 returns true. Projection has exactly 8 incident fields and 3 fields per update, with 0 draft/note/visibility/unknown update fields. Each invariant 1-5 rejects its bad record with a path, all three R1 states accept good records, strict inputs reject draft:true, and manual-incident.publish accepts manual-incident kind and rejects check kind. All six new actions pass their kind rule. Focused coverage may fail the global threshold; the required test result is 0 fail."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and full tests pass with the unchanged 0.8 line-coverage threshold. test/types.fixture.ts compiles every new type, package-entry exports match the explicit smoke-test list, committed dist matches the build, package version is 1.8.0 and WIRE_VERSION is 1."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "exit 0 after committing the rebuilt dist and running bun run check, matching the CI generated-output check."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names the pre-change main SHA, new tests and their expected failures there, successful full checks and committed dist. It maps applicable Security impact items to test/command output: accessor call count 0, fail-closed privacy metadata/proxy handling, strict inputs and limits, no new runtime dependency, unchanged public validators/wire version, and all new exported type fixtures compiling."
+        }
+      ]
+    }
+  ]
+}
