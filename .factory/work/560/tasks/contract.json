@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract agent guidance identifies the existing Zod schemas and validators",
+      "files": [
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: contract, sole Behavior and edits bullet (F7), Checks and Completion evidence; Acceptance evidence N20/P11; Required behavior and Non-goals. Boundary says Zod schemas, inferred types, validators on those schemas and wire version, consistently with This repository. Retain only-runtime-dependency zod (exact version) and no-other-repo boundaries. Only AGENTS.md changes. Preserve all other conventions; add no tests, dependencies or dist changes.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "0 changed paths without the .md suffix; changed paths are limited to this task's files."
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the repository's full lint, build, typecheck and test suite passes, including its coverage gate. The subsequent dist-status check has empty output."
+        },
+        {
+          "command": "rg -n -F -- 'plain-TS validators' AGENTS.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "rg -c -F -- 'Zod' AGENTS.md",
+          "expected": "P11: count >= 2; reviewer verifies boundary describes schemas, inferred types, validators and wire version against src/schema.ts, src/validate.ts and package.json zod 4.6.7; This repository stays consistent and dependency boundaries remain."
+        },
+        {
+          "command": "git status --porcelain -- dist",
+          "expected": "After bun run check (including build): empty output; no tracked or untracked dist changes."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md",
+          "expected": "Reviewer verifies F7 only, preserves other conventions; any added/changed relative link resolves to an existing file and heading. Changed-file list is exactly AGENTS.md."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains 1 evidence row for F7 with item, file/section, old text, new statement, source file/symbol and checked commit; cites src/schema.ts, src/validate.ts and package.json zod dependency. Includes N20 output, P11 review, bun run check result, empty dist status and changed-file list containing only AGENTS.md."
+        }
+      ]
+    }
+  ]
+}
