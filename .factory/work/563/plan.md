@@ -44,9 +44,8 @@ Engineering choices made here (the issue review lists them as open points; none 
 4. **Missing key.** `PULSE_CONSOLE_SECRET_KEY_FILE` is optional at start, like the admin token.
    Without it, the console starts and logs a warning, but enrolment and TOTP sign-in answer
    `503`. So the owner gets no protected access without it. Recovery codes still work, because
-   they are hashed, not encrypted. A malformed key file stops the start (exit 2). The
-   `dev` setup builds console `main` daily, and this choice keeps that setup ready while
-   deploy has no key yet (see Rollout order).
+   they are hashed, not encrypted. A malformed key file stops the start (exit 2). A missing
+   key never opens a protected page: the owner stays in the `enrol` or `factor` stage.
 5. **No acknowledgement state.** The response that confirms the authenticator shows the ten
    recovery codes and also starts the full session. If that response is lost, the owner makes a
    new set on `/account/recovery-codes`. An extra "I saved them" state would add a stage
@@ -62,6 +61,14 @@ Engineering choices made here (the issue review lists them as open points; none 
    correct password does not clear it. Only a successful second factor clears the account key.
 9. **Manual setup key.** The enrolment page shows the setup key as text, and the `otpauth://`
    URI as text. There is no QR code: that would need a package or a weaker CSP.
+10. **Deploy first, with an e2e for both console flows.** deploy's daily `dev` job builds console
+    `main` and runs `e2e/console-setup.sh`, which today expects the #562 flow
+    (`e2e/console-setup.sh:111` expects `Location: /sign-in?setup=done`). So deploy merges first:
+    it provisions the key (the #562 console ignores it) and its e2e picks the flow from the
+    `Location` of Finish setup. Console merges second; its PR gets a CI job `deploy-dev` that runs
+    deploy `main`'s `dev` setup and e2e against the console under test with
+    `E2E_CONSOLE_FLOW=two-factor`. So the console PR cannot turn green unless deploy's `dev` job
+    will pass after the merge, and no merge leaves a consumer failing (see Rollout order).
 
 ## Scope
 
@@ -69,7 +76,10 @@ Engineering choices made here (the issue review lists them as open points; none 
   seed encryption, recovery codes, the enrolment, sign-in factor, recovery-code, account
   security and session pages, sign out all, the key setting, metrics, logs, docs and tests.
 - deploy: provisioning of the console secret key in `full`, `dev`, `demo` and CLI installs,
-  the setup e2e updated to enrol and sign in with TOTP and a recovery code, and docs.
+  the setup e2e extended with a two-factor flow (enrol, TOTP, recovery code, sign out all) next
+  to the #562 flow it runs today, and docs.
+- console CI: a `deploy-dev` job that runs deploy `main`'s `dev` e2e against the console under
+  test.
 
 ## Non-goals
 
@@ -83,6 +93,8 @@ Engineering choices made here (the issue review lists them as open points; none 
 - Key rotation, a key-management service, or a QR code.
 - Any change to pulse-api, contract, kit, config or the other services.
 - A console image release or a pin bump in deploy.
+- Removing the `legacy` flow from `e2e/console-setup.sh`. That is a later deploy cleanup, once
+  console `main` has this feature; until then the flow keeps the `dev` job green.
 
 ## Required behavior
 
@@ -112,8 +124,10 @@ Engineering choices made here (the issue review lists them as open points; none 
   - otherwise the row's stage.
 - The route table gains an access column. The gate runs after route, method, phase and the
   loopback `Host`, and before `Origin` and the body. When the stage does not match:
-  - anonymous on a `full` route: `303` to `/sign-in?next=<encoded path>`;
-  - anonymous on a partial route: `303` to `/sign-in`;
+  - anonymous on a route that a `full` session may open (this includes
+    `/account/authenticator`): `303` to `/sign-in?next=<encoded path>`, encoded as today
+    (`/` gives `/sign-in?next=%2F`);
+  - anonymous on `/sign-in/factor`: `303` to `/sign-in`;
   - `factor` on any other protected route: `303` to `/sign-in/factor`;
   - `enrol` on any other protected route: `303` to `/account/authenticator`;
   - `full` on `/sign-in/factor`: `303` to `/`.
@@ -365,15 +379,44 @@ sentinels cut these responses out first.
 - **Factor lockout as denial of service.** Someone who knows the password can lock the owner's
   second factor for 15 minutes. The password is the barrier; this is the decided rule.
 - **Throttle state in memory.** A restart clears it, as in #562 (a documented limit).
-- **`dev` CI between the merges.** After console merges and before deploy merges, the daily
-  deploy `dev` job fails in `e2e/console-setup.sh` (step 6 expects the old redirect). See Rollout
-  order.
+- **The two-factor e2e flow first runs in the console PR.** deploy merges first, when no console
+  has the new flow, so deploy CI proves only the `legacy` flow and the static checks of the new
+  one. The console PR's `deploy-dev` job is the first real run. If it fails because of the deploy
+  script, the console child holds with `needs-input` and names the step; a person fixes deploy
+  through a feature issue before console merges. `main` of both repositories stays green
+  meanwhile, because console does not merge red. The literals of the e2e steps come from this
+  spec, so each side is checked against the same text.
+- **Factor tests that hit the throttle by accident.** The client key of the factor throttle is
+  not cleared by a success (like the sign-in client key, `src/auth-throttle.ts:143-145`), so five
+  wrong factors from one test client in 15 minutes lock it, across accounts and successes. The
+  tests isolate their failures (see the fixture rules in Acceptance evidence).
 
 ## Acceptance evidence
 
 Each check names where its expected value comes from. Tests 1 to 3 and 6 fail on console `main`
 before the change: there, the correct password alone gives `GET /` `200`, and the new routes
 answer `404`.
+
+Fixture rules for every test that posts a second factor. They follow from the limiter that the
+factor throttle reuses (`src/auth-throttle.ts` on console `main`): 5 live failures in 900000 ms
+lock the account key and the client key for 900000 ms from the 5th (`:150-156`); a success clears
+only the tables in `clearsOnSuccess` (`:143-145`), and the factor throttle clears only the account
+key, so failures of the client key stay across successes and accounts; each
+`createConsoleServer` makes its own throttles (`src/server.ts:665-671`). All test requests come
+from one loopback client.
+
+- **F1, isolated failures.** A test case that does not test the lock has at most 4 factor
+  failures per server instance within 900000 ms. To try more wrong, replayed or used codes it
+  starts a new server on the same database file (new throttles; this also proves that the used
+  state is in the database), or moves the injected clock 900000 ms past the last failure. Every
+  such case also asserts that none of its responses was `429`.
+- **F2, fresh partial sessions.** A partial session is live for 900000 ms from its creation and is
+  never extended. After the injected clock moves by 900000 ms or more since the session was
+  created, the test signs in with the password again (`303` to
+  `/sign-in/factor`) before it posts a factor. The password throttle is a separate limiter, so
+  this leaves the factor failures as they are.
+- **F3, codes per time.** The test helper computes each TOTP code for the injected time of its
+  POST, for a step above the stored `last_step` unless the case tests a replay.
 
 1. **The owner without a second factor cannot reach protected pages**
    (`src/server.factor.test.ts`, real server on port 0, injected clock).
@@ -406,9 +449,12 @@ answer `404`.
    - Two `factor` sessions post the same fresh code concurrently: exactly one `303` and one `401`.
    - After a reopen of the database (second server on the same file), the used step answers `401`
      and the next step's code answers `303`.
-   - Clock set back 120 s after a success: the code for the earlier step answers `401`.
+   - Clock set back 120 s after a success, then a fresh password sign-in (F2): the code for the
+     earlier step answers `401`.
    - `POST /sign-in/factor` without a session: `303` to `/sign-in`; with a forged cookie: same.
    - A code from the window edge: step `c - 1` and `c + 1` accepted, `c - 2` and `c + 2` refused.
+   - The bullets above are separate test cases, each with its own database and server, so no case
+     has more than 2 factor failures and none answers `429` (F1).
    - Expected: literals; codes come from the RFC vectors' algorithm in the test (below), not from
      the code under test.
 4. **TOTP vectors** (`src/totp.test.ts`). With the RFC 6238 Appendix B SHA-1 seed, the ASCII
@@ -428,12 +474,19 @@ answer `404`.
    - Password, then one code: `303`. The same code in a new `factor` session: `401`. After a
      reopen of the database: still `401`. Another unused code: `303`.
    - Two `factor` sessions post the same unused code concurrently: exactly one `303`.
-   - `POST /account/recovery-codes` with the password: `200` with 10 new codes; every old code
-     then answers `401`; the old codes are in no response after their own.
+   - `POST /account/recovery-codes` with the password: `200` with 10 new codes. Then each of the
+     10 old codes is posted once, in 3 batches of at most 4 (4, 4, 2). Each batch runs on a new
+     server on the same database file and starts with a fresh password sign-in (F1, F2). All 10
+     answer `401` and none answers `429`. The old codes are in no response after their own.
+     Then one new code answers `303`.
    - A code on `/sign-in` as a password answers `401` (it never replaces the password).
+   - Expected: literals (`10`, the pattern, the status codes); digests computed independently
+     with `node:crypto`.
 6. **Sign out all ends other sessions** (`src/server.sessions.test.ts`).
-   - Browsers A and B sign in fully; C holds a `factor` session; D holds an `enrol`-stage pending
-     row (fixture). A's `GET /account/sessions` lists exactly 2 rows, one marked "This browser".
+   - Browsers A, B and D sign in fully; C holds a `factor` session (password only, created less
+     than 900000 ms before the sign-out); D has a pending replacement authenticator
+     (`POST /account/authenticator` `action=new` with the password). A's `GET /account/sessions`
+     lists exactly 3 rows, one marked "This browser".
    - A's POST without the CSRF field and with B's CSRF token: `403` each; B still gets `200` on
      `GET /`.
    - A's POST with its token: `303` to `/sign-in?signed-out=all`, the cookie is deleted; then B's
@@ -442,10 +495,22 @@ answer `404`.
      pending rows are 0. After a second server on the same file, the old cookies still fail.
    - A second user's session (fixture rows, no team flow) is untouched.
    - Expected: literals.
-7. **Throttles** (injected clock): password correct, 4 wrong TOTP codes (`401`), a new password
-   sign-in (`303`), 1 wrong code (`401`), then the correct code: `429` with `Retry-After: 900`.
-   At `t5 + 899999` ms still `429`; at `t5 + 900000` the correct code answers `303`. 5 wrong
-   recovery codes lock the TOTP path too (one budget). Expected: #460 section 5 (5, 900000 ms).
+7. **Throttles** (`src/server.factor.test.ts`, injected clock, one server, an enrolled owner;
+   this case tests the lock, so F1 does not apply):
+   - At `t0`: password `303` (session S1); 4 wrong TOTP codes at `t0`: `401` each.
+   - At `t1 = t0 + 60000`: a new password sign-in `303` (S2; S1 is rotated away). At
+     `t5 = t1 + 1000`: 1 wrong code `401` (the 5th failure; the new password did not reset the
+     count). At `t5` the correct code for `t5` answers `429` with `Retry-After: 900`.
+   - At `t5 + 899999`: S2 is older than 900000 ms, so the test signs in again (S3, `303` to
+     `/sign-in/factor`; the password is not locked). The correct code for that time answers `429`
+     with `Retry-After: 1`.
+   - At `t5 + 900000`: a fresh password sign-in (S4, `303`), then the correct code for that time
+     answers `303`.
+   - Separate case on a new server: 5 wrong recovery codes (`401` each), then the correct TOTP
+     code at the same time answers `429` (one budget for both kinds).
+   - Expected: `5` and `900000` ms from #460 section 5; `Retry-After` is whole seconds rounded up
+     with a minimum of 1, the existing rule of the sign-in throttle on console `main`
+     (`src/auth-throttle.ts:118`), written as the literals `900` and `1`.
 8. **Encryption at rest** (`src/secret-box.test.ts`, `src/server.factor.test.ts`).
    - `authenticators.secret` matches `^v1:[A-Za-z0-9_-]{16}:[A-Za-z0-9_-]{27}:[A-Za-z0-9_-]{22}$`
      (12, 20 and 16 bytes in base64url, literal lengths).
@@ -476,11 +541,18 @@ answer `404`.
     `/account/authenticator` and the recovery-code page (literal 390 from #460 section 15); the
     two confirmations done with JavaScript disabled. Passkeys and a virtual authenticator are not
     part of this check (deferred to #563b). No live seed or code appears in public evidence.
-12. **Compose** (deploy `dev` job, console built from `main`): `e2e/console-setup.sh` passes:
-    setup, enrolment with a code from `e2e/totp.mjs`, 10 codes, TOTP sign-in, recovery-code
-    sign-in once and refused the second time, sign out all from one jar ends the other jar,
-    recreate and TOTP sign-in with the same key, and the database scan. Expected: the literals in
-    Repository: deploy.
+12. **Compose, legacy flow** (deploy PR, `dev` job, console `main` without this feature):
+    `e2e/console-setup.sh` passes with `ok: 6 POST /setup/owner complete 303 flow legacy` and the
+    #562 steps 7 to 10 unchanged, with the console key provisioned and ignored. Expected: the
+    literals in Repository: deploy.
+13. **Compose, two-factor flow** (console PR, CI job `deploy-dev`: deploy `main` after step 1 of
+    the rollout, the console under test, `E2E_CONSOLE_FLOW=two-factor`): `e2e/console-setup.sh`
+    passes: setup, `flow two-factor`, enrolment with a code from `e2e/totp.mjs`, 10 codes, TOTP
+    sign-in, a recovery code accepted once and refused the second time, sign out all from one jar
+    ends the other jar, recreate and TOTP sign-in with the same key, and the database scan.
+    Expected: the literals in Repository: deploy; `e2e/totp.mjs` checks itself against RFC 6238
+    Appendix B first. After console merges, deploy's daily `dev` job runs the same flow by
+    detection.
 
 ## Performance impact
 
@@ -495,7 +567,9 @@ The console's own costs, for the record (not gated): one HMAC-SHA-1 per tried st
 and one AES-GCM decryption per TOTP attempt, both microseconds; one SHA-256 per recovery code.
 Tests that wait for a new TOTP step use the injected clock, not real time, so `bun run test`
 time grows only by the new cases. The implementer reports the `bun run test` time before and
-after in the PR.
+after in the PR. The new console CI job `deploy-dev` adds one parallel job of the size of deploy's
+`dev` job (it builds five images; deploy allows 40 minutes for it, `ci.yml:181`) to every console
+PR; it is not a `bench/budgets.json` metric, and the PR reports its duration.
 
 ## Security impact
 
@@ -521,30 +595,49 @@ Checklist items that apply:
 - **Atomic, path-safe writes.** Every factor change is one `BEGIN IMMEDIATE` transaction with
   conditional updates. deploy writes the key with `mktemp`, mode `0600`, never over an existing
   file; `secrets-init` writes through a temp file and a rename, `1000:1000`, `0400`.
-- **Dependency pins.** No new package. `node:crypto` and `bun:sqlite` only.
+- **Dependency pins.** No new package. `node:crypto` and `bun:sqlite` only. The new console CI
+  job `deploy-dev` uses only the approved `actions/checkout` pin with
+  `persist-credentials: false` and `permissions: contents: read`; it checks out public `main`
+  branches, builds them locally and generates its secrets with deploy's `init-secrets.sh`, so no
+  repository secret is used or printed. It runs on `pull_request`, never `pull_request_target`.
 
 Not applicable: SSRF and redirects (no new outbound request), accessor execution (form fields are
 read with `URLSearchParams`), the probe HTTP client, Dockerfiles (unchanged).
 
 ## Rollout order
 
-1. **console** merges first. It needs no other repository change. Consumers meanwhile:
-   - deploy `full`, `demo` and CLI installs run the pinned console `0.1.0`, which is not
-     affected.
-   - deploy `dev` builds console `main` daily without a key file. The console starts (the key is
-     optional), so `scripts/wait-ready.sh` stays green. But `e2e/console-setup.sh` on deploy
-     `main` expects `Location: /sign-in?setup=done` after Finish setup and `GET /` `200` after a
-     password, so the `dev` job fails until step 2 merges. That window is expected; the deploy
-     child starts as soon as console merges (`factory-unblock.yml`).
-2. **deploy** merges second. Its `dev` job runs the new `e2e/console-setup.sh` against console
-   `main` with this feature, so it needs step 1. Older images keep working: console `0.1.0`
-   ignores the new `PULSE_CONSOLE_SECRET_KEY_FILE` variable and the extra file in its secrets
-   volume. The api, probe, status and notify do not see the key. Existing `full` and `dev` host
-   installs must run `scripts/init-secrets.sh` once more to create `secrets/console-secret-key`
-   (secrets-init refuses to start without it, as it did for `admin-token` in #562); the READMEs
-   say so.
+The only consumer that builds console `main` is deploy's `dev` CI job (deploy
+`.github/workflows/ci.yml:179-246`: it checks out `lorenzh/pulse-console` at `ref: main`
+(`:211-216`), runs `scripts/init-secrets.sh` (`:218`), the `dev` stack (`:220-222`),
+`bash e2e/console-setup.sh dev/compose.yaml` (`:225`), and then `bash cli/test/stack.sh dev`
+(`:242-246`), which only runs `init`, `up`, `status` and `down` and signs in nowhere
+(`cli/test/stack.sh:287-298`). The workflow runs on every PR, on `main` and daily
+(`ci.yml:3-10`). Today the e2e expects the #562 flow (`e2e/console-setup.sh:110-111` and
+`:138-144`). No merge below leaves that job, or any other consumer, failing.
+
+1. **deploy** merges first. It needs no console change. It adds the key provisioning and an
+   `e2e/console-setup.sh` that runs the `legacy` flow or the `two-factor` flow, chosen by the
+   `Location` of Finish setup. Consumers meanwhile:
+   - deploy `dev` builds console `main` without this feature. That console reads only its named
+     settings (`src/settings.ts:69-82` of the console clone), so it ignores
+     `PULSE_CONSOLE_SECRET_KEY_FILE` and the extra file in its secrets volume. Finish setup still
+     answers `Location: /sign-in?setup=done`, so the e2e runs the `legacy` flow and stays green.
+     The deploy PR's own `dev` job shows this before the merge.
+   - deploy `full`, `demo` and CLI installs run the pinned console `0.1.0`; deploy's `full`,
+     `demo` and `cli-stack` CI jobs run those images with the new variable and file, which checks
+     that they ignore them (`cli-render` checks only the rendered files).
+   - api, probe, status and notify never see the key; no contract, kit or config pin changes.
+   - Existing `full` and `dev` host installs must run `scripts/init-secrets.sh` once more to
+     create `secrets/console-secret-key`: secrets-init refuses to start without it, with a line
+     that names the script, as it did for `admin-token` in #562. The READMEs say so.
+2. **console** merges second. Its new CI job `deploy-dev` runs deploy `main` from step 1 with the
+   console under test and `E2E_CONSOLE_FLOW=two-factor`, so it needs step 1 (`targets.json`:
+   console depends on deploy). The PR merges only with that job green, so after the merge
+   deploy's daily `dev` job detects the `two-factor` flow and runs exactly what the console PR ran.
+   `full`, `demo` and CLI installs stay on console `0.1.0` and are not affected.
 3. A person later tags a console release and runs `scripts/bump-images.sh`. Only then do `full`,
-   `demo` and CLI installs get 2FA. Nothing in this spec fakes a version or a digest.
+   `demo` and CLI installs get 2FA. Nothing in this spec fakes a version or a digest. Removing the
+   `legacy` e2e flow is a later deploy cleanup.
 
 ## Counterexamples
 
@@ -567,9 +660,21 @@ read with `URLSearchParams`), the probe HTTP client, Dockerfiles (unchanged).
   digit → `401` (counts).
 - **One budget:** 3 wrong TOTP codes and 2 wrong recovery codes → the 6th factor attempt `429`.
   A correct password in between does not reset it.
+- **Client key after a success:** on one server, 3 wrong codes, a correct code (`303`; the account
+  key is cleared), then a new password sign-in and 2 wrong codes: the next attempt answers `429`,
+  because the client key still holds 5 live failures. A wrong implementation that clears both keys
+  on success would answer `401` or `303`.
+- **Lock boundary:** the lock set by the 5th failure at `t5` refuses at `t5 + 899999`
+  (`Retry-After: 1`) and admits at `t5 + 900000`; each of those checks needs a fresh password
+  sign-in, because the partial session from before `t5` has expired.
 - **Partial expiry:** a `factor` session created at `t` works at `t + 899999` and is anonymous at
-  `t + 900000`; touching does not extend it. A pending authenticator likewise; confirm at
-  `t + 900000` → `409`.
+  `t + 900000` (a factor POST then answers `303` to `/sign-in`); a request at `t + 600000` does
+  not extend it. A pending replacement of a `full` session (the session lives 30 days) created at
+  `t`: confirm with a correct code at `t + 899999` → `200`; another one confirmed at
+  `t + 900000` → `409`. In the `enrol` stage the session is never younger than its pending row,
+  so at the pending row's `t + 900000` the session has expired too: confirm → `303` to
+  `/sign-in?next=%2Faccount%2Fauthenticator`, not `409`. A wrong implementation that checks the
+  pending row before the gate would answer `409` there.
 - **Gate:** `POST /account/recovery-codes` with an `enrol` session and a valid CSRF token → `303`,
   no new codes. `GET /sign-in/factor` with a `full` session → `303` to `/`. `GET
   /account/authenticator` with a `factor` session → `303` to `/sign-in/factor`.
@@ -586,137 +691,130 @@ read with `URLSearchParams`), the probe HTTP client, Dockerfiles (unchanged).
 
 ## Contract fields
 
-New names. None exists in the contract clone (`176fb6ed14b2f14b730a9fd1757239f210f97a29`) or the
-config clone (`bc870498cc8e2539a132ce2aac35a09db1deabd8`), and none in the console or deploy
-clones yet:
+No contract type, validator, route or wire version changes. Every name below is local to the
+console (its routes, forms, SQLite tables, metrics and logs) or to deploy (its files, Compose
+keys, e2e and CI). The names:
 
-```text
-$ for n in PULSE_CONSOLE_SECRET_KEY_FILE console-secret-key /sign-in/factor /account/security \
-    /account/authenticator /account/recovery-codes /account/sessions sign-out-all recovery_codes \
-    authenticators pending_authenticators totp-secret recovery-codes last_step isSecondFactorRequired; do
-    grep -rn --exclude-dir=node_modules --exclude-dir=.git -- "$n" \
-      .repos/contract/src .repos/config .repos/console/src .repos/deploy | wc -l; done
-0 (each)
-```
-
-- Env: `PULSE_CONSOLE_SECRET_KEY_FILE` (the name is from #460 section 5).
+- Env: `PULSE_CONSOLE_SECRET_KEY_FILE` (the name is from #460 section 5); `E2E_CONSOLE_FLOW` with
+  the values `auto`, `legacy`, `two-factor` (deploy e2e only).
 - Console routes: `/sign-in/factor`, `/account/security`, `/account/authenticator`,
   `/account/recovery-codes`, `/account/sessions`, `/account/sessions/sign-out-all`.
-- Form fields: `code`, `recovery_code`, `password`, `action` (`new`, `confirm`). `code`,
-  `password`, `action` and `csrf` exist already on other forms of the console; each form lists
-  its own fields.
+- Form fields: `recovery_code` (new); `code`, `password`, `action` and `next` already exist on
+  console forms (`src/pages.ts:47`, `:103-104`, `:121`); new `action` values `new` and `confirm`.
 - Tables and columns: `authenticators`, `pending_authenticators`, `recovery_codes`;
-  `sessions.stage`, `sessions.next_path`.
+  `sessions.stage` (values `factor`, `enrol`, `full`), `sessions.next_path`;
+  `authenticators.secret`, `.last_step`, `.confirmed_at`; `pending_authenticators.session_digest`,
+  `.secret`, `.created_at`; `recovery_codes.digest`, `.used_at`.
 - Metric label values: `kind` `totp`, `recovery-code`, `enrolment`, `password-confirm`; the six
   route paths.
 - HTML ids that deploy reads: `totp-secret`, `recovery-codes`.
-- Query value: `/sign-in?signed-out=all`.
+- Query value: `signed-out` (`/sign-in?signed-out=all`).
+- Exports and modules: `isSecondFactorRequired`, `signInStage`, `isSecretKeyContent` (deploy
+  CLI); `two-factor-policy`, `totp`, `secret-box`, `secret-key`, `recovery-codes`,
+  `factor-store`, `http-context`, `sign-in-factor`, `account-routes`, `account-pages`.
+- Log texts and fields: `password accepted`, `second factor failed`, `authenticator confirmed`,
+  `recovery codes created`, `signed out all sessions`, `authenticator secret cannot be
+  decrypted`; fields `hasSecretKey`, `factor`, `remaining`, `sessions`. The log text `signed in`
+  exists (`src/server.ts:585`) and keeps its meaning (a completed sign-in), now with `factor`.
 - deploy files: `secrets/console-secret-key` (host), `/out/console/secret-key` and
-  `/run/pulse/secret-key` (volume), `e2e/totp.mjs`.
+  `/run/pulse/secret-key` (volume), `e2e/totp.mjs`. Console CI job: `deploy-dev`.
 
-No contract type, validator, route or wire version changes.
+Search: every name above, in the contract clone (`176fb6ed14b2f14b730a9fd1757239f210f97a29`,
+`src`), the config clone (`bc870498cc8e2539a132ce2aac35a09db1deabd8`, whole tree), and for local
+clashes the console (`edefdbe…`, `src`) and deploy (`e3c2eb5…`) clones. `f:` is a fixed-string
+search (`grep -rnF`), `w:` a whole-word one (`grep -rnwF`) for names that are also plain words;
+both skip `node_modules` and `.git`. The script lived outside the repository; its loop is:
 
-## Repository: console
+```text
+for n in <names>; do grep -rn{F|wF} --exclude-dir=node_modules --exclude-dir=.git -- "$n" \
+  .repos/contract/src | wc -l; …same for .repos/config, .repos/console/src, .repos/deploy; done
 
-Files:
-- `src/two-factor-policy.ts` (new: `isSecondFactorRequired`, `signInStage`)
-- `src/two-factor-policy.test.ts` (new)
-- `src/totp.ts` (new: base32, HOTP/TOTP, window check)
-- `src/totp.test.ts` (new: RFC vectors and window)
-- `src/secret-box.ts` (new: AES-256-GCM envelope seal and open)
-- `src/secret-box.test.ts` (new)
-- `src/secret-key.ts` (new: the key file rules)
-- `src/secret-key.test.ts` (new)
-- `src/recovery-codes.ts` (new: generate, format, normalise, digest)
-- `src/recovery-codes.test.ts` (new)
-- `src/factor-store.ts` (new: authenticators, pending rows, recovery codes, and the commit
-  transactions)
-- `src/factor-store.test.ts` (new)
-- `src/database.ts` (migration 2, schema version 2)
-- `src/database.test.ts`
-- `src/account-store.ts` (session stage and next path, list and delete by user, partial expiry)
-- `src/account-store.test.ts`
-- `src/settings.ts` (reads the key file after the admin token)
-- `src/settings.test.ts`
-- `src/cookies.ts` (`Max-Age=900` for partial-stage session cookies)
-- `src/cookies.test.ts`
-- `src/http-context.ts` (new: the request context, send, redirect, cookie and form helpers moved
-  out of `server.ts` so the new route modules can share them)
-- `src/server.ts` (route table with access, the gate, phase, setup and sign-in changes)
-- `src/sign-in-factor.ts` (new: the `/sign-in/factor` handler)
-- `src/account-routes.ts` (new: the `/account/*` handlers)
-- `src/pages.ts` (landing link, sign-in notice)
-- `src/account-pages.ts` (new: factor, authenticator, codes, security, sessions and confirmation
-  pages)
-- `src/styles.ts` (wrapping of the key and codes at 390 px)
-- `src/metrics.ts` (path labels and auth kinds)
-- `src/main.ts` (key wiring, warn line, `hasSecretKey`, expiry at start)
-- `src/main.startup.test.ts`
-- `src/server.test.ts` (route table, `404`/`405` of the new routes)
-- `src/server.setup.test.ts` (Finish setup now redirects to enrolment)
-- `src/server.sign-in.test.ts` (password stage, partial stages)
-- `src/server.security.test.ts` (POST order and gate of the new routes, leak scan)
-- `src/server.factor.test.ts` (new: gate, enrolment, TOTP sign-in, encryption)
-- `src/server.recovery.test.ts` (new)
-- `src/server.sessions.test.ts` (new)
-- `src/server.upgrade.test.ts` (new)
-- `.github/workflows/ci.yml` (docker job: a malformed key file exits 2)
-- `README.md`
-- `docs/configuration.md`
-- `AGENTS.md` (the list of end-to-end test files)
+name                                     contract config  console deploy
+f:PULSE_CONSOLE_SECRET_KEY_FILE                 0      0        0      0
+f:E2E_CONSOLE_FLOW                              0      0        0      0
+f:two-factor                                    0      0        0      0
+w:legacy                                        2      0        0      2
+f:console-secret-key                            0      0        0      0
+f:/sign-in/factor                               0      0        0      0
+f:/account/security                             0      0        0      0
+f:/account/authenticator                        0      0        0      0
+f:/account/recovery-codes                       0      0        0      0
+f:/account/sessions                             0      0        0      0
+f:sign-out-all                                  0      0        0      0
+f:signed-out                                    0      0        0      0
+f:recovery_code                                 0      0        0      0
+f:recovery_codes                                0      0        0      0
+f:authenticators                                0      0        0      0
+f:pending_authenticators                        0      0        0      0
+f:next_path                                     0      0        0      0
+f:last_step                                     0      0        0      0
+f:confirmed_at                                  0      0        0      0
+f:session_digest                                0      0        0      0
+f:used_at                                       0      0        0      0
+w:stage                                         0      0        0      0
+w:enrol                                         0      0        0      0
+w:factor                                        0      0        0      0
+w:totp                                          0      0        0      0
+f:recovery-code                                 0      0        0      0
+w:enrolment                                     0      0        0      0
+f:password-confirm                              0      0        0      0
+f:totp-secret                                   0      0        0      0
+f:recovery-codes                                0      0        0      0
+f:/out/console/secret-key                       0      0        0      0
+f:/run/pulse/secret-key                         0      0        0      0
+w:secret-key                                    0      0        0      0
+f:totp.mjs                                      0      0        0      0
+w:deploy-dev                                    0      0        0      0
+f:isSecondFactorRequired                        0      0        0      0
+f:signInStage                                   0      0        0      0
+f:isSecretKeyContent                            0      0        0      0
+f:hasSecretKey                                  0      0        0      0
+f:two-factor-policy                             0      0        0      0
+f:secret-box                                    0      0        0      0
+f:factor-store                                  0      0        0      0
+f:http-context                                  0      0        0      0
+f:account-routes                                0      0        0      0
+f:account-pages                                 0      0        0      0
+f:sign-in-factor                                0      0        0      0
+f:password accepted                             0      0        0      0
+f:second factor failed                          0      0        0      0
+f:authenticator confirmed                       0      0        0      0
+f:recovery codes created                        0      0        0      0
+f:signed out all sessions                       0      0        0      0
+f:authenticator secret cannot be decrypted      0      0        0      0
+f:signed in                                     0      0        3      0
+w:code                                         31     43      125    269
+w:password                                      3      3      100     46
+w:action                                        5     28       26     13
+w:confirm                                       0      0        0      0
+w:next                                          1      3       31     22
+w:new                                          28     15      142    177
+w:full                                          0      2        8    223
+w:secret                                       24      1       21     71
+w:digest                                        2     27       14     66
+w:remaining                                     0      0        3     13
+w:sessions                                      0      0       19      5
+w:auto                                          0      0        1      0
+f:created_at                                    0      0       10      0
+```
 
-Behavior change: yes
-The console gains a mandatory second factor, new routes, a setting and schema 2.
+The non-zero rows are no collision:
 
-Tool facts, verified:
-
-- Bun `1.4.0` (`package.json:9`, `package.json:32`).
-- `bun run check` runs lint, typecheck and test (`package.json:18`). `test` is `bun test`
-  (`package.json:14`). `bunfig.toml:2-3` turns on coverage with a line threshold of `0.8` and
-  ignores `*.test.ts` (`bunfig.toml:4`).
-- `lint` is `biome check . && pulse-eslint . && pulse-workflows` (`package.json:15`). Biome
-  `2.6.3` (`package.json:21`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`; at the
-  pinned ref `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:22`) its `files.includes`
-  is `**` minus `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures`
-  (`biome.json:10-17` of pulse-config). The pinned file equals the config clone (checked with
-  `gh api …?ref=04108fa… | diff`). So every new `src/*.ts` file is formatted and linted.
-- ESLint from the same pin limits cognitive complexity to 15
-  (`eslint.config.js:16` of pulse-config, pinned file equals the clone). Keep the handlers small.
-- CI `check` job: `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa…`
-  (`ci.yml:17-18`). That pinned workflow runs `bun install --frozen-lockfile`, `bun run lint`,
-  `bun run typecheck` and `bun run test` on Bun `1.4.0` (`check.yml:22-38` of pulse-config; equal
-  to the clone).
-- CI `docker` job (`ci.yml:20`) builds the image and runs start, header, database and exit-code
-  steps; the new step goes after "Check a missing PULSE_API_URL exits 2" (`ci.yml:144`).
-
-Behavior: everything in "Required behavior". Module rules from `AGENTS.md` stay: pure logic in
-the new modules, I/O only in `main.ts` and the server modules, `randomBytes`, `now` and the key
-injected; `node:crypto` for HMAC, AES-GCM and SHA-256; no new package; every value in HTML through
-`escapeHtml`; the raw-path routing; the CSP unchanged.
-
-Checks:
-
-- `bun run check` passes (coverage at least 80 % of lines).
-- Acceptance 1 to 10 are tests in the listed files, each with the literal expected values of this
-  spec. Tests use the injected clock and random source, port 0, `mkdtemp` databases and fake key
-  files; no real timer waits for a TOTP step.
-- The new `docker` CI step runs the image with
-  `-e PULSE_API_URL=http://api.invalid:3000 -e PULSE_CONSOLE_SECRET_KEY_FILE=/run/key` and a
-  mounted file that holds `not-a-key`, expects exit code `2`, and greps stderr for the literal
-  `PULSE_CONSOLE_SECRET_KEY_FILE=/run/key: must hold 64 lowercase hex characters`; the stderr does
-  not hold `not-a-key`.
-- Local service exercise: `bun start` with a temporary database and key file, then acceptance 11.
-
-Completion evidence:
-
-- The PR lists `bun run check` and the CI jobs `check` and `docker` (both architectures) green.
-- The PR lists the `agent-browser` commands and results of acceptance 11.
-- `README.md` documents the new routes in the endpoint table, the key setting, the 2FA flow,
-  backup of the database together with the key, the lost-key path (recovery code, then replace
-  the authenticator), and the known limits. `docs/configuration.md` documents the setting and its
-  error texts in the start order, schema 2, the stages, the gate in the POST order, the TOTP
-  parameters, the recovery-code format, the throttles, the new metrics labels and log lines.
-  The README line "Two-factor sign-in … follows in #563" is replaced.
+- `legacy`: contract `src/schema.ts:512` and `src/tokens.ts:99` are comments; deploy's two hits
+  are test case names in `e2e/manual-count.test.sh:50,55`. The new name is the value of
+  `E2E_CONSOLE_FLOW`, which nothing else reads.
+- `signed in`: the existing console log text (`src/server.ts:585`), reused on purpose.
+- `created_at`: the existing column of `users` and `sessions` (`src/account-store.ts:77,86`);
+  `pending_authenticators.created_at` has the same meaning (milliseconds since the epoch).
+- `auto`: one console hit, a plain word; the new value is read only by the deploy e2e.
+- `code`, `password`, `action`, `next`, `new`, `full`, `secret`, `digest`, `remaining`,
+  `sessions`: plain words. In contract they are comments, Zod issue codes (`code: "custom"`), the
+  URL `password` check (`src/schema.ts:32-40`) and the audit `action` field
+  (`src/audit.ts:79`); in config, docs and workflow text. None is a console form field, SQLite
+  column, metric label or log field, because those are not part of contract or config. In the
+  console, `code`, `password`, `action` and `next` are existing form fields that each new form
+  uses with the same meaning; `secret` and `digest` become columns of new tables only, and
+  `sessions` already names the sessions table, which this spec changes in place.
 
 ## Repository: deploy
 
@@ -730,7 +828,8 @@ Files:
 - `full/compose.yaml` (console `PULSE_CONSOLE_SECRET_KEY_FILE`)
 - `dev/compose.yaml` (same)
 - `demo/compose.yaml` (same; generate mode)
-- `e2e/console-setup.sh` (enrolment, TOTP, recovery code, sign out all, recreate, scan)
+- `e2e/console-setup.sh` (flow detection; the `legacy` flow as today; the `two-factor` flow:
+  enrolment, TOTP, recovery code, sign out all, recreate, scan)
 - `e2e/totp.mjs` (new: prints the current TOTP step and code for a base32 key)
 - `cli/tokens.ts` (the strict key content rule)
 - `cli/tokens.test.ts`
@@ -748,6 +847,11 @@ Files:
 
 Behavior change: yes
 Secrets scripts, Compose setups, CLI output and the e2e test change.
+
+This repository merges first (see Rollout order). Its change must work with console `main` as it
+is today (the #562 flow, which ignores the key) and with the console of this spec, whose HTTP
+behavior is defined in "Required behavior" above. No console change is needed to build or check
+it.
 
 Tool facts, verified:
 
@@ -767,10 +871,13 @@ Tool facts, verified:
 - CI `full` runs `scripts/init-secrets.sh` (`ci.yml:108`) and `bash e2e/compose-e2e.sh`
   (`ci.yml:120`); `compose-e2e.sh` calls `scripts/init-secrets.sh --dir "$secrets_dir"`
   (`e2e/compose-e2e.sh:326`), so it gets the key without a change.
-- CI `dev` (`ci.yml:179`, `runs-on: ubuntu-24.04`) builds every service from `main`, runs
-  `scripts/init-secrets.sh` (`ci.yml:218`), `scripts/wait-ready.sh dev/compose.yaml 900`
-  (`ci.yml:222`) and `bash e2e/console-setup.sh dev/compose.yaml` (`ci.yml:225`). The runner image
-  has Node.js, which the lint job already relies on; `e2e/totp.mjs` runs with `node`.
+- CI `dev` (`ci.yml:179`, `runs-on: ubuntu-24.04`) checks out every service at `ref: main`
+  (`ci.yml:187-216`), runs `scripts/init-secrets.sh` (`ci.yml:218`), builds the stack
+  (`ci.yml:220`), `scripts/wait-ready.sh dev/compose.yaml 900` (`ci.yml:222`),
+  `bash e2e/console-setup.sh dev/compose.yaml` (`ci.yml:225`) without `E2E_CONSOLE_FLOW` (so
+  `auto`), and `bash cli/test/stack.sh dev` (`ci.yml:242-246`). `dev/compose.yaml:89` builds the
+  console from `${PULSE_SRC_DIR:-../..}/pulse-console`. The runner image has Node.js, which the
+  lint job already relies on (`ci.yml:31`); `e2e/totp.mjs` runs with `node`.
 
 Behavior:
 
@@ -806,15 +913,25 @@ Behavior:
   written and the render is unchanged.
 - **`e2e/totp.mjs <base32 key>`.** Pure `node:crypto`, RFC 6238 SHA-1, 6 digits, 30 s. Prints
   `<step> <code>` for the current time. It reads the key from its argument only and prints no
-  key. A self-check runs first: for the RFC 6238 seed `12345678901234567890` at T = 59 it must get
+  key. A missing argument or one with a character outside `A-Z2-7` exits `2` with
+  `usage: e2e/totp.mjs <base32 key>`. A self-check runs first: for the RFC 6238 seed `12345678901234567890` at T = 59 it must get
   `287082` (literal from RFC 6238 Appendix B), else it exits 1.
-- **`e2e/console-setup.sh`** keeps its rules (`set -euo pipefail`, no secret printed, a cookie
-  jar per browser, `Origin` on every POST, `csrf` from the page). Steps with literal expected
-  values:
-  1. to 5. as today (setup code, wrong code `401`, right code `303`, connection test `200` with
-     `Checks: <n>.`).
-  6. Finish setup: `303`, `Location: /account/authenticator`.
-  7. `POST /setup` with the same code: `404` (as today).
+- **`e2e/console-setup.sh`** keeps its rules (`set -euo pipefail`, no secret printed, `Origin` on
+  every POST, `csrf` from the page) and gains a cookie jar per browser. It runs one of two flows.
+  - `E2E_CONSOLE_FLOW` is `auto` (default when unset or empty), `legacy` or `two-factor`. Any other
+    value exits `2` with `E2E_CONSOLE_FLOW must be auto, legacy or two-factor` before any request
+    or `docker compose` call.
+  - Steps 1 to 5 are shared and stay as today (setup code, wrong code `401`, right code `303`,
+    connection test `200` with `Checks: <n>.`).
+  - Step 6, Finish setup: `303`. `Location: /sign-in?setup=done` is the `legacy` flow;
+    `Location: /account/authenticator` is the `two-factor` flow; any other `Location` fails with
+    `step 6: wrong Location`. When `E2E_CONSOLE_FLOW` names a flow and the console has the other
+    one, the script fails with `step 6: console has the <found> flow, E2E_CONSOLE_FLOW=<wanted>`.
+    It prints `ok: 6 POST /setup/owner complete 303 flow <flow>`.
+  - The `legacy` flow is today's steps 7 to 10 (`e2e/console-setup.sh:114-194`), unchanged.
+  - The `two-factor` flow, steps with literal expected values:
+  7. `POST /setup` with the same code from a fresh jar of its own: `404`. Jar A keeps the
+     `enrol` session that Finish setup started.
   8. Enrolment in jar A: `GET /account/authenticator` `200`; `POST action=new` `303`; `GET` `200`
      and `#totp-secret` read from the page (spaces removed, 32 base32 characters); `GET /` `303`
      to `/account/authenticator`; `POST action=confirm` with the code from `e2e/totp.mjs`: `200`,
@@ -824,7 +941,8 @@ Behavior:
      `/sign-in/factor`; wait until `e2e/totp.mjs` prints a step greater than the step used in
      step 8 (at most 31 s); `POST /sign-in/factor` with that code: `303`; `GET /` `200`.
   10. Recovery code in jar C: password `303`, the first recovery code `303`, `GET /` `200`. Jar D:
-      password, the same recovery code: `401`.
+      password, the same recovery code: `401`. This is the only factor failure of the flow, so the
+      factor throttle (5 failures) never answers `429` here.
   11. Sign out all: jar A `GET /account/sessions` `200` and holds `This browser`; `POST
       /account/sessions/sign-out-all` with A's CSRF: `303` to `/sign-in?signed-out=all`; then
       jar B `GET /`: `303` to `/sign-in?next=%2F`.
@@ -854,14 +972,170 @@ Checks:
   write; the console service holds the new env; `minimal` without console renders unchanged.
 - `docker compose -f <setup>/compose.yaml config` succeeds for `full`, `demo` and `dev`.
 - `e2e/compose-e2e.sh` stays green on the pinned `0.1.0` images (the console ignores the key).
+- `E2E_CONSOLE_FLOW=bogus bash e2e/console-setup.sh dev/compose.yaml` exits `2` with the literal
+  text above and starts no request (no stack needed).
+- `node e2e/totp.mjs GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ` exits `0` and prints one line matching
+  `^[0-9]+ [0-9]{6}$` (the base32 value of the RFC 6238 seed, RFC 4648 section 6); its self-check
+  compares with the literal `287082` from RFC 6238 Appendix B. `node e2e/totp.mjs` without an
+  argument, or with `abc1`, exits `2` with `usage: e2e/totp.mjs <base32 key>` (only `A-Z` and
+  `2-7`, no padding).
+- The `two-factor` flow cannot run here against a real console yet: no console has it until the
+  console child. Its first real run is the console PR's `deploy-dev` job. Its literals are the
+  ones of this spec, so a failure there is checked against the spec text, not against either
+  implementation.
 
 Completion evidence:
 
 - The PR lists the CI jobs `lint`, `check`, `full`, `demo`, `dev` (with `console-setup.sh`),
   `cli-render` and `cli-stack`, all green.
-- The PR shows the `ok:` lines of `e2e/console-setup.sh dev/compose.yaml`.
+- The PR shows the `ok:` lines of the `dev` job's `e2e/console-setup.sh dev/compose.yaml`,
+  including `ok: 6 POST /setup/owner complete 303 flow legacy`.
 - The READMEs and `docs/cli.md` document: the key file and its format; the upgrade step for
   existing `full` and `dev` installs (`scripts/init-secrets.sh` creates `console-secret-key`);
   backup of `secrets/console-secret-key` together with the `console-data` volume; that a new key
   makes stored authenticators unreadable and the owner then needs a recovery code; that `full`,
-  `demo` and CLI installs get 2FA with the next console pin bump.
+  `demo` and CLI installs get 2FA with the next console pin bump; `E2E_CONSOLE_FLOW` and the two
+  e2e flows.
+
+## Repository: console
+
+Files:
+- `src/two-factor-policy.ts` (new: `isSecondFactorRequired`, `signInStage`)
+- `src/two-factor-policy.test.ts` (new)
+- `src/totp.ts` (new: base32, HOTP/TOTP, window check)
+- `src/totp.test.ts` (new: RFC vectors and window)
+- `src/secret-box.ts` (new: AES-256-GCM envelope seal and open)
+- `src/secret-box.test.ts` (new)
+- `src/secret-key.ts` (new: the key file rules)
+- `src/secret-key.test.ts` (new)
+- `src/recovery-codes.ts` (new: generate, format, normalise, digest)
+- `src/recovery-codes.test.ts` (new)
+- `src/factor-store.ts` (new: authenticators, pending rows, recovery codes, and the commit
+  transactions)
+- `src/factor-store.test.ts` (new)
+- `src/database.ts` (migration 2, schema version 2)
+- `src/database.test.ts`
+- `src/account-store.ts` (session stage and next path, list and delete by user, partial expiry)
+- `src/account-store.test.ts`
+- `src/settings.ts` (reads the key file after the admin token)
+- `src/settings.test.ts`
+- `src/cookies.ts` (`Max-Age=900` for partial-stage session cookies)
+- `src/cookies.test.ts`
+- `src/http-context.ts` (new: the request context, send, redirect, cookie and form helpers moved
+  out of `server.ts` so the new route modules can share them)
+- `src/server.ts` (route table with access, the gate, phase, setup and sign-in changes, the
+  factor throttle)
+- `src/sign-in-factor.ts` (new: the `/sign-in/factor` handler)
+- `src/account-routes.ts` (new: the `/account/*` handlers)
+- `src/pages.ts` (landing link, sign-in notice)
+- `src/account-pages.ts` (new: factor, authenticator, codes, security, sessions and confirmation
+  pages)
+- `src/styles.ts` (wrapping of the key and codes at 390 px)
+- `src/metrics.ts` (path labels and auth kinds)
+- `src/main.ts` (key wiring, warn line, `hasSecretKey`, expiry at start)
+- `src/main.startup.test.ts`
+- `src/server.test.ts` (route table, `404`/`405` of the new routes)
+- `src/server.setup.test.ts` (Finish setup now redirects to enrolment)
+- `src/server.sign-in.test.ts` (password stage, partial stages)
+- `src/server.security.test.ts` (POST order and gate of the new routes, leak scan)
+- `src/server.factor.test.ts` (new: gate, enrolment, TOTP sign-in, throttles, encryption)
+- `src/server.recovery.test.ts` (new)
+- `src/server.sessions.test.ts` (new)
+- `src/server.upgrade.test.ts` (new)
+- `.github/workflows/ci.yml` (docker job: a malformed key file exits 2; new job `deploy-dev`)
+- `README.md`
+- `docs/configuration.md`
+- `AGENTS.md` (the list of end-to-end test files)
+
+Behavior change: yes
+The console gains a mandatory second factor, new routes, a setting, schema 2 and a CI job.
+
+This repository merges second, after deploy (see Rollout order and `targets.json`).
+
+Tool facts, verified (console clone `edefdbe…`):
+
+- Bun `1.4.0` (`package.json:9`, `package.json:32`).
+- `bun run check` runs lint, typecheck and test (`package.json:18`). `test` is `bun test`
+  (`package.json:14`). `bunfig.toml:2-3` turns on coverage with a line threshold of `0.8` and
+  ignores `*.test.ts` (`bunfig.toml:4`).
+- `lint` is `biome check . && pulse-eslint . && pulse-workflows` (`package.json:15`). Biome
+  `2.6.3` (`package.json:21`). `biome.json:2` extends `@lorenzh/pulse-config/biome.json`; at the
+  pinned ref `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:22`) its `files.includes`
+  is `**` minus `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures`
+  (`biome.json:10-17` of pulse-config). The pinned file equals the config clone (checked with
+  `gh api …?ref=04108fa… | diff`). So every new `src/*.ts` file is formatted and linted.
+- ESLint from the same pin limits cognitive complexity to 15
+  (`eslint.config.js:16` of pulse-config, pinned file equals the clone). Keep the handlers small.
+- CI `check` job: `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa…`
+  (`ci.yml:17-18`). That pinned workflow runs `bun install --frozen-lockfile`, `bun run lint`,
+  `bun run typecheck` and `bun run test` on Bun `1.4.0` (`check.yml:22-38` of pulse-config; equal
+  to the clone).
+- CI `docker` job (`ci.yml:20`) builds the image and runs start, header, database and exit-code
+  steps; the new step goes after "Check a missing PULSE_API_URL exits 2" (`ci.yml:144`).
+- CI triggers: push to `main` and tags `v*`, and every pull request (`ci.yml:3-7`); `release`
+  needs `check` and `docker` (`ci.yml:157-159`) and stays so.
+- `pulse-workflows` (part of `lint`, `package.json:15`) allows `actions/checkout` only at
+  `3d3c42e5aac5ba805825da76410c181273ba90b1` (`actions-policy.json:4-8` of pulse-config) and only
+  with `persist-credentials: false` (`src/workflow-policy.ts:150-164` of pulse-config); both
+  files at the pinned ref `04108fa…` equal the config clone. The `docker` job already uses that
+  pin (`ci.yml:29-31`).
+- Throttles: `src/auth-throttle.ts` (5 failures in 900000 ms, lock 900000 ms from the 5th,
+  `:1-2`, `:150-156`; success clears only `clearsOnSuccess`, `:143-145`); `createConsoleServer`
+  makes one per server (`src/server.ts:665-671`). The factor throttle is a third instance with the
+  tables `account` (user id) and `client`, `clearsOnSuccess: ["account"]`.
+
+The new CI job `deploy-dev`, after `docker` in `ci.yml`, mirrors deploy's `dev` job
+(deploy `.github/workflows/ci.yml:179-235`, without its CLI steps):
+
+- `runs-on: ubuntu-24.04`, `timeout-minutes: 40`, `permissions: contents: read`.
+- Checkouts with the pin above and `persist-credentials: false`: this repository (the commit
+  under test) to `path: pulse-console`; `lorenzh/pulse-deploy`, `lorenzh/pulse-api`,
+  `lorenzh/pulse-probe`, `lorenzh/pulse-status` and `lorenzh/pulse-notify` at `ref: main` to
+  paths of the same names. deploy's `dev/compose.yaml:89` builds the console from
+  `${PULSE_SRC_DIR:-../..}/pulse-console`, which is this checkout.
+- In `pulse-deploy`: `scripts/init-secrets.sh`; `docker compose -f dev/compose.yaml up -d
+  --build`; `scripts/wait-ready.sh dev/compose.yaml 900`; then the step
+  `E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml`; on failure
+  `docker compose -f dev/compose.yaml ps --all` and `logs --no-color`; always
+  `docker compose -f dev/compose.yaml down -v --remove-orphans`.
+- It needs deploy `main` with the deploy change of this spec (Rollout order step 1); that is
+  why console depends on deploy in `targets.json`.
+
+If the `deploy-dev` job fails in a step of the `two-factor` flow and the console matches this
+spec at that step, the fault is on the deploy side: the child requests a hold with
+`needs-input`, names the step and the spec line, and records it as a shared finding so the deploy
+fix reads it first. It never changes deploy from here and never weakens the job (for example by
+dropping `E2E_CONSOLE_FLOW=two-factor`).
+
+Behavior: everything in "Required behavior". Module rules from `AGENTS.md` stay: pure logic in
+the new modules, I/O only in `main.ts` and the server modules, `randomBytes`, `now` and the key
+injected; `node:crypto` for HMAC, AES-GCM and SHA-256; no new package; every value in HTML through
+`escapeHtml`; the raw-path routing; the CSP unchanged.
+
+Checks:
+
+- `bun run check` passes (coverage at least 80 % of lines).
+- Acceptance 1 to 10 are tests in the listed files, each with the literal expected values of this
+  spec and the fixture rules F1 to F3. Tests use the injected clock and random source, port 0,
+  `mkdtemp` databases and fake key files; no real timer waits for a TOTP step.
+- The new `docker` CI step runs the image with
+  `-e PULSE_API_URL=http://api.invalid:3000 -e PULSE_CONSOLE_SECRET_KEY_FILE=/run/key` and a
+  mounted file that holds `not-a-key`, expects exit code `2`, and greps stderr for the literal
+  `PULSE_CONSOLE_SECRET_KEY_FILE=/run/key: must hold 64 lowercase hex characters`; the stderr does
+  not hold `not-a-key`.
+- Local service exercise: `bun start` with a temporary database and key file, then acceptance 11.
+- The `deploy-dev` job passes: acceptance 13, with `ok: 6 POST /setup/owner complete 303 flow
+  two-factor` and every later `ok:` line of the `two-factor` flow in its log.
+
+Completion evidence:
+
+- The PR lists `bun run check` and the CI jobs `check`, `docker` (both architectures) and
+  `deploy-dev` green, and quotes the `ok:` lines of `deploy-dev`.
+- The PR lists the `agent-browser` commands and results of acceptance 11.
+- `README.md` documents the new routes in the endpoint table, the key setting, the 2FA flow,
+  backup of the database together with the key, the lost-key path (recovery code, then replace
+  the authenticator), and the known limits. `docs/configuration.md` documents the setting and its
+  error texts in the start order, schema 2, the stages, the gate in the POST order, the TOTP
+  parameters, the recovery-code format, the throttles, the new metrics labels and log lines.
+  The README line "Two-factor sign-in … follows in #563" is replaced. `AGENTS.md` names the
+  `deploy-dev` job.
