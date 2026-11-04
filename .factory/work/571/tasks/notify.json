@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Ledger format 4 preserves history and commits alert state with pending deliveries",
+      "files": [
+        "src/ledger.ts",
+        "test/ledger.v4.test.ts",
+        "test/ledger.test.ts",
+        "test/ledger.v2.test.ts",
+        "test/prune.test.ts",
+        "test/security-ledger-permissions.test.ts",
+        "README.md",
+        "docs/operation.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, ledger responsibility; R9; R7 delivery-retention compatibility; Counterexamples / Transaction failure and crash recovery (storage guarantees), Alert-state pruning and Ledger format; completion checks 5 and 6. Implement the complete format-4 persistence boundary before wiring evaluation: validated alert_state rows and mirror, read-only validation of format 3, WAL-consistent VACUUM INTO backup through a private temporary file and rename, safe replacement of a backup symlink, existing private wx publish path, direct JSON 1/2 migration to 4, and refusal without changing invalid source files. Keep every channel, mark, payload and recipient record. Expose one batch mutation that atomically stores all alert-row changes (including observed_at-only advances) and missing pending entries with payloads; update memory only after commit and write nothing for an empty batch. Add feed-presence-aware hourly alert-state pruning support, independent of delivery retention, with undefined visibility protecting rows until a good feed read. Use the existing notification type for this storage step; T2 exercises the new payload variants against the same API. Update the exact schema test and add user_version 5 refusal; keep the existing format-3-schema/user_version-4 hostile fixtures in ledger.v2 and index unchanged. Document the migration, backup, private files, pruning and downgrade now. Keep existing lint, typecheck and tests green. Before feature work, capture the config acceptance red baseline below in a writable origin/main scratch checkout, retaining output for T3; do not edit read-only context clones. This establishes the first red check of the spec's TDD order before T2's budget and expiry regressions.",
+      "acceptance": [
+        {
+          "command": "bun -e 'import { parseConfig } from \"./src/config.ts\"; parseConfig({channels:[{id:\"warnings\",type:\"file\",path:\"/tmp/pulse-571-warnings.jsonl\",alerts:[\"budget-low\"]}]});'",
+          "expected": "Run in the origin/main scratch checkout: nonzero exit with config: unknown key \"alerts\" in channels[0]. Retain this failing acceptance baseline; parseConfig does not create the output file."
+        },
+        {
+          "command": "bun test test/ledger.v4.test.ts test/ledger.test.ts test/ledger.v2.test.ts test/prune.test.ts test/security-ledger-permissions.test.ts test/index.test.ts",
+          "expected": "0 fail in this focused run (coverage exit status is not the gate). A valid format-3 fixture opens with user_version 4, its backup has user_version 3 and mode 0600, all previous records are equal to the fixture, and a second open has no migration. Invalid format 3, format 4 without alert_state, user_version 5, stage 7 and kind x are refused with source bytes unchanged. A backup symlink's target bytes remain unchanged. A beforeCommit throw leaves 0 added alert rows and 0 added pending entries both in memory and after reopen; successful batch writes survive reopen together, and an observed_at-only change persists. All pruning rows in the spec's table have their literal kept/removed outcomes."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; cognitive complexity remains at most 15 and shared tooling, CI and dependency pins are unchanged."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Warning rules produce stable events that every sender can deliver and resend",
+      "files": [
+        "src/types.ts",
+        "src/budget-alerts.ts",
+        "src/expiry-alerts.ts",
+        "src/channels/routing.ts",
+        "src/channels/message.ts",
+        "src/channels/slack.ts",
+        "src/channels/teams.ts",
+        "src/channels/email.ts",
+        "test/support.ts",
+        "test/budget-alerts.test.ts",
+        "test/expiry-alerts.test.ts",
+        "test/ledger.v4.test.ts",
+        "test/message.test.ts",
+        "test/routing.test.ts",
+        "test/webhook.test.ts",
+        "test/failed-cli.test.ts",
+        "README.md",
+        "docs/channels.md",
+        "docs/channels/webhook.md",
+        "docs/channels/file.md",
+        "docs/channels/slack.md",
+        "docs/channels/teams.md",
+        "docs/channels/email.md",
+        "docs/development.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, types, pure budget/expiry modules, routing and sender responsibilities; R5-R8 and R10; R9 warning-payload round trips and failed CLI compatibility; Counterexamples / Budget, Expiry, Restart-safe ordering, Routing and config (routing only), and Statistics display examples; completion checks 2 (rule tests), 5 (warning payload persistence) and 6. After the config red baseline, write budget once-per-24-hour tests red first, then expiry [14,3] and the restart-order regression, before implementing the pure functions. Keep each rule's observation selection, transition and key construction together, taking parsed contract types, nowMs and committed stored state as inputs and returning notifications plus proposed state changes. Cover every budget and expiry counterexample, separate check/component identity, strict threshold and boundary times, no recovery reset or downtime burst, freshness and strictly newer observations, observed_at advancement even when stage is unchanged, and rearm only above 14 days. Commit returned changes using T1's ledger in persistence regressions, including the complete restart-safe ordering table. Make Notification an event-discriminated union with unchanged incident fields/JSON and the R8 warning shapes; retain an incident-only event domain for the existing detector/builders so warnings cannot masquerade as incidents. Add the optional channel subscription/control types needed by routing; T3 owns parsing and operational use. Implement opt-in check/component routing without member expansion and independent of sendIncidents. Support all five senders: exact raw webhook/file JSON, signed idempotency, cleaned and escaped chat/email names, warning labels, floor rounding, null availability, singular/zero-day text, status links, hideReason independence and email Message-ID. Prove warning pending/failed payloads survive reopen and failed list/resend works using the existing CLI, which needs no source change. Narrow incident fixture types where the new union requires it without changing old assertions. Add fixtures and warning documentation, including subscription and renewal limits; change only the package description, never pins or dependencies. Keep existing lint, typecheck and tests green. T3 owns HTTP evaluation and the same behavior tests failing on origin/main; missing-module import errors alone do not satisfy the required red evidence.",
+      "acceptance": [
+        {
+          "command": "bun test test/budget-alerts.test.ts test/expiry-alerts.test.ts test/ledger.v4.test.ts",
+          "expected": "0 fail in this focused run. At threshold 25: budget 25 produces 0 events and 24.999 produces 1; after an event, +86399999 ms produces 0 more and +86400000 ms produces exactly 1. A check and component sharing id a produce 2 different keys. The expiry sequence 15,14,14,13,4,3,3,2,0,-1 produces exactly [14,3] for both TLS and domain; first observation 2 produces [3]. The six-step restart-order table persists observed_at t0+120000, does not rearm at step 3, emits 0 events at step 4 and exactly 1 milestone-14 event at step 6. Every remaining Budget and Expiry counterexample uses the spec's literal outcome; invalid, stale, equal and reordered readings make no state changes."
+        },
+        {
+          "command": "bun test test/message.test.ts test/routing.test.ts test/webhook.test.ts test/failed-cli.test.ts test/channels.test.ts test/ledger.v4.test.ts",
+          "expected": "0 fail in this focused run. Only subscribed and routed subjects are delivered, exclusions win, and sendIncidents false does not block warning routing. Budget display values 24.96, -3.25 and 99.8816 print 24.9, -3.3 and 99.881 respectively; raw JSON retains the unrounded inputs. All three labels and five sender formats match R8, including no data, 1 day and less than 1 day. Hostile names cannot inject Slack mentions or Teams markup. Webhook idempotency-key equals body key and signing remains valid. Pending and failed warning payloads round-trip unchanged, failed list shows the three event names, and failed resend retains the original key. Existing incident assertions and serialized payloads are unchanged."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; no unsafe casts to fake incident fields, no new runtime dependency, and cognitive complexity at most 15."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "Polling sends subscribed warnings durably and all integration and rollout checks pass",
+      "files": [
+        "src/channel-schema.ts",
+        "src/config.ts",
+        "src/index.ts",
+        "src/api.ts",
+        "src/metrics.ts",
+        "src/notifier.ts",
+        "test/support.ts",
+        "test/config.test.ts",
+        "test/metrics.test.ts",
+        "test/alerts.test.ts",
+        "test/send-incidents.test.ts",
+        "test/ledger.v4.test.ts",
+        "test/prune.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/channels.md",
+        "docs/operation.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, channel schema/config/index, API feeds/metrics and notifier responsibilities; R1-R4, R9 poll orchestration/pruning and integration of R5-R10; R11; every remaining Counterexample and completion checks 1-10; Performance impact, Security impact and Rollout order. Parse alerts and sendIncidents for all channel types with R1's exact fixed error messages and duplicate handling. Read the integer threshold through kit readInt (fallback 25, min 0, max 100), wire it at startup and preserve stored suppression on edits. Preserve existing Settings equality assertions (for example use a separate threshold reader in config.ts); do not change existing expectations beyond the spec's schema and metrics exceptions. Preserve fetchChecks' existing default public behavior for incident names while collecting additional validated CheckWithState inputs only when alerts are subscribed. Add validated components through the capped, timed, wire-checked, no-redirect client, tolerating 404 without treating it as a good visibility read; update the zero-valued metrics label fixture. Read enabled feeds in parallel, isolate their failures and readiness accounting, and do no additional validation, components request or evaluation without subscriptions. At start, before any resend or held-reminder handling, settle every pending incident or legacy payloadless entry on sendIncidents false channels as dropped; a settle failure never enqueues the key. Keep warning entries pending/resendable, failed incident records unchanged, skip legacy rebuild and seed new automatic/manual incident keys instead of sending them. Preserve first-poll, routing-change and manual seeding, with no replay after re-enable. After per-channel incident/manual processing, gate each warning kind on every subscribing channel having been seeded; evaluate once per installation, atomically commit all proposed alert changes and all routed pending entries in one transaction, and enqueue only after success. Persist every used expiry observation time; retain feed visibility only after good reads for hourly alert-state pruning. Advance suppression even when routing selects no recipient. Keep the reminder stale check narrowed by event. Add HTTP regressions named 'budget once per 24 hours', 'expiry milestones 14 and 3', and 'expiry ordering survives restart', using existing public entrypoints so those same tests fail meaningfully on an origin/main scratch checkout rather than on missing new production-module imports; copy only necessary test fixtures there and retain names/failure lines for the PR. Cover every R4 seeding/subscription table row, R9 rollback/crash/pruning row and R1 sendIncidents table row with literal outcomes, plus all validation/feed failures. Finish R11 docs and the full Security impact checklist. Use only writable scratch copies for origin/main and deploy evidence; context clones and committed deploy image pins remain unchanged. Prepare temporary performance/fake-API harnesses outside the target repository as specified by Performance impact, and set PULSE_571_DEPLOY_SCRATCH to the writable deploy main copy with only its notify image replaced by pulse-notify:candidate. The final PR owns complete red/green, security, performance, manual-run, Compose and green-CI evidence, names the allowed expectation changes, the unchanged hostile user_version-4 cases and the added user_version-5 case, and lists every known limit in completion check 10.",
+      "acceptance": [
+        {
+          "command": "bun test test/alerts.test.ts --test-name-pattern 'budget once per 24 hours|expiry milestones 14 and 3|expiry ordering survives restart'",
+          "expected": "The same three named HTTP regressions fail on origin/main for a behavior assertion or the unknown alerts startup key, with test names and failure lines recorded; on the completed branch they have 0 fail. T1's config red evidence is also retained. Focused coverage exit status is not the acceptance signal."
+        },
+        {
+          "command": "bun test test/budget-alerts.test.ts test/expiry-alerts.test.ts test/alerts.test.ts test/send-incidents.test.ts test/ledger.v4.test.ts",
+          "expected": "0 fail; every Counterexamples row has the literal expected result. HTTP fixture api-1 at budget 24 and TLS at 13 days sends exactly 1 budget-low and 1 tls-expiry per subscribed webhook channel, with equal body/header keys, and 0 warnings to the unsubscribed channel. Two HTTP 500 responses then 204 yield exactly 3 attempts with 1 key. Failed seeding of B yields 0 alerts and 0 alert rows for that kind until B seeds; then A and B receive the same key and B receives 0 old incidents. Late subscriptions and widened filters receive 0 replayed milestones. beforeCommit failure yields 0 alert rows, 0 pending entries and 0 receiver requests; the next good poll sends exactly 1 request per channel. A crash after commit resends the same pending key and generates 0 new keys."
+        },
+        {
+          "command": "bun test test/send-incidents.test.ts test/failed-cli.test.ts",
+          "expected": "0 fail; restart with sendIncidents false drops the four stored incident keys in the R1 table and logs count 4, sends exactly 1 stored budget warning, and sends 0 incident requests across 10 polls. Incident 9:opened is seeded; failed resend of 5:opened is dropped on the next start. Re-enable sends 0 old opened/manual/reminder events; a subsequent resolution sends exactly 1 key 9:resolved. Failed settle sends 0 requests for that key and leaves it pending for the next start."
+        },
+        {
+          "command": "bun test test/config.test.ts test/alerts.test.ts test/message.test.ts test/ledger.v4.test.ts test/security-ledger-permissions.test.ts test/metrics.test.ts",
+          "expected": "0 fail; security checklist fixtures reject hostile config, budget strings/non-finite JSON values and fractional days with fixed messages, and hostile names/ids never enter logs. A 10000-character control/markup name is cleaned and escaped; ids containing colons/newlines still yield a 32-hex SHA-256 key suffix. Oversized and redirected components responses are refused, 404 leaves check budgets and incidents working, other component-feed failures affect readiness while incidents/manual events continue, and a config without alerts makes 0 components requests and 0 second-validator calls. New components metrics start at 0. Backup symlink target bytes and refused ledger bytes are unchanged, private ledger/backup mode is 0600, and stage 7/kind x are refused. Review and report every applicable Security impact checklist item."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 for lint, typecheck and the full suite with at least 80% line coverage and cognitive complexity at most 15. Existing notifier, reminders, manual, routing-change, ledger, prune, webhook and channel suites pass with unchanged assertions except the exact schema/user_version update and components metric-label additions named by the spec; the added user_version-5 case passes and existing malformed user_version-4 fixtures still fail open unchanged."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times on origin/main and five times on the branch on the same machine; all ten full suites pass. Report every user/system pair, both medians of user+system seconds and their difference; branch minus main is strictly below 0.3 s, the literal local A/B limit in Performance impact."
+        },
+        {
+          "command": "bun /tmp/pulse-571-performance.ts",
+          "expected": "The temporary harness implements all startup/runtime measurements in Performance impact and reports raw values. Startup: report utime+stime at first readyz 200 for a format-3 ledger copy and format 4. Runtime: 200 checks (100 HTTP, 50 TLS, 50 domain), 50 components, fresh per-request timestamps, 1000-ms polling, 20-s warm-up and a 60-s measurement for main, branch without alerts and branch with all three alerts. Report /proc CPU, VmRSS and VmHWM for all three; branch-without-alerts minus main is at most 0.1 s CPU and 3 MiB VmHWM, and branch-with-alerts minus main is at most 0.3 s CPU and 3 MiB VmHWM."
+        },
+        {
+          "command": "bun run start",
+          "expected": "With the local fake API and file-channel config of completion check 8, PULSE_NOTIFY_POLL_MS=1000 and alerts budget-low/tls-expiry, report the exact environment/command and output file lines: after 10 polls exactly 1 budget-low and 1 tls-expiry line."
+        },
+        {
+          "command": "docker build -t pulse-notify:candidate .",
+          "expected": "exit 0; record the candidate notify commit SHA and docker image id for the following Compose run."
+        },
+        {
+          "command": "cd \"$PULSE_571_DEPLOY_SCRATCH\" && git rev-parse HEAD && bash e2e/compose-e2e.sh",
+          "expected": "exit 0 from deploy main's unchanged compose-e2e script with only scratch common/services.yaml's notify image set to pulse-notify:candidate and api's published image unchanged. Report deploy SHA, notify SHA, candidate image id and the output's All checks passed ending. No deploy or other target commit is produced."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "exit 0; notify CI check and both docker matrix jobs are green for the candidate PR head."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "The PR body names issue lorenzh/pulse-meta#571 and records the required checks, main-red/branch-green names and failure lines, allowed expectation changes, security checklist results, all raw performance measurements/limits, manual file lines, Compose SHAs/image/output and CI results. It documents renewal inside 14 days not recognized, next-due-only late subscriptions, dropped incidents of warning-only channels, downgrade via the v3 backup and warnings up to 2 times intervalMs late. Contract/kit pins and other repositories are unchanged."
+        }
+      ]
+    }
+  ]
+}
