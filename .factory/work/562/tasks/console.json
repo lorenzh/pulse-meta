@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "SQLite stores one owner, saved API settings and session digests",
+      "files": [
+        ".gitignore",
+        "src/settings.ts",
+        "src/settings.test.ts",
+        "src/database.ts",
+        "src/database.test.ts",
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — settings, database and account-store files; Required behavior / console: settings and database, plus the setup transaction and session storage operations used by later HTTP tasks. Add the new modules and their tests, migration 1, the singleton instance and unique owner, digest-keyed sessions, transaction rollback/concurrent-winner behavior, database permissions through injected file operations, and safe startup errors. Parse settings in the specified order, preserve the existing API URL/admin-token rules and optional token, select the three modes, and leave DATABASE_URL unread. Document the new settings with their currently implemented scope; main/startup and HTTP integration follow in T4/T5. Counterexamples / Database and API URL apply. Capture the baseline test time and image size for the final Performance impact evidence before implementing the feature.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; settings/database/account-store tests pass with 0 failures and the full suite keeps line coverage >= 80%. Defaults are ./console.db and loopback; blank DB means unset; HTTPS selects strict-https and non-loopback HTTP selects strict-http. Invalid public URLs and validation-order cases have the spec's literal error texts. Migration sets user_version=1, journal_mode=wal, foreign_keys=1 and busy_timeout=5000; a new or existing database has mode 0600. Missing directory, corrupt file and user_version=2 fail safely rather than initialize a new instance. Setup writes exactly 1 owner and 1 instance, a failed transaction writes 0 of either, and a second completion changes neither. Session CRUD stores a SHA-256 digest, user reference and the specified timestamps/CSRF field; no schema column stores an API token, setup code/grant or plaintext password/session id. Existing tests remain green; cognitive complexity stays <= 15."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "The API connection test validates wire version, check count and admin scope",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/connection-test.ts",
+        "src/connection-test.test.ts",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — Dependencies, connection-test files and contract boundary documentation; Required behavior / console: setup flow and connection test (the complete two-request algorithm and failure-text table); Acceptance evidence 6 at the client boundary; Counterexamples / Connection test. Pin contract to 2c4e0e08201c6efcfff1cd1f7835616e1dff9de3 and kit to 536133f3e8b708179fa01feeb02395a0e1961e07, regenerate bun.lock and replace AGENTS.md's obsolete no-contract-dependency statement. Use the existing contract exports and injected fetch, no new third-party runtime dependency. HTTP grant gating and rendered results follow in T4.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; connection-test cases pass with 0 failures, full-suite line coverage >= 80% and cognitive complexity <= 15. Local fake APIs see GET /admin/config followed by GET /admin/tokens, Bearer authorization, redirect: manual, timeoutMs=5000 and the default 5 MiB cap. A path prefix is preserved. Literal fixtures with x-pulse-contract: 1 and 3 or 0 checks produce wireVersion=1 and checkCount=3 or 0; tokens 200 gives confirmed, tokens 404 gives not-checked. Every failure in the spec's table has its exact safe text, including an absent header on either 200, incompatible/sanitized wire headers, invalid/oversized JSON, timeout, redirects and all listed statuses. Missing token sends 0 requests and returns the literal operator instruction. A 302 target receives 0 requests. No upstream body, token list or credential appears in returned failure text or captured logs."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Setup grants, password verification, throttling and cookies enforce their lifetimes",
+      "files": [
+        "src/setup-code.ts",
+        "src/setup-code.test.ts",
+        "src/auth-throttle.ts",
+        "src/auth-throttle.test.ts",
+        "src/passwords.ts",
+        "src/passwords.test.ts",
+        "src/cookies.ts",
+        "src/cookies.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — new setup-code, auth-throttle, passwords and cookies modules with their tests; Required behavior / console: setup code and setup grant, Sign-in hash parameters and dummy verification, the whole Throttle algorithm, and Cookies including refresh serialization. Keep these reusable authentication primitives independent of routes; inject clock, randomness and KDF functions, wire real ones only in main.ts later, and use real Bun.password in tests. Counterexamples / Setup code, Grant, Password, Throttle capacity and Throttle lock apply. Implement admission, reservations, settlement, cleanup and eviction as one limiter algorithm: reserve both entries atomically in one synchronous step, release the same reservations on failure/success/error, never remove locked or in-flight entries, and refuse capacity pressure without creating an entry or reservation in either table. Capacity refusals use the specified Retry-After calculation; HTTP logging/metrics follow in T4/T5. HTTP statuses, peer client-key selection, session refresh triggers and startup stdout are integrated in T4/T5, rather than splitting the limiter algorithm or KDF policy into separate tasks.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; all new module tests pass with 0 failures, full-suite line coverage >= 80% and cognitive complexity <= 15. A code uses 16 random bytes and matches [0-9a-f]{4}(-[0-9a-f]{4}){7}; normalization removes ASCII spaces/hyphens and lowercases before a timing-safe digest comparison. Only code/grant digests are retained; grants use 32 random bytes, expire after 1800000 ms, and replacement/completion/restart invalidate prior grants. Empty code is not counted. Password policy accepts 12 emoji and leading spaces, rejects 11 or 129 code points and unequal confirmation; real hashes start with $argon2id$v=19$m=19456,t=2,p=1$ and the dummy verifier uses the same costs. Both limiter tables admit at most 5 live/in-flight attempts, the fifth failure locks for 900000 ms from that failure, blocked attempts do not extend it, success clears only the account key, and expiry is exclusive at now-900000. Test the default 10000-key bounds, separate setup limiter and restart reset. Reservations settle on success, failure and request-ending error; cleanup and eviction never remove an entry with inFlight > 0, and locked entries have inFlight=0. Admission across both tables has no await and either reserves both entries or neither. Capacity refusal runs 0 verifications and counts 0 failures; its deterministic saturation, atomic-refusal and eviction cases are checked below. Literal cookie strings have Path=/; HttpOnly; SameSite=Strict, no Domain, Secure and __Host- only in strict-https; session Max-Age=2592000, setup=1800, anonymous CSRF has no Max-Age, deletion=0 and refresh preserves the value."
+        },
+        {
+          "command": "bun test src/auth-throttle.test.ts",
+          "expected": "All limiter cases pass, 0 fail; exercise the Throttle capacity counterexamples with the default 10000-key bound, an injected clock, explicit admissions/settlements and no KDF or real waits. At t=0 create 9999 locked account/client pairs; at t=1000 admit 4 unsettled owner@example.com/client-v attempts. At t=2000 a new@example.com/client-n attempt is refused with 429 and Retry-After=1, both tables stay at 10000 entries, both owner/v reservations remain inFlight=4, and neither new key exists. Settle the 4 failures at t=3000; at t=4000 admit exactly 1 more owner/v attempt and refuse a second pending one with 429 and Retry-After=1: exactly 5 owner admissions in this window, never 9. With 10000 locked pairs at t=0, a fresh key at t=1000 gets 429 and Retry-After=899, and at t=900000 is admitted. With the account table full of locked entries and the client table holding exactly 1 entry, refusal leaves exactly 1 client entry and adds 0 reservations. With 9999 locked pairs plus old@example.com/client-o holding 2 live failures and inFlight=0, a fresh pair evicts the old pair and is admitted; with 1 pending old/o attempt it gets 429 and Retry-After=1 and preserves that reservation. Idle cleanup removes only entries without live failures, live locks or pending attempts; otherwise eviction chooses the unlocked, zero-inFlight entry with the oldest last failure. Focused coverage may fail its threshold despite passing cases; the full-suite coverage gate is the separate bun run check acceptance."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "A guarded HTML setup flow creates the owner once and survives restart",
+      "files": [
+        "Dockerfile",
+        ".github/workflows/ci.yml",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/request-guard.ts",
+        "src/request-guard.test.ts",
+        "src/pages.ts",
+        "src/page.ts",
+        "src/styles.ts",
+        "src/server.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.security.test.ts",
+        "src/metrics.ts",
+        "src/main.ts",
+        "src/main.startup.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "docs/index.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — setup HTTP integration, forms/request-guard/templates/styles, startup wiring, metrics, image and docker CI changes; Required behavior / settings runtime precedence/warnings, database startup, setup code/grant, the entire setup flow, cookies/origin/CSRF/routing before authentication, Responses and pages, Intended disclosures, Logs and metrics. Delete src/page.ts when replacing it. Keep parsing/guards with their HTTP caller and tests, enforce the complete POST order for the setup routes, and unit-test next/sign-out CSRF guard functions for reuse in T5. Implement /sign-in's setup-done notice and form; password/session HTTP behavior follows in T5. Main alone wires filesystem/randomness/KDF/stdout; database errors precede any code output. Acceptance evidence 2, 3, 6, setup/password portion of 5 and startup checks; all Setup code/Grant/API URL/Password/Origin/Host/CSRF/Body counterexamples relevant to setup. Add initial security HTTP tests alongside these routes; T5 extends them across authenticated forms and the full leak scan. Update Dockerfile and CI in this same task because root now redirects. Keep all existing image checks, dotenv behavior, ops behavior and graceful shutdown green.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; unit and real-port-0 HTTP/startup tests pass with 0 failures and line coverage >= 80%, cognitive complexity <= 15. Without a grant, GET /setup/owner is 303 to /setup and POST is 403; wrong code is 401 with 0 API requests and 0 users, empty code is 422, sixth attempt is 429. Forged/expired/replaced grants fail. All field rules and recoverable-error retention apply without echoing either password field. Successful tests render the exact connection-result paragraph with Checks: 3. and Checks: 0.; tokens 404 adds the literal scope-not-checked notice. Test saves nothing. Complete commits once, then returns 303 /sign-in?setup=done; two already-admitted concurrent completions yield exactly one 303 and one 409 with 1 user. A throwing transaction yields 500 Setup could not be saved and the same grant remains usable. Setup routes return 404 afterward, including on a second server using the same file. The token/password database scan requires successful reads, skips only ENOENT sidecars, finds owner-sentinel@example.com at least once and forbidden sentinels 0 times. POST failures stop in the specified order; test route/method/phase, Host=421, Origin=403, content type=415, 8193-byte body=413, repeated known field=400, CSRF=403, grant=403, format=422, throttle=429, verification=401, connection=502 and commit outcomes. Unknown fields are ignored. Raw path matching and HEAD remain correct; ops routes accept any Host. CSP equals the spec literal, HTML is escaped, no inline/external assets appear, and form CSRF fields have the exact specified markup."
+        },
+        {
+          "command": "bun test src/main.startup.test.ts",
+          "expected": "all startup cases pass, 0 fail; a fresh temporary DB prints exactly 1 setup-code stdout line even at PULSE_LOG_LEVEL=error, a completed DB prints 0, a restart invalidates the old code/grants, and unreadable/corrupt/newer-schema DBs exit 2 with the literal safe error. File mode is 0600. Saved API URL wins; a differing env URL produces exactly the specified warn text without a URL. Strict-http produces its literal warning, listening fields include mode/isSetUp, and SIGTERM exits 0. Focused-run coverage may fail its threshold; the full-suite gate is checked separately."
+        },
+        {
+          "command": "docker build --tag pulse-console:local . && bash scripts/image-dotenv.sh pulse-console:local",
+          "expected": "exit 0; the non-root image starts with its writable bun-owned /data and default PULSE_CONSOLE_DB=/data/console.db, passes its healthcheck without an admin token, ignores mounted dotenv files and stops with exit 0. The existing dev deployment can therefore continue to start before deploy wiring lands."
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "final",
+      "title": "Owner sign-in, durable idle sessions and sign-out pass security and browser acceptance",
+      "files": [
+        "src/server.ts",
+        "src/server.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.sign-in.test.ts",
+        "src/server.security.test.ts",
+        "src/pages.ts",
+        "src/metrics.ts",
+        "src/main.ts",
+        "src/main.startup.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "docs/index.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — sign-in/session/sign-out HTTP integration, final security tests, all Checks and Completion evidence; Required behavior / console: sign-in, throttle, sessions; all remaining routing phases, cookie refresh, signed-in CSRF, logs/metrics and accessible sign-in/landing pages. Use the store and primitives from T1/T3; no separate session module is specified. Map Acceptance evidence 1-7, every console counterexample, Security impact checklist and Performance impact to final verification. Extend setup's database scan after real sign-in to cover the plain session id and independently computed digest. Finish docs for settings/routes/modes/cookies, code lookup, saved-URL precedence, scopes, destructive reset/no recovery, SQLite-only/DATABASE_URL ignored, backup/restore and #563 boundary; keep the two documented limits of restart-cleared throttles and no global KDF cap. Review the whole console change against Non-goals and Rollout order. Compose's full-stack acceptance 8 is implemented in deploy's final task after this repository merges; do not claim published scaffold images verify setup or add an image release/pin here.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; every console test passes, full-suite line coverage >= 80% and cognitive complexity <= 15. Wrong and unknown accounts return byte-identical 401 pages except CSRF; both execute real-cost verification and log no email/password. Empty fields/over-128-code-point passwords return 422 without counting. Five wrong passwords yield 5 x 401, the sixth including correct credentials yields 429 Retry-After: 900; at t5+899999 it stays 429, at t5+900000 correct credentials yield 303. Ten concurrent attempts give exactly 5 x 401 and 5 x 429. Account/client locks work separately, spoofed forwarding headers do not change the peer key, success clears only account failures, and the sliding-window counterexample does not lock. Successful sign-in rotates/revokes any old session, prunes expired rows and follows only valid next paths. Fabricated/revoked/expired sessions cannot access GET /. Idle +2591999999 ms is valid, +2592000000 expires; +59999 sends no session Set-Cookie, +60000 refreshes it. At day 29 (+2505600000) GET / is 200 with the same cookie and Max-Age=2592000; day 31 (+2678400000) remains 200. Sessions survive a new server on the same file. Sign-out with the session CSRF deletes the row, clears the cookie and returns 303 /sign-in; the anonymous token fails 403, and no-session sign-out changes nothing. All route/method/phase, cookie, next, CSP, POST-order, metrics and log cases match their spec literals."
+        },
+        {
+          "command": "bun test src/server.setup.test.ts src/server.security.test.ts",
+          "expected": "all selected cases pass, 0 fail; acceptance 5 scans the readable DB and all existing sidecars, skips only ENOENT, finds owner-sentinel@example.com at least once and the literal API-token/password/plain-session sentinels exactly 0 times. A read error fails; password_hash has the literal argon2id prefix, and node:crypto independently computes the cookie digest equal to sessions.id_digest. The full-flow leak scan first positively checks expected CSRF hidden fields and the appropriate session/grant/CSRF Set-Cookie disclosures, removes exactly those client-specific parts, and finds every spec sentinel 0 times in remaining bodies/headers including Location, metrics and captured logs. A client A secret in any client B response fails, even in an otherwise intended place. The setup code has only its one designated stdout disclosure. Focused coverage is not an exit-0 acceptance; the full-suite gate above must pass."
+        },
+        {
+          "command": "agent-browser open http://127.0.0.1:8082/setup && agent-browser snapshot -i",
+          "expected": "Against bun start with a temporary database and local fake/dev API, perform and record the actual follow-up agent-browser commands of Acceptance evidence 7: direct setup without code is refused, unlock with stdout code, observe connection result, complete setup, sign in, sign out, reject a wrong password, sign in correctly and refuse the old code. Complete sign-in with keyboard only. Use agent-browser set viewport 390 844 and agent-browser eval 'document.documentElement.scrollWidth <= 390' on /setup before completion and /sign-in after completion; both return true. Forms work without client JavaScript. Public evidence contains no live code or password."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "The check job and both native docker matrix legs are green. Docker CI follows root redirects, retains every existing smoke/security check, mounts console-ci-data:/data, finds exactly 1 code line, and verifies DB ownership against id -u bun with mode 600. The DB scan requires readable main/existing sidecar files and the independent SQLite format 3 header; each sentinel grep exits exactly 1 and outputs exactly 0, while a match or read error fails. No coverage, lint, image or CI gate is weakened."
+        },
+        {
+          "command": "docker build --tag pulse-console:local . && bash scripts/image-dotenv.sh pulse-console:local && docker image ls pulse-console:local && bun run test && gh pr view --json body --jq .body",
+          "expected": "The final image rebuild, dotenv check and full tests exit 0. PR evidence includes bun run check output, actual agent-browser commands/results, one bun start setup/local-API/sign-in run without live credentials, and measured image size/test time before and after, using the baseline captured before implementation or the PR base. The PR addresses all applicable Security impact checklist items: intended-disclosure-scoped leak checks, auth order and bounds, validation, grant-gated SSRF/redirect protection, 0600 file and atomic setup writes, and exact dependency pins. README/configuration/development/index/AGENTS documentation reflects the final behavior and the release/Compose handoff, with no recovery, 2FA, Postgres or other non-goal implementation."
+        }
+      ]
+    }
+  ]
+}

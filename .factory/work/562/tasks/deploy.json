@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Checked-in stacks persist the console database and share a stable admin token",
+      "files": [
+        "full/compose.yaml",
+        "dev/compose.yaml",
+        "demo/compose.yaml",
+        "full/.env.example",
+        "dev/.env.example",
+        "demo/.env.example",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "scripts/init-secrets.sh",
+        "scripts/init-secrets.test.sh",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        "e2e/compose.e2e.yaml",
+        "e2e/compose-e2e.sh",
+        "README.md",
+        "full/README.md",
+        "dev/README.md",
+        "demo/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy — checked-in Compose files/env examples, secrets scripts/tests, shared-token e2e adaptation and setup documentation; Required behavior / deploy full/dev/demo wiring, generate-mode algorithm, init-secrets and existing full e2e credential changes. Keep secret creation, its consumers and removal of the competing e2e import in one task so the intermediate stack remains usable. Set PULSE_SECRETS_ADMIN=on; add console-secrets outputs/read-only mount, console-data:/data, public URL interpolation and secrets-init completion dependencies, and enable the API import. Generate mode preserves a valid >=32-character token or creates 32 random bytes as 64 lowercase hex, requires /out/console, and writes matching 1000:1000 mode-0400 outputs. Host initialization creates independent mode-0600 probe/admin tokens without overwriting either; rule 7 and tests cover both. The existing e2e writes its own admin-token file before initialization, drops its config/import override and follows console redirects. Document code lookup, existing-full upgrade, TLS public origin, destructive reset and release-pin prerequisite alongside the wiring. No image pin, published port, files-mode secret contract or minimal setup changes.",
+      "acceptance": [
+        {
+          "command": "bun run check && bash scripts/init-secrets.test.sh && bash scripts/check-setup.test.sh && scripts/check-setup.sh",
+          "expected": "exit 0; full CLI checks stay green and all script/static cases pass. init-secrets creates admin-token and probe-token independently: directory mode 700, each token mode 600 and exactly 64 lowercase hex characters; rerunning preserves each hash, including when one file already exists. Existing symlink protections and paths-only output remain intact. Rule 7 checks admin-token mode/format/idempotency and the added broken-admin case is rejected. Every setup retains the literal published ports and all static secret/image/mount rules."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0; generate-with-admin creates matching /out/api/admin-tokens.json and /out/console/admin-token, both owner 1000:1000 and mode 400, with the admin token distinct from probe tokens. A rerun keeps the admin token's SHA-256 equal to the earlier run's independently recorded hash. Admin mode without /out/console exits 1 and prints exactly secrets-init: PULSE_SECRETS_ADMIN: generate mode needs /out/console. Invalid/short existing admin tokens are replaced according to the spec; valid tokens of at least 32 characters are retained. Existing files-mode cases still pass and no output prints a token."
+        },
+        {
+          "command": "shellcheck -x scripts/secrets-init.test.sh scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/check-setup.sh scripts/check-setup.test.sh e2e/compose-e2e.sh && node --check scripts/secrets-init.mjs",
+          "expected": "exit 0; changed shell scripts and the runtime helper have no shellcheck or syntax defects."
+        },
+        {
+          "command": "docker compose -f full/compose.yaml config --quiet && docker compose -f demo/compose.yaml config --quiet && docker compose -f dev/compose.yaml config --quiet && docker compose -f minimal/compose.yaml config --quiet && docker compose -f full/compose.yaml -f e2e/compose.e2e.yaml config --quiet",
+          "expected": "exit 0 for all 5 models. Full/dev/demo have console-data and console-secrets, the exact token file/import paths, PULSE_CONSOLE_PUBLIC_URL interpolation and secrets-init completion dependency; each env example includes # PULSE_CONSOLE_PUBLIC_URL=. The e2e overlay has no separate admin-token config/import. Minimal's rendered service/volume/port behavior is unchanged. The current published images remain accepted; setup acceptance waits for console main and the final dev check."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "CLI installs retain console data and render the public origin and reset warning",
+      "files": [
+        "cli/render-compose.ts",
+        "cli/render-compose.test.ts",
+        "cli/render-files.ts",
+        "cli/render-files.test.ts",
+        "cli/lifecycle.ts",
+        "cli/lifecycle.test.ts",
+        "docs/cli.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy — all CLI files and tests; Required behavior / deploy CLI bullet; CLI Checks and docs/cli.md Completion evidence. Add console-data:/data and PULSE_CONSOLE_PUBLIC_URL interpolation to generated console services, write urls.console to .env, add the conditional volume key in its existing owner cli/render-compose.ts, and update pulse down --volumes text in cli/lifecycle.ts. Keep console-disabled variants working, preserve existing token generation/import/output and install labels, and document setup/log lookup, public URL, persistence, destructive reset and later image-pin rollout for CLI installs. This task follows shared helper changes in T1 because the CLI embeds those helpers.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; full CLI suite has 0 failures and line coverage >= 80%. Render tests assert console-data:/data and PULSE_CONSOLE_PUBLIC_URL: ${PULSE_CONSOLE_PUBLIC_URL:-}; .env contains the literal PULSE_CONSOLE_PUBLIC_URL='https://console.example.com' for that independent fixture and the loopback URL for default answers. console-data is declared/labeled only when console is enabled. Down output equals deleted the volumes of project <fixture project> (database, notify ledger, console database, runtime secrets). Existing secrets and files are preserved, console-disabled variants have no console volume, and lifecycle ownership/error-path tests remain green."
+        },
+        {
+          "command": "bash cli/test/render-variants.sh",
+          "expected": "exit 0; all 8 variants render valid Compose, maintain their literal services/ports and install labels, and pass the secret grep. Generated full uses the same independent common/services.yaml image pins as standalone full; no image version/digest is introduced outside that file."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "The dev stack verifies setup, sign-in and recreation with green deployment CI",
+      "files": [
+        "e2e/console-setup.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "dev/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy — new e2e/console-setup.sh, dev CI step, final documentation of the check, all Checks and Completion evidence; Required behavior / deploy e2e and the complete ten-step console-setup algorithm. Acceptance evidence 8-9, deploy counterexamples, applicable Security impact, Performance impact and Rollout order. Check the checked-in demo's generate-mode admin token across down/up explicitly; CLI demo uses files mode and does not prove that counterexample. Run the new check after wait-ready and before failure logs/teardown in the dev job with working-directory pulse-deploy. Use fresh dev volumes and the console main implementation provided by the console dependency, not published scaffold images. Keep the existing full e2e and CLI/live-stack assertions; run the whole affected CI job commands. The final evidence reports green lint/check/full/demo/dev/cli-render/cli-stack jobs, the setup e2e's ok lines, unchanged pins/ports/minimal and the manual release prerequisite. Review all setup/CLI docs for lookup/upgrade/public-origin/reset instructions; no release or bump is part of this task.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check && bun run build",
+          "expected": "exit 0; full CLI lint/typecheck/tests pass with line coverage >= 80% and the CLI compiles. Shared workflow/tooling/security gates stay enabled."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0; all tracked shell scripts, including the new console-setup script, pass shellcheck from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0; all shell scripts parse."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; all helper modules parse."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0; all JSON files parse."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; every test/static command of the lint job remains green, including the new admin-token cases and all pre-existing outage/metrics/port/security checks."
+        },
+        {
+          "command": "scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 against fresh dev volumes and sibling main checkouts. The script uses set -euo pipefail, temporary cookies, a random 24-character password and the published loopback Origin on every POST; it prints only safe ok lines. GET /setup=200, wrong code=401, correct code=303 Location /setup/owner; connection test=200 with Checks: n. where n comes independently from jq '.checks | length' full/config/api/checks.json. Complete=303 Location /sign-in?setup=done, reused code=404, wrong password=401, correct sign-in=303, landing=200 Signed in as. After force-recreate and readiness, logs contain 0 setup-code lines, GET /setup=404 and sign-in=303. Step 10 first validates the token file as exactly 64 lowercase hex, requires successful main/existing-sidecar reads, finds e2e-owner@example.com at least once, and for each file requires token grep exit exactly 1 and output exactly 0; a match/read error fails. No token, code or password appears in script output."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the existing published image pins with the shared admin token and redirect-following console checks; all previous full-stack assertions remain green. This check verifies compatibility, not the new setup behavior."
+        },
+        {
+          "command": "scripts/measure.sh full",
+          "expected": "exit 0; the full job's existing readiness/performance measurements pass without changing API/service benchmark budgets or image pins. Run with the same initialization and cleanup as the full CI job."
+        },
+        {
+          "command": "bash -euo pipefail -c '\ntrap \"docker compose -f demo/compose.yaml down -v --remove-orphans >/dev/null\" EXIT\ndocker compose -f demo/compose.yaml up -d\nscripts/wait-ready.sh demo/compose.yaml 300\nconsole_hash_before=$(docker compose -f demo/compose.yaml exec -T console sha256sum /run/pulse/admin-token)\ndocker compose -f demo/compose.yaml down\ndocker compose -f demo/compose.yaml up -d\nscripts/wait-ready.sh demo/compose.yaml 300\nconsole_hash_after=$(docker compose -f demo/compose.yaml exec -T console sha256sum /run/pulse/admin-token)\ntest \"$console_hash_after\" = \"$console_hash_before\"\ndocker compose -f demo/compose.yaml exec -T console bun --no-env-file -e \"const token = (await Bun.file(\\\"/run/pulse/admin-token\\\").text()).trim(); const reply = await fetch(\\\"http://api:3000/admin/config\\\", { headers: { authorization: \\\"Bearer \\\" + token } }); process.exit(reply.status === 200 ? 0 : 1);\"\n'",
+          "expected": "exit 0 in an isolated checkout/project with fresh demo volumes and the existing published pins. The console token SHA-256 recorded before down (without -v) equals the hash after up, and the API accepts the retained token with status 200 on GET /admin/config. Only the digest equality and status matter; no token is printed. The probe tokens and API volume survive the ordinary down/up. Cleanup deletes only this throwaway demo stack's volumes. Run the demo job's original incident/mail/status/no-host-secret checks separately in its clean CI checkout; host secrets from a preceding full/dev run must not invalidate that no-host-secret check."
+        },
+        {
+          "command": "bash cli/test/render-variants.sh && bash cli/test/stack.sh demo && bash cli/test/stack.sh full && bash cli/test/stack.sh minimal && bash cli/test/stack.sh dev && bash cli/test/errors.sh dist/pulse",
+          "expected": "exit 0 with dev sibling sources configured as in CI; all rendered variants, CLI live-stack variants and Docker failure paths remain green. Persistent console data is kept through ordinary down/up and included in destructive volume deletion; no literal secret is rendered or printed. Demo token preservation on down/up and the generated/checked-in volume/mount rules remain valid."
+        },
+        {
+          "command": "gh pr checks && gh pr view --json body --jq .body",
+          "expected": "Required CI is green, including lint, check, full, demo, dev with console-setup before teardown, cli-render and every cli-stack variant. The PR records these jobs and only the console-setup ok lines as its output evidence. It addresses applicable security items: secrets only through secrets-init volumes, no /run/pulse mounts from other sources, no token/code/password output, checked DB reads with positive controls, rerun-stable tokens and preserved pins/ports. Documentation includes code lookup, existing-full init-secrets upgrade, TLS PULSE_CONSOLE_PUBLIC_URL, destructive console-volume reset and the fact that full/demo/CLI receive setup only after a person releases console and bumps the pin. No image pin is changed in this PR."
+        }
+      ]
+    }
+  ]
+}
