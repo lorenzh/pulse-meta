@@ -11,9 +11,9 @@ metrics use. Three problems of today go away:
   `src/admin.ts:61-71`);
 - a rejected hand edit of the file leaves every admin write on `412`, because a write compares
   `If-Match` with the hash of the bytes on disk (api `src/config-write.ts:388-394`,
-  `docs/operation.md:229`, "Until then a write gets `412`");
+  `docs/operation.md:237`, "Until then a write gets `412`");
 - an invalid or unreadable file at start stops the api before SQLite opens (api
-  `src/start.ts:209-219`, `docs/operation.md:212`, "A start with an invalid file still fails").
+  `src/start.ts:209-219`, `docs/operation.md:220`, "A start with an invalid file still fails").
 
 The api also gets an "Export as checks.json" of the effective set.
 
@@ -29,8 +29,13 @@ The api also gets an "Export as checks.json" of the effective set.
   `written-not-applied`, a safe message and the last apply time; the export holds env names and no
   literal values or bodies. Import is after the MVP.
 - The issue has no comment with a later decision (only the Factory run notes).
-- Clone heads read for this spec: api `2d4a6b2`, contract `7ce23aa`, deploy `621cbf0`, config
-  `main` (pinned files compared below), status and console for consumers.
+- Clone heads read for this spec: api `2bc5910`, contract `2c4e0e0`, console `f320e5d`, deploy
+  `c3e340a`, status `d268b5b`, config `bc87049` (pinned files compared below). Against the heads
+  of the first plan run (api `2d4a6b2`, contract `7ce23aa`, deploy `621cbf0`), api changed only
+  `docs/*.md`, contract changed `src/validate-core.ts`, `src/validate.ts`, docs, tests and its
+  version (`1.7.1`), and deploy changed only `cli/*` (`gh api repos/lorenzh/pulse-<r>/compare/...`).
+  Every line cited below was read again at the new heads.
+- Plan-review of this run found that console `main` reads `GET /admin/config` (decision 10).
 
 The open points of the review are decided as follows.
 
@@ -71,10 +76,31 @@ The open points of the review are decided as follows.
    to the file parser (api `src/config.ts:306-314`), so a redacted export cannot be loaded by
    accident. No separate single-check export route: a shadowed database entry is served in full
    redacted form in `shadowed`, which a client can export.
-10. **Compatibility.** The admin shapes change incompatibly (contract `2.0.0`). Only the api
-    produces them and only api tests consume them (console `src/` has no admin config use; status
-    serves the contract files but uses no admin shape). Public and probe shapes do not change, and
-    `WIRE_VERSION` stays `1` (contract `src/version.ts:5`).
+10. **Compatibility.** The admin shapes change incompatibly (contract `2.0.0`). Public and probe
+    shapes do not change, and `WIRE_VERSION` stays `1` (contract `src/version.ts:5`). The only
+    admin client outside the api's own tests is the console:
+    - Console `main` (`f320e5d`, contract pin `2c4e0e0` = `1.7.1`, console `package.json:29`)
+      checks the connection in owner setup with `GET /admin/config` and validates the answer with
+      the strict `validateAdminConfigResponse` (console `src/connection-test.ts:129`; contract
+      `src/admin.ts:138-148` is a `z.strictObject` over strict views). An api with this change
+      adds `file` and `shadowed` and changes the views, so that console answers
+      `pulse-api sent an invalid answer.` and the setup page answers `502`
+      (console `src/server.ts:467-475`). Owner setup would be blocked.
+    - A console that switched to the strict `2.0.0` validator would fail the same way against
+      every older api: api `0.1.0` (the deploy pin) and api `main` before this change.
+    - The connection test needs only the check count (console `src/connection-test.ts:134`,
+      shown at `src/pages.ts:80`). So contract `2.0.0` adds one tolerant validator,
+      `validateAdminConfigSummary`: it reads `revision` and the `id` of each entry of `checks` and
+      ignores every other key. Both the `1.x` and the `2.0.0` answer pass it. The console moves to
+      it in this spec (section "Repository: console"), before the api changes the shape (see
+      "Rollout order"). Later console screens that edit checks use the strict `2.0.0` shapes and
+      need an api with this change; they are not part of this spec.
+    - The released console `0.1.0` (the deploy pin, `common/services.yaml:44`) is a scaffold with no
+      admin API call (`gh api repos/lorenzh/pulse-console/contents/src?ref=v0.1.0` lists no
+      `connection-test.ts`), so the deploy stack is not affected. Status serves the contract
+      files but uses no admin shape. Probe, notify and status read no admin route
+      (`grep -rln 'admin/config\|validateAdmin' probe/src notify/src status/src kit/src`: none).
+      Deploy `cli/test/stack.sh:93-135` reads `GET /admin/config` only for its status code.
 11. **Deploy.** The deploy E2E pins api `0.1.0` (`common/services.yaml:8`; `v0.1.0` is the only
     api tag). It must stay green on that pin and also pass with an api image built from `main`
     after this change. It detects the feature from the shape of `GET /admin/config` and runs the
@@ -82,8 +108,10 @@ The open points of the review are decided as follows.
 
 ## Scope
 
-- contract: admin view, input, config response, file status and export shapes, validators,
-  status order text, docs, `dist/`, version `2.0.0`.
+- contract: admin view, input, config response, file status and export shapes, the tolerant
+  config summary validator, validators, status order text, docs, `dist/`, version `2.0.0`.
+- console: contract pin `2.0.0`; the connection test validates with the summary validator, so it
+  works against api `0.1.0`, api `main` before this change and api with this change.
 - api: migration, definition store, effective set, database check writes, file state, start
   fallback, heartbeat digests, export route, docs, contract pin.
 - deploy: E2E that passes on api `0.1.0` and on an api with database checks; doc lines that say
@@ -94,7 +122,8 @@ The open points of the review are decided as follows.
 - No import of a checks file into the database, and no automatic move of file checks.
 - No database storage for components or maintenance windows. No reference from the file to a
   database-only id.
-- No Console screen, no status change, no probe change, no notify change.
+- No Console screen and no other console change than the connection test validator; no status
+  change, no probe change, no notify change.
 - No change of the public `GET /checks`, `GET /probe/checks`, `POST /results` or heartbeat shapes,
   and no `WIRE_VERSION` bump.
 - No change of token scopes, the auth throttle, the 1 MB body limit, metric names or labels.
@@ -189,7 +218,7 @@ and the sentinel test (api check 4) refer to it. "yes" means the value may or mu
 | Surface | Literal header value | Request body | `{ env }` name | `{ "keep": true }` marker | Heartbeat secret (plaintext) | Heartbeat secret digest |
 |---|---|---|---|---|---|---|
 | Public reads (`/checks`, `/checks/:id/*`, `/components*`, `/incidents`, `/maintenance`) | no | no | no | no | no | no |
-| `GET /probe/checks` (probe token, unchanged from today, api `docs/rest-api.md:134`) | yes | yes | yes | no | no | no |
+| `GET /probe/checks` (probe token, unchanged from today, api `docs/rest-api.md:138`) | yes | yes | yes | no | no | no |
 | Admin views: `GET /admin/config` (`checks`, `shadowed`) and admin write responses | no | no | yes | yes | no (`hasSecret: true`) | no |
 | `GET /admin/config/export` | no | no | yes | no | no | no |
 | Audit entries, log lines, `/metrics`, error bodies, `file.message` | no | no | no | no | no | no |
@@ -288,9 +317,19 @@ plaintext of a file heartbeat secret exists only in the file and in memory, as t
 ## Risks
 
 - **Status serves contract files by name.** Status allows only the listed contract `dist` modules
-  (status `src/server.ts:189-205`). A new contract module file imported by `index.ts` would break
+  (status `src/server.ts:188-204`). A new contract module file imported by `index.ts` would break
   the status browser bundle at its next contract pin. The contract change keeps every new export
   in `src/admin.ts` and `src/validate-admin.ts`.
+- **Console owner setup against the new api.** Console `main` validates `GET /admin/config`
+  strictly (decision 10). If the api merged first, console `main` with api `main` would answer
+  `502` at owner setup until the console moved. The console therefore merges before the api:
+  `targets.json` lets the api wait for the console, and api check 10 runs the merged console's
+  connection test against the api branch. A console checkout older than the console change keeps
+  the strict `1.7.1` validator and needs an api older than this change; no release of the console
+  holds that validator (console `0.1.0` has no admin call).
+- **A tolerant validator hides a broken answer.** `validateAdminConfigSummary` checks only
+  `revision` and the check ids. The connection test reads nothing else, so nothing unchecked is
+  used or shown. A later console screen that reads more uses the strict validators.
 - **Many existing api tests assume check writes go to the file** (`config-admin.test.ts`,
   `config-write.audit.test.ts`, `config-write.crash.test.ts`, the sentinel test at
   `config-admin.test.ts:770-791` that bans env names from admin output). Tests of the file
@@ -335,6 +374,8 @@ Metrics of api `bench/budgets.json`:
 - `image_mb`: none (no dependency).
 - contract `test_cpu_s` (budget 9.0) and `build_cpu_s` (budget 6.4): up by the new schema tests and
   the larger `admin.ts`, under 0.3 s each.
+- console: no `bench/` directory (`ls .repos/console` at `f320e5d`); none expected, because one
+  validator call is replaced by a smaller one and a few unit tests are added.
 
 How to measure: in the api repository, `bun bench/run.ts --a <main sha> --b <branch sha>`
 (`bench/README.md:76`). Report `startup_cpu_ms`, `idle_rss_mib`, `peak_rss_mib`, `load_cpu_s`
@@ -345,8 +386,8 @@ a budget change.
 
 Security impact: yes
 The change touches admin routes, validators at a trust boundary (contract), heartbeat
-authentication, storage of credentials, error texts, a dependency pin (contract) and CI (deploy
-E2E).
+authentication, storage of credentials, error texts, the console's validation of an api answer,
+dependency pins (contract in api and console) and CI (deploy E2E).
 
 Checklist items that apply:
 
@@ -364,7 +405,12 @@ Checklist items that apply:
 - **Body and size limits.** `ADMIN_MAX_BODY_BYTES` (1 MB) and all check limits stay; the materialized
   check is validated after marker resolution (item 16).
 - **Input validation.** Strict input; `source` only `"database"`; `hasSecret` only `true` and only on
-  heartbeat; markers only `{ "keep": true }` exactly (no extra keys); unknown fields `422`.
+  heartbeat; markers only `{ "keep": true }` exactly (no extra keys); unknown fields `422`. The
+  console validates the api answer at its edge with `validateAdminConfigSummary`: an object with
+  an own `revision` that matches the admin revision rule and an own array `checks` whose entries
+  are objects with an own non-empty string `id`; anything else is
+  `pulse-api sent an invalid answer.` (counterexamples 40-42). The console's 5 MiB body cap,
+  no-redirect fetch and wire check stay (console `docs/configuration.md:53`).
 - **Accessor execution.** Request bodies come from `JSON.parse` (plain data). The contract
   validators keep their own-data rules (contract `src/validate-admin.ts:30-36`).
 - **SSRF and redirects.** An admin can point a database check with an `{ env }` header at any URL,
@@ -374,21 +420,29 @@ Checklist items that apply:
   its protocol for components and windows and never rewrites a broken file as a side effect.
 - **Credentials.** Database heartbeat secrets are stored as SHA-256 digests (like token secrets,
   api `src/token-digest.ts`); comparison stays constant-time.
-- **Dependency pins.** The api moves its contract pin to the merged contract `main` SHA. No other
-  dependency. Deploy changes no action, image or pin.
+- **Dependency pins.** The api and the console move their contract pin to the merged contract
+  `main` SHA. No other dependency. Deploy changes no action, image or pin.
 
 ## Rollout order
 
-1. **contract** merges `2.0.0`. No consumer moves: api, probe, status, notify and console stay on
-   their pinned SHAs (`7ce23aa` in api) and keep working. Status, when it later bumps, still finds
-   every module it serves, because no module file is added.
-2. **api** pins the merged contract and merges. Probes (`0.1.0` and `main`), status and notify
-   against this api keep working: `GET /checks`, `GET /probe/checks`, `POST /results`, heartbeat
-   pings, `/components*`, `/incidents`, `/maintenance` and the wire header do not change. The
-   console scaffold reads no admin config. Admin clients other than tests do not exist yet. An
-   existing database migrates to step 6 on start; the first start applies the file and writes the
-   snapshot.
-3. **deploy** merges the version-tolerant E2E. CI still runs api `0.1.0` and the file path. Run B
+1. **contract** merges `2.0.0`. No consumer moves: api, probe, status and notify stay on their pin
+   `7ce23aa`, console on `2c4e0e0`, and keep working, because a pin does not move by itself. Status,
+   when it later bumps, still finds every module it serves, because no module file is added.
+2. **console** pins the merged contract and switches the connection test to
+   `validateAdminConfigSummary`. At that moment every api it can meet is older: api `0.1.0` and api
+   `main` without this change. Both answer the `1.x` shape, which the summary validator accepts
+   (console check 2, counterexample 40; console check 5 against a real api `2bc5910`). The
+   console's own pages and token routes do not change. The deploy stack keeps console `0.1.0`,
+   which makes no admin call.
+3. **api** pins the merged contract and merges after the console (it waits for the console in
+   `targets.json`). Probes (`0.1.0` and `main`), status and notify against this api keep working:
+   `GET /checks`, `GET /probe/checks`, `POST /results`, heartbeat pings, `/components*`,
+   `/incidents`, `/maintenance` and the wire header do not change. Console `main`, now on the
+   summary validator, passes its connection test against this api (api check 10, counterexample
+   41). Console `0.1.0` in the deploy stack reads no admin route. The only client that breaks is a
+   console checkout older than step 2, which no release holds. An existing database migrates to
+   step 6 on start; the first start applies the file and writes the snapshot.
+4. **deploy** merges the version-tolerant E2E. CI still runs api `0.1.0` and the file path. Run B
    of its acceptance proves the database path with an image of the merged api `main`. A later
    bump with `scripts/bump-images.sh api=<x.y.z>` (a person, after an api release) switches CI to
    the database path without another deploy change.
@@ -430,12 +484,15 @@ Checklist items that apply:
 | 31 | export redaction | DB check with literal `x-token: S1`, env header, body `B1`; heartbeat with secret | export has the env header; `S1`, `B1`, the secret absent; `redacted` lists `headers.x-token`, `body`, `secret` | drops env names, or leaks values |
 | 32 | export clean | only checks without literals, bodies or heartbeats | no `redacted` key; the document loads as a checks file | always adds `redacted` |
 | 33 | export precedence | DB D shadowed by file D | export has file D only, once | lists both |
-| 34 | upgrade | database of api `2d4a6b2` with 3 active file checks and history | after migration `check_definitions` is empty; results and incidents kept | imports runtime rows as editable checks |
+| 34 | upgrade | database of api `2bc5910` with 3 active file checks and history | after migration `check_definitions` is empty; results and incidents kept | imports runtime rows as editable checks |
 | 35 | reference | POST /admin/components with `checkIds: ["db-only"]` | `422` | accepts a reference the file cannot hold |
 | 36 | failed commit | the audit insert fails inside the transaction | `500`, definition, generation, runtime row and revision unchanged | definition stored without audit |
 | 37 | marker never served to probes | PUT with `x-token: {keep: true}` over stored `S1`; GET /probe/checks | `x-token: "S1"`, no `keep` key anywhere in the response | the marker is stored or served |
 | 38 | env names per surface | DB check with header `x-env: {env: PULSE_HEADER_SENTINEL_DB_ENV}` | name present in GET /admin/config, the export and GET /probe/checks; absent from `/checks`, audit entries, logs and `/metrics` | strips env names from admin views (as today), or logs them |
 | 39 | snapshot storage | file check with literal `x-token: F1` and heartbeat secret `S` applied | `F1` in `config_state.file_snapshot_json`; `S` in no column, its hex SHA-256 in the snapshot | snapshot without literals (fallback serves a broken check), or with `S` |
+| 40 | console against an older api | `GET /admin/config` answers the `1.x` shape: 2 HTTP checks, one with `headers: ["authorization"]` and `hasBody: true`, no `file`, no `shadowed` | console connection test `isOk: true`, `checkCount: 2` | console validates with the strict `2.0.0` `validateAdminConfigResponse` and answers `pulse-api sent an invalid answer.` |
+| 41 | console against this api | the `2.0.0` shape: 3 checks with `source`, one with `headers: {"authorization": {"keep": true}}` and `body: {"keep": true}`, 1 entry in `shadowed`, `file: {state: "invalid", ...}` | `isOk: true`, `checkCount: 3` (shadowed entries are not counted) | strict `1.7.1` validator (today's console) answers `502`; or counts `shadowed` too (4) |
+| 42 | summary validation | `revision` missing; `revision: "sha256-abc"`; `checks: "x"`; a check entry `"x"`; a check entry without `id`; `id: ""`; `id: 7` | each rejected, console text `pulse-api sent an invalid answer.` | a validator that accepts any object, or reads `checks.length` of a string |
 
 There are no statistics in this change. The admin revision is the exact formula of decision 5;
 the generation starts at `0` and is raised by exactly `1` per committed database check write.
@@ -449,11 +506,12 @@ unless noted:
 $ for n in ADMIN_CHECK_SOURCES adminCheckSourceSchema AdminCheckSource ADMIN_FILE_STATES \
     adminFileStatusSchema AdminFileStatus adminKeepSchema AdminKeep adminConfigExportSchema \
     AdminConfigExport validateAdminConfigExport adminExportRedactionSchema AdminExportRedaction \
+    adminConfigSummarySchema AdminConfigSummary validateAdminConfigSummary \
     'config/export' check_definitions config_state database_generation file_snapshot_json \
     shadowed lastAppliedAt 'keep:' written-not-applied; do
-    grep -rn -- "$n" contract/src config/src config/bin api/src | grep -v node_modules | wc -l; done
+    grep -rn -- "$n" contract/src config/src config/bin api/src console/src | grep -v node_modules | wc -l; done
 0 (for every name)
-$ grep -rn redacted contract/src api/src | grep -v test
+$ grep -rn redacted contract/src api/src console/src | grep -v test
 contract/src/admin.ts:162: * Body of a successful admin write: the redacted entity that was stored. ...
 api/src/config-write.ts:80:  /** The stored entity, redacted; absent after a delete. */
 $ grep -rn secret_sha256 api/src | grep -v test | head -2
@@ -462,7 +520,7 @@ api/src/token-store.ts:170:    .query("SELECT secret_sha256, token_id, retires_a
 $ grep -rn 'source' contract/src/admin.ts contract/src/tokens.ts
 contract/src/admin.ts:51:  .regex(ADMIN_REVISION, { error: `must match ${ADMIN_REVISION.source}` });
 contract/src/tokens.ts:106:      source: z.enum(["api", "file"], { error: 'must be one of "api", "file"' }),
-$ grep -rn 'removed from the configuration\|PULSE_HEADER_SENTINEL_DB_ENV\|PULSE_HEADER_SENTINEL_FILE_ENV' api/src contract/src config/src | wc -l
+$ grep -rn 'removed from the configuration\|PULSE_HEADER_SENTINEL_DB_ENV\|PULSE_HEADER_SENTINEL_FILE_ENV' api/src contract/src config/src console/src | wc -l
 0
 ```
 
@@ -489,6 +547,7 @@ Contract (all in `src/admin.ts` and `src/validate-admin.ts`, exported from `src/
 | `AdminConfigResponse` (changed) | type | adds `shadowed: AdminCheckView[]` and `file: AdminFileStatus` |
 | `adminExportRedactionSchema`, `AdminExportRedaction` | schema, type | strict `{ checkId: string, field: string }`, `field` is `body`, `secret` or `headers.<name>` |
 | `adminConfigExportSchema`, `AdminConfigExport`, `validateAdminConfigExport` | schema, type, validator | strict `{ checks: Check[], components: Component[], maintenance: {checkId, start, end, note}[], redacted?: AdminExportRedaction[] }`; `start`/`end` ISO 8601 strings with offset; `redacted` has at least 1 item when present |
+| `adminConfigSummarySchema`, `AdminConfigSummary`, `validateAdminConfigSummary` | schema, type, validator | `{ revision: string, checks: { id: string }[] }` read from own data properties: `revision` matches `ADMIN_REVISION` (contract `src/revision.ts:5`), `checks` is an array, each entry an object with a non-empty string `id` (the `Check` id rule, `id: nonEmpty`, contract `src/schema.ts:270`). Every other key, at the top and in the entries, is ignored and not part of the type. Accepts the `1.x` and the `2.0.0` `GET /admin/config` answer. |
 | `ADMIN_STATUS_ORDER` (changed text) | const | 503 `checks file not writable (component and maintenance writes)`; 409 `id exists, still referenced, a file check, or a shadowed database check` |
 
 Api names: route `GET /admin/config/export`; tables `check_definitions` (`id`, `check_json`,
@@ -496,7 +555,7 @@ Api names: route `GET /admin/config/export`; tables `check_definitions` (`id`, `
 `database_generation`, `file_revision`, `file_applied_at`, `file_snapshot_json`); log line
 `config load rejected at start`; changed log text `check "<id>" removed from the configuration:
 incident resolved` (was `... removed from the checks file: ...`, api `src/service.ts:1016`,
-`docs/operation.md:262`). Config (`.repos/config`) holds no admin or check names; nothing
+`docs/operation.md:270`). Config (`.repos/config`) holds no admin or check names; nothing
 there changes.
 
 ## Repository: contract
@@ -522,23 +581,24 @@ The admin validators accept and reject new shapes; the admin types change incomp
 
 What changes in each file:
 - src/admin.ts: check sources, keep marker, view and input headers and body, file status, config
-  response, export shapes, status order text.
+  response, config summary, export shapes, status order text.
 - src/validate-admin.ts: the check input accepts the source and hasSecret fields; new export
-  validator.
+  validator; new config summary validator.
 - src/index.ts: the new names of "Contract fields" (the file lists its exports one by one).
 - test/admin.test.ts and test/types.fixture.ts: new and changed cases and types.
 - test/smoke.test.ts: the test "package entry exports the validators and the wire version"
   (line 50) compares `Object.keys` of the package entry with a literal list of runtime export
-  names, so the new runtime exports fail it until the list grows. Add exactly these 8 literal
+  names, so the new runtime exports fail it until the list grows. Add exactly these 10 literal
   names to that list and change nothing else in the list: `ADMIN_CHECK_SOURCES`,
   `adminCheckSourceSchema`, `ADMIN_FILE_STATES`, `adminFileStatusSchema`, `adminKeepSchema`,
-  `adminExportRedactionSchema`, `adminConfigExportSchema`, `validateAdminConfigExport`. The new
-  types (`AdminCheckSource`, `AdminKeep`, `AdminFileStatus`, `AdminExportRedaction`,
-  `AdminConfigExport`) are type-only and do not appear at runtime. No existing name leaves the
+  `adminExportRedactionSchema`, `adminConfigExportSchema`, `validateAdminConfigExport`,
+  `adminConfigSummarySchema`, `validateAdminConfigSummary`. The new types (`AdminCheckSource`,
+  `AdminKeep`, `AdminFileStatus`, `AdminExportRedaction`, `AdminConfigExport`,
+  `AdminConfigSummary`) are type-only and do not appear at runtime. No existing name leaves the
   list: the changed names (`AdminCheckView`, `AdminCheckInput`, `AdminConfigResponse`,
   `ADMIN_STATUS_ORDER`) keep their export names.
-- docs/index.md: section "Admin config api" (lines 285-317).
-- package.json: version 1.7.0 becomes 2.0.0.
+- docs/index.md: section "Admin config api" (lines 285-323).
+- package.json: version 1.7.1 (`package.json:3`) becomes 2.0.0.
 - dist: the six files above, regenerated by the build; no other dist file may change.
 - The contract README names admin shapes only in its intro sentence (README line 5) and needs no
   change.
@@ -559,13 +619,21 @@ Behavior:
 - `validateAdminConfigExport` validates each check with the existing `Check` rules
   (`validateCheck`, `src/validate.ts:137-139`) and rejects markers, `source`, `hasSecret` and
   `secret` in checks.
+- `validateAdminConfigSummary` (shape in "Contract fields") reads only own data properties, as
+  `checkInputProblem` does (`src/validate-admin.ts:30`), so a getter never runs. It returns the
+  same object, typed as `AdminConfigSummary`. Its error paths name the field
+  (`config.revision`, `config.checks`, `config.checks[<i>].id`) and never quote a value. It
+  accepts every answer that `validateAdminConfigResponse` of `1.7.1` accepts and every answer of
+  `2.0.0`.
 - No new module file under `src/` (status serves contract modules by name, status
-  `src/server.ts:189-205`).
+  `src/server.ts:188-204`).
 - `WIRE_VERSION` stays `1`. Docs: the revision is "of the applied configuration (file and
   database)", the redaction paragraph describes env names, keep markers and the export, and the
-  status table gets the new texts. A short note says the change is breaking for admin clients only.
+  status table gets the new texts. A short note says the change is breaking for admin clients only,
+  and that a client that only counts checks (the console connection test) uses
+  `validateAdminConfigSummary` to work with apis before and after the change.
 
-Tool facts (contract at `7ce23aa`):
+Tool facts (contract at `2c4e0e0`, re-read; unchanged from `7ce23aa` in these lines):
 - Bun 1.4.0: `package.json:7` (`packageManager`) and `:9` (`engines.bun`).
 - `check` script: `bun run lint && bun run build && bun run typecheck && bun run test`
   (`package.json:28`); `lint` is `biome check . && pulse-eslint .` (`:25`).
@@ -588,14 +656,106 @@ Checks:
    `source: "database"` accepted as input, `source: "file"` rejected as input, an `AdminFileStatus`
    with `state: "ok"` and a non-null `message` rejected, an export with `redacted: []` rejected,
    an export check with `secret` rejected.
+   It also covers counterexamples 40-42 for `validateAdminConfigSummary` with literal JSON
+   fixtures written in the test: a `1.x` answer (2 checks, `headers: ["authorization"]`,
+   `hasBody: true`, no `file`, no `shadowed`) accepted with `checks.length` 2; a `2.0.0` answer
+   (3 checks, `source`, keep markers, 1 `shadowed`, a `file` status) accepted with `checks.length`
+   3; each input of counterexample 42 rejected. The `1.x` fixture is also rejected by the new
+   strict `validateAdminConfigResponse` (literal verdict `false`), which shows why the summary
+   exists.
 3. `test/types.fixture.ts` compiles with values of every new type.
 4. `bun test test/smoke.test.ts` passes, and the export-list diff of `test/smoke.test.ts` adds
-   exactly the 8 names written out in "What changes in each file" and removes none (expected
+   exactly the 10 names written out in "What changes in each file" and removes none (expected
    value: that literal list in this spec, not the entry module under test).
 5. `git diff --name-only $(git merge-base origin/main HEAD) HEAD -- src` lists only
    `src/admin.ts`, `src/validate-admin.ts` and `src/index.ts`.
 
 Completion evidence: the PR lists the new exports, the check output and the version `2.0.0`.
+
+## Repository: console
+
+Files:
+- `package.json`
+- `bun.lock`
+- `src/connection-test.ts`
+- `src/connection-test.test.ts`
+- `src/server.setup.test.ts`
+- `docs/configuration.md`
+
+Behavior change: yes
+The connection test accepts the `GET /admin/config` answer of an api with database checks and
+still accepts the answer of older apis.
+
+What changes in each file:
+- package.json and bun.lock: the contract dependency (`package.json:29`, today `2c4e0e0`) moves to
+  the merged contract main SHA (`2.0.0`).
+- src/connection-test.ts: line 129 validates with `validateAdminConfigSummary` instead of
+  `validateAdminConfigResponse`; `checkCount` (line 134) stays `checks.length`. Nothing else
+  changes: texts, timeouts, the no-redirect fetch, the wire check and the token call stay.
+- src/connection-test.test.ts: today's `configBody` fixture (lines 15-21) stays as the `1.x`
+  case. New literal fixtures: the `1.x` answer of counterexample 40 and the `2.0.0` answer of
+  counterexample 41, and the bad answers of counterexample 42 in the table of failure cases
+  (lines 136-233), each with the text `pulse-api sent an invalid answer.` and the existing
+  "no sentinel in the result" assertion.
+- src/server.setup.test.ts: one new case next to "complete commits once, redirects, and closes
+  setup also for a second server" (line 511): a fake api that answers the `2.0.0` fixture of
+  counterexample 41; "Test connection" answers `200` with `Checks: 3`, "Finish setup" answers
+  `303`. The `config(checks)` fixture (lines 29-37) stays as the `1.x` case.
+- docs/configuration.md: line 53 adds one sentence: the connection test reads only the revision
+  and the check ids of `GET /admin/config`, so it works with pulse-api before and after admin
+  checks moved to its database.
+
+If `src/connection-test.ts` already validates with a tolerant summary validator, hold instead of a
+review.
+
+Behavior:
+- Counterexamples 40-42 through `testConnection` and through the owner setup page.
+- The failure texts stay those of `src/connection-test.ts:47-87`; a failed summary validation is
+  the `validation` kind and gives `pulse-api sent an invalid answer.`
+- No page change: `src/pages.ts:80` keeps `Checks: <n>`. No other contract validator changes use
+  (`validateTokensResponse`, `fetchJson`, `WIRE_VERSION` stay).
+- The token, the setup code and passwords stay out of logs, errors and pages (console `AGENTS.md`,
+  "This repository").
+
+Tool facts (console at `f320e5d`):
+- Bun 1.4.0: `package.json:9` (`engines.bun`) and `:32` (`packageManager`).
+- `check`: `bun run lint && bun run typecheck && bun run test` (`package.json:18`); `lint` is
+  `biome check . && pulse-eslint . && pulse-workflows` (`:15`); `test` is `bun test` (`:14`).
+- `bunfig.toml:2-3`: coverage on, line threshold 0.8, function threshold 0.
+- CI `.github/workflows/ci.yml:17-18` uses
+  `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
+  without the `build` input. At that ref (read with `gh api .../contents/...?ref=04108fa`,
+  byte-equal to the config clone `bc87049`) it runs `bun install --frozen-lockfile` (:26),
+  `bun run lint` (:28), `bun run typecheck` (:30) and `bun run test` (:38) on Bun 1.4.0 (:24).
+  Job `docker` (`ci.yml:20-155`) builds the image and checks it; it makes no api call.
+- Biome 2.6.3 (`package.json:21`); `biome.json:2` extends `@lorenzh/pulse-config/biome.json`,
+  whose `files.includes` at `04108fa` is `**` minus `dist`, `node_modules`, `bun.lock`, `*.html`,
+  `test/fixtures` (lines 10-17; byte-equal to the clone).
+- ESLint: `eslint.config.js:4` spreads the config base, where `sonarjs/cognitive-complexity` is 15
+  (config `eslint.config.js:16` at `04108fa`, byte-equal to the clone).
+
+Checks:
+1. `bun install --frozen-lockfile && bun run check` exits 0. Coverage stays at or above 0.8.
+2. Red first: the counterexample 41 case of `src/connection-test.test.ts` fails on `main`
+   (`f320e5d`) with `pulse-api sent an invalid answer.` and passes on the branch. The
+   counterexample 40 case and today's `configBody` cases pass on both. Expected values are the
+   literals of the tests (`isOk`, `checkCount: 2`, `checkCount: 3`, the fixed texts).
+3. The new `src/server.setup.test.ts` case passes with the literal `200`, `Checks: 3` and `303`.
+4. `git diff --name-only $(git merge-base origin/main HEAD) HEAD -- src` lists only the three
+   `src/` files of the Files list.
+5. Against a real older api: start api `2bc5910` with `bun install --frozen-lockfile` and
+   `bun start` on a free fixed `PORT`, `PULSE_DB` in a `mkdtemp` directory, `PULSE_CHECKS_FILE`
+   with exactly 2 checks written out in the PR, `PULSE_TOKENS_FILE`, and
+   `PULSE_API_ADMIN_TOKENS_FILE`, whose import gives `read`, `checks`, `incidents` and `admin`
+   (api `docs/configuration.md:13`, `:237`). In the console branch run
+   `bun -e 'import { testConnection } from "./src/connection-test.ts"; console.log(JSON.stringify(await testConnection(process.env.API_URL, { fetch, token: process.env.ADMIN_TOKEN })))'`.
+   Expected, as a literal: `{"isOk":true,"wireVersion":1,"checkCount":2,"adminScope":"confirmed"}`.
+   The command prints no token.
+
+Completion evidence: the PR names #565, the contract SHA, the red run of check 2, the output of
+check 5 and `bun run check`. Before handoff the implementer starts the console with `bun start`
+against the api of check 5 and runs "Test connection" once (console `AGENTS.md`, "End-to-end
+checks"), and reports the page text.
 
 ## Repository: api
 
@@ -639,7 +799,7 @@ Admin check writes move to the database, a broken file no longer blocks start or
 export route exists.
 
 What changes in each file (the new source and test files are new; all others exist at api
-2d4a6b2):
+2bc5910; api `src/` is the same as at `2d4a6b2`, only `docs/*.md` changed since):
 - package.json and bun.lock: the contract dependency moves to the merged contract main SHA.
 - src/migrations.ts: step 6 creates the tables check_definitions and config_state (one row,
   generation 0).
@@ -695,7 +855,7 @@ What changes in each file (the new source and test files are new; all others exi
   changed tests move file-protocol coverage to component and maintenance writes (see Risks) and
   add the new cases.
 - README.md and docs: docs/rest-api.md sections "Admin config routes" and "Audit log";
-  docs/operation.md sections "Changing checks", "Audit log" and the log line list (line 262);
+  docs/operation.md sections "Changing checks", "Audit log" and the log line list (line 270);
   docs/configuration.md where it says the file is the only source; docs/troubleshooting.md for a
   broken file.
 
@@ -718,15 +878,16 @@ Behavior: items 1-35 of "Required behavior", with the decisions above. Details:
   read beyond today.
 - The startup log line `listening` (`src/start.ts:384-399`) adds `fileState` and `databaseChecks`
   (a count). No path or value is added.
-- Docs: replace "The checks file is the only source of truth" (`docs/operation.md:201`,
-  `docs/rest-api.md:321`), the `503` paragraph for check writes (`docs/operation.md:229`), "A start
-  with an invalid file still fails" (`docs/operation.md:212`), and the redaction paragraph of
+- Docs: replace "The checks file is the only source of truth" (`docs/operation.md:209`,
+  `docs/rest-api.md:327`), the `503` paragraph for check writes (`docs/operation.md:237`), "A start
+  with an invalid file still fails" (`docs/operation.md:220`), and the redaction paragraph of
   `docs/rest-api.md`. Document the effective set, precedence, keep markers with a GET-edit-PUT
   `curl`/`jq` example, file state, start fallback, export with `redacted`, the downgrade rule, and
   that components and windows may reference only file checks. `docs-claims.test.ts` gets claims for
   the removed sentences.
 
-Tool facts (api at `2d4a6b2`):
+Tool facts (api at `2bc5910`; `package.json`, `bunfig.toml`, `biome.json` and `ci.yml` are
+unchanged since `2d4a6b2`):
 - Bun 1.4.0: `package.json:9` (`engines.bun`) and `:35` (`packageManager`).
 - `check`: `bun run lint && bun run typecheck && bun run test` (`package.json:20`); `lint` is
   `biome check . && pulse-eslint . && pulse-workflows` (`:16`); `test` is `bun test` (`:15`).
@@ -744,7 +905,7 @@ Tool facts (api at `2d4a6b2`):
 - ESLint: `sonarjs/cognitive-complexity` 15 (config `eslint.config.js:16`).
 
 Checks:
-1. Red first: these tests fail on `main` (`2d4a6b2`) for the stated reason, shown in the PR:
+1. Red first: these tests fail on `main` (`2bc5910`) for the stated reason, shown in the PR:
    a. a check created by `POST /admin/checks` on a read-only checks file answers `201` and is in
       `GET /probe/checks` (on `main`: `503`);
    b. a database check D shadowed by a file D: `/checks` and `/probe/checks` show the file
@@ -759,7 +920,9 @@ Checks:
 2. HTTP tests on `127.0.0.1:0` with temp files and a `mkdtemp` database, injected clock and
    reload calls, cover counterexamples 1-39, every response typed and checked with the contract
    validators (`validateAdminConfigResponse`, `validateAdminCheckView`,
-   `validateAdminConfigExport`).
+   `validateAdminConfigExport`). Every `GET /admin/config` answer of these tests, also with
+   shadowed entries and each file state, also passes `validateAdminConfigSummary` (the console's
+   validator).
 3. A reopen test: create database checks (one heartbeat), close, start again with the same
    database and the same file; definitions, revision, heartbeat secret and source are the same.
    Then start with a broken file: the snapshot's file checks are served, a file heartbeat ping with
@@ -794,15 +957,26 @@ Checks:
    assertion unchanged (only line 178 of that test changes).
 6. `bun install --frozen-lockfile && bun run check` exits 0. Coverage stays at or above 0.8.
 7. `bun run bench:selftest` exits 0 and `docker build --tag pulse-api:local .` succeeds.
-8. `bun bench/run.ts --a 2d4a6b2 --b <branch sha>` as in "Performance impact"; gating metrics within
+8. `bun bench/run.ts --a 2bc5910 --b <branch sha>` as in "Performance impact"; gating metrics within
    budget.
 9. `bun start` with a temp `PULSE_DB`, a copy of `checks.example.json` (placeholder secret
    replaced) and an admin token import: `POST /admin/checks`, GET-edit-PUT, a broken file, a
    `GET /admin/config` showing `invalid`, a `POST` with the fresh revision, repair, `GET
    /admin/config/export`. Report the commands and statuses.
+10. Console regression (the console change of this spec is merged first). Start the api branch
+    with `bun start` as in check 9, but with a checks file of exactly 2 checks (`file-a`,
+    `file-b`, written out in the PR). `POST /admin/checks` `db-a` and `db-b` (each with a fresh
+    revision), then add `db-b` to the file and send `SIGHUP`, so `db-b` is shadowed. In a checkout
+    of console `main` at its merged SHA (`bun install --frozen-lockfile`) run
+    `bun -e 'import { testConnection } from "./src/connection-test.ts"; console.log(JSON.stringify(await testConnection(process.env.API_URL, { fetch, token: process.env.ADMIN_TOKEN })))'`.
+    Expected, as a literal: `{"isOk":true,"wireVersion":1,"checkCount":4,"adminScope":"confirmed"}`
+    (`file-a`, `file-b`, the file `db-b`, `db-a`; the shadowed copy is not counted). The command
+    prints no token. A console checkout at `f320e5d` (before the console change) gives
+    `{"isOk":false,"text":"pulse-api sent an invalid answer."}` against the same api; the PR
+    shows both lines.
 
 Completion evidence: the PR names #565, shows the red runs of check 1, the green `bun run check`,
-the bench numbers, the `bun start` session and the known limits (components and windows only in
+the bench numbers, the `bun start` session, the two lines of check 10 and the known limits (components and windows only in
 the file; no import; rollback needs a backup).
 
 ## Repository: deploy
@@ -879,7 +1053,8 @@ Behavior:
    a writable directory.
 7. Change no pin, no image line, no other step.
 
-Tool facts (deploy at `621cbf0`):
+Tool facts (deploy at `c3e340a`; since `621cbf0` only `cli/*` changed, so these lines and the
+`e2e/` lines cited above are unchanged):
 - CI job `lint` runs shellcheck and `bash -n` on every `*.sh` (`.github/workflows/ci.yml:34-37`),
   `node --check` (`:38-39`), `jq empty` (`:40-41`), the helper tests (`:42-49`),
   `scripts/check-setup.sh` (`:50-51`), its test (`:52-53`) and the other script tests (`:54-61`).
@@ -929,5 +1104,8 @@ The issue's acceptance criteria map to:
 - "a shadowed id reports the file version": api check 1b, deploy item 3c;
 - "a GET-then-PUT keeps header values": api check 1c, deploy item 3b;
 - "a broken file still allows database writes": api check 1d, deploy item 3d;
-- "CI and compose-e2e green": contract and api `bun run check` and CI; deploy CI (Run A on the pin)
-  and Run B on the api `main` image.
+- "CI and compose-e2e green": contract, console and api `bun run check` and CI; deploy CI (Run A on
+  the pin) and Run B on the api `main` image.
+- No admin client breaks (plan-review P1): console checks 2 and 5 (console on the summary
+  validator works with the `1.x` answer of api `2bc5910`) and api check 10 (merged console `main`
+  works with this api; console `f320e5d` does not, which shows why the console merges first).
