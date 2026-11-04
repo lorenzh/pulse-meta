@@ -57,7 +57,7 @@ Engineering choices made here (the issue review lists them as open points; none 
 
 [#563](https://github.com/lorenzh/pulse-meta/issues/563) (TOTP, recovery codes, sessions) comes
 before #564 (#460 s19, wave 2 before wave 3). At the time of this spec it is open and absent
-from console `main` (`f320e5d59703b654e6cc573b7e7f636598e20624`). This spec uses only the behavior
+from console `main` (`edefdbeaa152d602d724a3c19cc3ca3ad760aa6b`). This spec uses only the behavior
 that #460 s5 decides for #563:
 
 - a TOTP second factor per user (seed encrypted at rest) with ten hashed recovery codes;
@@ -184,8 +184,14 @@ allowed or denied. A target of `owner` maps to no row and is always denied.
   format (`422`), target lookup (`404`), the target rule (`403`), the commit (`303`, `200`, `409`
   or `500`).
 - The public link routes (`GET` and `POST` of `/invite/<token>` and `/reset/<token>`) have no
-  session, 2FA or role step. A session cookie, valid or not, is neither needed nor read, and it
-  does not change the answer.
+  session, 2FA or role step. A session cookie is never needed. No step of their GET or POST order
+  reads it, so a session cookie (valid, expired, unknown or of any user) does not change the
+  status, the CSRF check or the link check. There is one exception, and it happens after the
+  answer is already decided. When an invite POST has committed, the session rotation reads the
+  session cookie and deletes the row it names, exactly as sign-in does (`startSession`,
+  `src/server.ts:590-600`). Then the browser holds only the new user's session. The reset POST
+  never reads the session cookie: it deletes every session of the link's user, so if the cookie
+  belongs to that user, its row goes with them.
   - The order for their GET: route and method (`404`, `405`; a malformed token is the plain
     `404 not found`), phase (before setup `303` to `/setup`), loopback `Host` (`421`), the link
     lookup (the invalid-link `404` page), then the `200` form. Every GET of these two routes
@@ -325,7 +331,7 @@ their own GET and POST order above, with the anonymous CSRF cookie.
 | `POST /team/transfer` | row 25 | `user`, `confirm_name`, `csrf` | `303` to `/sign-in?transfer=done`; `403`, `404`, `409`, `422` |
 | `POST /team/require-2fa` | `team.require-2fa` | `value` (`on` or `off`), `csrf` | `303` to `/team`; `403`, `422` |
 | `GET /account/password` | row 27 | | `200` form |
-| `POST /account/password` | row 27 | `current_password`, `password`, `password_confirm`, `csrf` | `303` to `/account/password?changed=1`; `401`, `422`, `429` |
+| `POST /account/password` | row 27 | `current_password`, `password`, `password_confirm`, `csrf` | `303` to `/account/password?changed=1`; `401`, `409`, `422`, `429` |
 | `GET /invite/<token>` | public | | `200` form or `404` invalid-link page |
 | `POST /invite/<token>` | public | `name`, `password`, `password_confirm`, `csrf` | `303`; `404`, `409`, `422` |
 | `GET /reset/<token>` | public | | `200` form or `404` invalid-link page |
@@ -373,7 +379,10 @@ transfer). The row of the actual target is checked after the target lookup.
   `BEGIN IMMEDIATE` transaction: the invite is still live and its creator still may create it;
   no account has the email (`409` "An account with this email exists."); insert the user with
   the bound email and role; set `used_at` and `accepted_user_id`; write `invite.accept`. Then a
-  session starts as at sign-in (old session cookie row deleted). The answer is `303` to the #563
+  session starts for the new user as at sign-in. This is the one place a public link route reads
+  the session cookie: when the request carries one, the row it names is deleted, whoever it
+  belongs to, and the new session cookie replaces it. Its value never affected the steps before
+  (see "Where the role is checked"). The answer is `303` to the #563
   enrolment flow when the role needs TOTP (Admin, or everyone when required), else to `/`.
 - No field of the accept form can change the email or the role. Unknown fields are ignored.
 - **Invalid-link page.** Unknown, malformed-but-routed, expired, revoked, used, and invites whose
@@ -459,11 +468,46 @@ and answers `403` "This needs the Owner role." and changes nothing.
 
 `GET /account/password` shows `current_password`, `password`, `password_confirm`. `POST` checks
 the fields (`422`), then the sign-in throttle with the user's email as account key and the
-client key (`429` as at sign-in), then verifies the current password (`401` "The current
-password is wrong.", counted as a failure). Then in one transaction: update the hash, delete every
-other session of the user (the current one stays), write `user.password-change`. The answer is
-`303` to `/account/password?changed=1`, which shows "Your password is changed. Other sessions
-are signed out."
+client key (`429` as at sign-in). It then verifies the current password (`401` "The current
+password is wrong.", counted as a failure) against the password hash H0 that it read from the
+user row before the verification. Then it hashes the new password. Then one `BEGIN IMMEDIATE`
+transaction runs a compare-and-set (see "Credential changes during password work"). It
+continues only when the request's session row still exists and the user's `password_hash` still
+equals H0. If so, it sets the new hash, deletes every other session of the user (the current one
+stays) and writes `user.password-change`. The answer is `303` to `/account/password?changed=1`,
+which shows "Your password is changed. Other sessions are signed out." When the compare fails,
+the answer is `409` "Your password or session changed while this was saved. Nothing was
+changed." No row changes, no event is written and the throttle reservation is released.
+
+A pending reset link of the user stays valid after an own password change. Its holder was
+authorized by the issuer, so a later use of the link sets the password again.
+
+### Credential changes during password work
+
+Hashing and verifying a password are asynchronous: `deps.hashPassword` and `deps.verifier`
+(`src/server.ts:109-111`) wrap `Bun.password.hash` and `Bun.password.verify` (`src/main.ts:56-62`).
+Other requests run while one is waiting on them. Today's sign-in reads the user, awaits the
+verification and then creates the session (`src/server.ts:564-578`) with no re-check. A reset
+that commits during that wait would leave a session made with the old password. So every
+request that awaits password work before it writes revalidates in the transaction of the write:
+
+- **Sign-in** (changed by #564). Session creation runs in one `BEGIN IMMEDIATE` transaction with
+  the rotation of `startSession`. That transaction re-reads the user by id and continues only
+  when the row exists and its `password_hash` equals the hash that the verification used.
+  Otherwise it creates no session. The request then answers `401` with the existing wrong
+  credentials text, counts a throttle failure, logs `sign-in failed` with reason `credentials`
+  and sends no `set-cookie` for the session. If #563 splits sign-in into a password step and a
+  second-factor step, its pending state keeps the verified hash on the server, never in a
+  cookie. The commit that finally creates the session runs this same check.
+- **Own password change**: the compare-and-set above.
+- **Reset and recovery POST**: the commit re-checks that the link is valid (above). A reset
+  deletes every other unused link of the user. So two links of one user never both commit.
+- **Invite accept**: the commit re-checks that the invite is live and that the email is free
+  (above).
+
+The check relies on one fact: every new hash has a fresh random salt (argon2id through
+`Bun.password.hash`). So a reset to the same password text still gives a different hash, and H0
+never matches by accident. The check never compares password texts.
 
 ### Owner recovery command
 
@@ -592,7 +636,8 @@ expected value from the module under test.
    one `303` and one `404`, and `users` gains 1 row. After a restart (new server, same file) the
    link still works. Scanning the database file bytes for the plain token finds 0 matches; the
    digest column holds its SHA-256 hex.
-4a. **Anonymous redemption and its CSRF.** Every request here carries no session cookie.
+4a. **Anonymous redemption and its CSRF.** Unless an item names a session cookie, the request
+   carries none.
    - Invite: a GET of a live invite answers `200` and a `set-cookie` for `pulse_console_csrf`.
      A POST with that cookie and the same value in `csrf` answers `303` and makes the account.
    - Reset: a GET of a valid link answers `200` and a `set-cookie` for `pulse_console_csrf`. A
@@ -607,12 +652,51 @@ expected value from the module under test.
      token in `csrf` and no anonymous cookie, answers `403`, because public links check only
      the anonymous cookie.
    - An invalid link GET answers the `404` page without `set-cookie`.
+4b. **Invite acceptance with an existing session.** An Admin signed in as session S creates a
+   Member invite. In the same browser (S's cookie and the anonymous cookie both sent), the GET
+   answers `200`, and the POST with the anonymous CSRF value answers `303`. After it, the
+   `sessions` table has 0 rows for the Admin's S. It has exactly 1 row for the new Member, and
+   its digest is that of the `session` value in the `set-cookie` of the answer. S's old cookie
+   then gets `303` to `/sign-in` on `GET /team`. The same POST with an unknown or expired
+   session cookie also answers `303` and makes the account. The same POST with S's cookie but
+   without the anonymous cookie answers `403` and leaves S's row in place. So the session cookie
+   neither helps nor hurts the checks, and it is only rotated after a commit. A reset POST for
+   user U that carries a live session cookie of another user V answers `303`. Afterwards V's
+   session row still exists, and U has 0 session rows.
 5. **Reset links.** A link works at `created_at + 86399999` and fails at `+ 86400000`. After one
    successful use a second POST gives `404`. After use: the old password fails sign-in, the new
    one works, both pre-existing session cookies of the target get `303` to sign-in, and the
    target's TOTP row still exists so sign-in asks for the code. A second issued link makes the
    first fail. A link for a Member who was promoted to Admin before use fails. A link of an Admin
    who was demoted to Member before use fails.
+5a. **Credential races, deterministic.** These tests inject a hand-written gated
+   `hashPassword` and verifier. The fake hash of a password text p for the n-th call is the
+   literal `fake$<n>$<p>`. The verifier accepts p for a hash that ends in `$<p>`. A test can hold
+   any call and resolve it later, with no timers. In each case the test holds the call, finishes
+   the other request, then releases the call.
+   - Sign-in versus reset: a sign-in with the old password P0 is held in verification. A reset
+     link POST sets P1 and answers `303`. The sign-in is released (verified `true` against the
+     old hash) and answers `401` with the wrong credentials text and no session `set-cookie`.
+     The `sessions` table has 0 rows of that user. A new sign-in with P0 answers `401`, and one
+     with P1 answers `303`.
+   - Sign-in versus removal: a sign-in held in verification, then the user is removed (`303`).
+     On release the sign-in answers `401`, not `500`, and `sessions` has 0 rows for that id.
+   - Own change versus reset: the user's `POST /account/password` (P0 to P2) is held while it
+     hashes P2. A reset link POST sets P1 and answers `303`. On release the change answers `409`
+     with the text above. `password_hash` equals the reset's literal fake hash. Sign-in with P1
+     answers `303`, and with P2 or P0 it answers `401`. `people_events` has 1 new
+     `user.password-reset` row and 0 `user.password-change` rows. The same case, held at the
+     verification of the current password instead of the hash, gives the same result.
+   - Two own changes from one session at once (P0 to P2 and P0 to P3), both held while they hash:
+     released in turn, the first answers `303` and the second `409`. The stored hash is the
+     first's, and 1 `user.password-change` row is written.
+   - Own change versus role change: the change is held, the Owner changes the user's role (which
+     deletes the user's sessions). On release the change answers `409`, and the hash is
+     unchanged.
+   - Reset first, then own change: a reset POST is held while it hashes P1. The user's own
+     change to P2 commits (`303`). The reset is released, its link is still valid, and it answers
+     `303`. The stored hash is the reset's. This shows the documented order: a valid link still
+     sets the password.
 6. **2FA requirement.** An invited Admin, a promoted Admin (with an old cookie and a new
    sign-in), and a recovered Owner reach only the enrolment flow until TOTP is set; afterwards
    `GET /team` gives `200`. With the requirement on, a Viewer without TOTP is sent to enrolment;
@@ -685,6 +769,12 @@ Checklist items that apply:
   Redemption works without a session and is refused (`403`) without the matching cookie.
   Invalid links give one `404` page for every case, without KDF work. A transfer and every role
   change end all sessions of the changed people, with no exception for the requesting session.
+  The session cookie never decides a public link answer. It is only rotated after a committed
+  invite acceptance.
+- **Credential races.** A sign-in creates a session only if the password hash it verified is
+  still the stored one when it commits. An own password change commits only if its session
+  still exists and the stored hash is still the one it verified. Gated fakes test both
+  deterministically (acceptance 5a).
 - **Body and size limits.** Forms keep the 8192-byte cap; passwords 12 to 128 code points; names
   1 to 100; emails 3 to 254; ids at most 16 digits; tokens exactly 43 characters.
 - **Input validation.** Role values (never `owner` from a client), ids, emails, names, typed
@@ -708,9 +798,12 @@ One repository: console. pulse-api, pulse-contract, pulse-kit, pulse-config and 
 not change.
 
 - Before: #563 merges in console (prerequisite).
-- Then console merges #564. The console still pins contract
-  `2c4e0e08201c6efcfff1cd1f7835616e1dff9de3` and talks to the api only as before, so every api
-  version that worked with #562 keeps working.
+- Then console merges #564. The pins in console `package.json` do not change: contract
+  `176fb6ed14b2f14b730a9fd1757239f210f97a29` (`package.json:29`) and kit
+  `536133f3e8b708179fa01feeb02395a0e1961e07` (`package.json:30`), as on console `main`
+  `edefdbeaa152d602d724a3c19cc3ca3ad760aa6b`. If #563 moves a pin, #564 keeps the pin it finds on
+  `main`. The console talks to the api only as before, so every api version that works with
+  console `main` today keeps working.
 - deploy `full` and `demo` run the published console image and are not affected until a person
   tags a console release and bumps the pin. deploy `dev` builds console `main`; the migration
   runs on its fresh volume, and `/readyz` stays `200`.
@@ -789,6 +882,19 @@ not change.
   `/invite/%2e%2e`, `//invite/<token>`: `404 not found`, path label `other`.
 - **Own password.** Wrong current password 5 times in 15 minutes: the 6th attempt `429` even with
   the right password. A new password of 129 code points: `422`.
+- **Credential races.**
+  - A wrong implementation creates the session right after the verification resolves. A
+    sign-in with the old password that is still being verified when a reset commits must answer
+    `401` and create 0 sessions, although its verification returned `true`.
+  - A wrong implementation writes the own password change with a plain `UPDATE`. A change held
+    while a reset commits must answer `409`, and the reset's password must remain.
+  - A wrong implementation compares only the hash. A change whose session was deleted by a role
+    change during the hash must answer `409`.
+- **Session cookie on link routes.** A wrong implementation reads the session cookie before the
+  commit. An invite POST with the issuing Admin's live session cookie and a matching anonymous
+  CSRF cookie must answer `303`, not `403` and not "already signed in". The Admin's session row
+  must be gone after it. A reset POST with another user's session cookie must leave that user's
+  session row in place.
 
 There are no statistics in this change.
 
@@ -810,7 +916,8 @@ names, metrics label values and the command file. Searches of the contract and c
 | `owner-reset`, `owner.recover` | 0 | 0 |
 | `password-change`, `2fa-reset`, `role-change` | 0 | 0 |
 | `transfer=done`, `reset=done` (sign-in notices) | 0 | 0 |
-| `two-factor-rule`, `team-routes` (module names) | 0 | 0 |
+| `two-factor-rule`, `team-routes`, `races` (module names) | 0 | 0 |
+| `changed=1` (password notice) | 0 | 0 |
 | `/account` | 0 | 0 |
 
 The People action names do not equal any api audit action (contract `src/audit.ts:6-23`:
@@ -825,8 +932,8 @@ Every backticked item in this list is a file path. Symbols and routes in the not
 
 - `src/database.ts` (migration N, the schema version constant)
 - `src/database.test.ts`
-- `src/account-store.ts` (role read, role update, removal, password update, session deletion per
-  user, the transfer transaction)
+- `src/account-store.ts` (role read, role update, removal, the compare-and-set password update,
+  session creation with the hash re-check, session deletion per user, the transfer transaction)
 - `src/account-store.test.ts`
 - `src/permissions.ts` (new: roles, action ids, matrix, target rules, required-role text)
 - `src/permissions.test.ts` (new)
@@ -857,6 +964,8 @@ Every backticked item in this list is a file path. Symbols and routes in the not
 - `src/server.reset.test.ts` (new)
 - `src/server.roles.test.ts` (new)
 - `src/server.security.test.ts` (sentinel scans for tokens)
+- `src/server.sign-in.test.ts` (sign-in versus a reset or a removal during verification)
+- `src/server.races.test.ts` (new: the own password change races of acceptance 5a)
 - `README.md`
 - `docs/configuration.md`
 - `docs/team.md` (new)
@@ -891,10 +1000,14 @@ Implement "Required behavior" of this spec in console:
 - invites, reset links, 2FA reset, role change, removal, transfer (it ends every session of both
   people), own password change;
 - the People log with atomic writes;
+- the revalidation of "Credential changes during password work": sign-in creates its session in
+  one transaction only if the verified hash is still current; the own password change uses a
+  compare-and-set;
 - the owner recovery command;
 - metrics labels and log lines as specified.
 
-Existing behavior stays: setup, sign-in, sign-out, the throttles, cookies, CSP, the POST order
+Existing behavior stays: setup, sign-in (except the revalidation before its session write),
+sign-out, the throttles, cookies, CSP, the POST order
 up to CSRF, `/healthz`, `/readyz`, `/metrics`, the start errors and their texts.
 
 ### Tool facts (verified)
@@ -933,7 +1046,9 @@ up to CSRF, `/healthz`, `/readyz`, `/metrics`, the start errors and their texts.
 - `README.md`: roles in one paragraph with a link to `docs/team.md`; new endpoints in the
   endpoint table; the owner recovery command replaces the "Reset (destructive)" paragraph as the
   first way (the destructive reset stays as the last resort); loopback-mode link limit.
-- `docs/configuration.md`: schema version N, new tables, POST order with the role step, new
+- `docs/configuration.md`: schema version N, new tables, POST order with the role step, the
+  public link orders (anonymous CSRF, session rotation only after an invite commit), the
+  credential re-checks of sign-in and the own password change, new
   metrics labels and log lines, the recovery command's settings and texts.
 - `docs/team.md` (new): the matrix of this spec, target rules, invite and reset rules, 2FA
   requirement, ownership transfer, People log contents, and "API tokens and console roles".
