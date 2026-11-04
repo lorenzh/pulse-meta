@@ -147,10 +147,10 @@ $ grep -rn 'maskUserInfo' contract/src config deploy/cli
 ## Repository: deploy
 
 Files:
-- `cli/docker.ts`: add the exported `maskUserInfo` and call it from `firstLine`. Add a doc comment.
-- `cli/docker.test.ts`: unit tests for `maskUserInfo` and `firstLine` (Counterexamples 1-18 and F1-F4), plus the five diagnostic cases for all four commands.
-- `cli/test/fake-docker.ts`: an optional `FakeOpts` field to inject a failing result (code 1 and given stderr) for one call: `version`, `config`, `ps`, `volume ls` or `volume inspect`. The default behavior stays unchanged.
-- `cli/main.test.ts`: the end-to-end regression from "Done when", run through `main`.
+- `cli/docker.ts`: add the exported function maskUserInfo and call it from firstLine. Add a doc comment.
+- `cli/docker.test.ts`: unit tests for maskUserInfo and firstLine (Counterexamples 1-18 and F1-F4), plus the five diagnostic cases for all four commands.
+- `cli/test/fake-docker.ts`: an optional field in the fake options type to inject a failing result (code 1 and given stderr) for one call: docker version, compose config, docker ps, volume ls or volume inspect. The default behavior stays unchanged.
+- `cli/main.test.ts`: the end-to-end regression from "Done when", run through the main entry point.
 
 Behavior change: yes
 CLI diagnostics no longer show URL user info.
@@ -163,8 +163,8 @@ Implement the "Required behavior" section, rules 1 to 9. `firstLine` stays the o
 
 1. **Done-when regression (`cli/main.test.ts`).** Use `makeInstall()` for an install directory. Call `main(["status", "--dir", dir], io, {}, { spawn, env })` with the spawn from `fakeDocker`. Inject code 1 and stderr `open /x/http:/u:SENTINEL@127.0.0.1:1/x.yaml: no such file or directory` on the Compose `config` call. Preflight succeeds. Assert all of:
    - exit code `1`;
-   - collected stderr and stdout contain `pulse status: docker compose config failed: open /x/http:/(hidden)@127.0.0.1:1/x.yaml: no such file or directory`;
-   - neither stream contains `SENTINEL` or `u:SENTINEL`.
+   - collected stderr contains `pulse status: docker compose config failed: open /x/http:/(hidden)@127.0.0.1:1/x.yaml: no such file or directory` (`guarded` writes the error through `deps.err`, `cli/lifecycle.ts:89-91`, so stdout does not carry it);
+   - neither collected stderr nor collected stdout contains `SENTINEL`.
 
    `status` takes `--dir` (`cli/args.ts:102`).
 
@@ -186,7 +186,7 @@ Implement the "Required behavior" section, rules 1 to 9. `firstLine` stays the o
 
 - `bun install --frozen-lockfile && bun run check` passes.
 - `bun run build && bash cli/test/errors.sh dist/pulse` passes, so existing failure messages still work in the binary.
-- `grep -rn 'firstLine(' cli/*.ts` shows only the definition and the five call sites. No caller bypasses the mask.
+- `grep -n 'firstLine(' cli/docker.ts` prints exactly 6 lines: the definition and the five diagnostic call sites. No product caller bypasses the mask. (Test files call firstLine too, so the grep is limited to `cli/docker.ts`.)
 
 ### Completion evidence
 
@@ -195,4 +195,4 @@ Implement the "Required behavior" section, rules 1 to 9. `firstLine` stays the o
 
 ## Acceptance
 
-Done when the deploy test in "Tests" item 1 passes. Its stderr line is `open /x/http:/u:SENTINEL@127.0.0.1:1/x.yaml: no such file or directory`. The CLI output contains no `SENTINEL` and contains the literal `pulse status: docker compose config failed: open /x/http:/(hidden)@127.0.0.1:1/x.yaml: no such file or directory` with exit code 1. The same test fails on deploy `621cbf0`.
+Done when the deploy test in "Tests" item 1 passes. Its stderr line is `open /x/http:/u:SENTINEL@127.0.0.1:1/x.yaml: no such file or directory`. Neither stdout nor stderr contains `SENTINEL`, and stderr contains the literal `pulse status: docker compose config failed: open /x/http:/(hidden)@127.0.0.1:1/x.yaml: no such file or directory` with exit code 1. The same test fails on deploy `621cbf0`.
