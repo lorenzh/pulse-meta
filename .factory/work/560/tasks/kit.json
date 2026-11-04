@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "target": "kit",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Kit agent guidance points to the reference for existing exports",
+      "files": [
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: kit, sole Behavior and edits bullet (F8), Checks and Completion evidence; Acceptance evidence N21/P12; Required behavior and Non-goals. Replace planned-modules claim with runtime helpers only, no service logic, and docs/index.md as the reference for existing exports; do not duplicate module list. Only AGENTS.md changes. Preserve all other conventions; add no tests, dependencies or dist changes.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "0 changed paths without the .md suffix; changed paths are limited to this task's files."
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; the repository's full lint, build, typecheck and test suite passes, including its coverage gate. The subsequent dist-status check has empty output."
+        },
+        {
+          "command": "rg -n -F -- 'Planned modules' AGENTS.md",
+          "expected": "exit 1 (no matches); exit 2 is a failure."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md",
+          "expected": "P12/F8: reviewer verifies runtime helpers only/no service logic, points to docs/index.md as the reference for existing exported helpers, does not duplicate a module list. Check against src/index.ts, package.json exports and docs/index.md Exports; link resolves to existing file/heading. Changed-file list is exactly AGENTS.md."
+        },
+        {
+          "command": "git status --porcelain -- dist",
+          "expected": "After bun run check (including build): empty output; no tracked or untracked dist changes."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body contains 1 evidence row for F8 with item, file/section, old text, new statement, source file/symbol and checked commit; cites src/index.ts, package.json exports and docs/index.md Exports. Includes N21 output, P12/link review, bun run check result, empty dist status and changed-file list containing only AGENTS.md."
+        }
+      ]
+    }
+  ]
+}
