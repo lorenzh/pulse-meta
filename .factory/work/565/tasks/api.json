@@ -33,29 +33,84 @@
     {
       "id": "T2",
       "kind": "step",
-      "title": "Admin checks use atomic database writes while file precedence and recovery stay effective",
+      "title": "Admin check writes are atomic database transactions with keep markers and a combined revision",
       "files": [
         "package.json",
         "bun.lock",
         "src/check-store.ts",
         "src/effective-checks.ts",
         "src/check-write.ts",
+        "src/config-holder.ts",
+        "src/config-reload.ts",
+        "src/config-write.ts",
+        "src/admin-routes.ts",
+        "src/service.ts",
+        "src/start.ts",
+        "src/config-db.test.ts",
+        "src/config-admin.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, check-write routes and transactional reconcile; Required behavior 1-18 and 28-32 for check writes, counterexamples 1-24 and 35-39 for check writes; Checks 1a-1d, Check 2 for the database check routes and Check 3 for writes. Already done by earlier partial runs and not to be redone: commit 1f20f9f pins the merged contract 2.0.0 main full SHA in package.json and bun.lock and moves the admin check views and their producers/tests to the 2.0.0 shape; commit e7ac050 adds the pure effectiveChecks merge in src/effective-checks.ts (applied file order first, then unshadowed definitions in creation order, separate shadowed list, effective heartbeat digest map) and the exported single-check parser parseCheck in src/config.ts. Build on them. First record the four red regressions on baseline 2bc5910 (Checks 1a-1d: POST on a read-only file returns 201 with probes receiving the literal definition; file name wins at public/probe reads and shadowed reports source database; name-only GET-edit-PUT retains literal header/body sentinels; broken bytes stay unchanged after POST 201 with the fresh revision), each failing for the specified behavioral reason and not an import or type error, then make them green. Move the check routes to src/check-write.ts: file-only ids are read-only 409, creates collide with applied file ids and database ids (409), shadowed PUT is 409 and shadowed DELETE is 204, absent ids 404. Materialize keep markers case-insensitively only from the same database definition, retain omitted heartbeat secrets as digests, rotate explicit secrets, remove omitted headers and body, and validate the materialized check with the file rules via parseCheck (marker/materialization/reference errors 422). Preserve exact statuses and order, ETag, Location, audit actions, metrics and safe messages of items 8-18. Share the writer lock. Commit the definition, generation +1, upsertChecks and the audit entry in one SQLite transaction; every committed check write advances the generation by exactly 1. Change the service reconcile so it can join the caller transaction, with the exact service removal log text from Contract fields; publish holder and cache changes and effects only after commit, so a rollback leaves every SQL row, audit entry, revision and in-memory state unchanged (injected transaction failure is 500). Wire the effective set into the holder, file apply/adopt (reload) and startup so database writes and file reconciles use the same in-memory set with no SQL per admin read beyond today; runtime identity and history stay keyed by id and no shadow transition deactivates an id. The admin revision is 'sha256-' plus the lowercase hex SHA-256 of the UTF-8 '<applied file revision>\\n<database generation>' (one newline); invalid, unreadable or pending file bytes do not change it; every following write needs its success ETag or a freshly fetched revision, so stale or racing writes are 412 and the first concurrent PUT is 200. Database check writes never return 503 and never touch the file. If admin-created checks are already stored in the database at task start, obey the section's needs-input condition. The startup order stays file first in this task (T3 changes it), the file state fields, snapshot writes and heartbeat digest compare are T3, and component/window write rules, docs and sentinel cells are T4. Use temp databases/127.0.0.1:0, injected clock/reloads and typed contract-validated responses; every GET /admin/config response in these HTTP tests, including shadowed entries, passes validateAdminConfigSummary as well as the strict 2.0.0 response validator.",
+      "acceptance": [
+        {
+          "command": "bun test src/config-db.test.ts src/config-admin.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Check 1a: POST on a read-only file returns 201 and probes receive the literal definition. 1b: file name wins at public/probe reads; shadowed reports source database. 1c: name-only GET-edit-PUT retains literal header/body sentinels. 1d: broken bytes remain unchanged after POST 201 with the fresh revision. Retain evidence that these cases failed on baseline 2bc5910 for the specified behavioral reasons, rather than import/type errors."
+        },
+        {
+          "command": "bun test src/config-db.test.ts src/config-admin.test.ts src/start.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Cover the check-write counterexamples: conflicts 409, absent ids 404, marker/materialization/reference errors 422, stale/racing writes 412 (the first concurrent PUT is 200, the stale second is 412), injected transaction failure 500 with unchanged SQL rows, audit, revision and in-memory state. Each committed check write advances database_generation by exactly 1, and the admin revision equals an independent node:crypto sha256- hash of '<file revision>\\n<generation>'; invalid, unreadable or pending file bytes leave it unchanged. Shadowed PUT is 409, shadowed DELETE is 204. Every GET /admin/config response, including shadowed entries, passes validateAdminConfigSummary."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; all existing and new tests pass with line coverage >= 0.8. No public/probe/wire shape, auth throttle, scope, size-limit, metric name/label or unrelated dependency changes; the contract pin stays at the 2.0.0 SHA of 1f20f9f."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "File state, snapshot persistence and database-first startup keep the service running on a broken file",
+      "files": [
         "src/config.ts",
         "src/config-reload.ts",
         "src/config-holder.ts",
-        "src/config-write.ts",
-        "src/admin-routes.ts",
+        "src/check-store.ts",
         "src/start.ts",
         "src/server.ts",
         "src/service.ts",
         "src/config-db.test.ts",
         "src/config-file-state.test.ts",
         "src/start.file-fallback.test.ts",
+        "src/server.heartbeat.test.ts",
+        "src/start.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, file state, recovery and heartbeat changes; Required behavior 19-27, counterexamples 25-30; the file-state, fallback and heartbeat portions of Checks 2 and 3 and Check 4 heartbeat digests. Already done by earlier partial runs and not to be redone: commit 1f20f9f pins the merged contract 2.0.0 main full SHA in package.json and bun.lock and moves the admin check views and their producers/tests to the 2.0.0 shape; commit e7ac050 adds the pure effectiveChecks merge in src/effective-checks.ts (applied file order first, then unshadowed definitions in creation order, separate shadowed list, effective heartbeat digest map) and the exported single-check parser parseCheck in src/config.ts. Build on them. T2 has already added the check-write routes, the transactional reconcile and the combined admin revision; build on them. Implement the file status (ok, invalid, unreadable, written-not-applied) with its safe message (only ok has a null message) and lastAppliedAt, the retry and deduplicated logging, and the snapshot persistence in the same SQLite transaction as each successful file reconcile (a database write keeps lastAppliedAt and the broken file bytes). Change startup to open the database before the file: with a broken or missing file and a stored snapshot, serve the snapshot file checks plus the database definitions and accept the snapshot heartbeat secret digests; with no snapshot a broken start still exits 2. Definitions and file-heartbeat pings survive fallback and reopen, and reopen keeps definitions, source, revision and heartbeat credentials. Compare heartbeat digests in constant time in src/server.ts with unchanged public outcomes. Add the fileState and databaseChecks fields to the listening log line with the exact names from Contract fields. Add the new test files src/config-file-state.test.ts and src/start.file-fallback.test.ts; every GET /admin/config response in them passes validateAdminConfigSummary for all four file states. Component/window write rules, docs and the sentinel table are T4. Use temp databases/127.0.0.1:0, injected clock/reloads and typed contract-validated responses.",
+      "acceptance": [
+        {
+          "command": "bun test src/config-file-state.test.ts src/start.file-fallback.test.ts src/server.heartbeat.test.ts src/start.test.ts src/config-db.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Invalid, unreadable, written-not-applied and ok are distinct and ok alone has a null message. DB writes keep lastAppliedAt and broken file bytes. Reopen keeps definitions, source, revision and heartbeat credentials; fallback serves the snapshot file checks and accepts its heartbeat secret; a broken or missing file with no snapshot exits 2; the snapshot is written in the same transaction as the file reconcile and a rolled-back reconcile leaves the previous snapshot. Public outcomes of heartbeat pings are unchanged and the digest compare is constant time (it uses timingSafeEqual on equal-length digests). The listening log line has fileState and databaseChecks. Every GET /admin/config response passes validateAdminConfigSummary for file states ok, invalid, unreadable and written-not-applied."
+        },
+        {
+          "command": "bun test src/config-admin.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. The T2 check-write tests stay green on the new startup order."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; all existing and new tests pass with line coverage >= 0.8. No public/probe/wire shape, auth throttle, scope, size-limit, metric name/label or unrelated dependency changes."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Component and window writes honor the combined revision and disk state, and docs match the shipped behavior",
+      "files": [
+        "src/config-write.ts",
+        "src/admin-routes.ts",
         "src/config-admin.test.ts",
         "src/config-write.audit.test.ts",
         "src/config-write.crash.test.ts",
-        "src/server.heartbeat.test.ts",
-        "src/start.test.ts",
         "src/security-review.test.ts",
         "src/docs-claims.test.ts",
         "README.md",
@@ -65,19 +120,11 @@
         "docs/troubleshooting.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, all Behavior bullets except the export endpoint; Required behavior 1-32, counterexamples 1-30 and 35-39; Checks 1a-1d, 2 except export, 3 and 4 except export. Pin the merged contract 2.0.0 main full SHA in package.json and bun.lock together with adapting all affected API producers/tests. Export a single-check parser that preserves the file field rules. Merge applied file order first, then unshadowed definitions in creation order, keeping a separate shadowed list and effective heartbeat digest map; runtime identity/history stay keyed by id and no shadow transition deactivates an id. Wire startup, file apply/adopt and database writes to that same effective set and in-memory holder (no SQL per admin read beyond today). Move check routes to check-write; file-only ids are read-only 409, creates collide with applied file/DB ids, shadowed PUT is 409 and shadowed DELETE is 204. Materialize markers case-insensitively only from the same database definition, retain omitted heartbeat secrets as digests, rotate explicit secrets, remove omitted headers/body, and validate the materialized check using file rules. Preserve exact statuses/order, ETag, Location, audit actions, metrics and safe messages from items 8-18. Share the writer lock; commit definition, generation +1, upsertChecks and audit in one SQLite transaction. Change service reconcile so it can join the caller transaction; publish holder/cache changes and effects only after commit. Rollback leaves every SQL row, audit entry, revision and in-memory state unchanged. Use 'sha256-' plus lowercase hex SHA-256 of UTF-8 '<applied file revision>\\n<database generation>' (one newline between the inputs) for the admin revision; invalid/unreadable/pending file bytes do not change it. Every committed check write advances the generation by exactly 1; every following write needs its success ETag or a freshly fetched revision, including read-only-mount counterexample 24. Preserve the full temp/pending-audit/fsync/rename/resolvePending protocol for component/window writes with admin If-Match plus applied disk-revision checks; DB-only references are 422 and a broken disk is 412 naming its state. Move existing file protocol/crash tests to components/windows. Implement file status, safe message, lastAppliedAt, retry/deduplicated logging, snapshot persistence atomically with each file reconcile, DB-before-file startup and broken/missing-file fallback; no snapshot still exits 2. Pings compare digests in constant time with unchanged public outcomes; definitions and file-heartbeat pings survive fallback/reopen. Add listening fileState/databaseChecks fields and the exact service removal log text from Contract fields. Update README and all listed docs for the behavior shipped here, including downgrade backup, the GET-edit-PUT example and file-only component/window references; keep docs-claims tests green. Record the four red regressions on baseline 2bc5910 before fixing them. Use temp databases/127.0.0.1:0, injected clock/reloads and typed contract-validated responses. Implement the non-export cells of the sentinel table with literal fixtures and independent node:crypto digests; T3 adds its export cells and performs the whole-change security/evidence review. If admin-created checks are already stored in the database at task start, obey the section's needs-input condition. Check 2 also requires every GET /admin/config response in these HTTP tests, including shadowed entries and all four file states, to pass validateAdminConfigSummary as well as the strict 2.0.0 response validator. Counterexample 41's compatibility is completed by the live console regression in T3 Check 10; the api depends on both the merged contract and merged console.",
+      "spec": "## Repository: api, component/window write protocol, sentinel tests and documentation; Required behavior 29-32 for components and windows, counterexamples 24 and 28-30 for the file protocol; the non-export cells of Check 4; documentation of the behavior shipped by T2-T4. Already done by earlier partial runs and not to be redone: commit 1f20f9f pins the merged contract 2.0.0 main full SHA in package.json and bun.lock and moves the admin check views and their producers/tests to the 2.0.0 shape; commit e7ac050 adds the pure effectiveChecks merge in src/effective-checks.ts (applied file order first, then unshadowed definitions in creation order, separate shadowed list, effective heartbeat digest map) and the exported single-check parser parseCheck in src/config.ts. Build on them. T2 has added the check-write routes and the combined admin revision, and T3 the file state and fallback; build on them. Preserve the full temp/pending-audit/fsync/rename/resolvePending protocol for component and window writes, now requiring the admin If-Match (the combined revision) plus a check of the applied disk revision: a broken disk is 412 naming its state, a stale revision is 412, and references from components or windows to database-only checks are 422. File-protocol failures never change database definitions. Move the existing file-protocol and crash tests from checks to components and windows in src/config-write.audit.test.ts and src/config-write.crash.test.ts. On a valid read-only mount, GET the current revision and POST a valid database check for 201, then GET /admin/config again and POST a valid file component with that fresh revision for 503; a 412 at either request fails counterexample 24, and database check writes never return 503. Implement the non-export cells of the Where values may appear table in src/security-review.test.ts with literal fixtures and independent node:crypto digests; the export cells are T5. Update README.md, docs/rest-api.md, docs/operation.md, docs/configuration.md and docs/troubleshooting.md for the behavior shipped here, including the downgrade backup, the GET-edit-PUT example and file-only component/window references, and keep the docs-claims tests green.",
       "acceptance": [
         {
-          "command": "bun test src/config-db.test.ts src/config-admin.test.ts",
-          "expected": "0 fail; focused coverage may be below the global threshold. Check 1a: POST on a read-only file returns 201 and probes receive the literal definition. 1b: file name wins at public/probe reads; shadowed reports source database. 1c: name-only GET-edit-PUT retains literal header/body sentinels. 1d: broken bytes remain unchanged after POST 201 with the fresh revision. Retain evidence that these cases failed on baseline 2bc5910 for the specified behavioral reasons, rather than import/type errors."
-        },
-        {
-          "command": "bun test src/config-db.test.ts src/config-admin.test.ts src/config-file-state.test.ts src/start.file-fallback.test.ts src/server.heartbeat.test.ts src/start.test.ts",
-          "expected": "0 fail; focused coverage may be below the global threshold. Cover counterexamples 1-30 and 35-39: conflicts 409, absent ids 404, marker/materialization/reference errors 422, stale/racing writes 412, injected transaction failure 500 with unchanged SQL and in-memory state. The first concurrent PUT is 200 and the stale second is 412. Invalid/unreadable/written-not-applied/ok are distinct; ok alone has null message. DB writes keep lastAppliedAt and broken file bytes. Reopen keeps definitions, source, revision and heartbeat credentials; fallback serves snapshot file checks and accepts its heartbeat secret; no-snapshot broken start exits 2. Every GET /admin/config response also passes validateAdminConfigSummary, including shadowed entries and file states ok, invalid, unreadable and written-not-applied."
-        },
-        {
-          "command": "bun test src/config-write.audit.test.ts src/config-write.crash.test.ts",
-          "expected": "0 fail; focused coverage may be below the global threshold. Existing pending-audit, fsync, rename, resolver and power-loss coverage passes using component/maintenance writes and the new admin revision. On a valid read-only mount, GET the current revision and POST a valid database check for 201; GET /admin/config again and POST a valid file component with that fresh revision for 503. A 412 at either request fails counterexample 24. Database check writes never return 503. File-protocol failures never change database definitions."
+          "command": "bun test src/config-write.audit.test.ts src/config-write.crash.test.ts src/config-admin.test.ts",
+          "expected": "0 fail; focused coverage may be below the global threshold. Existing pending-audit, fsync, rename, resolver and power-loss coverage passes using component/maintenance writes and the new admin revision. On a valid read-only mount, GET the current revision and POST a valid database check for 201; GET /admin/config again and POST a valid file component with that fresh revision for 503. A 412 at either request fails counterexample 24. Database check writes never return 503. A component or window referencing a database-only check is 422; a broken disk is 412 naming its state. File-protocol failures never change database definitions."
         },
         {
           "command": "bun test src/security-review.test.ts src/docs-claims.test.ts",
@@ -85,12 +132,12 @@
         },
         {
           "command": "bun run lint && bun run typecheck && bun run test",
-          "expected": "exit 0; all existing and new tests pass with line coverage >= 0.8. No public/probe/wire shape, auth throttle, scope, size-limit, metric name/label or unrelated dependency changes. This runnable stage exposes the database behavior and file recovery; the separate export endpoint is added in T3."
+          "expected": "exit 0; all existing and new tests pass with line coverage >= 0.8. No public/probe/wire shape, auth throttle, scope, size-limit, metric name/label or unrelated dependency changes. This runnable stage exposes the database behavior and file recovery; the separate export endpoint is added in T5."
         }
       ]
     },
     {
-      "id": "T3",
+      "id": "T5",
       "kind": "final",
       "title": "Effective checks export safely and merged Console connects with verified rollout evidence",
       "files": [
