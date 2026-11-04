@@ -14,10 +14,12 @@ to notify:
 
 A channel opts in with a new `alerts` list. Channels without it behave exactly as today.
 
-This revision answers the plan-review of the first spec run: plain `Files:` entries,
-restart-safe expiry ordering (R6), the handling of stored incident deliveries for
-`sendIncidents: false` (R1), the cost of enabled alerts (Performance impact), more
-counterexamples, and the ESLint citation (Repository: notify, tool facts).
+This revision answers the second plan-review: the format-3 migration checkpoints the WAL into
+the main file before it deletes any sidecar, so a crash at any point loses no committed row and
+never writes a backup without them (R9). The start-time drop of incident deliveries for
+`sendIncidents: false` is one transaction, and if it fails, startup fails. So notify never runs
+with incidents off while old incident keys are still pending (R1). New files are marked `(new)`
+in `Files:`.
 
 ## Decisions
 
@@ -107,28 +109,47 @@ A channel with `sendIncidents: false` sends no `opened`, `update`, `resolved` or
 event, also none that is already stored:
 
 - **At start, before the pending resend** (`#resendPending`, `notify/src/notifier.ts:254` and
-  `:279-290`): every `pending` entry of that channel whose stored payload has an incident event
-  (`opened`, `update`, `resolved`, `reminder`, automatic or manual), and every `pending` entry
-  without a payload (a legacy key; all of them are incident keys), is settled `dropped` with the
-  existing `ledger.settle(channel, key, "dropped")`. Held reminders are included. Warning entries
-  (`budget-low`, `tls-expiry`, `domain-expiry`) of that channel stay `pending` and are resent.
-  The start logs `incident notifications dropped: channel sends no incidents` with `channel` and
-  `count` once per channel with `count > 0`. A failed settle is logged as today
-  (`ledger settle failed, the key stays pending`); that key is not enqueued and the next start
-  drops it again.
+  `:279-290`): the drop covers every `pending` entry of such a channel whose stored payload has an
+  incident event (`opened`, `update`, `resolved`, `reminder`, automatic or manual), and every
+  `pending` entry without a payload (a legacy key; all of them are incident keys). Held reminders
+  are included. Warning entries (`budget-low`, `tls-expiry`, `domain-expiry`) of that channel stay
+  `pending` and are resent.
+- **The drop is all or nothing, and startup depends on it.** A new ledger mutation settles all
+  those entries of all warning-only channels as `dropped` in **one** transaction (status
+  `dropped`, `at` = now, payload and recipients cleared, as `settle` does for `dropped`,
+  `notify/src/ledger.ts:669-694`). It runs when the notifier is constructed, before `start()`, so
+  `main` in `notify/src/index.ts` sees a failure before the ops server binds or anything is sent
+  (`notify/src/index.ts:204`, `:221-223`). If the transaction fails (the existing
+  `hooks.beforeCommit` lets a test throw), no entry changes and the constructor throws a named
+  error with the fixed text `cannot drop pending incident notifications of channels with
+  sendIncidents false`. `main` then closes the ledger, releases the lock and rethrows, so startup
+  fails as it does when the ledger cannot be opened (`notify/src/index.ts:173-178`). Nothing is
+  sent and no poll runs.
+  Result: **every start that runs with `sendIncidents: false` has already committed the drop.**
+  After a failed start the ledger is unchanged, as if the switch had never been made. A restart
+  with `sendIncidents: true` then sends the incident keys that were pending before the switch.
+  They were owed before the switch took effect, so this is not a re-enable. A restart with
+  `sendIncidents: false` tries the drop again.
+  After a successful drop, the start logs `incident notifications dropped: channel sends no
+  incidents` with `channel` and `count`, once per channel with `count > 0`. With nothing to drop,
+  no transaction runs.
 - **Legacy rebuild** (`#rebuildLegacyPending`) is skipped for such a channel.
 - **Each poll:** routing and seeding stay as today: the first-poll seeding of a new channel
   (`#seedChannel`), the routing-change seeding and the manual first-read seeding run unchanged.
   Instead of enqueuing, the keys that automatic and manual detection would enqueue for the
   channel are recorded as `seeded` with `ledger.seed` (which adds only keys without an entry,
   `notify/src/ledger.ts:595-621`). So an incident that opens while incidents are off is never
-  sent later.
+  sent later. A failed seed is logged with the fixed text `incident seed failed, the next poll
+  retries` and enqueues nothing. The next poll seeds the key again, because detection still
+  derives it. If the channel is switched back before any seed succeeds, the key is new at that
+  start and is sent, as if the incident had opened after the switch.
 - `failed` incident entries of such a channel stay `failed` (they are a record for the operator)
   and `failed list` shows them. `failed resend` still sets them `pending` (the CLI does not read
   channel config); the next start drops them by the first rule.
-- **Re-enabling** (`sendIncidents` back to `true` at a restart): `dropped` and `seeded` keys
-  count as handled (`ledger.has`), so nothing old is sent. Only events whose key is new after the
-  restart are sent (for example the `resolved` of an incident whose `opened` was seeded).
+- **Re-enabling** (`sendIncidents` back to `true` at a restart after a start that ran with
+  `false`): `dropped` and `seeded` keys count as handled (`ledger.has`), so nothing old is sent.
+  Only events whose key is new after the restart are sent (for example the `resolved` of an
+  incident whose `opened` was seeded).
 
 ### R2 Threshold setting
 
@@ -324,20 +345,59 @@ fields and JSON. The two new variants (webhook body and file line):
   evaluation generates no new event, because the state was committed with the entries.
 - Channels are independent: a failure, retry or `failed` status on one channel does not change
   another channel's delivery or the alert state.
-- **Format-3 migration** at open:
-  1. The format-3 file is read and validated on the read-only connection, as today. A file that
-     fails validation is refused as unsupported, keeps its bytes, and no backup is written.
-  2. Backup: an existing `<state>.v3.bak` is removed (`unlink`, which does not follow a
-     symlink), then `VACUUM INTO` writes a consistent copy (with committed WAL content) to a new
-     temporary path beside the ledger, which gets mode `0600` and is renamed to
-     `<state>.v3.bak`.
-  3. The format-4 file is built from the validated rows plus an empty `alert_state` through the
-     existing publish path (`<state>.migrating` created with mode `0600` and `wx`, then renamed;
-     `notify/src/ledger.ts:380-400`). Every channel, mark and entry is kept.
-  4. The open logs `ledger migrated` with `from: 3` and `backup`, as the JSON migration does.
-  A crash before the rename leaves the format-3 file, and the next open migrates again (and
-  removes a leftover `.migrating`, as the constructor already does). A JSON ledger (format 1 or
-  2) is published directly as format 4. Any other `user_version` stays refused.
+- **Format-3 migration** at open. The hazard: the existing publish path removes the sidecars of
+  the target path (`removeDatabaseFiles(path, false)`, `notify/src/ledger.ts:397`) before it
+  renames the new file over it (`:398`). A format-3 ledger in WAL mode can hold committed rows
+  only in `<state>-wal`. If the process crashed between those two lines, those rows would be lost,
+  and the next migration would copy the smaller file over a good backup. The migration therefore
+  runs in this order, and no step deletes or replaces a file that holds the only copy of a
+  committed row:
+  1. **Validate, read-only.** The format-3 file is read and validated on the read-only
+     connection, as today (`#validate`, `notify/src/ledger.ts:471-483`, which reads committed
+     WAL frames without checkpointing them). A file that fails is refused as unsupported. Its
+     main file, `-wal` and `-shm` keep their bytes, and no backup is written.
+  2. **Checkpoint into the main file.** Only a validated file is opened read/write.
+     `PRAGMA wal_checkpoint(TRUNCATE)` runs with `synchronous = FULL`, and then the connection is
+     closed. The step succeeds only when the checkpoint reports `busy = 0` and `log` equal to
+     `checkpointed`, and after the close `<state>-wal` is absent or 0 bytes long. Otherwise the
+     open throws `ledger checkpoint was blocked` (the text of `flush`,
+     `notify/src/ledger.ts:505`), deletes nothing, writes no backup, and startup fails. After
+     this step the main file alone holds every committed row, and the WAL holds none.
+  3. **Re-read.** The rows are read and validated again on a read-only connection. Only these rows
+     are used for the backup and the new file. The service's lease lock
+     (`notify/src/ledger-lock.ts`) is held, so no other writer exists.
+  4. **Backup.** An existing `<state>.v3.bak` is removed with `unlink`, which does not follow a
+     symlink. Then the bytes of the checkpointed main file are written with the pinned kit's
+     `writeFileAtomicSync(backup, bytes, { mode: 0o600 })`: a temp file beside it with `wx`,
+     fsync, rename, directory fsync (kit `src/atomic-write.ts:216-256` at pin `236df214…`).
+     The old backup must be removed first because that helper takes the mode and owner of an
+     existing destination, and it `stat`s through a symlink (`:151-158`, `:226`).
+  5. **Publish.** The format-4 file is built from the rows of step 3 plus an empty
+     `alert_state` through the existing publish path: `<state>.migrating` created with mode
+     `0600` and `wx`, the sidecars of `<state>` removed (now empty or absent), then the rename
+     and a directory fsync (`notify/src/ledger.ts:380-400`). Every channel, mark and entry is
+     kept. A new test-only hook `afterSidecars` in `LedgerOptions.hooks` runs after the sidecars
+     are removed and before the rename. A throw from it simulates a crash in that window, as
+     `beforePublish` does for the window before it (`notify/src/ledger.ts:118-124`).
+  6. The open logs `ledger migrated` with `from: 3` and `backup`, as the JSON migration does.
+
+  What a crash leaves at each point. Each case starts from a format-3 file whose rows are only in
+  its WAL:
+
+  | Crash after | Files left | Next open |
+  | --- | --- | --- |
+  | step 1 | format-3 file, WAL unchanged | migrates from the start |
+  | step 2 or 3 | format-3 main file with every row, no WAL | migrates again; same rows |
+  | the backup `unlink` | as above, no backup | migrates again and writes the backup |
+  | step 4 | as above plus a full backup | migrates again and replaces the backup with the same rows |
+  | sidecar removal, before the rename | format-3 main file with every row, no WAL, no `-shm` | migrates again; same rows |
+  | the rename | format-4 file | opens without migration |
+
+  A leftover `.migrating` is removed by the constructor, as today
+  (`notify/src/ledger.ts:430`). A leftover backup temp file (`<state>.v3.bak.<suffix>.tmp`, mode
+  `0600`) can stay after a crash in step 4, as with the JSON migration today; it is not read.
+  A JSON ledger (format 1 or 2) is published directly as format 4. Any other `user_version`
+  stays refused.
 - **Alert-state pruning** (with the existing hourly prune): an `alert_state` row is removed only
   when its `updated_at` is older than `PULSE_NOTIFY_STATE_RETENTION_DAYS` and its subject was
   absent from the last good read of its feed in this run (`/checks` for `budget-check` and
@@ -386,6 +446,10 @@ may say "incident and warning notifications".
 - **Late subscribers miss the current warning** (Decision 10). Documented.
 - **Dropped incident deliveries** of a channel switched to `sendIncidents: false` are not sent
   when it is switched back (Decision 12). Documented.
+- **Startup can now fail for two new reasons:** the drop transaction of R1 fails, or the
+  format-3 checkpoint of R9 is blocked or fails. Both cases change no data, log a fixed text, and
+  succeed on a later start once the cause (disk error, another open connection) is gone. This
+  matches today's behavior for a ledger that cannot be opened.
 
 ## Performance impact
 
@@ -395,9 +459,10 @@ section (`api/bench/budgets.json`, key `notify`) can move:
 - `test_cpu_s` (gating, budget 3.4 s, floor 1.5 s): up. Expected about +0.1 to +0.3 s for the
   new tests. This is the tight one: keep the new tests on fake time and in-memory/temp ledgers.
 - `startup_cpu_ms` (gating, 455 ms): for a format-4 file, loading `alert_state` into the mirror
-  adds well under 1 ms for a few hundred rows. One-time cost of the format-3 migration (one
-  `VACUUM INTO` and one publish of all rows) on the first start: a few ms on a small ledger, about
-  the cost of today's JSON migration. No new dependency, so module load is the same.
+  adds well under 1 ms for a few hundred rows. One-time cost of the format-3 migration on the
+  first start: one WAL checkpoint, a second read-only validation, one byte copy of the main file
+  as the backup, and one publish of all rows. That is a few ms on a small ledger, about twice the
+  cost of today's JSON migration. No new dependency, so module load is the same.
 - `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib` (gating): none expected in the bench, because the
   bench config of notify (`api/bench/fixtures/notify.json`) has one file channel without
   `alerts`. Then no `/components` read, no second validation (R3), no evaluation and no alert
@@ -464,10 +529,12 @@ Checklist items that apply:
 - **Body and size limits:** `/components` uses the same capped, no-redirect reader as the other
   feeds (`PULSE_NOTIFY_API_MAX_BYTES`).
 - **SSRF and redirects:** no new outbound target; `/components` follows no redirect.
-- **Atomic, path-safe writes:** the migration writes the backup beside the ledger with mode
-  `0600` through a temporary file and a rename, removes an old backup with `unlink` first, and
-  publishes the format-4 file with the existing `wx`/rename path; a crash leaves a format-3 file
-  or a format-4 file, never a mix.
+- **Atomic, path-safe writes:** the migration first checkpoints the validated format-3 WAL into
+  its main file. It then removes an old backup with `unlink`, writes the new backup beside the
+  ledger with mode `0600` through the kit's temp-file-and-rename write, and publishes the
+  format-4 file with the existing `wx`/rename path. A crash leaves a self-contained format-3 file
+  or a format-4 file, never a mix, and never loses a committed row (R9 crash table). A refused
+  file is not checkpointed and keeps its bytes.
 - **Output escaping:** subject names pass `cleanText` and the per-channel escaping (Slack `& < >`,
   Teams markdown) as incident names do; a name with `<!channel>` or `**` must not render as markup.
 - Dependency pins: no change (contract `7ce23aaf…`, kit `236df214…` stay).
@@ -478,7 +545,9 @@ control characters and `<!channel>`; an id with `:` and newlines (the key must s
 (validator rejects); `certDaysLeft: 3.5`; a `/components` body over the byte cap; a `302` on
 `/components`; `alerts: ["budget-low", {"x":1}]`; `PULSE_NOTIFY_BUDGET_THRESHOLD=25abc`; a
 pre-existing `<state>.v3.bak` symlink to a file outside the state dir (the migration must remove
-the link and leave the target's bytes unchanged); a format-4 file with an `alert_state` row of
+the link and leave the target's bytes and mode unchanged); a format-3 file with a hostile row
+only in its committed WAL (refused without a checkpoint: main file and `-wal` bytes unchanged);
+a format-4 file with an `alert_state` row of
 `stage` 7 or `kind` `x` (refused).
 
 ## Rollout order
@@ -604,6 +673,19 @@ rearms at step 3 and sends a duplicate milestone at step 4.
 | Restart of `H` with `sendIncidents: true` | 0 requests for `7:opened`, `8:opened`, `9:opened`, `5:opened`; when `9` resolves, exactly 1 `9:resolved` |
 | A wrong implementation that only skips enqueue on poll | `#resendPending` sends `7:opened` at start |
 
+Failed drop, then re-enable. This is the case from the second plan-review. Run it in this order
+with a fresh `H`, a local receiver and the same ledger file reopened at each restart:
+
+| Step | Expected |
+| --- | --- |
+| `H` (webhook, `sendIncidents: true`) has `pending` `7:opened` with payload and `pending` `budget:check:<t0>:<h>`; the notifier is stopped, the ledger closed | 2 pending entries |
+| Restart with `sendIncidents: false`, `alerts: ["budget-low"]`, and a ledger whose `beforeCommit` throws | constructing the notifier throws `cannot drop pending incident notifications of channels with sendIncidents false`; 0 requests; `7:opened` and the `budget:` key are both still `pending` |
+| Restart with `sendIncidents: true`, no hook | the receiver gets exactly 2 requests: `7:opened` once and the `budget:` key once (the switch never took effect, so `7:opened` was still owed) |
+| Same first two steps again, then restart with `sendIncidents: false`, no hook | `7:opened` `dropped`, exactly 1 request (the `budget:` key); then restart with `sendIncidents: true`: 0 more requests over 10 polls |
+| A wrong implementation that settles key by key and logs failures | the first restart runs with `7:opened` still pending and partly dropped entries; a re-enable after that run sends `7:opened` |
+| `main` with a notifier constructor that throws | `main` throws; the lock is released (a second `main` on the same state path acquires it) |
+| `ledger.seed` of `9:opened` fails in one poll on `H` with `sendIncidents: false` (hook throws once) | log `incident seed failed, the next poll retries`; 0 requests; the next poll stores `9:opened` as `seeded` |
+
 ### Routing and config
 
 - Channel `{ alerts: ["budget-low"], checks: ["api-*"] }`: check `api-1` low → event;
@@ -626,6 +708,24 @@ rearms at step 3 and sends a duplicate milestone at step 4.
 - `user_version` 5 → refused.
 - A valid format-3 file → format 4, all channels, marks and entries equal; second open logs no
   migration.
+
+Migration crash with committed WAL data (R9). The fixture follows the existing pattern in
+`notify/test/ledger.v2.test.ts:259-270`: a writer with `journal_mode = WAL` and
+`wal_autocheckpoint = 0` writes the format-3 schema with channel `c` and the three entries
+`1:opened` (`delivered`), `2:opened` (`failed` with payload) and `3:opened` (`pending` with
+payload). The main file and `-wal` are copied while the writer is still open, so the rows are
+only in the copied WAL. Precondition, checked in the test: a copy of the main file without its
+`-wal` opened on its own has 0 rows in `entries`.
+
+| Case | Expected |
+| --- | --- |
+| Open with `afterSidecars` throwing (crash between sidecar removal and the rename) | the open throws; `<state>-wal` absent or 0 bytes; `<state>` opened on its own has `user_version` 3 and exactly the 3 entries; `<state>.v3.bak` has `user_version` 3 and exactly the 3 entries |
+| Then open again with no hook | format 4 (`user_version` 4) with exactly the 3 entries and their statuses; `<state>.v3.bak` still has exactly the 3 entries; log `ledger migrated` with `from: 3` |
+| Open with `beforePublish` throwing (crash after the backup), then open with no hook | same final state as the row above |
+| A pre-existing `<state>.v3.bak` that holds the 3 entries, and the first case run twice before a clean open | the backup still has exactly the 3 entries after each attempt |
+| A wrong implementation that publishes without the checkpoint | first case: `<state>` alone has 0 entries; the clean open gives format 4 with 0 entries, and the backup is overwritten with 0 entries |
+| A refused format-3 file (an entry of status `sent`) only in the WAL | refused; main file and `-wal` bytes unchanged (no checkpoint ran); no backup |
+| A second read/write connection holds a read transaction open on the format-3 file during the open (the checkpoint is blocked) | the open throws `ledger checkpoint was blocked`; `<state>` and `<state>-wal` still give the 3 entries; no backup and no `.migrating` remain |
 
 Statistics: notify computes no statistic. `budgetRemaining` and `availability` are the api's
 values (30 UTC calendar days, result-weighted, `api/src/slo.ts:11-21`, unrounded). Display
@@ -652,6 +752,7 @@ contract source, the config clone and notify's source on the inspected commits (
 | `budget`, `expiry` | payload fields | `grep -rn '"budget"\|expiry' .repos/contract/src` | only doc comments in `schema.ts` (lines 516, 933, 950, 985); no field |
 | `daysLeft`, `milestone`, `observedMs` | payload fields | `grep -rn 'daysLeft\b\|milestone\|observedMs' …` | no match (`certDaysLeft` is a different, contract name and is not reused) |
 | `components` | metric feed label | `FEED_NAMES` in `notify/src/metrics.ts:6-8` | not a label yet; `/components` is the existing api route |
+| `afterSidecars` | test-only ledger hook | `grep -rn 'afterSidecars' .repos/contract/src .repos/config .repos/notify/src .repos/notify/test` | no match (existing hooks: `beforeCommit`, `beforePublish`, `notify/src/ledger.ts:118-124`) |
 | keys `budget:…`, `expiry:…` | event keys | ledger patterns `notify/src/ledger.ts:402-404` | do not match `^(\d+):`, `^(\d+):reminder:`, `^manual:` |
 
 ## Unchanged repositories
@@ -672,8 +773,8 @@ Files:
 - `src/index.ts`
 - `src/api.ts`
 - `src/metrics.ts`
-- `src/budget-alerts.ts`
-- `src/expiry-alerts.ts`
+- `src/budget-alerts.ts` (new)
+- `src/expiry-alerts.ts` (new)
 - `src/notifier.ts`
 - `src/ledger.ts`
 - `src/channels/routing.ts`
@@ -682,11 +783,12 @@ Files:
 - `src/channels/teams.ts`
 - `src/channels/email.ts`
 - `test/support.ts`
-- `test/budget-alerts.test.ts`
-- `test/expiry-alerts.test.ts`
-- `test/alerts.test.ts`
-- `test/send-incidents.test.ts`
-- `test/ledger.v4.test.ts`
+- `test/budget-alerts.test.ts` (new)
+- `test/expiry-alerts.test.ts` (new)
+- `test/alerts.test.ts` (new)
+- `test/send-incidents.test.ts` (new)
+- `test/ledger.v4.test.ts` (new)
+- `test/index.test.ts`
 - `test/config.test.ts`
 - `test/message.test.ts`
 - `test/routing.test.ts`
@@ -717,16 +819,18 @@ What each file holds (plain words, no paths beyond the list above):
 - types: the notification union with an incident variant, a budget variant and an expiry
   variant; the two new channel keys on the channel base.
 - channel schema and config: the two channel keys with the cross-field rules of R1, the threshold
-  setting; index wires the threshold into the notifier.
+  setting; index wires the threshold into the notifier and, when constructing the notifier
+  throws, closes the ledger, releases the lock and rethrows (R1).
 - api client: the checks read also returns the validated check states; a new components read with
   404 as absent. metrics: the new feed label.
 - budget alerts and expiry alerts: new pure modules for R5, R6 (observation selection and stage
   machine) and the keys of R7, with `nowMs` and stored state passed in.
-- notifier: feed reads, the evaluation order and seeding gate of R4, the R1 start-time drop and
-  per-poll seeding for warning-only channels, enqueue after the alert commit, alert pruning, the
-  narrowed stale check.
-- ledger: format 4, the alert table and its mirror, the format-3 migration with backup, the
-  per-poll alert transaction, alert pruning.
+- notifier: feed reads, the evaluation order and seeding gate of R4, the R1 drop at construction
+  (one ledger transaction, a throw on failure) and per-poll seeding for warning-only channels,
+  enqueue after the alert commit, alert pruning, the narrowed stale check.
+- ledger: format 4, the alert table and its mirror, the format-3 migration of R9 (validate,
+  checkpoint, re-read, backup, publish) with the `afterSidecars` test hook, the one-transaction
+  drop of pending incident entries, the per-poll alert transaction, alert pruning.
 - routing: whether a channel wants a warning event (R10). message, slack, teams, email: the labels
   and lines of R8. The failed CLI needs no change (it reads the event from the stored payload); its tests get cases for the new keys.
 - tests: the new suites and new cases named below; docs as in R11; package description text only
@@ -745,6 +849,9 @@ may differ if the responsibility split stays. Keep cognitive complexity per func
 - `test/ledger.v2.test.ts:211` and `test/index.test.ts:188` refuse a format-3 schema with
   `user_version` 4. They must keep passing unchanged (that file has no `alert_state`, so it is
   still refused). Add a `user_version` 5 case in `test/ledger.v2.test.ts`.
+- Existing format-3 tests that now see a migration keep their assertions on rows and refusals.
+  Only a direct assertion of `user_version` 3 after a successful open changes to 4, and the PR
+  names each such line.
 
 TDD order (red first): config rejection of `alerts` (fails on main: `strictObject` rejects the
 unknown key), budget once per 24 h, expiry `[14, 3]`, the restart-safe ordering table, then the
@@ -776,7 +883,11 @@ Tool facts (verified at notify `227fd6d649bc71b5291b7cb47eb3adc08f6ff42d`):
 - Contract pin `7ce23aaf3fa3e038f65ecfed755188b83bde143f` (`package.json:30`) exports
   `validateCheckWithState` and `validateComponentWithState` (that ref's `src/validate.ts:142`,
   `:270`). Kit pin `236df214f9df8658f2992dd6f7c100952c07102b` (`package.json:31`) has
-  `readInt` with `max` (that ref's `src/settings.ts:55-61`). No pin changes.
+  `readInt` with `max` (that ref's `src/settings.ts:55-61`) and `writeFileAtomicSync` (that
+  ref's `src/atomic-write.ts:216-256`: temp file with `wx`, fsync, rename, directory fsync; the
+  mode of an existing destination is kept, `:122-130`). That file was read with
+  `gh api "repos/lorenzh/pulse-kit/contents/src/atomic-write.ts?ref=236df214…"` and is
+  identical to the kit clone. No pin changes.
 
 Checks and completion evidence:
 1. `bun run check` exits 0.
@@ -794,12 +905,22 @@ Checks and completion evidence:
 4. `sendIncidents` over HTTP (`test/send-incidents.test.ts`): the `sendIncidents: false` table
    of "Counterexamples", with a ledger reopened across the restarts and a local receiver; the
    receiver's request log shows 0 incident keys across the restart, the re-enable and 10 polls,
-   and exactly the literal keys of that table.
+   and exactly the literal keys of that table. The "Failed drop, then re-enable" table runs step
+   by step against one ledger file and the receiver log. After the failed start: 0 requests and
+   2 `pending` entries. After the restart with `sendIncidents: true`: exactly `7:opened` once and
+   the `budget:` key once. On the second path: exactly 1 request, then 0 more after the
+   re-enable. The `main` lock-release row is in `test/index.test.ts`.
 5. Ledger: a format-3 file made by the `main` code path (or a fixture built with the format-3
    schema in the test) opens as format 4 with every entry and mark kept, `PRAGMA user_version`
    is `4`, `<state>.v3.bak` exists with mode `0600` and `user_version` `3`; a second open does
    not migrate again; the "Ledger format" counterexamples hold; a `<state>.v3.bak` symlink is
-   replaced and its target keeps its bytes.
+   replaced by a regular file with mode `0600` and its target keeps its bytes and mode. The
+   "Migration crash with committed WAL data" table runs in `test/ledger.v4.test.ts`. The fixture
+   has 3 entries only in its WAL, and the test first checks that the main file alone has 0. The
+   expected counts are the literal 3 and 0 from that table, read from the files with a separate
+   `bun:sqlite` connection, not through `Ledger`. The PR shows this test failing on a branch
+   state without the checkpoint step (the publish path of `main`): 0 entries after the clean
+   open.
 6. Incident behavior unchanged: the existing suites (`notifier`, `reminders*`, `manual-*`,
    `routing-change`, `ledger*`, `prune`, `webhook`, `channels`) pass without changed
    expectations, except the cases named above.
