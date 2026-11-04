@@ -398,8 +398,8 @@ Privacy (each must be absent from every public surface):
 - Draft incident `{publishedAt: null, visibility: "public"}`: not in `GET /manual-incidents`,
   `?status=open`, `?status=all`; `GET /manual-incidents/<its id>` is `404` with
   `{"error":"manual incident not found"}`, the same body as id `999999`.
-- Published internal incident with `impact: "critical"` on component `public-api`: absent from the
-  public list; the component badge of `public-api` does not turn `down` because of it. A wrong
+- Published internal incident with `impact: "critical"` on a component whose checks are all `up`:
+  absent from the public list; the component badge of that component stays `up`. A wrong
   implementation that filters only the incident list but feeds `componentsWithIncidents` from an
   unfiltered list gets this wrong.
 - Published public incident with a draft update `{status: "resolved", message: "U"}`: public
@@ -848,6 +848,26 @@ Behavior:
     `e2e-update-9c41`; public `e2e-public-0a62` (control `P`) and `e2e-marker-31c5` (marker `M`).
   - Helper `notify_polls_ok`: prints the value of `pulse_notify_polls_total{outcome="ok"}` read
     as `notify_has_polled` reads it (`e2e/compose-e2e.sh:169-173`).
+  - Helper `badge_state <component>`: prints the state word of
+    `/badge/component/<component>.svg`, taken from its `<title>` (`<label>: <state> <uptime>`,
+    `status/src/badge.ts:87-95`).
+  - **Why the badge component is `web`:** the component `public-api` holds `heartbeat-e2e`
+    (`e2e/ro/checks.json:33-38`, `:76-80`). That check goes `down` 3000 ms (period 2000 +
+    grace 1000) after its last ping, and the last ping is at `e2e/compose-e2e.sh:469`, before
+    this step, so `public-api` is already `down` and its badge proves nothing. The component
+    `web` holds `status-page` and `e2e-post` (`e2e/ro/checks.json:70-75`). Both are `up` here:
+    the step `Incident` waits until the `status-page` incident is resolved
+    (`e2e/compose-e2e.sh:479`), and `e2e-post` is back `up` at `e2e/compose-e2e.sh:437`. The
+    step `Manual incidents` names only `web` with impact `major`, and that incident is resolved
+    and deleted before this step (`e2e/compose-e2e.sh:521`, `:561-563`). A `major` or
+    `critical` incident turns a component `down` (`contract/src/components.ts:63-71`, worst state
+    wins, `contract/src/components.ts:8-15`), and the badge combines the api state with the open
+    manual incidents it reads (`status/src/syndication.ts:325-329`). No heartbeat ping is needed:
+    no assertion of this step reads `public-api` state. So the badge
+    of `web` shows `up` exactly while no published public `major`/`critical` incident names it.
+    `D` and `I` name both `web` and `public-api`: `web` carries the badge proof, and
+    `public-api` keeps the routing of the `public-api` notify channel
+    (`e2e/notify.json`) under test.
   - **Why a marker:** notify reads every manual incident with one `GET /manual-incidents` per poll
     (`notify/src/api.ts:216-218`), and status serves the proxy, page, feed and badges from its
     cached api answers (`status/src/answer-cache.ts`, `status/src/syndication.ts:160-166`), which
@@ -857,14 +877,14 @@ Behavior:
     `P` was published before its draft update was saved.
   - Steps and literal expectations:
     1. `GET /admin/manual-incidents`: no token `401`; probe token `403`.
-    2. Precondition: wait until `/badge/component/public-api.svg` does not say `down`.
+    2. Precondition: wait (`T_PAGE`) until `badge_state web` prints `up` (literal).
        Metrics (literals): `pulse_api_manual_incidents_created_total 1`,
        `pulse_api_manual_incidents_resolved_total 1` (the values the step `Manual incidents` left).
     3. Draft `D`: `POST /admin/manual-incidents` `{title: "e2e-draft-7f3a", impact: "major",
-       componentIds: ["public-api"], message: "e2e-draft-7f3a", visibility: "public"}` → `201`,
+       componentIds: ["web", "public-api"], message: "e2e-draft-7f3a", visibility: "public"}` → `201`,
        `.publishedAt == null`. `PUT` with the same body → `200`.
     4. Internal `I`: create `{title: "e2e-internal-5d17", impact: "critical", componentIds:
-       ["public-api"], message: "e2e-internal-5d17", visibility: "internal"}` → `201`; publish →
+       ["web", "public-api"], message: "e2e-internal-5d17", visibility: "internal"}` → `201`; publish →
        `200`, `.visibility == "internal"`, `.publishedAt != null`.
     5. Public control `P`: create `{title: "e2e-public-0a62", impact: "none", componentIds:
        ["web"], message: "e2e-public-0a62", visibility: "public"}`; note
@@ -887,8 +907,10 @@ Behavior:
          sentinels; `GET /manual-incidents/<D>` and `/<I>` → `404`; `P` in the public list has
          `status != "resolved"`, `resolvedAt == null`, exactly 1 update.
        - status: `/api/manual-incidents`, `GET /` and `/feed.atom` hold none of the four private
-         sentinels; `/feed.atom` has no `manual:<P>:1`; `/badge/component/public-api.svg` does not
-         say `down` (read after the feed barrier from the same cached answer).
+         sentinels; `/feed.atom` has no `manual:<P>:1`; `badge_state web` prints `up` (literal;
+         the badge reads the same cached `/api/manual-incidents` answer that the proxy barrier
+         showed holding `M`, `status/src/syndication.ts:343-347`). A status that let `D` or `I`
+         through would print `down`, because both are `major`/`critical` on `web`.
        - notify: `incidents.jsonl`, `manual-web.jsonl` and `manual-public-api.jsonl` hold 0 lines
          with `manual:<D>:` or `manual:<I>:`, 0 lines with any private sentinel,
          `manual_update_count manual-web.jsonl <P>` = 0 and 0 lines with `manual:<P>:resolved`.
@@ -908,8 +930,9 @@ Behavior:
         `manual:<P>:1`; the proxy shows `P` resolved with exactly 2 updates and `e2e-update-9c41`;
         then no status surface and no channel file holds `e2e-note-2b8e`.
     12. Publish `D` (saved before the notify restart) → `200`. Wait until
-        `manual-public-api.jsonl` holds `manual:<D>:opened` exactly once and the `public-api`
-        badge says `down` (positive control for the badge check of step 8). Then
+        `manual-public-api.jsonl` and `manual-web.jsonl` each hold `manual:<D>:opened` exactly
+        once and `badge_state web` prints `down` (literal; positive control for the badge check
+        of step 8: the same badge turns `down` once one such incident is public). Then
         `POST /manual-incidents/<D>/resolve` → `200` and `POST /manual-incidents/<M>/resolve` →
         `200`.
     13. Discard: create a draft `X` (title `e2e-discard-4e90`, `visibility: "public"`) and
@@ -917,8 +940,8 @@ Behavior:
         `404`.
     14. `docker compose restart notify`, wait `notify_has_polled` plus `POLL_INTERVAL * 3`
         seconds: exactly 1 line each of `manual:<P>:opened`, `manual:<P>:resolved`,
-        `manual:<M>:opened` in `manual-web.jsonl` and of `manual:<D>:opened` in
-        `manual-public-api.jsonl`; 0 lines with `manual:<I>:` and 0 lines with `e2e-internal-5d17`
+        `manual:<M>:opened`, `manual:<D>:opened` in `manual-web.jsonl` and of `manual:<D>:opened`
+        in `manual-public-api.jsonl`; 0 lines with `manual:<I>:` and 0 lines with `e2e-internal-5d17`
         in every channel file.
     15. Metrics after the restart (literals, counted from the restart of step 10):
         `pulse_api_manual_incidents_created_total 1` (`D`; the draft `X` counts nothing),
