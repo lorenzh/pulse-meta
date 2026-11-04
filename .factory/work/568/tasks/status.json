@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Status content and conditional responses depend only on public manual incidents",
+      "files": [
+        "src/api-filter.ts",
+        "src/poller.ts",
+        "src/syndication.ts",
+        "src/manual-incidents.test.ts",
+        "src/api-filter.test.ts",
+        "src/server.privacy.test.ts",
+        "src/server.syndication.test.ts",
+        "README.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, all Behavior, Checks and Completion evidence; R6-R7, decision 16, privacy Counterexamples, Performance impact and Security impact. Pin merged contract 1.8.0; filter raw privacy fields before cleaning/validation at all three readers, project accepted items to public fields, preserve existing non-object proxy null behavior and legacy-API fallback, and retain browser-safe runtime imports. Test all specified surfaces and ETag/304 behavior in both hide-details modes with public controls; private items cannot affect feed updated time, component state or counts. No new proxy path/credential.",
+      "acceptance": [
+        {
+          "command": "bun test src/manual-incidents.test.ts src/api-filter.test.ts src/server.privacy.test.ts src/server.syndication.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). With hide-details on and off, DRAFT-7f3a, INTERNAL-5d17, NOTE-2b8e and UPD-9c41 are absent from proxy, SSR, browser poller state, resolved history, Atom and badge; the public control appears and web is down, api retains its check-derived state, and feed ids stay manual:<id>:0. Private metadata is checked before stripping, malformed privacy fields fail closed, legacy items without those fields remain public, and non-object proxy items remain null."
+        },
+        {
+          "command": "bun test src/server.privacy.test.ts src/server.syndication.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). Decision 16 checks use the same fake clock/settings on U1/U2/U3: public-only U1 and U2 with later-timestamped private items yield identical body bytes and ETags on /api/manual-incidents, /, /feed.atom and /badge/component/api.svg in both hide-details modes; the U1 tag gets 304 and an empty body on U2. U3's second public incident changes each tag and returns 200 for the U1 tag. Feed updated time uses only public entries. Draft/internal cases fail on pre-change main; note/draft-update-only cases are explicitly regression guards."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both typechecks including e2e, and the complete tests meet the unchanged 0.8 coverage threshold; all existing public rendering, browser contract-module, caching and syndication tests pass."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0; the repository accessibility CI check remains green."
+        },
+        {
+          "command": "bun start",
+          "expected": "Exercise the status service once with fake upstream public/private controls and record HTTP results; the public incident is rendered and private sentinels are absent."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body gives pre-change main SHA and draft/internal regressions failing there, separately identifies already-passing notes/draft-update guards, records successful check/check:a11y and smoke results and bun test CPU before/after, and addresses the Security impact checklist: raw trust-boundary filtering, public-only ETags/304, browser-safe imports, unchanged proxy allow-list and merged contract pin. Compose evidence is owned by deploy."
+        }
+      ]
+    }
+  ]
+}

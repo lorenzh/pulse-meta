@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "CI proves manual incident privacy against service main while preserving the published-image scenario",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/compose.e2e.yaml",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all Behavior bullets, Manual incident privacy gate/helpers/steps 1-15, Checks and Completion evidence; decision 12, R2-R4, privacy Counterexamples and Security impact. Add full/dev mode (default full), dev builds from PULSE_SRC_DIR siblings, literal invalid-mode error, compatible overlay header and dev+e2e ports rule with a failing negative case. Add e2e-dev with the five service-main checkouts, existing pinned actions/persist-credentials false, init-secrets, printed revisions and 45-minute timeout. Run the privacy step after Manual incidents/log secrecy and before Probe outage. Follow the specified marker/poll barriers, healthy web badge and restart-scoped metrics exactly; preserve every existing full/dev step and report unrelated drift as specified. Update commands and e2e docs; no new image pin outside common.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint, typecheck and complete CLI tests pass at the unchanged 0.8 coverage threshold."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; dev plus e2e resolves exactly api 127.0.0.1 3000 3000, console 127.0.0.1 8082 8082, status - 8080 8080; the new negative case rejects a changed port. Existing image/secrets/network rules remain enforced and dev local tags are accepted for the new combination."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; every existing helper/static test in the touched lint CI job remains green."
+        },
+        {
+          "command": "E2E_SETUP=invalid bash e2e/compose-e2e.sh",
+          "expected": "nonzero exit immediately with literal E2E_SETUP must be full or dev."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 against the merged service mains and all existing steps pass. Gate is 200 (404 fails in dev); no-token/probe give 401/403. Privacy steps 1-15 succeed: web badge is up before private writes, up after marker M proves visibility, down after D publication. D/I affect both web and public-api; notify marker M opened appears once, then a strictly later successful poll and 3*POLL_INTERVAL settle precede absence checks; status proxy/feed/page each show M first. Private D/I/note/draft-update sentinels and premature P update/resolved events are absent, P has 1 published update. Anonymous created/resolved totals are 1/1 at start, 3/1 before api restart, 0/0 immediately after restart, 1/3 at end; private request-counter lines count 0. Protected reopen reads retain D and P's note/draft; P draft publish resolves with 2 updates, repeated publish 409; D opened appears exactly once in each component channel. Legacy I resolve is 404, private resolving draft publish is 200 with no counter increase. Draft X deletion is 204 then private GET 404. Final notify restart keeps specified P/M/D key counts exactly 1, with 0 internal keys/sentinels in all channel files. No token is printed."
+        },
+        {
+          "command": "E2E_SETUP=full bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the existing 0.1.0 published-image stack; every previous step remains green and the unsupported privacy gate prints exactly skip: manual incident privacy (api has no /admin/manual-incidents)."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body links green e2e-dev and full CI runs, their privacy ok lines/full skip line, and records the printed git revisions of all five service checkouts. Show dev's privacy gate failing on pre-change api main with 404 then succeeding after merges. Include local required check results and the applicable Security impact checklist: pinned actions, persist-credentials false, secret-free logs, private metrics/404 checks, localhost api ports and isolated compose cleanup; no service image-pin change."
+        }
+      ]
+    }
+  ]
+}

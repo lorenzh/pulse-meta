@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 1.8.0 defines private manual incidents and safe public projections",
+      "files": [
+        "src/schema.ts",
+        "src/validate.ts",
+        "src/manual-incident-public.ts",
+        "src/audit.ts",
+        "src/index.ts",
+        "test/manual-incidents.test.ts",
+        "test/audit.test.ts",
+        "test/types.fixture.ts",
+        "test/smoke.test.ts",
+        "docs/index.md",
+        "package.json",
+        "dist/"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Behavior bullets, Checks and Completion evidence; R1, R6, Contract fields, Counterexamples and Security impact. Add all constants, five schemas/types, four validators, six audit actions and exports. Enforce all five internal-state invariants and strict inputs without changing public ManualIncident validation, validator identity or WIRE_VERSION. Implement the descriptor-based guard and eight-field projection. Update the existing exact-export smoke assertion and include the new module in dist freshness checks; rebuild committed dist; version 1.8.0.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-incidents.test.ts test/audit.test.ts",
+          "expected": "0 fail in the focused tests (coverage exit status is not the acceptance gate): every R1 state has a good record, each invariant 1-5 rejects a bad one, strict inputs reject unknown keys, the six audit actions require manual-incident kind, projection strips all private and unknown update fields. R6 counterexamples give literal true/false as specified; getters on either privacy key return false with 0 calls, inherited keys count as absent, throwing and revoked proxies give false without throwing."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and the complete suite pass with the existing 0.8 coverage threshold; every new type compiles in test/types.fixture.ts and the package-entry smoke test accepts the additive exports. WIRE_VERSION stays 1 and existing public validators preserve their behavior."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "exit 0 after committing the rebuilt dist and rerunning bun run check, matching the repository CI freshness check."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body records the pre-change main SHA and new tests failing there and passing on the branch, bun run check result, committed dist and type-fixture evidence, and the applicable Security impact checklist: descriptor/accessor safety, strict validation, limits, and secret-free errors. No new runtime dependency."
+        }
+      ]
+    }
+  ]
+}

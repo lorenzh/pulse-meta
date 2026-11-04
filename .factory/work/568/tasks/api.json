@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Transactional storage keeps drafts and notes private and counts only public publications",
+      "files": [
+        "src/migrations.ts",
+        "src/manual-incidents.ts",
+        "src/manual-incidents.test.ts",
+        "src/db.migrations.test.ts",
+        "src/server.ts",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, storage/migration, public SQL projection, internal/public timestamps, public-only post-commit callbacks and legacy public-published lookup Behavior bullets; R1, R2, R3 store transitions, R4 transactional audit and event callbacks, R5; decisions 4, 7, 8, 10, 11, 15; Checks 1-5 and 7 at the store boundary and all storage Counterexamples. Pin the merged contract 1.8.0 SHA with bun install. Add step 6 without editing steps 1-5, internal reads/writes, atomic publish, note CRUD and cascades, retention, limits and component-removal rules. Preserve legacy method signatures/public shapes and published update identities. Extend server.ts emptyManualIncidents for the new store methods only, keeping dispatch integration for T2.",
+      "acceptance": [
+        {
+          "command": "bun test src/manual-incidents.test.ts src/db.migrations.test.ts src/server.manual-incidents.test.ts src/server.manual-incidents.audit.test.ts",
+          "expected": "0 fail in the focused tests (coverage exit status is not the gate). Store tests prove drafts/internal items absent from public list/detail with a successful private-read control; 50 internal resolved rows cannot displace 1 public row; publish at fake t2 sets public createdAt and update[0].at to t2; second publish conflicts without an append; notes and drafts preserve published updates; resolve clears a draft; clock 1000 then 900 publishes at 1000. Limits reject the 101st draft/note and an update beyond 100. Removed components prevent publication but drafts do not block removal; open published incidents of either visibility do. Audit failure rolls back every new write and triggers 0 callbacks. Private actions/internal publication/internal resolution give 0 created and 0 resolved callbacks; public publication/resolution give 1 each after commit. Migration of a step-5 file with open/resolved incidents preserves the independent pre-migration public JSON, times and update numbers; reopen, deletion cascades and retention pass. Existing HTTP manual-incident and audit tests remain green."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; the expanded store and server empty-store stub compile with all existing callers, using the merged contract pin and updated lockfile; no tooling thresholds or released migration steps are weakened."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Private incident HTTP routes preserve privacy across public responses and metrics",
+      "files": [
+        "src/manual-incident-routes.ts",
+        "src/server.ts",
+        "src/token-scopes.ts",
+        "src/start.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.private.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "src/server.manual-incidents.metrics.test.ts",
+        "src/server.scopes.test.ts",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/concepts.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, remaining HTTP dispatch, scopes, wiring, logging/request-metric suppression and legacy-create Behavior; all Checks 1-7 including 6a/6b, before-handoff curl and Completion evidence. R2-R4 in full, decisions 2, 3, 11, 14, 15, Counterexamples, Performance impact and Security impact. Implement all ten private routes before admin delegation, incident-read requiring admin+incidents, bounded/strict bodies and the complete R3 check order/state-error table. Keep legacy public writes/projections; reject legacy privacy keys; hide draft/internal ids behind the same unknown-id 404. Suppress the private pathname tree in the request finish hook for every method/status, including unmatched private paths; retain patterned auth-failure/throttle metrics. Document curl flows, shared noncontiguous ids, backup downgrade, concurrent-edit limit, public-only counters and the config-conflict limit.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.manual-incidents.test.ts src/server.manual-incidents.private.test.ts src/server.manual-incidents.audit.test.ts src/server.manual-incidents.metrics.test.ts src/server.scopes.test.ts",
+          "expected": "0 fail in the focused tests (coverage exit status is not the gate). Checks 1-7 and every R3 state row pass with literal 201/200/204 successes and 400/401/403/404/405/409/413/429 failures and required headers/order. Successful protected reads precede negative public assertions; file reopen retains drafts/notes. Draft/internal/deleted/999999 public detail gives 404 and literal {\"error\":\"manual incident not found\"} with equal headers except Date. All legacy writes on draft/internal ids give the same 404 and preserve the private record. Note bytes never appear publicly; draft resolution changes public state only at publish; repeat publish is 409 with unchanged update count. Audit rollback and secret-free log actions, auth labels, bootstrap, throttle and component checks pass."
+        },
+        {
+          "command": "bun test src/server.manual-incidents.metrics.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). Anonymous /metrics initially has created_total 0 and resolved_total 0; the successful private-only sequence of Check 6b leaves both 0, with 0 private request-counter series or unmatched increments. All pulse_api_ lines remain equal except /metrics scrapes and the specified legacy route /manual-incidents/:id/updates code=404 count 1. Publishing the public control gives created_total 1; its legacy resolve gives resolved_total 1. A missing-token private GET adds admin_auth_failures_total route=/admin/manual-incidents/:id status=401 count 1, with no private request-counter line. The test fails on pre-change main at its successful-route controls and detects the #702 internal-counter defect."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; required lint, typecheck and full tests pass with the unchanged 0.8 coverage threshold, including T1 migration/store coverage and all existing manual-incident create/update/resolve/delete/audit/throttle tests."
+        },
+        {
+          "command": "bun start",
+          "expected": "With an isolated configured database and admin token, exercise the docs/rest-api.md curl examples for draft create/edit/publish, draft update, notes and internal-only incidents; record literal successful statuses and public absence checks, with no secret in the evidence."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body gives the failing-on-main regression tests with the pre-change SHA, successful checks and curl commands/results, the Security impact checklist (auth order, limits, strict inputs, public metrics/404 privacy, audit/log secrecy and merged contract pin), and measured test_cpu_s before/after or the specified bench/run.ts comparison with refs/results. Disclose the shared-id gaps, config-conflict counter, timing, concurrent-write and downgrade limits from the spec; cross-service compose evidence is owned by deploy."
+        }
+      ]
+    }
+  ]
+}

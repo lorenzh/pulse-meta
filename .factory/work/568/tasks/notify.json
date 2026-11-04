@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Private incidents never enter notification delivery, seeding or malformed-item metrics",
+      "files": [
+        "src/api.ts",
+        "test/manual-incidents.test.ts",
+        "test/api.test.ts",
+        "README.md",
+        "docs/channels.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all Behavior, Checks 1-5 and Completion evidence; R6, R8, decision 9, privacy Counterexamples, Performance impact and Security impact. Pin merged contract 1.8.0. Skip non-public raw items before validation/rejection/logging, project accepted items, keep all public routing/keys/seeding/restarts unchanged and add no metric/config/ledger behavior. Use catch-all and component channels, awaited successful polls and marker B to prove notes/draft-update privacy; prove publication of a previously seeded draft is eligible.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-incidents.test.ts test/api.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). Checks 1-5: after an empty seed poll, A/I/D gives exactly 1 manual:A:opened per eligible channel and 0 I/D lines; after an awaited poll of A with private fields plus public marker B, both channels have exactly 1 manual:B:opened, 0 private sentinel lines and 0 A update events. D saved before initialization but published later yields exactly 1 manual:D:opened. Restarting with the same ledger sends no successful event twice. Private items produce 0 rejected entries/logs and skipped_items_total{feed=\"manual-incidents\"} stays 0; a malformed public item missing title raises it to 1. Public projections carry no notes/draft or unknown update fields."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; required lint, typecheck and full tests pass at the existing 0.8 coverage threshold, including unchanged manual-incident, routing and upgrade tests; no private item enters event derivation, seeding, payloads, ledger or any channel."
+        },
+        {
+          "command": "bun run start",
+          "expected": "With a local fake api and file channels, exercise the changed read path once and record public delivery and private absence after a successful poll; no credential or private sentinel appears in service logs."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body records pre-change main SHA and Checks 1 and 3 failing there then passing, identifies note/draft-update cases as regression guards, reports bun run check, service smoke and bun test CPU before/after, and addresses Security impact: privacy before validation/metrics, public projections, secret-free logging and merged contract pin. Internal-only incidents route to no channel; cross-service compose evidence is owned by deploy."
+        }
+      ]
+    }
+  ]
+}
