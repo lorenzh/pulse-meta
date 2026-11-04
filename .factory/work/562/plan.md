@@ -261,10 +261,28 @@ Per key, the table holds the failure times of the last 15 minutes, `lockedUntil`
 - **Failure.** The failure is recorded on both keys. When a key reaches 5 live failures,
   `lockedUntil = now + 900000` and its failures are cleared.
 - **Success.** Only the account key's failures are cleared.
-- **Size.** At most 10,000 keys per table. Entries with no live failure, no live lock and no
-  in-flight attempt are dropped first. If the table is still full, the unlocked entry with the
-  oldest last failure is evicted. If every entry is locked, the attempt answers `429` with
-  `Retry-After: 900`.
+- **Reservations.** An admitted attempt reserves its entry in each table: `inFlight` goes up by 1
+  on both entries at admission and down by 1 on the same two entries when the attempt settles
+  (failure, success, or an error that ends the request). An entry with `inFlight > 0` is never
+  removed, by idle cleanup or by eviction, so settling always finds the entry it reserved and
+  its failures count against the same budget. Invariant: a locked entry has `inFlight = 0`. A key
+  locks only when its 5th live failure lands, and admission keeps `liveFailures + inFlight <= 5`.
+- **Size.** At most 10,000 keys per table. A table only grows when an attempt brings a key that it
+  does not hold yet. Then, if the table is full:
+  1. Entries with no live failure, no live lock and `inFlight = 0` (idle) are dropped.
+  2. If the table is still full, the evictable entry with the oldest last failure is evicted. An
+     entry is evictable when it is unlocked and has `inFlight = 0`. Locked entries and entries
+     with an attempt in flight are never evicted.
+  3. If no entry is evictable (every entry is locked or has an attempt in flight), the attempt is
+     refused with `429`. `Retry-After` is `1` when any entry of that table has `inFlight > 0`.
+     Otherwise it is `ceil(min(lockedUntil - now) / 1000)` over the table's entries, which lies
+     in 1..900. No KDF runs, nothing is counted, and no entry is created in either table.
+
+  Admission is atomic across the two tables. The room check, the creation of new entries and both
+  reservations happen in one synchronous step with no `await` in between. If one table refuses,
+  the other table is not changed either: it gets no new entry and no reservation. A capacity
+  refusal is logged and counted like any other throttled attempt (`reason` `throttled`,
+  `result="throttled"`).
 - **Restart.** A restart clears all throttle state (documented).
 
 The setup code uses a separate instance with the client key only and the same numbers.
@@ -435,7 +453,11 @@ token, the passwords and the setup code have no intended disclosure in any respo
   already controls the host.
 - **Many-client spray.** A client that controls many addresses can force up to 5 KDF runs per
   address per 15 minutes. Each run takes about 19 MiB for a short time. The 10,000-key bound
-  caps memory. Without a global KDF cap, the CPU can spike under such an attack (documented
+  caps memory. Eviction can drop the live failures of an unlocked, idle entry. That needs the
+  table full of other keys with live failures within 15 minutes, and the client lock limits each
+  address to 5 of them. Locked and in-flight entries are never evicted. A full table of locked
+  entries refuses new keys with `429` until the first lock ends, which an attacker with 10,000
+  addresses can cause (documented limit, fail-closed). Without a global KDF cap, the CPU can spike under such an attack (documented
   limit).
 - **api auth throttle.** Repeated failing tests with a wrong token can trip the api's own limit
   of 10 failures per 60 s, which then answers `429`. The setup page names that case.
@@ -469,6 +491,11 @@ Each check names where its expected value comes from.
    - At `t5 + 899999` ms the answer is still `429`. At `t5 + 900000` the correct password answers
      `303`.
    - 10 concurrent wrong attempts on a fresh state give exactly 5 × `401` and 5 × `429`.
+   - Capacity pressure does not reset a budget (`src/auth-throttle.test.ts`, the "Throttle
+     capacity" counterexamples): with both tables full and 4 attempts of one account in flight, a
+     new key is refused with `429` and `Retry-After: 1`, the in-flight entries survive, and that
+     account gets exactly 5 admissions in the window. With only locked entries, a new key at
+     t = 1000 gets `Retry-After: 899`.
    - Expected: literals from #460 decision 5 (5, 15 min = 900000 ms).
 5. The stored admin token is not readable in the clear. After a completed setup with the sentinel
    token `console-test-sentinel-token-0123456789abcdef`:
@@ -548,7 +575,9 @@ Checklist items that apply:
   known accounts fail alike. The throttle runs before the KDF.
 - **Body and size limits.** Forms are capped at 8192 bytes. The upstream body cap is 5 MiB, with
   a 5000 ms timeout per call. The password is capped at 128 code points. The throttle tables are
-  capped at 10,000 keys.
+  capped at 10,000 keys. An entry that is locked or has an attempt in flight is never evicted, so
+  filling a table cannot reset a budget; a full table without an evictable entry refuses new keys
+  with `429`.
 - **Input validation.** API URL, email, name, password, `next`, setup code, `Host`, `Origin` and
   `Content-Type`.
 - **SSRF and redirects.** Only a grant holder can trigger a credentialed request. The URL must be
@@ -623,6 +652,35 @@ access on parsed input).
     answers `429`.
   - Failures at t = 0, 1, 2, 3 min and t = 15:00.000: the first is no longer live
     (`now - 900000 < t` is false for t = 0). There are 4 live failures, so there is no lock.
+- **Throttle capacity** (limiter module, default bound of 10,000 keys, injected clock, no KDF).
+  These cases are deterministic, because admissions and settlements are explicit calls in a fixed
+  order:
+  - Saturation with an attempt in flight. At t = 0, for i = 1..9,999, account `a<i>@example.com`
+    with client key `c<i>` fails 5 times. Both tables now hold 9,999 locked entries. At t = 1000,
+    `owner@example.com` from client `v` is admitted 4 times and none of these attempts settles.
+    Both tables are now full (10,000 entries each), and the `owner@example.com` and `v` entries
+    have `inFlight = 4`. At t = 2000, `new@example.com` from client `n` is refused with `429` and
+    `Retry-After: 1`. Both tables still hold 10,000 entries, `owner@example.com` and `v` keep
+    `inFlight = 4`, and neither `new@example.com` nor `n` exists. At t = 3000, the 4 attempts
+    settle as failures (4 live failures, `inFlight = 0`). At t = 4000, one more attempt for
+    `owner@example.com` from `v` is admitted. A second one before it settles is refused with
+    `429` and `Retry-After: 1`. Expected: exactly 5 admissions for `owner@example.com` between
+    t = 1000 and t = 4000 (the literal 5 of #460 decision 5). A wrong implementation that evicts
+    the in-flight entry at t = 2000 recreates `owner@example.com` with no reservations. It then
+    admits 5 more attempts at t = 4000, so 9 or more KDF runs instead of 5.
+  - Saturation with locks only. At t = 0, 10,000 accounts with 10,000 client keys each fail 5
+    times, so both tables are full of locked entries. At t = 1000 a new account from a new client
+    is refused with `429` and `Retry-After: 899` (`ceil(899000 / 1000)`), not 900 and not 1. At
+    t = 900000 every lock has ended, the entries are idle, and the same attempt is admitted.
+  - Atomic refusal. The account table is full of locked entries, and the client table holds one
+    entry. An attempt with a new account from a new client is refused with `429`. The client table
+    still holds exactly 1 entry, and no reservation was made. A wrong implementation that reserves
+    the client key first leaks a client entry with `inFlight = 1` that never settles.
+  - Eviction order. 9,999 locked pairs as in the first case, then account `old@example.com` from
+    client `o` fails 2 times, so both tables are full and `old@example.com` and `o` are unlocked
+    with 2 live failures and `inFlight = 0`. A new account from a new client evicts both and is
+    admitted. The same set-up with one more unsettled `old@example.com` attempt from `o`
+    (`inFlight = 1`): the new attempt is refused with `429` and `Retry-After: 1`.
 - **Throttle lock.** It ends exactly at `lockedUntil`: `429` at `t5 + 899999`, admitted at
   `t5 + 900000`. A blocked attempt does not extend the lock.
 - **Sessions.**
@@ -720,7 +778,7 @@ Files:
 - `src/connection-test.ts` (new: the two calls and the result or failure text table)
 - `src/connection-test.test.ts` (new)
 - `src/auth-throttle.ts` (new: limiter with lock, in-flight count and bound)
-- `src/auth-throttle.test.ts` (new)
+- `src/auth-throttle.test.ts` (new: rules, counterexamples and the capacity saturation cases)
 - `src/passwords.ts` (new: policy, hash parameters, dummy verifier)
 - `src/passwords.test.ts` (new)
 - `src/cookies.ts` (new: parse and serialize with mode-dependent names, flags and refresh)
