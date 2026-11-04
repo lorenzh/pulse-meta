@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkDir, events, progress, validateTaskFile } from './factory-tasks.mjs';
+import { checkDir, events, progress, sectionFiles, validateTaskFile } from './factory-tasks.mjs';
 
 const BOT = 'pulse-factory[bot]';
 const SHA1 = 'a'.repeat(40);
@@ -135,6 +135,18 @@ test('the verdict is the last verdict line; a short sha does not accept', () => 
   assert.equal(status(three, [accept('T1', 'abc1234')]).next, 'T1');
   // A held task review carries no verdict.
   assert.equal(status(three, [run('task-review', 'hold', [], `task-accepted: T1 @ ${SHA1}`)]).next, 'T1');
+});
+
+test('sectionFiles reads paths, not backticked descriptions or continuation lines', () => {
+  const plan = '# Plan\n\n## Repository: api\nFiles:\n' +
+    '- `src/a.ts` (exports `matchRecoveryCode` with `timingSafeEqual`)\n' +
+    '- `src/b.ts` (handles `/account/*`, writes\n' +
+    '  `secrets/console-secret-key` and reports `404`)\n' +
+    '- `README.md`\nBehavior change: yes\n\n' +
+    '## Repository: web\nFiles: `public/x.js`, `public/y.js`.\nBehavior change: no\n';
+  assert.deepEqual(sectionFiles(plan, 'api'), ['src/a.ts', 'src/b.ts', 'README.md']);
+  assert.deepEqual(sectionFiles(plan, 'web'), ['public/x.js', 'public/y.js']);
+  assert.equal(sectionFiles(plan, 'missing'), null);
 });
 
 test('checkDir: one task file per target, Files: coverage, no extra file', () => {
