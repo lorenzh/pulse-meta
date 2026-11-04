@@ -81,11 +81,11 @@ Related contradictions in the same subjects (in scope):
 | # | Warning | Where | Required content | Source |
 | - | ------- | ----- | ---------------- | ------ |
 | W1 | A token that can write checks reaches every header secret | api `docs/operation.md` "Admin tokens and header secrets" (keep the heading); a one-line link from api `docs/configuration.md` "Secrets" note | Name the exact authority: a token with `admin` and `checks` can point a check that uses `{ "env": NAME }` at another URL; the probe sends the secret to that URL only when `PULSE_PROBE_HEADER_HOSTS` binds `NAME` to that host. So the token is as sensitive as every bound secret, and keeping the secret only in the probe environment does not remove that authority. A probe token reads literal header values and bodies from `GET /probe/checks`. Do not claim that the API returns probe environment values, or that a secret goes to any host. | api `src/token-scopes.ts:canUse` (`config-write` = `admin` and `checks`), probe `src/client.ts:resolveHeaders`, `src/header-hosts.ts:isBound`. |
-| W2 | Non-idempotent checks repeat their side effect | probe `docs/configuration.md` "Retries" (exists; add the distinction); api `docs/configuration.md` `retries` and `method` rows | `retries` applies only to HTTP `GET`/`HEAD` (and omitted method), TCP, DNS and domain checks; any other HTTP method makes one attempt, judged on the configured method before redirects. Every scheduled run still sends the request, so a `POST` check acts on the target once per interval, on every probe location. The idempotence of `POST /results` and the at-least-once delivery of notify concern results and notifications, not the checked request. Point the check at a side-effect-free endpoint. | probe `src/check.ts:isRetryable` (lines 196-200), `src/check.ts:161`. |
+| W2 | Non-idempotent checks repeat their side effect | probe `docs/configuration.md` "Retries" (exists; add the distinction); api `docs/configuration.md` `retries` and `method` rows | `retries` applies only to HTTP `GET`/`HEAD` (and omitted method), TCP, DNS and domain checks; any other HTTP method gets no retry: one attempt per scheduled run, judged on the configured method before redirects. An attempt is not one request: within one attempt the probe follows redirects hop by hop, and a `307` or `308` keeps the method and body, so a `POST` answered by `307` is sent again to the `Location` (up to 20 redirect hops, so at most 21 requests per attempt). A `301`/`302` turns a `POST` without headers or body into a `GET`; a check with headers or a body follows only same-origin hops and stops on `301`-`303` for a non-`GET`. Every scheduled run makes its attempt, on every probe location, so a `POST` check acts on the target at least once per run and location, more when redirects resend it. The text must say "one attempt per run", not "one request" or "once per interval". The idempotence of `POST /results` and the at-least-once delivery of notify concern results and notifications, not the checked request. Point the check at a side-effect-free endpoint. | probe `src/check.ts:isRetryable` (lines 196-200), `src/check.ts:161`; redirects: `src/check.ts:410` (`MAX_REDIRECTS = 20`), `:462-485` (`fetchFollowing` loop, one request per hop), `:527-539` (`secretHop`), `:543-549` (`openHop`), `src/check.redirect.test.ts:112-124` ("307 same-origin keeps method and body": two `POST`s in one run). |
 | W3 | Publish only `/heartbeat/*` | api `docs/install.md` (new section "Network exposure") and a link from api `docs/rest-api.md` general rules | Keep the API on a private network. If jobs outside it must ping, publish only `GET`/`POST` on `/heartbeat/<id>` and `/heartbeat/<id>/<secret>` through a TLS reverse proxy that matches the normalized path. Keep `/admin/*`, `/manual-incidents` writes, `/probe/checks`, `/results`, the public reads and `/healthz`, `/readyz`, `/metrics` off that ingress. The status page serves the public data through its own proxy. | api `src/server.ts:197` (`HEARTBEAT_PATH = /^\/heartbeat\/([^/]+)(?:\/([^/]+))?$/`), `:604`, `:611`, `:692`; status `docs/operation.md` "What is public". |
 | W4 | A copy on the live volume is not a backup | api `docs/operation.md` "Backup and restore" | `bun run backup` makes a consistent snapshot in the target's directory. A file under `/data` sits on the live volume: losing the volume or the host loses both. Move each copy to storage outside that volume and host (the existing `docker compose cp` step, then off-host), keep more than one, and test a restore. Keep the existing command, the exit codes and the temp-directory text. | api `src/backup.ts:copyLive` (read-only connection, `VACUUM INTO`). |
 | W5 | No credentials in check URLs | api `docs/configuration.md` `url` row and "Secrets" note; api `docs/operation.md` "Admin tokens and header secrets" or "Heartbeat checks" neighbourhood | Userinfo is already rejected. A token in the query string or path is accepted and stored, and the URL is served raw by the public `GET /checks` and by `GET /probe/checks` and `GET /admin/config`. The status page strips userinfo, query and fragment, but that does not protect direct API reads. Put credentials in a header with `{ "env": NAME }` bound to the host. Keep the existing heartbeat path-secret warning. | contract `src/schema.ts:35-41` (`httpUrl` rejects userinfo only); api `src/service.ts:741` (`url: r.url ?? ""` in the public check); status `src/api-filter.ts:sanitizeUrl`. |
-| W6 | Meaning of `pulse_notify_polls_total` | notify `docs/operation.md` "Health and metrics" paragraph after the table, and one bullet in "Upgrading" | The counter counts the feed reads of a poll: `ok` when all three feeds answered (a `404` on `manual-incidents` counts), `error` when any read failed. It is counted before detection and enqueue, so a poll whose detection then throws stays `ok` here while `pulse_notify_consecutive_failed_polls` and `/readyz` count it as failed. An `error` poll still uses the feeds that answered. It says nothing about delivery: use `pulse_notify_deliveries_total` and `pulse_notify_pending_deliveries`. For feed health use `pulse_notify_feed_polls_total`, `pulse_notify_consecutive_failed_polls` and `/readyz`. The upgrade bullet tells operators who alert on `outcome="error"` as "nothing was delivered" that this no longer holds, and names no version number. | notify `src/notifier.ts:330-349` (`#poll`, `pollDone` before `#pollChannel`), `src/notifier.ts:311-318` (`tick`, `#failedPolls`), `src/metrics.ts:24-26`; meta `.factory/work/454/plan.md` (feeds used independently); meta `audits/security/notify.md` N7. |
+| W6 | Meaning of `pulse_notify_polls_total` | notify `docs/operation.md` "Health and metrics" paragraph after the table, and one bullet in "Upgrading" | The counter counts the feed reads of a poll: `ok` when all three feeds answered (a `404` on `manual-incidents` counts), `error` when any read failed. It is counted before detection and enqueue, so a poll whose detection then throws stays `ok` here while it still adds 1 to `pulse_notify_consecutive_failed_polls` (as does every `error` poll; a fully successful poll resets it to 0). `/readyz` fails only when that streak reaches `PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS` (default 5, minimum 1); one failed poll alone does not fail readiness. An `error` poll still uses the feeds that answered. It says nothing about delivery: use `pulse_notify_deliveries_total` and `pulse_notify_pending_deliveries`. For feed health use `pulse_notify_feed_polls_total`, `pulse_notify_consecutive_failed_polls` and `/readyz`. The upgrade bullet tells operators who alert on `outcome="error"` as "nothing was delivered" that this no longer holds, and names no version number. | notify `src/notifier.ts:330-349` (`#poll`, `pollDone` before `#pollChannel`), `src/notifier.ts:311-318` (`tick`, `#failedPolls`), `src/metrics.ts:24-26`, `src/index.ts:240-246` (readiness: `failed >= healthMaxFailedPolls`), `src/config.ts:402` (`PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS`, default 5, min 1); meta `.factory/work/454/plan.md` (feeds used independently); meta `audits/security/notify.md` N7. |
 
 ## Required behavior
 
@@ -168,9 +168,9 @@ Positive checks (expected values are literals of this spec):
 | P5 | api | "Backup and restore" names storage outside the live volume and a restore test | reviewer reads; `rg -c -F 'bun run backup' docs/operation.md` ≥ 1 |
 | P6 | api | `docs/configuration.md` `url` row or Secrets note warns against tokens in the query string | `rg -n -i 'query' docs/configuration.md` has a match in the HTTP checks section |
 | P7 | probe | `docs/operation.md` State section says buffered results are lost on stop, restart or crash | reviewer reads; consistent with Result buffer bullet |
-| P8 | probe | `docs/configuration.md` Retries names that result idempotence and notification delivery do not cover the checked request | reviewer reads |
+| P8 | probe | `docs/configuration.md` Retries names that result idempotence and notification delivery do not cover the checked request, and that a `307`/`308` redirect resends a `POST` within one attempt | `awk '/^### Retries/,/^### Schedule/' docs/configuration.md \| grep -c -F -- '307'` ≥ 1 (literal; 0 on current main, line 103 outside the section does not count); reviewer reads |
 | P9 | notify | `docs/channels.md` lists all five key forms `<incidentId>:opened`/`resolved`, `<incidentId>:reminder:<n>`, `manual:<id>:opened`, `manual:<id>:update:<d>`, `manual:<id>:resolved` and tells receivers to treat the key as opaque | `rg -c -F 'opaque' docs/channels.md` ≥ 1; reviewer reads |
-| P10 | notify | `docs/operation.md` says `pulse_notify_polls_total` is counted before detection and does not count delivery | `rg -c -F 'pulse_notify_deliveries_total' docs/operation.md` ≥ 2 (table row plus the new text); reviewer reads |
+| P10 | notify | `docs/operation.md` says `pulse_notify_polls_total` is counted before detection and does not count delivery, and that `/readyz` fails only when the failed-poll streak reaches `PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS` | `rg -c -F 'pulse_notify_deliveries_total' docs/operation.md` ≥ 2 (table row plus the new text); reviewer reads the new W6 paragraph: it ties `/readyz` to the streak threshold and does not say one failed poll fails readiness (the existing line 142 already names the threshold, so no grep proves the new text) |
 | P11 | contract | `AGENTS.md` boundary line names Zod schemas | `rg -c -F 'Zod' AGENTS.md` ≥ 2 |
 | P12 | kit | `AGENTS.md` line points at `docs/index.md` as the reference of the existing exports | reviewer reads |
 
@@ -232,8 +232,12 @@ affected, because no code, type or published `dist/` changes.
 - **Retries (W2).** `method: "POST"`, `retries: 3`, target answers `503`: one attempt, `attempts: 1`.
   `method: "GET"`, `retries: 3`, `503` each time: four attempts. `method: "POST"` answered by `303` to a
   `GET` URL that then fails: still one attempt, because the configured method decides. A `POST` check
-  with `intervalMs: 60000` from 3 locations sends 3 requests per minute to the target even with
+  with `intervalMs: 60000` from 3 locations makes 3 attempts per minute to the target even with
   `retries: 0`.
+- **Attempt is not request (W2).** `method: "POST"`, body `payload`, `retries: 0`; the target answers
+  `/` with `307 Location: /next` and `/next` with `200`. One run is one attempt (`attempts: 1`) but the
+  target receives two `POST`s with the body (probe `src/check.redirect.test.ts:112-124`). Text that
+  says a non-idempotent check sends "one request" per run, or acts "once per interval", is wrong.
 - **Key format (F6).** Incident 12 with reminders every hour, 3 h after opening: key `12:reminder:3`,
   not `12:reminder`. Manual incident 4, second update: key `manual:4:update:<32 hex>`, not
   `4:update` or `manual:4:update:1`. A receiver that parses the key as `<number>:<event>` breaks on both.
@@ -249,7 +253,10 @@ affected, because no code, type or published `dist/` changes.
   is accepted and shows up unchanged in public `GET /checks`, while status shows
   `https://svc.example/`. Text that says the API redacts the query is wrong.
 - **Poll counter (W6).** All three feeds answer and detection throws: `pulse_notify_polls_total{outcome="ok"}`
-  rises by 1 and `pulse_notify_consecutive_failed_polls` rises by 1. `/checks` fails but `/incidents`
+  rises by 1 and `pulse_notify_consecutive_failed_polls` rises by 1; with the default
+  `PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS=5` `/readyz` still answers ready after that one poll and fails
+  only after the fifth failed poll in a row (notify `src/index.ts:240-246`, `src/config.ts:402`). Text
+  that says a detection failure (or one `error` poll) "fails `/readyz`" is wrong. `/checks` fails but `/incidents`
   answers with a newly resolved incident: `outcome="error"` rises and the `resolved` event is still
   enqueued. Text that says `error` means "nothing processed" or that `ok` means "delivered" is wrong.
 - **Statistics.** This spec defines no statistic. The status latency text (F9) keeps its existing
@@ -351,8 +358,10 @@ Behavior and edits:
   - The bullet "Only `GET` and `HEAD` HTTP checks retry" in "Result buffer" moves next to a link to
     `configuration.md#retries` or stays; it must not contradict W2.
 - `docs/configuration.md`: line 75 (R8) names the reload; "Retries" (W2) adds the distinction between
-  the checked request and the idempotent `POST /results` / at-least-once notify delivery, and that each
-  probe location sends the request.
+  the checked request and the idempotent `POST /results` / at-least-once notify delivery, that each
+  probe location makes its own attempt every run, and that one attempt can send the request more than
+  once when a `307`/`308` redirect keeps the method and body (attempts versus requests; cite
+  `src/check.ts:410`, `:527-549`, `src/check.redirect.test.ts:112-124`).
 - `docs/troubleshooting.md`: line 43 (R7) compares with the token's `location` in `GET /admin/tokens`;
   lines 72 and 90-91 (R5) drop the API restart.
 
@@ -363,7 +372,7 @@ Checks:
 - N10-N16 and P7-P8.
 
 Completion evidence: PR with the evidence table for F5, R5-R8, W2 (cite `src/buffer.ts`,
-`src/check.ts:isRetryable`, api `src/token-routes.ts`); outputs of N10-N16; `bun run check` result;
+`src/check.ts:isRetryable`, `src/check.ts:410` and `:527-549` (redirects), `src/check.redirect.test.ts:112-124`, api `src/token-routes.ts`); outputs of N10-N16; `bun run check` result;
 only `.md` files changed.
 
 ## Repository: notify
@@ -385,7 +394,9 @@ Behavior and edits:
   opaque string (no parsing). Keep the payload example and the manual-incident paragraph.
 - `docs/troubleshooting.md:73`: the same opaque-key wording without the `<incident id>:<event>` form.
 - `docs/operation.md` (W6): after the metrics table, replace the first sentence of the paragraph with
-  the full meaning of `pulse_notify_polls_total` and the signals to use instead; add one bullet to
+  the full meaning of `pulse_notify_polls_total` and the signals to use instead (a detection failure
+  adds to the failed-poll streak; `/readyz` fails only when the streak reaches
+  `PULSE_NOTIFY_HEALTH_MAX_FAILED_POLLS`, as line 142 already says); add one bullet to
   "Upgrading" for alerts on `outcome="error"`.
 
 Checks:
@@ -394,7 +405,7 @@ Checks:
 - N17-N19 and P9-P10.
 
 Completion evidence: PR with the evidence table for F6 and W6 (cite `src/detector.ts`,
-`src/channels/webhook.ts`, `src/notifier.ts:#poll`, `src/metrics.ts`); outputs of N17-N19;
+`src/channels/webhook.ts`, `src/notifier.ts:#poll`, `src/metrics.ts`, `src/index.ts:240-246`, `src/config.ts:402`); outputs of N17-N19;
 `bun run check` result; only `.md` files changed.
 
 ## Repository: contract
