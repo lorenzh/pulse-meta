@@ -210,13 +210,20 @@ These close the open points of the issue review. Each one is binding for the con
       `now >= issuedAt + 43_200_000` is invalid and is removed (on each `issue`, `consume` and
       `wasUsed`). A used entry stays until its lifetime ends, so a replay within that time is
       recognised.
-    - Bounds:
+    - Bounds. The store has two separate pools, one per binding kind, and an eviction only
+      ever removes an entry from the pool of the token being issued:
       - at most 100 unused tokens per binding: issuing the 101st removes the oldest unused
         token of that binding;
-      - at most 2000 entries with an `a:` binding: issuing beyond that removes the oldest `a:`
-        entry. Anonymous page views can therefore never remove a signed-in token;
-      - at most 10000 entries in total: issuing beyond that removes the oldest entry.
-      A removed token is simply invalid; it can never be accepted.
+      - the `a:` pool holds at most `FORM_TOKEN_ANON_MAX = 2000` entries (used or unused):
+        issuing an `a:` token when it is full removes the oldest `a:` entry;
+      - the `s:` pool holds at most `FORM_TOKEN_SESSION_MAX = 8000` entries (used or unused):
+        issuing an `s:` token when it is full removes the oldest `s:` entry.
+      "Oldest" means the smallest `issuedAt`, ties broken by insertion order. The store
+      therefore never holds more than 10000 entries, and there is no global eviction: issuing
+      an `a:` token never removes an `s:` entry, and issuing an `s:` token never removes an
+      `a:` entry, however full the other pool is. A removed token is simply invalid; it can
+      never be accepted. A removed used entry turns a later replay from `replayed` into
+      `invalid`; in both cases the action does not run.
     - Consume: `consume(token, binding, path)` runs once per POST, in one synchronous step (no
       `await` between the lookup and setting `usedAt`). So of two concurrent POSTs with one
       token, exactly one is `accepted`. Where it runs:
@@ -518,9 +525,10 @@ does not run the console, so the two reads per Overview page view (`GET /admin/c
 `GET /checks`) never reach a measured run. `budgets.json` has no console section. Console side,
 not budgeted: the image is unchanged in content apart from new `src/*.ts` modules (dev packages
 stay out, checked by the image job); `bun test` time grows by the new server tests (a few
-seconds at most). The form-token store is bounded at 10000 entries of about 200 bytes each
-(token, binding, path, two numbers), so at most about 2 MiB of console RSS in the worst case
-(anonymous sign-in and setup page views fill at most 2000 of them) and a few KiB in normal use.
+seconds at most). The form-token store is bounded at 10000 entries (8000 `s:` plus 2000 `a:`) of about
+200 bytes each (token, binding, path, two numbers), so at most about 2 MiB of console RSS in the
+worst case (anonymous sign-in and setup page views fill at most the 2000 `a:` entries) and a few
+KiB in normal use.
 Each form page view adds one 32-byte random draw and one SHA-256 of a 43-character string; `/console.js` is a static string of well under 2 KiB. No measurement
 run is needed; the implementer reports the `bun run test` duration before and after in the pull
 request.
@@ -566,14 +574,15 @@ Checklist items that apply:
   token without CSRF is a sign-out without a session: `wasUsed` changes nothing and only tells
   the holder of that token whether it was used.
 - **Store flooding**: unauthenticated `GET /sign-in` and `GET /setup` issue `a:` tokens. They
-  are capped at 2000 entries and never remove an `s:` entry. A flood can at worst remove an
-  open anonymous form's token. That form then answers `invalid` and is shown again; a removed
+  live in their own pool of 2000 entries, and an `a:` issue evicts only from that pool, so it
+  never removes an `s:` entry, even when the `s:` pool is full at 8000 (there is no global
+  eviction). A flood can at worst remove an open anonymous form's token. That form then answers `invalid` and is shown again; a removed
   token is never accepted.
 
 The security state after review should try hostile inputs: `next` values (`//evil.example`,
 `/\evil`, 513 characters, control characters), forged `expected`, `role`, `revision` fields,
 replayed, concurrent, cross-session, cross-path, expired, empty and repeated `form_token`
-fields, 101 form views in one session, 2001 anonymous sign-in page views and 10001 in total,
+fields, 101 form views in one session, 2001 anonymous sign-in page views, a store full with 8000 `s:` and 2000 `a:` entries followed by one more issue of each kind,
 replayed and concurrent sign-in, setup code, setup completion and sign-out POSTs, a sign-out
 replay without a session cookie, a sign-in form token posted to `/setup`,
 cross-origin and `Origin: null` POSTs to confirmations, a POST with an expired session, an api
@@ -671,6 +680,9 @@ not redone elsewhere.
 | Form token | POST with a valid token and a wrong `csrf`, then the same token with the right `csrf` | first 403 `Request refused`; second accepted, recorder 1 | second refused (token consumed by a refused POST) |
 | Form token | a valid POST of the 409 stale-state fixture, then a fresh submit of the re-rendered form | second POST is not `replayed` (its form carries a new token) | `Already submitted` |
 | Form token | 2001 `GET /sign-in` without cookies, then a POST with a shell form's `s:` token issued before them | `s:` token accepted; the first `a:` token `invalid` | the `s:` token evicted |
+| Form token, full store | unit level, fake `now` strictly increasing: 8000 `s:` tokens (80 sessions × 100) issued first, then 2000 `a:` tokens (store holds 10000); then one more `a:` issue | the first `a:` token `invalid`; the first `s:` token still `accepted`; 8000 `s:` and 2000 `a:` entries | the first `s:` token `invalid` (global oldest-entry eviction) |
+| Form token, full store | the same full store, then one more `s:` issue (an 81st session) | the first `s:` token `invalid`; the second `a:` token still `accepted` | an `a:` token removed, or the store grows to 10001 |
+| Form token, full store | 8000 `s:` entries only (`a:` pool empty), then one `a:` issue | all 8000 `s:` tokens stay valid (the first `s:` token `accepted`), the new `a:` token `accepted` | the first `s:` token `invalid` because 8000 + 1 crossed a total cap |
 | Sign-in replay | correct sign-in POST (`csrf`, `form_token`, `email`, `password`, `next`) sent twice with the same cookies | first `303` with a session `Set-Cookie`; second `409` `Already submitted`, no `Set-Cookie`, still 1 session row | second `303` and a second session row |
 | Sign-in concurrent | the same correct sign-in body twice with `Promise.all` | one `303`, one `409`; 1 session row; auth metric `result="success"` 1 | two sessions |
 | Sign-in without token | correct credentials, no `form_token` | `409` with `This form has expired. Send it again.`, `next` kept, 0 session rows, no `failure` counted; then a fresh-token sign-in `303` | `303`, or a `401` that counts toward the lock |
@@ -711,6 +723,7 @@ for n in '__test' 'confirm_name' 'instanceName' 'ConsoleRole' 'hasRole' 'roleOf'
   'typedConfirmPage' 'plainConfirmPage' 'isTypedNameConfirmed' 'readOverview' \
   'summarizeChecks' 'overallState' 'check:browser' 'form_token' 'formTokenField' \
   'createFormTokens' 'FormTokens' 'issueFormToken' 'FORM_TOKEN_LIFETIME_MS' 'form token refused' \
+  'FORM_TOKEN_ANON_MAX' 'FORM_TOKEN_SESSION_MAX' \
   'alreadySubmittedState' 'formExpiredNotice' 'renderForm' 'CONSOLE_JS' 'console.js' \
   'data-busy-label' 'aria-busy' 'wireLabel' 'revision' 'formExpiredResendNotice' 'wasUsed' \
   'alreadySubmittedPage'; do
@@ -722,8 +735,8 @@ for n in 'form_token' 'formExpiredResendNotice' 'wasUsed' 'alreadySubmittedPage'
 done
 ```
 
-Result (rerun in this revision with `formExpiredResendNotice`, `wasUsed` and
-`alreadySubmittedPage` added; the second loop covers deploy at `e3c2eb5`, whose e2e script
+Result (rerun in this revision with `formExpiredResendNotice`, `wasUsed`,
+`alreadySubmittedPage`, `FORM_TOKEN_ANON_MAX` and `FORM_TOKEN_SESSION_MAX` added; the second loop covers deploy at `e3c2eb5`, whose e2e script
 gains `form_token`): `0` for every name in both loops, except two console names that are reused
 on purpose:
 
@@ -816,7 +829,8 @@ Files:
 - `src/main.ts` (passes `instanceName`; still no `testRoutes` and no `roleOf`)
 - `src/html.ts` (new: document head with the script flag, `csrfField`, `formTokenField`,
   `field`, `textarea` field, `submitButton`, `formErrorSummary`, moved from `src/pages.ts`)
-- `src/form-tokens.ts` (new: `createFormTokens`, `FormTokens`, `FORM_TOKEN_LIFETIME_MS`)
+- `src/form-tokens.ts` (new: `createFormTokens`, `FormTokens`, `FORM_TOKEN_LIFETIME_MS`,
+  `FORM_TOKEN_ANON_MAX`, `FORM_TOKEN_SESSION_MAX`)
 - `src/console-script.ts` (new: `CONSOLE_JS`, the static script text served at `/console.js`)
 - `src/metrics.ts` (`PathLabel` gains `/console.js`)
 - `src/pages.ts` (setup and sign-in pages import from `src/html.ts`, take a `formToken` and
@@ -841,7 +855,8 @@ Files:
   `src/server.setup.test.ts` (the `createConsoleServer` call at `:102` gains `instanceName`;
   the `Client.post` helper at `:172-191` sends a `form_token`),
   `src/server.sign-in.test.ts` (call at `:94` gains `instanceName`; the `Client.post` and
-  `signIn` helpers at `:163-187` send a `form_token`; new cases added),
+  `signIn` helpers at `:163-187` send a `form_token`; `withoutCsrf` at `:190-192` also
+  strips the `form_token` value; new cases added),
   `src/server.security.test.ts` (call at `:62` gains `instanceName`; raw `send` bodies that
   must reach a commit point gain a `form_token`; new cases added),
   `src/main.startup.test.ts` (new case for `/__test/` on `bun src/main.ts`)
@@ -878,7 +893,19 @@ This rule covers the five existing test files above. Only these edits are allowe
    - Raw `send` bodies in `src/server.security.test.ts` that must reach a commit point (the
      `303` unlocks at `:179-190`, `:286` and `:321`) gain `&form_token=<token>`, taken from a
      GET `/setup` with the same cookie.
-3. New `test(...)` cases.
+3. Response normalization for per-render tokens. Every re-rendered form carries a fresh
+   `form_token` (Decision 11), so two `401` sign-in pages now differ in that value as they
+   already differ in `csrf`. The helper `withoutCsrf` at `src/server.sign-in.test.ts:190-192`
+   (today `html.replace(/name="csrf" value="[^"]*"/, "")`) may also strip
+   `name="form_token" value="[^"]*"`, and only that. Its name may stay. The assertion that
+   uses it, `expect(withoutCsrf(unknown.body)).toBe(withoutCsrf(wrong.body))` at `:212`,
+   stays byte for byte, so wrong and unknown accounts still get the same `401` page apart
+   from the two per-render token values. No other normalization is added, and no other
+   helper may strip anything from a response body. This is the only body-equality
+   assertion in the five files that a per-render value reaches (searched with
+   `grep -n 'withoutCsrf\|body).toBe(' src/*.test.ts` in the console clone: the other hit,
+   `src/server.security.test.ts:216`, compares the plain-text `421` body, which has no form).
+4. New `test(...)` cases.
 
 No existing `expect` is removed, loosened or changed: `git diff main -- <these files>` has no
 removed line that contains `expect(` (console check 9). Required behavior 1a keeps the order
@@ -1039,9 +1066,11 @@ Every expected value below is a literal written in this spec or in the test.
    Counterexamples at unit level: `accepted` once then `replayed`; another session digest or
    path `invalid`; `invalid` at `issuedAt + 43_200_000`, `accepted` at `issuedAt +
    43_199_999`; the 101st `issue` in one session makes the first token `invalid` while the
-   second stays valid; with 10000 entries in total the next `issue` makes the oldest entry
-   `invalid`; with 2000 `a:` entries the next `a:` `issue` makes the oldest `a:` entry
-   `invalid` while an older `s:` entry stays `accepted`; an unknown and an empty token are
+   second stays valid; the three "Form token, full store" rows with the literal counts
+   8000, 2000, 10000 and 80 sessions: with both pools full an `a:` issue makes only the
+   oldest `a:` entry `invalid` and the oldest `s:` entry stays `accepted`, an `s:` issue makes
+   only the oldest `s:` entry `invalid` and the second `a:` entry stays `accepted`, and with
+   8000 `s:` entries and an empty `a:` pool an `a:` issue removes nothing; an unknown and an empty token are
    `invalid`; `wasUsed` is `false` before `consume`, `true` after it for the same path, `false`
    for another path, and `false` at `issuedAt + 43_200_000`.
 7b. `src/server.form-token.test.ts` (real server, fixtures): every form-token row of
@@ -1090,6 +1119,9 @@ Every expected value below is a literal written in this spec or in the test.
    `src/server.security.test.ts`, and the setup texts of `src/connection-test.test.ts`.
    `git diff main -- src/server.test.ts src/server.setup.test.ts src/server.sign-in.test.ts
    src/server.security.test.ts src/main.startup.test.ts | grep -c '^-.*expect('` prints `0`.
+   The line `expect(withoutCsrf(unknown.body)).toBe(withoutCsrf(wrong.body));` is present in
+   `src/server.sign-in.test.ts` (`grep -c` prints `1`), and that test passes with the two
+   `401` pages carrying different `form_token` values.
 10. CI `docker` job: the extended dev-path loop passes and `/__test/states/empty` answers `404`
     in the container.
 11. Manual smoke (AGENTS.md "End-to-end checks"): `PULSE_API_URL=http://localhost:3000 bun start`
