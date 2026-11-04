@@ -63,7 +63,11 @@ export function sectionFiles(plan, target) {
   const section = plan.slice(start + 1).split(/\n## /)[0];
   const m = /^Files:([\s\S]*?)^Behavior change:/m.exec(section);
   if (!m) return null;
-  return [...m[1].matchAll(/`([^`\s]+)`/g)].map((x) => x[1]);
+  // Inline lists remain supported; a bullet's later code spans describe its first path.
+  const inline = m[1].split('\n')[0];
+  const paths = [...inline.matchAll(/`([^`\s]+)`/g)];
+  const bullets = [...m[1].matchAll(/^[ \t]*[-*+][ \t]+`([^`\s]+)`/gm)];
+  return [...paths, ...bullets].map((x) => x[1]);
 }
 
 /** Checks the task files of one feature work directory. Returns a list of defects. */
