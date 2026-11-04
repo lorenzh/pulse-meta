@@ -1,0 +1,183 @@
+{
+  "issue": 677,
+  "kind": "performance",
+  "scope": "notify",
+  "date": "2026-11-03",
+  "commits": {
+    "notify": "3f120cc0efcf80fd68c5974dd603b9b4d1ae000c",
+    "api": "2d4a6b23d532e66ad30840a778ac21ab465647dc",
+    "meta": "ef3473ddc1284dc312d497b320c554a206c841b3"
+  },
+  "bench": {
+    "nightlyRead": {
+      "run": 41612366764,
+      "url": "https://github.com/lorenzh/pulse-api/actions/runs/41612366764",
+      "event": "schedule",
+      "createdAt": "2026-11-03T09:36:18Z",
+      "apiHead": "c9e23af16e95494311cdbc8cc57f1f94c75b3af7",
+      "conclusion": "success",
+      "notifyA": "v0.1.0",
+      "notifyB": "757e78f27cfdbb89109c216dcba829158ea7b5c3",
+      "notifyB_medians": {
+        "startup_cpu_ms": 270,
+        "load_cpu_s": 0.09,
+        "idle_rss_mib": 69.73,
+        "peak_rss_mib": 69.82,
+        "test_cpu_s": 2.33,
+        "startup_wall_ms": 827,
+        "image_mb": 97.15
+      },
+      "notifyVerdicts": "every notify row ok"
+    },
+    "budgets": "pulse-api bench/budgets.json at 2d4a6b23d532e66ad30840a778ac21ab465647dc, notify: startup_cpu_ms 455, load_cpu_s 0.5, idle_rss_mib 86, peak_rss_mib 86, test_cpu_s 3.4 (gating); startup_wall_ms 978, image_mb 126 (reported)",
+    "abRun": "not run: main is 2 commits ahead of bench side B (757e78f...3f120cc, src/ledger.ts +13 -3, a closed-ledger guard) and every notify row is ok, so no deviation was suspected. Nightly values are a historical baseline at 757e78f, not measurements of 3f120cc; the local measurements examine 3f120cc."
+  },
+  "machine": "GitHub-hosted runner, 4 vCPU, 16 GB RAM, Bun 1.4.0 (SQLite 3.53.2), Linux; host processes on 127.0.0.1 against a fake pulse-api and a local webhook receiver. Local stress workloads use the container bench budgets as references, not equivalent nightly gate measurements: readiness RSS differs from the idle sampling point, and the larger ledgers and channel counts differ from the bench workload. No out-of-memory failure was demonstrated.",
+  "review": {
+    "date": "2026-11-03",
+    "state": "audit-review",
+    "startedAt": "2026-11-03T14:59:04Z",
+    "commits": {
+      "notify": "3f120cc0efcf80fd68c5974dd603b9b4d1ae000c",
+      "api": "2d4a6b23d532e66ad30840a778ac21ab465647dc",
+      "meta": "6eced6ee917679e1c09086d4d018726c36b51102"
+    },
+    "scope": "The notify and api clones match the audit commits. The audit's meta commit ef3473d is the parent of the report commit 6eced6e examined by this review. No P1 or P2 findings exist. All three P3 findings were spot-checked; none was removed or regraded, and two remain candidates.",
+    "corrections": [
+      "The nightly B idle RSS range is 69.38-70.34 MiB, not 69.73-70.34 MiB; its 69.73 MiB median was correct.",
+      "86.1 MiB exceeds the 86 MiB reference budget by 0.1 MiB; the report no longer says every local value is within budget.",
+      "Nightly values at 757e78f are a historical baseline, and host stress measurements are not equivalent to the container bench gates.",
+      "The larger tested ledger is not evidence for the first ledger size that crosses the budget."
+    ],
+    "checks": [
+      {
+        "command": "jq . audits/performance/notify.json; jq -e '[.findings[] | has(\"id\") and has(\"repos\") and has(\"location\") and (.severity | IN(\"P1\",\"P2\",\"P3\")) and has(\"command\") and has(\"exitCode\") and has(\"excerpt\") and has(\"commits\") and has(\"value\") and has(\"unit\") and has(\"repetitions\") and has(\"baseline\") and has(\"budget\")] | all' audits/performance/notify.json; jq -e '[.findings[] | select(.candidate == true)] | length <= 5' audits/performance/notify.json; git -C .repos/notify rev-parse HEAD; git -C .repos/api rev-parse HEAD; git rev-parse HEAD^",
+        "exitCode": 0,
+        "excerpt": "JSON parses; all 3 findings have every required performance field; 2 candidates; same 3 ids and P3 severities in markdown; same 6 checklist statuses (5 checked, website not applicable); product SHAs match; meta parent ef3473d."
+      },
+      {
+        "command": "gh api 'repos/lorenzh/pulse-api/actions/workflows/bench.yml/runs?branch=main&event=schedule&per_page=1'; GitHub download_workflow_artifact(repo_full_name=lorenzh/pulse-api, artifact_id=13221114457); Python ZIP/JSON read of table.json and samples.json",
+        "exitCode": 0,
+        "excerpt": "Latest scheduled run 41612366764, success, 2026-11-03T09:36:18Z. All seven notify medians match. B idle RSS rounds: 69.73046875, 69.828125, 69.37890625, 69.6015625, 70.34375 MiB."
+      },
+      {
+        "command": "rg -n 'status: \"up\"' .repos/api/bench/load.ts; head -2 .repos/api/bench/fixtures/target.mjs; rg -n 'INSERT INTO|upsertChecks' .repos/api/bench/seed.ts",
+        "exitCode": 0,
+        "excerpt": "load.ts:213 status: \"up\"; target always returns 200 ok; seed.ts:53 inserts results only. Confirms the incident-free bench workload in finding 2; its original feed-0 versus feed-1000 timing comparison was not repeated."
+      },
+      {
+        "command": "In an installed temporary notify copy: timeout 60 bun review.ts seed; timeout 30 bun review.ts explain",
+        "exitCode": 0,
+        "excerpt": "Service first poll seeds 6030 entries from 1000 resolved incidents and 5 resolved manual incidents across 3 channels; Ledger.seed adds 20000 settled keys per channel for 66030 entries, all younger than retention. No seed errors. EXPLAIN for 17 source-extracted DML statements (including duplicate reminders_from variant): SCAN channels; SCAN entries; remaining plan rows SEARCH by the two primary-key indexes; no temporary B-tree."
+      },
+      {
+        "command": "timeout 30 bun review.ts ledger 6030; timeout 30 bun review.ts ledger 66030 (interleaved, 2 rounds per size)",
+        "exitCode": 0,
+        "excerpt": "6030: open 9.97/8.53 ms, RSS delta 9.53/7.91 MiB, cold pending() x3 median of 5 calls 2.44/1.93 ms. 66030: open 68.67/69.57 ms, RSS delta 47.25/47.10 MiB, cold pending() x3 median 2.58/2.81 ms. Last two calls per process: 6030 0.468/0.435 and 0.440/0.758 ms; 66030 2.584/2.029 and 2.806/2.372 ms. Cold JIT costs make these medians different from the audit's timings; source confirms the full-entry traversal once per channel."
+      },
+      {
+        "command": "timeout 200 bun review.ts service-ab",
+        "exitCode": 0,
+        "excerpt": "One interleaved comparison, 2 rounds per side, same 1000-incident plus 5-manual-incident feed and 3 channels (webhook, webhook with reminders, file), 1000 ms poll, 5 s warm-up and 30 s window. 6030 entries: ready RSS 72.27/72.50 MiB, VmHWM 86.98/86.12 MiB, ready CPU 250/260 ms, window CPU 510/500 ms, 30 polls each (17.00/16.67 ms per poll). 66030: ready RSS 111.80/108.59 MiB, VmHWM 126.25/122.05 MiB, ready CPU 360/380 ms, window CPU 740/700 ms, 30 polls each (24.67/23.33 ms per poll). All 4 service exits 0 and zero error lines. Confirms findings 1 and 3 directionally; absolute times differ from the audit. This accelerated polling window is not a load_cpu_s measurement at the default 5 s interval."
+      },
+      {
+        "command": "/usr/bin/time -f 'review suite user=%U sys=%S wall=%e exit=%x' timeout 60 bun test (temporary notify copy)",
+        "exitCode": 0,
+        "excerpt": "375 pass, 0 fail, 38 files; user 2.16 s + sys 0.99 s = 3.15 s CPU; wall 4.57 s. Below test_cpu_s 3.4 s; single run, not the original three-run series."
+      }
+    ],
+    "removed": [],
+    "regraded": [],
+    "limitations": "P3 spot-checks, not a complete repeat of the audit. Original temporary helpers were removed; review.ts was independently rebuilt outside the repository. The startup profile, five-minute churn series, per-file test timings and feed-0/feed-1000 comparison were not repeated. Cold ledger microbenchmarks include JIT warm-up, and absolute host values vary. No container A/B rerun was warranted by the unchanged nightly baseline. All measurements, child processes and local fake servers completed before removal of the temporary copy."
+  },
+  "checklist": [
+    {
+      "item": "Queries. EXPLAIN QUERY PLAN for every query on the request path and at startup. Flag every full table scan (SCAN) and every temporary B-tree (USE TEMP B-TREE) over results.",
+      "status": "checked",
+      "evidence": "A bun:sqlite preload (capture.ts) recorded every SQL text and src/ call site. It covered a fresh start with 4 channels, 150 s of polls with a new incident every 10 s (claims, deliveries, reminders, a permanent failure), GET /metrics, SIGTERM flush, 'failed list' and 'failed resend --all', a restart with changed routing and reminders off, and a JSON format-2 migration (timeout 400 bash capture-run.sh, exit 0). That gave 20 distinct statements, all in src/ledger.ts. grep added 1 more (setRecipients, email only). 'bun explain.ts capture.jsonl <state.db copy> <extra sql>' exit 0. Flagged: SCAN channels and SCAN entries in loadRows (src/ledger.ts:292, 297): the intended whole-ledger load at startup and in the CLI; ORDER BY rowid needs no sort. Every UPDATE and DELETE is a SEARCH on sqlite_autoindex_channels_1 (id=?) or sqlite_autoindex_entries_1 (channel_id=? AND key=?). Inserts have no plan rows. No USE TEMP B-TREE anywhere. /healthz, /readyz and /metrics run no SQL. The cost of the startup scans grows with the ledger (new Ledger(): 0.9, 3.9 and 35.9 ms at 630, 6,030 and 66,030 entries); see finding 1."
+    },
+    {
+      "item": "Startup. A CPU profile of the startup (bun --cpu-prof), with the top functions by self time.",
+      "status": "checked",
+      "evidence": "Bench B startup_cpu_ms 270 ms, budget 455 ms: ok. Local CPU at the first /readyz 200 without the profiler (3 runs each): 1x 120/120/120 ms, 10x 130/140/130 ms, 100x 250/220/220 ms, bench config 110/100/120 ms. Profile: 'timeout 120 bun grow.ts ... prof-<n> 3 30 5000 <dir>' runs 'bun --cpu-prof --cpu-prof-interval=100 src/index.ts' with SIGTERM at the first /readyz 200. 3 runs per size, exit 0. 1x, summed over 3 runs (1024 samples, 352.6 ms): createConvenienceMethod node:zlib:357 66.7 ms (18.9 %), native anonymous 60.4 ms (17.1 %), node:http module 26.8 ms (7.6 %), _onceWrap node:events:242 25.2 ms (7.1 %), @lazy 9.0 ms, toString 7.4 ms, DurationFormat (pulse-kit) 5.0 ms, node:dns 4.1 ms, zod init 3.5 ms. By nearest file frame: runtime and built-ins 59.1 %, zod 14.5 %, pulse-kit 12.5 %, src/index.ts 3.7 %, src/ledger.ts 3.4 %. 100x (2155 samples, 600.9 ms): bun:sqlite Statement.all 129.9 ms (21.6 %), loadRows src/ledger.ts:290 48.1 ms, readEntryRow 23.8 ms, isStatus 22.4 ms, pending 18.7 ms; src/ledger.ts 42.9 % (86 ms per start). No startup finding; the growth with the ledger is finding 1."
+    },
+    {
+      "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
+      "status": "checked",
+      "evidence": "notify has no bench of its own, and the pulse-api bench gives it no incidents (finding 2), so this was a local A/B. 'timeout 200 bun grow.ts <copy> seed-<n>.db config3.json <fake api> <n> 3 30 1000' (PULSE_NOTIFY_POLL_MS=1000, 30-poll window, 3 runs, exit 0). CPU per poll: 1x (100 incidents, 630 entries) 6.33/6.00/6.00 ms; 10x (1000 incidents, 6,030 entries) 13.33/13.33/13.67 ms; 100x (1000 incidents, 66,030 entries) 20.33/20.00/19.67 ms. CPU at ready: 120, 130-140 and 220-250 ms. RSS at ready: 63.1-63.3, 68.4-69.2 and 107.2-107.4 MiB. VmHWM: 74.9-75.3, 85.1-86.1 and 119.9-124.1 MiB. 'timeout 300 bun ledgercost.ts <copy> seed-<n>.db 5' (median of 5): new Ledger() 0.9/3.9/35.9 ms; pending() x3 0.16/0.51/1.99 ms; prune no-op 0.1/0.3/2.2 ms; RSS delta after open 3.7/10.2/48.9 MiB. Bench case (one file channel, 5 s poll, 60 s window, 3 runs): feed 0 gives CPU 100/100/120 ms and VmHWM 65.3-65.4 MiB; feed 1000 gives 230/230/220 ms and 78.3-78.5 MiB. Scaling: poll cost is linear in the feed, which is capped at 1000 by the api default page; poll cost and memory are linear in the ledger entries, which have no fixed bound (30-day retention plus visible incidents, per channel); startup CPU is about 1.6 us per entry."
+    },
+    {
+      "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
+      "status": "checked",
+      "evidence": "'timeout 420 bun mem.ts <copy> seed-<n>.db config-mem.json <fake api> mem-<n> 5 <port>', 10x and 100x, exit 0. N = 5 minutes. Load: default 5 s poll; a feed of 1000 incidents with a new incident every 10 s that resolves after 90 s; 3 channels (webhook, webhook with remindEverySeconds 60, file); 183 notifications delivered per run; 0 error lines. 10x: RSS 69.7 MiB at start, 77.3 at 30 s, 81.0 at 300 s; VmHWM 84.5 MiB; CPU 1170 ms in 300 s. 100x: RSS 107.0 at start, 102.3-106.5 during the load, 106.1 at 300 s; VmHWM 123.0 MiB; CPU 1850 ms in 300 s. No leak is shown in 5 minutes (10x: +3.7 MiB from 30 s to 300 s). Against the budgets: 10x peak at 98 % of peak_rss_mib 86 MiB (finding 2); 100x above idle_rss_mib and peak_rss_mib 86 MiB (finding 1)."
+    },
+    {
+      "item": "Tests. CPU time per test file; name the slowest files.",
+      "status": "checked",
+      "evidence": "'/usr/bin/time -f \"%U %S %e\" timeout 600 bun test', 3 runs, exit 0, 375 pass 0 fail, 38 files: CPU 2.56, 2.54 and 2.49 s (wall 7.19, 6.43, 4.63 s). Budget test_cpu_s 3.4 s: ok (bench B 2.33 s, A 1.37 s). Per file, 3 runs each ('timeout 120 bun test ./<file>'): exit 0 for 7 files, exit 1 for 31 only because of the 80 % coverage threshold of a one-file run; 0 fail in all runs. Slowest by median CPU: test/index.test.ts 0.43 s, test/notifier.test.ts 0.38 s, test/email-smtp.test.ts 0.37 s (wall 1.13 s), test/permanent.test.ts 0.33 s, test/channels.test.ts 0.29 s, test/reminders.test.ts 0.28 s, test/api-hostile.test.ts 0.28 s. No finding."
+    },
+    {
+      "item": "pulse-website only. JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages (performance score, LCP, TBT, CLS).",
+      "status": "not applicable",
+      "evidence": "pulse-notify is a background service with no web pages."
+    }
+  ],
+  "findings": [
+    {
+      "id": "performance-notify-2026-11-03-1",
+      "repos": ["notify"],
+      "location": "src/ledger.ts:297",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The whole ledger is mirrored in memory and loaded with .all() at start; at 66,030 entries RSS is 102-113 MiB and the peak 120-124 MiB, above the 86 MiB idle and peak budgets",
+      "command": "timeout 200 bun grow.ts <notify copy> seed-100x.db config3.json http://127.0.0.1:18312 100x 3 30 1000 (and seed-10x.db as baseline); timeout 420 bun mem.ts <copy> seed-100x.db config-mem.json http://127.0.0.1:18313 mem-100x 5 18502; timeout 300 bun ledgercost.ts <copy> seed-<n>.db 5",
+      "exitCode": 0,
+      "excerpt": "{\"label\":\"10x\",\"run\":2,\"ready_cpu_ms\":140,\"ready_rss_mib\":68.4,\"end_rss_mib\":78.3,\"hwm_mib\":85.1}\n{\"label\":\"100x\",\"run\":1,\"ready_cpu_ms\":250,\"ready_rss_mib\":107.4,\"end_rss_mib\":103.8,\"hwm_mib\":124.1}\n{\"label\":\"100x\",\"run\":2,\"ready_cpu_ms\":220,\"ready_rss_mib\":107.3,\"end_rss_mib\":113.3,\"hwm_mib\":120.7}\n{\"label\":\"100x\",\"run\":3,\"ready_cpu_ms\":220,\"ready_rss_mib\":107.2,\"end_rss_mib\":113.2,\"hwm_mib\":119.9}\nmem-100x (5 min): rss 107.0 ... 106.1, hwm 123.0\nledgercost 66,030 entries: open 35.9 ms, rss delta 48.9 MiB, heap delta 16.2 MiB (6,030: 3.9 ms, 10.2 MiB, 1.7 MiB)",
+      "value": 107.3,
+      "unit": "MiB (median RSS at the first /readyz 200; median VmHWM 120.7 MiB)",
+      "repetitions": "3 runs (RSS at ready 107.4, 107.3, 107.2 MiB; VmHWM 124.1, 120.7, 119.9 MiB) plus one 5-minute run (RSS 102.3-107.0 MiB, VmHWM 123.0 MiB)",
+      "baseline": "10x ledger (6,030 entries, same feed and channels): RSS at ready 68.4-69.2 MiB, VmHWM 85.1-86.1 MiB; bench B idle_rss_mib 69.73, peak_rss_mib 69.82 MiB",
+      "budget": "idle_rss_mib 86 MiB and peak_rss_mib 86 MiB (gating); startup CPU 220-250 ms is within startup_cpu_ms 455 ms",
+      "fixDirection": "Read the rows with .iterate() instead of .all() at open, and keep less per settled entry, or look settled keys up in SQLite by primary key instead of mirroring them (the poll path reads them through has(), entries(), #olderReminders and prune()).",
+      "commits": { "notify": "3f120cc0efcf80fd68c5974dd603b9b4d1ae000c" }
+    },
+    {
+      "id": "performance-notify-2026-11-03-2",
+      "repos": ["api", "notify"],
+      "location": "pulse-api bench/load.ts:213; pulse-api bench/fixtures/target.mjs:2; pulse-notify src/api.ts:181",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The nightly bench runs notify against an api with no incidents, so its gating notify metrics miss the feed work; with the default page of 1000 incidents, load CPU is 2.3x and peak RSS +13 MiB, and 84.5-86.1 MiB with 3 channels, at the 86 MiB budget",
+      "command": "grep -n 'status: \"up\"' bench/load.ts; head -2 bench/fixtures/target.mjs (pulse-api); timeout 300 bun grow.ts <notify copy> - config-bench.json http://127.0.0.1:<port> <feed0|feed1000> 3 60 5000 (bench notify config: one file channel; fake api with 0 or 1000 incidents)",
+      "exitCode": 0,
+      "excerpt": "213:          status: \"up\",\n// Trivial check target of the bench stack: answers 200 \"ok\" on every path.\n{\"label\":\"feed0\",\"run\":1,\"window_s\":60,\"window_cpu_ms\":100,\"hwm_mib\":65.4}\n{\"label\":\"feed0\",\"run\":3,\"window_s\":60,\"window_cpu_ms\":120,\"hwm_mib\":65.3}\n{\"label\":\"feed1000\",\"run\":1,\"window_s\":60,\"window_cpu_ms\":230,\"hwm_mib\":78.4}\n{\"label\":\"feed1000\",\"run\":3,\"window_s\":60,\"window_cpu_ms\":220,\"hwm_mib\":78.5}",
+      "value": 230,
+      "unit": "ms of CPU per 60 s window (median, feed of 1000 incidents); VmHWM 78.4 MiB (median)",
+      "repetitions": "3 runs per side (feed 1000: 230, 230, 220 ms and 78.4, 78.3, 78.5 MiB; feed 0: 100, 100, 120 ms and 65.4, 65.4, 65.3 MiB)",
+      "baseline": "bench case, feed of 0 incidents: 100 ms and 65.4 MiB; bench B load_cpu_s 0.09 s and peak_rss_mib 69.82 MiB",
+      "budget": "load_cpu_s 0.5 s and peak_rss_mib 86 MiB (gating); with 3 channels and a 6,030-entry ledger VmHWM was 85.1, 85.2 and 86.1 MiB (1 s poll) and 84.5 MiB after 5 minutes (5 s poll)",
+      "fixDirection": "Let the bench api hold incidents (a seed of 1000 incidents, or a probe target that fails some checks), so notify's load_cpu_s and peak_rss_mib include the feed work, then set the notify budgets again from that run.",
+      "commits": {
+        "notify": "3f120cc0efcf80fd68c5974dd603b9b4d1ae000c",
+        "api": "2d4a6b23d532e66ad30840a778ac21ab465647dc"
+      }
+    },
+    {
+      "id": "performance-notify-2026-11-03-3",
+      "repos": ["notify"],
+      "location": "src/notifier.ts:699",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Each poll calls ledger.pending() once per channel, and each call walks every entry of every channel, so per-poll CPU grows with channels x entries",
+      "command": "timeout 300 bun ledgercost.ts <notify copy> seed-<n>.db 5; timeout 200 bun grow.ts <copy> seed-<10x|100x>.db config3.json http://127.0.0.1:18312 <n> 3 30 1000",
+      "exitCode": 0,
+      "excerpt": "630 entries: pending_x3_ms_median 0.16\n6,030 entries: pending_x3_ms_median 0.51\n66,030 entries: pending_x3_ms_median 1.99, entries_one_channel_ms_median 0.79\ngrow 10x cpu_per_poll_ms 13.33, 13.33, 13.67\ngrow 100x cpu_per_poll_ms 20.33, 20.00, 19.67",
+      "value": 1.99,
+      "unit": "ms per poll for 3 channels at 66,030 entries (median); whole poll 20.0 ms",
+      "repetitions": "5 calls per size (ledgercost); 3 runs x 30 polls (grow)",
+      "baseline": "6,030 entries: 0.51 ms per poll for pending() and 13.33 ms for the whole poll",
+      "budget": "load_cpu_s 0.5 s per 60 s: the 100x case uses 0.37 s per minute at the default 5 s poll (1850 ms in 300 s)",
+      "commits": { "notify": "3f120cc0efcf80fd68c5974dd603b9b4d1ae000c" }
+    }
+  ]
+}
