@@ -425,7 +425,9 @@ README (what notify sends, the new setting), `docs/configuration.md` (setting an
 `docs/channels.md` (triggers, keys, payloads, routing, a new "Warnings" section with the rules R5,
 R6 and the known limits), `docs/channels/*.md` (message content per type), `docs/operation.md`
 (ledger format 4, `alert_state`, pruning, upgrade and downgrade, the `sendIncidents: false`
-drop at start) and `docs/development.md` (code map). The package description in `package.json`
+drop at start), `docs/troubleshooting.md` (the `cannot use state file` row at line 31 says
+"a `user_version` other than 3": it becomes "other than 3 or 4", and a format-3 file is
+migrated, not refused) and `docs/development.md` (code map). The package description in `package.json`
 may say "incident and warning notifications".
 
 ## Risks
@@ -799,6 +801,7 @@ Files:
 - `test/ledger.test.ts`
 - `test/ledger.v2.test.ts`
 - `test/metrics.test.ts`
+- `test/reminders.test.ts`
 - `README.md`
 - `docs/configuration.md`
 - `docs/channels.md`
@@ -808,6 +811,7 @@ Files:
 - `docs/channels/teams.md`
 - `docs/channels/email.md`
 - `docs/operation.md`
+- `docs/troubleshooting.md`
 - `docs/development.md`
 - `package.json`
 
@@ -849,6 +853,14 @@ may differ if the responsibility split stays. Keep cognitive complexity per func
 - `test/ledger.v2.test.ts:211` and `test/index.test.ts:188` refuse a format-3 schema with
   `user_version` 4. They must keep passing unchanged (that file has no `alert_state`, so it is
   still refused). Add a `user_version` 5 case in `test/ledger.v2.test.ts`.
+- `test/reminders.test.ts:149` asserts `assert.equal(state.version, 3)`, where `state.version`
+  is `PRAGMA user_version` of the saved ledger (`savedState()`, lines 51-61). Its ledger is
+  created by the code under test, so after R9 it is format 4: change only the literal `3` on
+  line 149 to `4`. The key list asserted on lines 145-148 stays unchanged. This belongs to the
+  ledger task (the same change that bumps the format), so the full suite stays green after it.
+  A search of notify `test/` at `227fd6d` (`grep -rn 'user_version' test`) finds
+  `user_version` only in `ledger.test.ts`, `ledger.v2.test.ts`, `index.test.ts` and
+  `reminders.test.ts`; no other test asserts the format number.
 - Existing format-3 tests that now see a migration keep their assertions on rows and refusals.
   Only a direct assertion of `user_version` 3 after a successful open changes to 4, and the PR
   names each such line.
