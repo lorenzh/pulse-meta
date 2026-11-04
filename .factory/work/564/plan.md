@@ -48,7 +48,10 @@ Engineering choices made here (the issue review lists them as open points; none 
    reset link fails when its issuer no longer exists or no longer may issue it, or when the
    target's role changed since the reset link was made.
 7. **The former Owner becomes an Admin** after a transfer.
-8. **Every role change ends all sessions of the changed person.** Removal deletes the account.
+8. **Every role change ends all sessions of the changed person.** This holds for an ownership
+   transfer too: it changes two roles, so it ends every session of the new Owner and every
+   session of the former Owner, the session that made the request included. Removal deletes the
+   account.
 
 ## Prerequisite: #563 merged in console main
 
@@ -180,6 +183,28 @@ allowed or denied. A target of `owner` maps to no row and is always denied.
   "Request refused" page and nothing changes), the 2FA gate, the action's role (`403`), field
   format (`422`), target lookup (`404`), the target rule (`403`), the commit (`303`, `200`, `409`
   or `500`).
+- The public link routes (`GET` and `POST` of `/invite/<token>` and `/reset/<token>`) have no
+  session, 2FA or role step. A session cookie, valid or not, is neither needed nor read, and it
+  does not change the answer.
+  - The order for their GET: route and method (`404`, `405`; a malformed token is the plain
+    `404 not found`), phase (before setup `303` to `/setup`), loopback `Host` (`421`), the link
+    lookup (the invalid-link `404` page), then the `200` form. Every GET of these two routes
+    calls the existing `ensureCsrf` (`src/server.ts:204-211`), as the sign-in page does
+    (`src/server.ts:314`): it keeps the `pulse_console_csrf` cookie when the request carries
+    one and sets a new one otherwise. The form holds that value in its `csrf` field. An
+    invalid-link page sets no cookie.
+  - The order for their POST: route and method, phase, loopback `Host`, `Origin` (`403`),
+    content type (`415`), body size (`413`), repeated field (`400`), CSRF against the anonymous
+    `pulse_console_csrf` cookie (`403` "Request refused"; this is the default expected value of
+    the existing `readPostForm`, `src/server.ts:341-368`, which `postSignIn` uses at
+    `src/server.ts:539`), the link lookup (invalid-link `404` page, before any KDF work), field
+    format (`422`, the form shown again with the same `csrf` value), the password hash, the
+    commit. They never compare the field with a session's CSRF token.
+  - A link opened from another site is a cross-site navigation, so the browser does not send
+    the `SameSite=Strict` cookie. The GET then sets a fresh cookie, and the same-site form POST
+    sends it back. Because that fresh cookie replaces the old one, an open sign-in form in
+    another tab of that browser then gets `403` "Request refused". This is accepted; a reload
+    fixes it.
 - The commit re-reads the actor and the target inside one `BEGIN IMMEDIATE` transaction and
   checks the role and target rules again. When the actor or target changed since the earlier
   checks, the answer is the result of the new check (`403` or `404`), or `409` where the form
@@ -282,7 +307,8 @@ with the initiating person, item #566). The api audit log keeps naming the conso
 ### Routes
 
 New routes. `user` and `invite` are decimal ids matching `^[1-9][0-9]{0,15}$`; any other value
-answers `404`. All POSTs follow the POST order above.
+answers `404`. Guarded POSTs follow the guarded POST order above. The public link routes follow
+their own GET and POST order above, with the anonymous CSRF cookie.
 
 | Route | Guard | Fields | Answer |
 | --- | --- | --- | --- |
@@ -296,7 +322,7 @@ answers `404`. All POSTs follow the POST order above.
 | `GET /team/reset-2fa?user=<id>` | row 23 or 24 | | `200` confirmation page |
 | `POST /team/reset-2fa` | row 23 or 24 | `user`, `csrf` | `303` to `/team`; `403`, `404` |
 | `GET /team/transfer?user=<id>` | row 25 | | `200` confirmation page |
-| `POST /team/transfer` | row 25 | `user`, `confirm_name`, `csrf` | `303` to `/team`; `403`, `404`, `409`, `422` |
+| `POST /team/transfer` | row 25 | `user`, `confirm_name`, `csrf` | `303` to `/sign-in?transfer=done`; `403`, `404`, `409`, `422` |
 | `POST /team/require-2fa` | `team.require-2fa` | `value` (`on` or `off`), `csrf` | `303` to `/team`; `403`, `422` |
 | `GET /account/password` | row 27 | | `200` form |
 | `POST /account/password` | row 27 | `current_password`, `password`, `password_confirm`, `csrf` | `303` to `/account/password?changed=1`; `401`, `422`, `429` |
@@ -340,7 +366,7 @@ transfer). The row of the actual target is checked after the target lookup.
 - **Accept, GET.** A live invite whose creator still exists and still may create an invite of
   that role shows a form with the bound email (read-only text, not a field), the role, `name`,
   `password`, `password_confirm`. GET never creates an account or consumes the invite. It sets the
-  anonymous CSRF cookie like the sign-in page.
+  anonymous CSRF cookie like the sign-in page (public link GET order above).
 - **Accept, POST.** The token is looked up before any KDF work. An invalid link answers the
   invalid-link page. Field errors answer `422` (name rule `checkName`, password rule
   `passwordText`) and leave the invite live. Then the password is hashed, then in one
@@ -368,7 +394,12 @@ transfer). The row of the actual target is checked after the target lookup.
   (Owner for an Admin target; Admin or Owner for a Member or Viewer). For `owner-recovery` links
   the target is still the Owner.
 - **GET** of a valid link shows a form with the target's email as text, `password` and
-  `password_confirm`. GET changes nothing. An invalid link answers the invalid-link page.
+  `password_confirm`. GET changes no row. Like the invite GET, it sets the anonymous CSRF
+  cookie when it is missing and puts its value in the form (public link GET order above). An
+  invalid link answers the invalid-link page and sets no cookie.
+- The reset POST checks its `csrf` field against the anonymous cookie, never against a session
+  token. The person who uses the link usually has no session, and any session they have is
+  deleted by the reset.
 - **POST.** Field errors answer `422` and leave the link valid. Then the password is hashed, then
   in one `BEGIN IMMEDIATE` transaction: the link is still valid; update `password_hash`; set
   `used_at`; delete every other unused link of that user; delete every session of that user;
@@ -414,9 +445,15 @@ become an admin." `POST /team/transfer`: the actor is the Owner; the target is a
 (`403` "Only an admin can become the owner." for a Member or Viewer target); the target has TOTP
 enrolled (`409` "<name> has not set up two-factor sign-in yet."); `confirm_name` matches as for
 removal. In one transaction: set the actor's role to `admin`, then the target's role to `owner`
-(this order keeps `users_one_owner`), delete every session of the target, write `owner.transfer`.
-The former Owner's current session continues with the Admin role. Two concurrent transfers end
-with exactly one Owner: the second sees an actor that is no longer Owner and answers `403`.
+(this order keeps `users_one_owner`), delete every session of the target and every session of
+the former Owner (the current one too), write `owner.transfer`. A transfer changes two roles, so
+under decision 8 it ends the sessions of both people; there is no exception. The answer is
+`303` to `/sign-in?transfer=done` with the session cookie deleted. The sign-in page then shows
+"Ownership is transferred. Sign in again." Both people sign in again with password and TOTP
+(both have TOTP: the Owner by #460 s5, the target by the check above). The former Owner then
+has the Admin role. Two concurrent transfers end with exactly one Owner: both passed the CSRF
+step before the first commit, and the second commit re-reads an actor that is no longer Owner
+and answers `403` "This needs the Owner role." and changes nothing.
 
 ### Own password
 
@@ -539,7 +576,8 @@ expected value from the module under test.
      in the console."
    - row 23: Admin 2FA reset of a Viewer `303`; Member `403`.
    - row 24: Owner 2FA reset of an Admin `303`; Admin `403`.
-   - row 25: Owner transfers to an enrolled Admin `303`; Admin `403`.
+   - row 25: Owner transfers to an enrolled Admin `303` with `location: /sign-in?transfer=done`;
+     Admin `403`.
    - row 27: each role changes its own password `303`; without a session `403` on POST.
    - `team.view`: Admin `GET /team` `200`; Viewer `403` "This needs the Admin role."
    - `team.require-2fa`: Owner `303`; Admin `403`.
@@ -554,6 +592,21 @@ expected value from the module under test.
    one `303` and one `404`, and `users` gains 1 row. After a restart (new server, same file) the
    link still works. Scanning the database file bytes for the plain token finds 0 matches; the
    digest column holds its SHA-256 hex.
+4a. **Anonymous redemption and its CSRF.** Every request here carries no session cookie.
+   - Invite: a GET of a live invite answers `200` and a `set-cookie` for `pulse_console_csrf`.
+     A POST with that cookie and the same value in `csrf` answers `303` and makes the account.
+   - Reset: a GET of a valid link answers `200` and a `set-cookie` for `pulse_console_csrf`. A
+     POST with that cookie and value answers `303` with `location: /sign-in?reset=done`, and
+     sign-in with the new password works.
+   - For each of the two routes, these POSTs answer `403` "Request refused" and change no row:
+     no `csrf` cookie; a `csrf` field that differs from the cookie; an `Origin` of another site.
+     The link stays valid, and a later correct POST works.
+   - A GET that already sends a `pulse_console_csrf` cookie gets no new `set-cookie` for it, and
+     its form holds the sent value.
+   - A POST that also carries a valid session cookie of another user, with that session's CSRF
+     token in `csrf` and no anonymous cookie, answers `403`, because public links check only
+     the anonymous cookie.
+   - An invalid link GET answers the `404` page without `set-cookie`.
 5. **Reset links.** A link works at `created_at + 86399999` and fails at `+ 86400000`. After one
    successful use a second POST gives `404`. After use: the old password fails sign-in, the new
    one works, both pre-existing session cookies of the target get `303` to sign-in, and the
@@ -565,8 +618,13 @@ expected value from the module under test.
    `GET /team` gives `200`. With the requirement on, a Viewer without TOTP is sent to enrolment;
    with it off, the Viewer gets `200` on `/`. An administrative 2FA reset removes the target's
    TOTP and recovery codes (an old recovery code fails) and ends its sessions.
-7. **Transfer and removal.** After a transfer, `users` has exactly 1 `owner`, the former Owner has
-   role `admin` and gets `403` on `POST /team/require-2fa`. A wrong typed name, a Member target,
+7. **Transfer and removal.** After a transfer, `users` has exactly 1 `owner` and the former Owner
+   has role `admin`. The `sessions` table holds 0 rows of either person: the former Owner's
+   cookie that made the request and a second cookie of the former Owner get `303` to `/sign-in`
+   on `GET /team`, and so does the new Owner's earlier cookie. After a new sign-in with password
+   and TOTP, the former Owner gets `200` on `GET /team` and `403` "This needs the Owner role." on
+   `POST /team/require-2fa`. The new Owner gets `303` on `POST /team/require-2fa`. A wrong typed
+   name, a Member target,
    an Admin without TOTP give `422`, `403`, `409` and change nothing. Removal with the right name
    ends the target's sessions (old cookie gets `303` to sign-in) and deletes its reset links; the
    `user.remove` row keeps email and name.
@@ -622,7 +680,11 @@ Checklist items that apply:
   logs, `/metrics`, `people_events`, the database file and responses for sentinels.
 - **Auth order and status codes.** The fixed GET and POST orders above. Role denial `403` comes
   after CSRF and the 2FA gate; a missing session on POST gives the CSRF `403`; on GET it gives
-  `303` to sign-in. Invalid links give one `404` page for every case, without KDF work.
+  `303` to sign-in. The public invite and reset POSTs check CSRF against the anonymous
+  `pulse_console_csrf` cookie, which their GET sets, and never against a session token.
+  Redemption works without a session and is refused (`403`) without the matching cookie.
+  Invalid links give one `404` page for every case, without KDF work. A transfer and every role
+  change end all sessions of the changed people, with no exception for the requesting session.
 - **Body and size limits.** Forms keep the 8192-byte cap; passwords 12 to 128 code points; names
   1 to 100; emails 3 to 254; ids at most 16 digits; tokens exactly 43 characters.
 - **Input validation.** Role values (never `owner` from a client), ids, emails, names, typed
@@ -674,10 +736,23 @@ not change.
 - **Stale state.**
   - The page showed a Member as `member`; another Owner tab promoted them. `POST /team/role` with
     `from=member` `role=viewer`: `409`, role stays `admin`.
-  - An Admin whose role became `member` posts an invite with the old page's valid CSRF token:
-    `403`, because the role is read live.
-  - The Owner opens the transfer page, transfers to Admin A, then submits the old form for
-    Admin B: `403` (the actor is no longer Owner).
+  - An Admin is demoted to `member`, then posts an invite from a page opened before: `403`
+    "Request refused", because the demotion deleted that session and no CSRF token matches. After
+    a new sign-in as Member, the same invite answers `403` "This needs the Admin role."
+  - An Admin's invite POST passes the role step, and the Owner demotes that Admin before the
+    invite commits: the commit re-reads the actor and answers `403`, and no invite row is
+    written (a wrong implementation trusts the role read at the start of the request).
+  - The Owner opens the transfer page twice, transfers to Admin A, then submits the old form
+    for Admin B: `403` "Request refused", because the transfer deleted every session of the
+    former Owner. After a new sign-in as Admin, a transfer POST answers `403` "This needs the
+    Owner role."
+- **Transfer sessions.** A wrong implementation keeps the former Owner's current session. After a
+  transfer, that cookie must get `303` to `/sign-in` on `GET /team`, not `200`.
+- **Anonymous link CSRF.** A wrong implementation checks the public link POSTs against a
+  session's token, so redemption without a session always fails. An invite or reset POST with
+  no session cookie and a matching anonymous `pulse_console_csrf` cookie and field must answer
+  `303`. The same POST without the anonymous cookie, or with a field that differs from it,
+  must answer `403` "Request refused", even with a valid link and valid fields.
 - **Invite time.** `created_at = 0`: valid at `604799999`, invalid at `604800000` (a `<=`
   comparison is wrong). Revoked at `t`, then GET at `t + 1`: `404`.
 - **Invite reuse and concurrency.** Two POSTs at once: one account. The 2nd answers `404`, not
@@ -734,6 +809,8 @@ names, metrics label values and the command file. Searches of the contract and c
 | `require_2fa`, `require-2fa` | 0 | 0 |
 | `owner-reset`, `owner.recover` | 0 | 0 |
 | `password-change`, `2fa-reset`, `role-change` | 0 | 0 |
+| `transfer=done`, `reset=done` (sign-in notices) | 0 | 0 |
+| `two-factor-rule`, `team-routes` (module names) | 0 | 0 |
 | `/account` | 0 | 0 |
 
 The People action names do not equal any api audit action (contract `src/audit.ts:6-23`:
@@ -744,37 +821,51 @@ The People action names do not equal any api audit action (contract `src/audit.t
 
 Files:
 
-- `src/database.ts` (migration N, `SCHEMA_VERSION`)
+Every backticked item in this list is a file path. Symbols and routes in the notes are plain text.
+
+- `src/database.ts` (migration N, the schema version constant)
 - `src/database.test.ts`
 - `src/account-store.ts` (role read, role update, removal, password update, session deletion per
   user, the transfer transaction)
 - `src/account-store.test.ts`
 - `src/permissions.ts` (new: roles, action ids, matrix, target rules, required-role text)
 - `src/permissions.test.ts` (new)
-- `src/people-log.ts` (new: `appendPeopleEvent`, event type)
+- `src/two-factor-rule.ts` (new: the widened "must have TOTP" predicate of "Two-factor
+  requirement"; the #563 2FA gate calls it instead of its owner-only rule)
+- `src/two-factor-rule.test.ts` (new)
+- `src/people-log.ts` (new: the append function and the event type)
 - `src/people-log.test.ts` (new)
-- `src/account-links.ts` (new: token creation, digest, raw-path parsing of `/invite/<token>` and
-  `/reset/<token>`, link building from the origin)
+- `src/account-links.ts` (new: token creation, digest, raw-path parsing of the invite and reset
+  link paths, link building from the origin)
 - `src/account-links.test.ts` (new)
-- `src/team-store.ts` (new: invites and reset links in SQLite, with the transactions above)
+- `src/team-store.ts` (new: invites and reset links in SQLite, with the transactions above; it
+  calls #563's factor-removal function)
 - `src/team-store.test.ts` (new)
-- `src/server.ts` (route table with guards, the GET/POST orders, the 2FA predicate hook, new
-  handlers; handlers may move to a new `src/team-routes.ts` if the module gets a second
-  responsibility)
-- `src/pages.ts` and a new `src/team-pages.ts` (Team, confirmation, link, invite, reset,
-  password, 403 and invalid-link pages)
+- `src/server.ts` (route table with guards, the GET/POST orders, the anonymous CSRF step for
+  the public link routes, the call of the 2FA predicate)
+- `src/team-routes.ts` (new: the handlers of the team, account-password, invite and reset routes)
+- `src/pages.ts` (403 page, landing-page links)
+- `src/team-pages.ts` (new: Team, confirmation, link, invite, reset, password and invalid-link
+  pages)
 - `src/styles.ts` (layout for the new pages at 390 px)
 - `src/forms.ts` (id, role and typed-name checks)
 - `src/metrics.ts` (path labels, auth kind)
 - `src/owner-reset.ts` (new: the recovery command)
 - `src/owner-reset.test.ts` (new)
-- `src/server.team.test.ts`, `src/server.invite.test.ts`, `src/server.reset.test.ts`,
-  `src/server.roles.test.ts` (new HTTP suites)
+- `src/server.team.test.ts` (new)
+- `src/server.invite.test.ts` (new)
+- `src/server.reset.test.ts` (new)
+- `src/server.roles.test.ts` (new)
 - `src/server.security.test.ts` (sentinel scans for tokens)
-- the #563 modules that hold the "2FA required" rule and the factor removal function, only as
-  far as needed to widen the rule and call the removal
-- `README.md`, `docs/configuration.md`, `docs/team.md` (new), `docs/index.md`
+- `README.md`
+- `docs/configuration.md`
+- `docs/team.md` (new)
+- `docs/index.md`
 - `.github/workflows/ci.yml` (one docker step)
+
+If #563 puts its 2FA gate or its factor-removal function in a module not listed here, the
+implementer changes that module only to call `src/two-factor-rule.ts` or to export the removal
+function, and names the module in the PR.
 
 Behavior change: yes. It adds roles, team routes, account links, the recovery command and a
 migration.
@@ -793,9 +884,12 @@ Implement "Required behavior" of this spec in console:
 
 - the migration, the role-aware store and `require_2fa_all`;
 - the policy module with the 27 rows, the two extra actions and the target rules;
-- route guards for every route, existing and new; the GET and POST orders; the 403 page;
+- route guards for every route, existing and new; the guarded GET and POST orders; the public
+  link GET and POST orders, with the anonymous CSRF cookie set by the GET and checked by the
+  POST; the 403 page;
 - the widened 2FA predicate and the organisation-wide switch;
-- invites, reset links, 2FA reset, role change, removal, transfer, own password change;
+- invites, reset links, 2FA reset, role change, removal, transfer (it ends every session of both
+  people), own password change;
 - the People log with atomic writes;
 - the owner recovery command;
 - metrics labels and log lines as specified.
