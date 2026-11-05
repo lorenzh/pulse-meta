@@ -238,12 +238,30 @@ jobs:
             echo "::error::The Codex home $CODEX_HOME is not writable for $(id -un). On a self-hosted runner, mount the volume codex-home there, owned by that user." >&2
             exit 1
           fi
+          mounted() { # mountpoint is in util-linux; without it, a mount has another device than its parent
+            if command -v mountpoint > /dev/null; then mountpoint -q "$1"; else [[ "$(stat -c %d "$1")" != "$(stat -c %d "$1/..")" ]]; fi
+          }
+          [[ "$RUNNER_ENVIRONMENT" != self-hosted ]] || mounted "$CODEX_HOME" || echo "::warning::The Codex home is not a mounted volume: every runner container keeps its own copy of the login, and copies of one login can invalidate each other; mount the shared volume codex-home at $CODEX_HOME."
           # Never overwrite a login that Codex may have refreshed; several runners share it.
-          if [[ -s "$CODEX_HOME/auth.json" ]]; then
+          auth="$CODEX_HOME/auth.json"
+          if [[ -s "$auth" ]]; then
             echo "::notice::using the persistent Codex login"
           else
-            printf '%s' "$FACTORY_CODEX_AUTH_JSON" > "$CODEX_HOME/auth.json"
-            chmod 0600 "$CODEX_HOME/auth.json"
+            # Write a temporary file and publish it complete with one link, so no reader sees half a
+            # login. The lock (at most 30 s, held only by this check and link) keeps a second seeding
+            # job from removing a login that the first one has just published.
+            seed="$(mktemp "$CODEX_HOME/.auth.json.XXXXXX")"
+            trap 'rm -f "$seed"' EXIT
+            chmod 0600 "$seed"
+            printf '%s' "$FACTORY_CODEX_AUTH_JSON" > "$seed"
+            exec 9> "$CODEX_HOME/.auth.lock"
+            flock -w 30 9 || { echo "::error::Another job holds $CODEX_HOME/.auth.lock for more than 30 s." >&2; exit 1; }
+            if [[ -s "$auth" ]]; then
+              echo "::notice::using the persistent Codex login"
+            else
+              rm -f "$auth"
+              ln "$seed" "$auth"
+            fi
           fi
 
       # Shared findings (docs/factory.md): a reused checkout must never publish another issue's
