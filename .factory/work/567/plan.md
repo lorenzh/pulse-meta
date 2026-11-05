@@ -407,8 +407,13 @@ shows real per-location uptime over the same 90-day window as the existing aggre
 - Header rows: 20 indexed rows (`header_<i>_name`, `header_<i>_kind` `plain`|`env`,
   `header_<i>_value`, `header_<i>_intent` for a stored literal), `i` 0 to 19, inside
   `<details>`; the first `max(existing + 3, 5)` rows are visible, the rest in a nested
-  `<details>` `More rows`. A row with an empty name and value is ignored. Header names keep their
-  case and become own keys (`Object.fromEntries`), so `__proto__` stays a header. For each env
+  `<details>` `More rows`. A row with an empty name and value is ignored. A free row whose name
+  is exactly `__proto__` is a field error on `header_<i>_name`: `422`, message `__proto__ is not
+  an allowed header name.`, and nothing is sent. This matches the contract
+  (`contract/src/validate-admin.ts:34-37,69`: `validateAdminCheckInput` rejects an own
+  `__proto__` header) and the api file parser (`api/src/config.ts:225-228`). Every other header
+  name keeps its case and becomes an own key (`Object.fromEntries`, never `obj[name] = value`),
+  so the built input that `validateAdminCheckInput` sees is the one that is sent. For each env
   header the form and detail show the line to add on every probe:
   `PULSE_PROBE_HEADER_HOSTS='{"<VAR>":["<host>"]}'` (all env headers of the check in one object,
   `<host>` is `new URL(url).hostname`), with `Merge this into the value that each probe already
@@ -431,9 +436,13 @@ shows real per-location uptime over the same 90-day window as the existing aggre
 
 ### R5. Edit (`GET|POST /checks/edit?id=<id>`, Member+)
 
-- `404` for an unknown id. A file check: `409` page `This check comes from checks.json. Edit the
-  file to change it.` A shadowed id (in `shadowed`): `409` page `Shadowed by checks.json: only
-  Delete and Export are possible.` with links. No form is rendered in both cases.
+- Shadowed membership is checked before the effective source. Every shadowed definition has an
+  effective file check with the same id (`api/src/effective-checks.ts:32-43`: a database
+  definition whose id is already a file id goes to `shadowed`), so a file test first would never
+  reach the shadowed branch. Order: id in `shadowed` → `409` page `Shadowed by checks.json: only
+  Delete and Export are possible.` with Delete (Admin+) and Export (Member+) links; else no entry
+  in `checks` → `404`; else effective source `file` → `409` page `This check comes from
+  checks.json. Edit the file to change it.` No form is rendered in these cases.
 - The form is the R4 form of the stored type, filled from the view: env headers as name and
   variable; kept literal headers as fixed name, `set`, intent radio `Keep` / `Replace` /
   `Remove`; a kept body as `set` with the same radios and an empty textarea for `Replace`;
@@ -456,9 +465,11 @@ shows real per-location uptime over the same 90-day window as the existing aggre
      state (`502`, `401` banner etc. as on the list) with the heading `Not saved: the current
      version could not be read.`, the kept non-secret input as text (field label and value, no
      form), and a link to reopen the edit page; nothing is sent.
-  3. Target: no entry in `checks` and none in `shadowed` → `404`; the effective entry has source
-     `file` → `409` file page; the id is in `shadowed` → `409` shadowed page; the id is `.` or
-     `..` → `409` Decision 14 page.
+  3. Target, in this order: the id is in `shadowed` → `409` shadowed page (with its Delete and
+     Export links); no entry in `checks` → `404`; the effective entry has source `file` → `409`
+     file page; the id is `.` or `..` → `409` Decision 14 page. The shadowed test comes first
+     because a shadowed id always also has an effective file entry
+     (`api/src/effective-checks.ts:32-43`).
   4. Revision: the form's `revision` differs from the read's `revision` → `409` with `staleState`
      and the kept non-secret input as text (no form, so nothing stale can be sent again) and its
      `Reload` link to `/checks/edit?id=<encoded id>`. Nothing is sent.
@@ -631,7 +642,9 @@ Checklist items that apply:
   most 1 MiB; `requestJson` response cap (default 5 MiB); `fetchJson` caps unchanged.
 - Input validation: every form field validated before use; contract validators on every api
   answer at the Console edge; query `id`, `before` and filter parameters validated.
-- Accessor execution: header names become own keys via `Object.fromEntries`; `requestJson`
+- Accessor execution: header names become own keys via `Object.fromEntries`; the name
+  `__proto__` is refused with `422` before anything is sent (contract and api reject it too);
+  `requestJson`
   parses JSON and reads only own data properties of the error body.
 - SSRF and redirects: the Console calls only its saved pulse-api URL; every id goes through
   `apiIdSegment`, which yields exactly one percent-encoded segment and refuses `.` and `..`
@@ -697,13 +710,22 @@ Checklist items that apply:
   name sends `{"X-Api-Key":{"keep":true}}` and `"body":{"keep":true}`; `replace` with an empty
   value → `422`, nothing sent; a typed value with `keep` → `422`; `remove` drops only that
   entry. A heartbeat edit without `replace` sends no `secret`.
-- **Header name.** A header named `__proto__` with value `x` is sent as an own key
-  `{"__proto__":"x"}`; a wrong implementation using `obj[name] = value` drops it.
+- **Header name.** A create or edit POST with a free header row named `__proto__` and value `x`
+  answers `422` with `__proto__ is not an allowed header name.` at that row, and the fake api
+  records no `POST` or `PUT` (literal empty write list). A wrong implementation using
+  `obj[name] = value` drops the row silently and saves the check without it (`303`, one write);
+  one that builds the own key but skips the field check sends it and gets the api's `422`. A row
+  named `__Proto__` or `X-Proto` is an ordinary header and is sent as an own key.
 - **Revision.** Two Members open the edit page of `web` at revision R1; the first save makes R2;
   the second POST carries R1 and gets `409` stale (Console-detected) or `412` (api), never an
   overwrite. A create opened at R1 and sent after R2 uses R2 and succeeds.
-- **Shadowing during edit.** The file gains id `web` after the edit page opened: the POST answers
-  `409` `Shadowed by checks.json` and sends no PUT.
+- **Shadowing during edit.** The file gains id `web` after the edit page opened, so the fake
+  api's `/admin/config` lists `web` in `checks` with source `file` and in `shadowed`: the POST
+  of an Admin answers `409` with `Shadowed by checks.json: only Delete and Export are possible.` and the
+  links `/checks/delete?id=web` and `/checks/export?id=web&shadowed=1`, and the fake api records
+  no PUT. A wrong implementation that tests the file source first answers the file page `This
+  check comes from checks.json. Edit the file to change it.` instead. The same holds for
+  `GET /checks/edit?id=web`.
 - **Delete.** Typed `checkout api` for the name `Checkout API` → `422`, no request. Delete of a
   shadowed `web` sends one `DELETE /admin/checks/web`; afterwards `/checks/check?id=web` still
   shows the file check with its results.
@@ -1045,7 +1067,9 @@ Checks:
 - `src/check-form.test.ts`, parameterised over the six types: valid input builds the exact
   `AdminCheckInput` (literal expected objects in the test); each field rule and counterexample
   of the Counterexamples section; wrong-type fields are not in the output; intents keep,
-  replace, remove for headers and body; heartbeat secret rules; `__proto__` header.
+  replace, remove for headers and body; heartbeat secret rules; a `__proto__` header row is a
+  field error with the literal message `__proto__ is not an allowed header name.` and no
+  built input, while `__Proto__` and `X-Proto` build own keys.
 - `src/check-filters.test.ts`, `src/check-format.test.ts`, `src/check-export.test.ts`:
   Counterexamples for filters, `formatPercent`, budget sign, single and shadowed export (literal
   expected documents written in the test).
@@ -1066,7 +1090,10 @@ Checks:
   edit preserving a stored literal header, an env header, a body and a heartbeat secret (the
   PUT body has keep markers and no `secret`), then replace and remove; `If-Match` values;
   stale `409` and api `412` show the kept non-secret input as text with no form and no
-  write-only value; shadowing during edit; delete of database and shadowed
+  write-only value; shadowing during edit (GET and POST answer `409` with the shadowed text and
+  its Delete and Export links, never the file page, and the recorded request list has no PUT);
+  a `__proto__` header row on create and on edit answers `422` and the recorded request list
+  has no POST or PUT; delete of database and shadowed
   checks; typed-name mismatch sends nothing; export bodies and headers; the R8 table row by row
   through HTTP, including every "Outcome classes" counterexample with its literal Console status
   and People-log rows (`200` with an oversized body, `302`, `502` with and without the wire
