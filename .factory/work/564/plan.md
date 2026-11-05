@@ -52,7 +52,7 @@ one.
 | #718 | Shared states: `forbiddenState`, `notFoundState`, `staleState`, `alreadySubmittedState`, form-expired notices | `src/states.ts:57`, `:68`, `:73`, `:99` | 403, 404, 409 answers of team routes. `forbiddenState` gets one extra form (below). |
 | #718 | Typed-name and plain confirmation pages with `revision`, `isTypedNameConfirmed`, `typedNameError` | `src/confirm.ts:36-78` | Removal and transfer (typed); revoke invite, reset link, 2FA reset (plain). |
 | #718 | Single-use form tokens, `a:` (anonymous CSRF) and `s:` (session) bindings, the `/console.js` busy button | `src/form-tokens.ts`, `src/server.ts:260-294`, `src/http-context.ts:200-228`, `src/console-script.ts` | Every new POST form carries `form_token` after `csrf`. No new script. |
-| #563 | Session stages `factor`, `enrol`, `full`; one access gate; a `full` row of a user who must have 2FA and has none counts as `enrol` | `src/server.ts:193-254`, `src/account-store.ts:23-62` | A promoted or invited Admin reaches only enrolment, with old and new cookies. |
+| #563 | Session stages `factor`, `enrol`, `full`; one access gate; a `full` row of a user who must have 2FA and has none counts as `enrol`; a password sign-in of such a user starts stage `enrol` and answers `303` to `/account/authenticator` | `src/server.ts:193-254`, `:729-748`, `src/account-store.ts:23-62` | An invited Admin's first session is `enrol`. A promoted Admin and a recovered Owner have no session left (the role change or the reset ended them), so their old cookie goes to `/sign-in?next=…`; their next password sign-in starts `enrol`. A live `full` session of a Member or Viewer counts as `enrol` once the switch is on. |
 | #563 | The one 2FA predicate `isSecondFactorRequired` and `signInStage` | `src/two-factor-policy.ts:6`, `:11` | Widened to every Admin and to the organisation switch. |
 | #563 | TOTP with sealed seeds, recovery codes, enrolment, factor sign-in, session list, sign out all, `recheckPassword`, `deleteOtherSessions` | `src/factor-store.ts`, `src/account-routes.ts:134-172`, `src/account-store.ts:91-92` | 2FA reset deletes these rows; own password change uses `recheckPassword` and ends other sessions. |
 | #563 / deploy | The secret key file, provisioned by deploy (`deploy/README.md:62-66`) | `PULSE_CONSOLE_SECRET_KEY_FILE` | Unchanged. Admin enrolment needs it as Owner enrolment does. |
@@ -233,6 +233,17 @@ denied with the lowest allowed role of that row, or denied because the target is
     field format (`422`, the form again with a fresh form token), the form token (`409`: replay
     `Already submitted`, else the form again with `This form has expired. Send it again.`), the
     password hash, the commit.
+  - **Precedence of a replay.** The link lookup runs before the form token, so a used, expired,
+    revoked or otherwise invalid link answers the `404` invalid-link page whatever the form token
+    is. In particular, sending a POST again after it committed (the link is used now) answers
+    `404`, not `409`, and logs no `form token refused` line. `409` `Already submitted` comes only
+    while the link is still valid and the form token was already used: a second POST with the
+    same token after the first one used the token but did not use the link (the invite commit
+    refused with `409` `An account with this email exists.`, or the first POST is still in its
+    password hash). If that first POST then commits, its own answer is `303`. A link POST whose
+    link becomes invalid between the lookup and the commit answers the `404` invalid-link page
+    from the commit. The `Already submitted` page of a link route links to `/sign-in`, never to
+    the link path, so no response but the link's own form holds the token.
   - No step before the commit reads the session cookie: a valid, expired, unknown or foreign
     session cookie never changes the status or the CSRF check. One exception comes after an
     invite commit: the session rotation deletes the row that the session cookie names, exactly
@@ -263,8 +274,19 @@ Owner reset.
   `isRequiredForAll` is true. Both callers (`currentSession`, `src/server.ts:200-203`;
   `passwordStage`, `src/server.ts:729-734`) pass the instance flag, read live.
 - So a user who must have TOTP and has none reaches only `/account/authenticator`, sign-out and
-  the assets, with a new session and with an existing cookie. This is the existing #563 gate; no
-  new gate is written.
+  the assets. This is the existing #563 gate; no new gate is written. How each case gets there:
+  - Invited Admin: the accept POST starts a session of stage `enrol` and answers `303` to
+    `/account/authenticator`.
+  - Promoted Admin: the role change deleted every session (section 13), so the old cookie is
+    anonymous and gets `303` to `/sign-in?next=<path>`. The next password sign-in starts stage
+    `enrol` and answers `303` to `/account/authenticator` (`passwordStage` and `stageTarget`,
+    `src/server.ts:729-748`).
+  - Recovered Owner: the recovery link removed the factors and every session and answers `303`
+    to `/sign-in?reset=done` (section 11). The next password sign-in leads into enrolment as for a
+    promoted Admin.
+  - Switch turned on: no session ends; a live `full` session of a Member or Viewer without an
+    authenticator counts as `enrol` on its next request (`currentSession`,
+    `src/server.ts:193-205`).
 - The switch is off by default. The Owner turns it on or off on the Team page
   (`POST /team/require-2fa`). When on, a Member or Viewer without TOTP reaches only enrolment on
   the next request. Turning it on or off ends no session.
@@ -676,7 +698,16 @@ value from the module under test.
    - For both routes these POSTs answer `403` `Request refused` and change no row: no CSRF
      cookie; a `csrf` field that differs from the cookie; an `Origin` of another site. The link
      stays valid and a later correct POST works.
-   - The same successful POST sent again answers `409` `Already submitted`.
+   - Replay precedence (section 3). The same successful POST sent again (same cookie, `csrf`
+     and form token) answers `404` with `Link not valid`, for the invite and the reset route; no
+     `form token refused` log line is written. A second POST with an already used form token
+     while the link is still valid answers `409` `Already submitted`: (a) an invite POST that
+     got `409` `An account with this email exists.` (an account with that email was made after
+     the invite), sent again with the same form token, answers `409` `Already submitted` and the
+     invite stays live; (b) a reset POST held in its password hash by the gated fake of item 5a,
+     and a second POST with the same form token: the second answers `409` `Already submitted`,
+     then the first is released and answers `303`. Both `Already submitted` bodies contain
+     `href="/sign-in"` and not the token.
    - A POST with a valid session cookie of another user, that session's CSRF token in `csrf` and
      no anonymous cookie answers `403`.
    - An invalid-link GET answers `404` without `set-cookie`.
@@ -712,10 +743,23 @@ value from the module under test.
      `409`, hash unchanged.
    - Reset first, then own change: a reset held while hashing P1; the own change to P2 commits
      (`303`); the reset is released and answers `303`; the stored hash is the reset's.
-6. **2FA requirement.** An invited Admin, a promoted Admin (old cookie and a new sign-in) and a
-   recovered Owner get `303` to `/account/authenticator` on `GET /team` until enrolment; after
-   enrolment `GET /team` answers `200`. With the switch on, a Viewer without an authenticator gets
-   `303` to `/account/authenticator` on `GET /`; with it off, `200`. After a 2FA reset of a
+6. **2FA requirement.** Each case follows the sequence of section 5 (literal statuses and
+   locations):
+   - Invited Admin: the accept POST answers `303` to `/account/authenticator`; with that cookie
+     `GET /team` answers `303` to `/account/authenticator`.
+   - Promoted Admin (a Member without an authenticator, signed in, promoted by the Owner): the
+     old cookie on `GET /team` answers `303` to `/sign-in?next=%2Fteam`; the password sign-in
+     answers `303` to `/account/authenticator`; with the new cookie `GET /team` answers `303` to
+     `/account/authenticator`.
+   - Recovered Owner: the recovery POST answers `303` to `/sign-in?reset=done`; the old Owner
+     cookie on `GET /team` answers `303` to `/sign-in?next=%2Fteam`; the password sign-in with
+     the new password answers `303` to `/account/authenticator`; with the new cookie `GET /team`
+     answers `303` to `/account/authenticator`.
+   - In all three, the enrolment confirmation (`POST /account/authenticator`, `200` recovery
+     codes page) sets a new `full` session cookie (`commitConfirmation`,
+     `src/account-routes.ts:264-294`); with that cookie `GET /team` answers `200`.
+   - With the switch on, a Viewer with a live `full` session and no authenticator gets `303` to
+     `/account/authenticator` on `GET /` with the same cookie; with it off, `200`. After a 2FA reset of a
    Member who had an authenticator: the Member has 0 `authenticators`, 0 `recovery_codes` and 0
    `sessions` rows, the earlier cookie gets `303` to `/sign-in?next=%2F`, and with the switch off
    the password sign-in answers `303` to `/` with no factor step. The same reset of an Admin
@@ -734,7 +778,8 @@ value from the module under test.
    `DELETE` on `people_events` fail with `people_events is append-only`. With a test trigger that
    aborts inserts into `people_events`, an invite, a role change and a removal answer `500` and
    leave every other table unchanged. Sentinel scans: no token, link, password or TOTP secret in
-   `people_events`, log lines, `/metrics` or any response other than the one link page.
+   `people_events`, log lines, `/metrics` or any response other than the one link page and the
+   link's own form pages (GET `200`, `422`, expired form).
 9. **Owner recovery** (`src/owner-reset.test.ts`). It spawns `bun --no-env-file
    src/owner-reset.ts` on a temp database. Not set up: exit `2` with the literal text. Set up:
    exit `0` and one line matching `^pulse-console owner reset link: \S*/reset/[A-Za-z0-9_-]{43}
@@ -750,7 +795,14 @@ value from the module under test.
     followed by `form_token`. The browser suite (`e2e/run.ts`, CI job `browser`) loads the invite
     form, the reset form, the invalid-link page, the Team page, the removal confirmation and
     `/account/password` at 390 x 844 and finds no horizontal scroll and no axe violation.
-12. **CI and run.** `bun run check` passes. The docker job runs the recovery command in the
+12. **Production wiring** (`src/main.startup.test.ts`). The test spawns `bun src/main.ts` on a
+    temp database: one start creates and migrates the file, the test marks setup complete (the
+    existing `completeSetup` helper, `src/main.startup.test.ts:64-68`), then a second start
+    listens. On the port of its `pulse-console listening` line, `GET /invite/` plus 43 `A`
+    answers `404` with a body that contains `Link not valid`, and `GET /reset/` plus 43 `A`
+    answers the same. Expected values are the literals of section 10; the process exits `0` on
+    `SIGTERM`. Opening that database after the stop gives `PRAGMA user_version` `3`.
+13. **CI and run.** `bun run check` passes. The docker job runs the recovery command in the
     container before setup and expects exit `2` and `no owner account`. The CI job `deploy-dev`
     (deploy `main`'s two-factor flow) stays green. The implementer runs `bun start` once, sets up,
     invites a Member, accepts in a second browser profile, makes and uses a reset link, and
@@ -778,8 +830,9 @@ Owner credential, database writes and a CI step.
 Checklist items that apply:
 
 - **Secrets in errors, logs and responses.** Invite and reset tokens appear only in the one link
-  page of their creation, the one stdout line of the recovery command and the request path of
-  their use. They are never logged (the form-token refusal log uses the path label), never a
+  page of their creation, the one stdout line of the recovery command, the request path of their
+  use and the `action` of the link's own form (GET `200` and the `422` and expired-form answers).
+  The `Already submitted` page of a link route links to `/sign-in`. They are never logged (the form-token refusal log uses the path label), never a
   metrics label, never in the People log, never in a `Location` header. Passwords, TOTP seeds and
   codes appear nowhere. Tests scan logs, `/metrics`, `people_events`, the database file and
   responses for sentinels.
@@ -869,6 +922,11 @@ not change.
 - **Form token on link routes.** A wrong implementation uses the form token before the field
   format check; then a `422` POST followed by a corrected POST with the same token must still
   work: the `422` answer carries a fresh token and the corrected POST with it answers `303`.
+- **Link replay.** A wrong implementation checks the form token before the link lookup: then a
+  successful invite or reset POST sent again answers `409` `Already submitted`. It must answer the
+  `404` invalid-link page, because the link is used. A wrong implementation that puts the link
+  path into the `Already submitted` page leaks the token into a second response; the page must
+  link to `/sign-in`.
 - **Invite time.** `created_at = 0`: valid at `604799999`, invalid at `604800000` (a `<=`
   comparison is wrong). Revoked at `t`, GET at `t + 1`: `404`.
 - **Invite concurrency.** Two valid POSTs at once: one account; the second answers `404`, not
@@ -890,9 +948,14 @@ not change.
 - **Owner recovery.** Works at `899999`, `404` at `900000`. A second command run makes the first
   link fail. After use the `authenticators` row is gone and the next sign-in answers `303` to
   `/account/authenticator`.
-- **Promotion.** A Member signed in without TOTP is promoted: the old cookie gets `303` to sign-in;
-  a new sign-in gets `303` to `/account/authenticator`, and `GET /team` never answers `200`
-  before enrolment.
+- **Promotion.** A Member signed in without TOTP is promoted: the old cookie gets `303` to
+  `/sign-in?next=%2Fteam`, not `/account/authenticator` (a wrong implementation keeps the session
+  and relies on the gate alone); a new sign-in gets `303` to `/account/authenticator`, and
+  `GET /team` never answers `200` before enrolment.
+- **Wiring.** A wrong implementation adds `teamStore` to the test servers but not to `main.ts`;
+  every server test passes and the real console answers `500` on the first link or team request.
+  The spawned `bun src/main.ts` of the startup test must answer `404` `Link not valid` for an
+  unknown invite token (acceptance 12).
 - **2FA switch.** Switch on, a Viewer with a live full session and no authenticator: `GET /` `303`
   to `/account/authenticator` (a wrong implementation reads the switch only at sign-in).
 - **Transfer.** Target Admin without an authenticator: `409`. Target Member: `403`. `confirm_name`
@@ -937,6 +1000,7 @@ clone (`176fb6ed14b2f14b730a9fd1757239f210f97a29`, the console pin) and the conf
 | `transfer=done`, `reset=done`, `changed=1` | 0 | 0 |
 | `/account/password` | 0 | 0 |
 | `team-store`, `account-links`, `team-routes`, `team-pages`, `link-routes`, `people-log`, `team-console` | 0 | 0 |
+| `teamStore`, `createTeamStore` (server dependency and factory function) | 0 | 0 |
 | `permissions` | 0 | 17 matches, all GitHub workflow `permissions:` keys and their tests; no code name |
 
 The People action names do not equal any api audit action (contract `src/audit.ts:6-23`:
@@ -984,7 +1048,20 @@ Every backticked item in this list is a file path.
 - `src/server.ts` (route table and path labels for the new routes, the link-route matching, the
   team routes in `protectedRoutesOf`, the predicate call, the verified-hash sign-in, the sign-in
   notices, the form-token refusal path label)
-- `src/http-context.ts` (the `teamStore` dependency of `ConsoleServerDeps`)
+- `src/http-context.ts` (the required `teamStore` dependency of `ConsoleServerDeps`, beside
+  `factorStore` at `:39`)
+- `src/main.ts` (creates the team store from the opened database, `createTeamStore(db)`, and
+  passes it as `teamStore` to `createConsoleServer`, as `store` and `factorStore` are made and
+  passed at `src/main.ts:34-38` and `:69-86`; `main.ts` still never sets `roleOf` or
+  `testRoutes`)
+- `src/main.startup.test.ts` (acceptance 12: the spawned process answers the link routes and
+  migrates to schema 3)
+- `src/server.test.ts` (server deps add `teamStore: createTeamStore(db)` beside `factorStore`
+  at `:61`; no expected value changes)
+- `src/server.setup.test.ts` (the same at `:114`)
+- `src/server.form-token.test.ts` (the same at `:116`)
+- `src/two-factor-harness.ts` (the same at `:111`)
+- `test/signed-in-console.ts` (the same at `:91`)
 - `src/account-routes.ts` (own password change)
 - `src/account-pages.ts` (the password page, the `Change password` link)
 - `src/metrics.ts` (path labels)
@@ -997,8 +1074,10 @@ Every backticked item in this list is a file path.
 - `src/server.roles.test.ts` (new)
 - `src/server.password.test.ts` (new)
 - `src/server.races.test.ts` (new)
-- `src/server.sign-in.test.ts` (sign-in versus a reset or removal during verification)
-- `src/server.security.test.ts` (sentinel scans for link tokens)
+- `src/server.sign-in.test.ts` (sign-in versus a reset or removal during verification; its server
+  deps add `teamStore` at `:123`)
+- `src/server.security.test.ts` (sentinel scans for link tokens; its server deps add `teamStore`
+  at `:95`)
 - `test/team-console.ts` (new: a signed-in console with one user per role, each Admin and the
   Owner with a fixture authenticator, as `test/signed-in-console.ts:65-78` does for the Owner)
 - `e2e/run.ts` (the 390 px and axe checks of the new pages)
@@ -1013,7 +1092,8 @@ Behavior change: yes. It adds roles, team routes, account links, the recovery co
 migration and the sign-in revalidation.
 
 Existing tests that construct the server or render navigation may change only where this spec
-changes their expected value (the navigation entries, the role type); no other `expect` changes.
+changes their expected value (the navigation entries, the role type) and where their server deps
+gain `teamStore`; no other `expect` changes.
 
 ### Prerequisite check
 
@@ -1038,6 +1118,7 @@ Implement "Required behavior" sections 1 to 21 in console:
 - the sign-in revalidation and the own password compare-and-set;
 - the owner recovery command;
 - metrics labels and log lines as specified.
+- the team store created in `src/main.ts` and passed to the server, proven by acceptance 12.
 
 Existing behavior stays: setup, sign-in (except the revalidation before its session write), the
 second-factor flows, sign-out, sign out all, the throttles, cookies, CSP, the dispatcher order,
