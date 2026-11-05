@@ -19,6 +19,12 @@ answer after a committed write, falls into one of three classes with a fixed sta
 People-log rule (Decision 10, R8); the contract-valid ids `.` and `..`, which no URL path can
 carry, are defined as not addressable (Decision 14).
 
+Revision after the third plan-review (5 November): the host-binding and heartbeat lines are
+built by one shell-quoting helper that serializes the JSON whole and single-quotes the whole
+value and the whole URL, with literal and `/bin/sh` round-trip tests for apostrophes and shell
+metacharacters (Decision 12); `GET /checks/:id/location-uptime` answers `405` with
+`Allow: GET` to `HEAD`, like the other reads, and the api checks pin that (Repository: api).
+
 ## Goal
 
 A signed-in person can find, inspect, create, edit, export and delete checks in the Console,
@@ -256,6 +262,30 @@ shows real per-location uptime over the same 90-day window as the existing aggre
     heartbeat example: a `<button type="button" data-copy="<element id>" hidden>` that the
     script unhides and that copies the `textContent` of that element. Without JavaScript the
     text stays selectable in a `<pre>`.
+    **Shell text.** Both lines are meant to be pasted into a POSIX shell, and HTML escaping
+    protects only the page, not the copied text. So every value from data (host names, the
+    pulse-api URL, the heartbeat URL) reaches the line only through one pure helper in the new
+    module `src/shell-line.ts`: `shellQuote(value)` returns `'` + `value` with each `'` replaced
+    by `'\''` + `'`, always quoted, even for plain words. Nothing else (no double quotes, no
+    backslash escaping, no allow-list that passes "safe" values unquoted) builds these lines.
+    - Host binding: `hostBindingLine(bindings)` returns `PULSE_PROBE_HEADER_HOSTS=` +
+      `shellQuote(JSON.stringify(object))`, where `object` is built with `Object.fromEntries`
+      from the check's env headers in header order, each `[<VAR>, [<host>]]`. The whole JSON
+      text is one quoted word; no part of it is spliced in by hand. `JSON.stringify` escapes
+      `"`, `\` and every character below U+0020, so the text the shell assigns is valid JSON.
+    - Heartbeat: `heartbeatLine(url)` returns `curl -fsS -X POST -H ` +
+      `shellQuote("Authorization: Bearer <secret>")` + ` ` + `shellQuote(url)`, with `url` =
+      saved pulse-api URL + `/heartbeat/` + `apiIdSegment(id)`. `<secret>` stays a placeholder
+      (the secret is never shown); the user types the secret inside the quotes, which is safe
+      because a secret has only `A-Z a-z 0-9 . _ ~ -` (R4).
+    Why: Bun 1.4.0 parses `https://a';id;'b/` with `hostname` `a';id;'b` (verified with
+    `new URL`, also in Node 24), the contract accepts that check URL (`contract/src/schema.ts:22-40`
+    checks only that it parses, is `http:`/`https:` and has no user info), and the probe accepts
+    that host entry
+    (`probe/src/header-hosts.ts:11,25-40` forbids only whitespace, `/?#@\*%` and `:` outside
+    IPv6), so the old template `'{"<VAR>":["<host>"]}'` would end the quote and run `id` when
+    pasted. The `<pre>` holds `escapeHtml(line)`, so its `textContent` and the copied text are
+    exactly `line`.
 13. **Refused form tokens on check routes.** `renderForm` cannot read pulse-api (it is
     synchronous, Current behavior 15), so:
     - `/checks/new`: `renderForm` renders the create form of the posted `type` when it is one of
@@ -363,8 +393,10 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   `before` also has `Newest results`. A `before` that is not `^[0-9]{1,16}$` is ignored (first
   page). The Console never asks for more than one page per view.
 - Heartbeat usage (not for the ids `.` and `..`, Decision 14): `<pre>` with
-  `curl -fsS -X POST -H "Authorization: Bearer <secret>"
-  <pulse-api URL>/heartbeat/<apiIdSegment(id)>` and the note `Use the address under which
+  `heartbeatLine(<saved pulse-api URL>/heartbeat/<apiIdSegment(id)>)` (Decision 12), for
+  example `curl -fsS -X POST -H 'Authorization: Bearer <secret>'
+  'http://localhost:3000/heartbeat/nightly-backup'`; the URL is always one single-quoted word,
+  and the note `Use the address under which
   your job reaches pulse-api. The secret is not shown again.` plus a copy button.
 - Actions by role as in R1.
 
@@ -415,9 +447,12 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   name keeps its case and becomes an own key (`Object.fromEntries`, never `obj[name] = value`),
   so the built input that `validateAdminCheckInput` sees is the one that is sent. For each env
   header the form and detail show the line to add on every probe:
-  `PULSE_PROBE_HEADER_HOSTS='{"<VAR>":["<host>"]}'` (all env headers of the check in one object,
-  `<host>` is `new URL(url).hostname`), with `Merge this into the value that each probe already
-  has, and set <VAR> in the probe environment.` and a copy button.
+  `hostBindingLine` (Decision 12) over all env headers of the check in one object, `<host>`
+  being `new URL(url).hostname`; for `PULSE_HEADER_TOKEN` and `https://api.example.com/` it is
+  `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_TOKEN":["api.example.com"]}'`. The JSON text is
+  serialized whole and shell-quoted whole; a host is never pasted into a quoted template. The
+  line comes with `Merge this into the value that each probe already has, and set <VAR> in the
+  probe environment.` and a copy button.
 - JSON assertion rows: 10 indexed rows (`assert_<i>_pointer`, `assert_<i>_mode`
   `none`|`exists`|`equals`, `assert_<i>_equals` JSON text). A row is used when its mode is not
   `none`; `equals` must parse with `JSON.parse`, else `Enter a JSON value, for example "ok",
@@ -642,6 +677,10 @@ Checklist items that apply:
   most 1 MiB; `requestJson` response cap (default 5 MiB); `fetchJson` caps unchanged.
 - Input validation: every form field validated before use; contract validators on every api
   answer at the Console edge; query `id`, `before` and filter parameters validated.
+- Output encoding for copied shell text: the host-binding and heartbeat lines are built only by
+  `src/shell-line.ts` (`shellQuote` over the whole JSON text and the whole URL, Decision 12);
+  HTML escaping is applied on top for the page and is not relied on for the clipboard. A host
+  name such as `a';id;'b` (accepted by `new URL` and by the probe) never ends the quote.
 - Accessor execution: header names become own keys via `Object.fromEntries`; the name
   `__proto__` is refused with `422` before anything is sent (contract and api reject it too);
   `requestJson`
@@ -784,6 +823,31 @@ Checklist items that apply:
   `/checks/location-uptime`, which is no read path (`api/src/server.ts:654`), and never answers
   the tallies of `.`. The same raw `GET /checks/../results` is parsed as `/results` and answers
   `405`, which is why the Console must never build such a path.
+- **Shell lines (Decision 12).** Expected values are the literals below; they were checked by
+  running them in `/bin/sh` (dash), an independent source, not by the helper under test.
+  - HTTP check `https://a';id;'b/` with env header `PULSE_HEADER_TOKEN`: the host is
+    `a';id;'b` and the line is exactly
+    `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_TOKEN":["a'\'';id;'\''b"]}'`. A wrong
+    implementation that fills the old template prints
+    `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_TOKEN":["a';id;'b"]}'`, which runs `id` when
+    pasted.
+  - Two env headers `PULSE_HEADER_A` on `https://a$(id)b"c/` and `PULSE_HEADER_B` on
+    `https://api.example.com/`: exactly
+    `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_A":["a$(id)b\"c"],"PULSE_HEADER_B":["api.example.com"]}'`.
+    A wrong implementation that uses double quotes runs `$(id)`; one that builds the JSON by
+    string concatenation leaves `"` unescaped and gives invalid JSON.
+  - `shellQuote("")` is `''`; `shellQuote("plain")` is `'plain'` (always quoted);
+    `shellQuote("'")` is `''\'''`.
+  - Heartbeat with URL `http://localhost:3000/heartbeat/nightly-backup`: exactly
+    `curl -fsS -X POST -H 'Authorization: Bearer <secret>' 'http://localhost:3000/heartbeat/nightly-backup'`.
+    With URL `https://a';id;'b/heartbeat/x`: exactly
+    `curl -fsS -X POST -H 'Authorization: Bearer <secret>' 'https://a'\'';id;'\''b/heartbeat/x'`.
+    A wrong implementation leaves the URL unquoted or double-quoted.
+  - Round trip: `/bin/sh -c "<line>; printf %s \"$PULSE_PROBE_HEADER_HOSTS\""` prints exactly
+    `{"PULSE_HEADER_TOKEN":["a';id;'b"]}` for the first line (nothing else on stdout, so `id`
+    did not run), and `set -- <heartbeat line without curl>` yields the six words
+    `-fsS`, `-X`, `POST`, `-H`, `Authorization: Bearer <secret>`,
+    `https://a';id;'b/heartbeat/x`.
 - **Filters.** `?type=http&type=tcp` → filter ignored with the notice; `?state=shadowed` →
   ignored; `?source=shadowed&state=up` → no rows (state never matches a shadowed row).
 
@@ -814,6 +878,9 @@ Console-only names (not contract): routes `/checks`, `/checks/check`, `/checks/s
 `ProtectedRoute.maxFormBytes`, `ProtectedRoute.reopenHrefOf`, `PageResult` kind `download`,
 `MAX_CHECK_FORM_BYTES`, `apiIdSegment`
 (`grep -rn 'maxFormBytes\|reopenHrefOf\|"download"\|MAX_CHECK_FORM_BYTES\|apiIdSegment' .repos/console/src`
+prints nothing); `shellQuote`, `hostBindingLine`, `heartbeatLine` and the module
+`src/shell-line.ts`
+(`grep -rn 'shellQuote\|hostBindingLine\|heartbeatLine\|shell-line' .repos/console/src .repos/console/e2e .repos/contract/src .repos/kit/src .repos/config`
 prints nothing);
 People-log actions `check.create`, `check.replace`, `check.delete` and target kind `check`
 (`check.delete` is also a permission action id in `permissions.ts:43`; the two live in separate
@@ -913,7 +980,8 @@ Files:
 - `src/retention.ts`, `src/start.ts` (delete expired and orphan location tallies)
 - `src/server.ts` (route, metric route label)
 - `src/location-uptime.test.ts` (new), `src/server.location-uptime.test.ts` (new),
-  `src/uptime-rollup.test.ts`, `src/retention.test.ts`, `src/db.test.ts`
+  `src/uptime-rollup.test.ts`, `src/retention.test.ts`, `src/db.test.ts`,
+  `src/server.allow.test.ts` (405 cases of the new path)
 - `package.json`, `bun.lock` (contract pin to the merged contract SHA)
 - `README.md`, `docs/rest-api.md`, `docs/concepts.md`, `docs/operation.md`
 
@@ -923,7 +991,12 @@ A new public read route and a new stored tally.
 Behavior:
 
 - `GET /checks/:id/location-uptime` per Decisions 1 and 2, typed by `CheckLocationUptime`.
-  `HEAD` like the other reads. Errors `400` `bad check id`, `404` `unknown check`. Read cache
+  Only `GET` is served: `HEAD`, `POST` and every other method answer `405` with `Allow: GET`,
+  exactly like the other reads (`src/server.ts:654-655`; `src/server.allow.test.ts:78-93` pins
+  it, `HEAD /checks` at `:93`). The body is `{"error":"method not allowed"}`, empty for `HEAD`
+  (`server.allow.test.ts:67-68`). This
+  follows from adding the path to `isReadPath` (`server.ts:607-609`); no `HEAD` handler is
+  added. Errors `400` `bad check id`, `404` `unknown check`. Read cache
   and its clearing as `/checks/:id/latency` (`docs/rest-api.md:210-212`). Metric route label
   `/checks/:id/location-uptime` (`routeOf`, `src/server.ts:222-244`).
 - Table `uptime_location_daily` per Decision 2, in `src/db.ts` with a comment like
@@ -941,7 +1014,8 @@ Behavior:
 - Retention: delete location rows with `day < dayOf(cutoff)` and rows of check ids not in
   `checks`, next to `deleteUptimeRollups` (`retention.ts:52-54`, `start.ts:377-378`).
 - Docs: `docs/rest-api.md` section `GET /checks/:id/location-uptime` with the window, sample
-  set, `good`, null rule, location set, errors and an example; the routes table
+  set, `good`, null rule, location set, errors (including `405` with `Allow: GET` for any other
+  method, `HEAD` too) and an example; the routes table
   (`rest-api.md:15`) and the cache list (`:212`); `docs/concepts.md` per-location uptime next
   to the aggregate; `docs/operation.md` the table (created on open, rebuilt from results, safe
   to restore without it, safe downgrade); `README.md` endpoint list.
@@ -961,6 +1035,13 @@ Checks (`src/location-uptime.test.ts` on a `mkdtemp` database with an injected `
 - Retention removes location rows before the cutoff day and of deleted check ids.
 - HTTP: `200` typed with `validateCheckLocationUptime`; `404` unknown and inactive; `400` bad
   escape; a Bearer header is not required and not authenticated; metric label.
+- Methods: `src/server.allow.test.ts` adds `/checks/a/location-uptime` to the `POST` list of
+  "the read routes answer 405 with Allow: GET" and adds `expect405("HEAD",
+  "/checks/a/location-uptime", "GET")`; the expected values are the literals of that helper:
+  status `405`, `allow` `GET`, body `{"error":"method not allowed"}` or empty for `HEAD`. The
+  method check runs before the id lookup, so the id `a` need not exist. A `HEAD` answering
+  `200` is a defect. Both cases fail on `fb6f1a5`, where the path is no read path and answers
+  `404`.
 - Dot ids (Counterexamples, "Ids `.` and `..`"): with a fixture check `.` that has results, the
   raw `node:http` request to `/checks/%2E/location-uptime` answers `404`
   `{"error":"not found"}`. This pins current routing; no code is added for it. `docs/rest-api.md`
@@ -1007,8 +1088,10 @@ Files:
 - `src/metrics.ts` (path labels of the new routes)
 - `src/styles.ts` (tables with their own horizontal scroll, filter bar, editor rows)
 - `src/console-script.ts` (copy buttons, Decision 12)
+- `src/shell-line.ts` (new: `shellQuote`, `hostBindingLine`, `heartbeatLine`, Decision 12)
 - `src/check-form.test.ts`, `src/check-filters.test.ts`, `src/check-export.test.ts`,
   `src/check-format.test.ts`, `src/check-outcome.test.ts`, `src/api-path.test.ts`,
+  `src/shell-line.test.ts`,
   `src/server.checks.test.ts`, `src/server.checks-write.test.ts` (new);
   `src/server.form-token.test.ts`, `src/navigation.test.ts`, `src/people-log.test.ts`, `src/forms.test.ts`,
   `src/server.security.test.ts`
@@ -1016,7 +1099,9 @@ Files:
   absent or another value; `etag`; `location`), body bytes and a gate to hold the answer;
   records method, raw path, query, headers and body in order),
   `test/check-fixtures.ts` (new: config with all six types, file and database sources, a
-  shadowed duplicate, all five states, results, uptime, latency, location uptime)
+  shadowed duplicate, all five states, results, uptime, latency, location uptime; the heartbeat
+  check is `nightly-backup`; one HTTP check uses `https://a';id;'b/` with the env header
+  `PULSE_HEADER_TOKEN`)
 - `e2e/run.ts`
 - `package.json`, `bun.lock` (contract pin to the merged contract SHA)
 - `README.md`, `docs/configuration.md`, `docs/checks.md` (new), `docs/team.md`, `docs/index.md`,
@@ -1055,7 +1140,7 @@ Behavior: R1 to R9 and Decisions 4 to 14. Notes for the implementer:
 - People-log rows: `target_kind` `check`, `target_id` `NULL`, `target_name` the check id,
   `value` the revision or `unknown`.
 - Docs: `docs/checks.md` (screens, sources and shadowing, write-only fields and intents, CRLF
-  bodies, host-binding line, heartbeat usage, export redaction, fixed quorum rule, old-api
+  bodies, host-binding line and heartbeat usage (both single-quoted for a POSIX shell), export redaction, fixed quorum rule, old-api
   states, the three write outcome classes and the proxy limit of Risks, ids `.` and `..`, and
   that an expired edit or delete form keeps no input); `README.md` endpoint rows and "What works now"; `docs/configuration.md` routes,
   the editor form limit in the POST order, log lines, metric path labels; `docs/team.md`
@@ -1078,13 +1163,25 @@ Checks:
   without wire header is a redirect, not a wire case).
 - `src/api-path.test.ts`: the `apiIdSegment` literals of the "Ids `.` and `..`"
   counterexample.
+- `src/shell-line.test.ts`: every literal of the "Shell lines" counterexample, written out in
+  the test (apostrophe, `$(...)`, `"`, empty and plain values, both heartbeat URLs). Plus the
+  round trip: `Bun.spawnSync(["/bin/sh", "-c", line + "\nprintf %s \"$PULSE_PROBE_HEADER_HOSTS\""])`
+  prints exactly the literal JSON `{"PULSE_HEADER_TOKEN":["a';id;'b"]}`, and `set --` over the
+  heartbeat arguments prints the six literal words, one per `printf '[%s]'`. The shell is
+  the independent source; the test never compares the helper with itself. CI runs the tests
+  on `ubuntu-24.04` (pinned `check.yml:16` at `04108fa`, verified with `gh api`), which has
+  `/bin/sh`.
 - `src/server.checks.test.ts` (real server on port 0, fake api with `test/check-fixtures.ts`):
   list with all six types, five states, both sources and a shadowed duplicate; counts `6 checks`
   and `1 shadowed definition` for the fixture; filters compose and round-trip; reset; empty
   installation; no match; file banners; detail with locations, stale, location uptime joined by
   name, aggregate uptime, HTTP latency only for HTTP (the fake api records no `/latency` call
   for the TLS fixture), SLO absent, null and negative; results paging with `before`; heartbeat
-  usage text; shadowed view without runtime data; `404` for unknown ids; old-api state; the
+  usage text; an HTTP fixture check on `https://a';id;'b/` with env header `PULSE_HEADER_TOKEN`,
+  whose detail and edit pages contain `escapeHtml` (from pulse-kit, not the code under test) of
+  the literal line
+  `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_TOKEN":["a'\'';id;'\''b"]}'` and never the
+  unescaped template form `["a';id;'b"]}'`; shadowed view without runtime data; `404` for unknown ids; old-api state; the
   location panel text for a `404` route; every failure state.
 - `src/server.checks-write.test.ts` (stateful fake api): create and reopen each of the six types;
   edit preserving a stored literal header, an env header, a body and a heartbeat secret (the
@@ -1114,7 +1211,13 @@ Checks:
   and disabled; axe `0` violations on list, detail, shadowed view, each editor, delete
   confirmation; keyboard focus through the editor; no CSP violation; list and detail fit 390 px
   (`assertFits`), the editor at 1280 px; the copy button copies the host-binding line with
-  JavaScript and is absent without it.
+  JavaScript and is absent without it. For the `https://a';id;'b/` fixture the `<pre>`
+  `textContent` and the text the copy button writes (read back from the clipboard, or from
+  the stubbed `navigator.clipboard.writeText` argument if the headless browser has no
+  clipboard) equal the literal
+  `PULSE_PROBE_HEADER_HOSTS='{"PULSE_HEADER_TOKEN":["a'\'';id;'\''b"]}'`; the heartbeat copy
+  text equals `curl -fsS -X POST -H 'Authorization: Bearer <secret>' '` + the fake api's base
+  URL (test input) + `/heartbeat/nightly-backup'`.
 - New screen tests fail on `76dab43` (routes `404`) and pass after.
 
 Tool facts: `bun run check` is `bun run lint && bun run typecheck && bun run test`
