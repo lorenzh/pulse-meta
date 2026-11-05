@@ -440,6 +440,8 @@ source "$here/task-loop.sh"
 # Shared findings: scripts/factory-findings.mjs, the prompt rules and the findings workflow steps.
 source "$here/findings.sh"
 source "$here/app-token.sh" || fail=1
+# The Codex login of factory-run.yml: seeded once, then kept.
+source "$here/codex-login.sh"
 
 # runner-pick.yml: self-hosted only with a fresh heartbeat and an idle runner, else hosted.
 pickscript="$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["jobs"]["pick"]["steps"][0]["run"])' "$workflows/runner-pick.yml")"
