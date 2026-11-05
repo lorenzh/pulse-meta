@@ -652,8 +652,15 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   row ever retries or sends a second request.
 - Logs: one `info` `check change` with `action`, `actorId`, `checkId` and `outcome` (`saved`,
   `refused` with `status`, or `unknown`); a failed read logs one `warn` `api read failed` with
-  `call`, `kind` and `status`. No log line, error page, redirect or `/metrics` label holds a header value, body,
-  secret, the Console token, a form token or a CSRF token.
+  `call`, `kind` and `status`. No log line, redirect, download, response header or `/metrics`
+  label holds a header value, body, secret, the Console token, a form token or a CSRF token.
+  Pages, error pages included, hold no header value, body, secret or Console token anywhere.
+  Pages may hold the session CSRF token and form tokens only in their intended hidden controls:
+  `csrfField` (`<input type="hidden" name="csrf" value="…">`, `console/src/html.ts:35-37`) and
+  `formTokenField` (`<input type="hidden" name="form_token" value="…">`, `html.ts:40-42`), as
+  in every page form and the shell's sign-out form (`console/src/shell.ts:49-53`). The session
+  CSRF value is reused across pages, so it legitimately appears on every signed-in page. A
+  token anywhere else in a page (text, a link, another attribute, a script) is a leak.
 
 ### R9. Roles and request guards
 
@@ -721,7 +728,9 @@ Checklist items that apply:
 
 - Secrets in errors, logs and responses: literal header values, bodies, heartbeat secrets and
   the Console token never appear in HTML (also after a failed POST), redirects, downloads, log
-  lines or metrics; the export never contains keep markers.
+  lines or metrics; the export never contains keep markers. The session CSRF token and form
+  tokens appear only in their hidden `csrf` and `form_token` controls (R8 Logs), never in
+  redirects, downloads, response headers other than the session's own cookies, logs or metrics.
 - Auth order and status codes: dispatcher order unchanged; session and stored role are
   rechecked before each outbound write; Viewer/Member/Admin boundaries per route; edit and
   delete validate only against a server read whose revision equals the form's, never against
@@ -1313,8 +1322,18 @@ Checks:
   between page and POST (`409` `Not saved`, `403`, nothing sent); roles: one allowed and one
   denied test per route (Viewer, Member, Admin, with Owner inherited); missing CSRF, foreign
   Origin, replayed form token never reach the fake api; the 524,288 and 524,289-byte forms and
-  the unchanged 8192 limit on `/team/invites`; no HTML, redirect, download or log line contains
-  the fixture's literal header value, body, secret or the Console token (sentinel strings).
+  the unchanged 8192 limit on `/team/invites`; leak scan in the pattern of
+  `src/server.security.test.ts:395-417`: sentinels are the fixture's literal header value, body,
+  secret, the Console token, the session CSRF value and every form token issued in the test.
+  For every answer (pages, error pages of each failure and expiry path, redirects, downloads):
+  first assert that each page holding a form contains the literal hidden controls
+  `<input type="hidden" name="csrf" value="<csrf>">` and
+  `<input type="hidden" name="form_token" value="<token>">`; then remove exactly those
+  controls from the body, keep the response headers apart from the session's own `Set-Cookie`
+  lines, and assert each sentinel occurs `0` times in what remains. Every log line and the
+  `/metrics` text contain each sentinel `0` times. A test that asserts the CSRF value is absent
+  from the whole page cannot pass (the shell's sign-out form holds it) and is the wrong
+  implementation.
 - `e2e/run.ts` with the fake api: create and edit of each of the six types through the forms,
   filtering, detail, export download, stale recovery and typed delete, with JavaScript enabled
   and disabled; axe `0` violations on list, detail, shadowed view, each editor, delete
