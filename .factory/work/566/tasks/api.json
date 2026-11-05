@@ -15,11 +15,11 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, Behavior (Required behavior section 1), all Checks and Completion evidence; Counterexamples /self before :id, no actions, auth and overlap; Performance impact api/test_cpu_s; Security impact for the new admin route; Acceptance evidence 1. Keep parser, route label, dispatch, real-server regression tests and route documentation together. Use the optional token-routes.test.ts for literal parser and metrics/auth-label cases.",
+      "spec": "## Repository: api, Behavior (Required behavior section 1), all Checks and Completion evidence; Counterexamples /self before :id, no actions, auth and overlap; Performance impact api/test_cpu_s; Security impact for the new admin route; Acceptance evidence 1. Keep parser, route label, dispatch, real-server regression tests and route documentation together. Use the optional token-routes.test.ts for literal parser and metrics/auth-label cases. Include the defensive missing-row 404 after authenticated self lookup, keep /self actions as malformed ids, and leave existing consumers compatible.",
       "acceptance": [
         {
           "command": "bun test src/server.tokens.test.ts src/token-routes.test.ts",
-          "expected": "0 fail after implementation; the new authenticated GET /admin/tokens/self case was first observed red on the base (404 rather than literal 200). Metadata passes validateTokenMetadata and matches the token created by the separate POST, lastUsedAt is non-null, and secret/digest keys are absent. Both overlap secrets identify the same id; statuses 401, 403 (probe and read-only), 404 (before import and self action paths), 405 with Allow: GET, and 429 retain the auth/throttle order and no-store header. Parser/route-label assertions distinguish exactly /admin/tokens/self from /admin/tokens/:id. Focused-suite coverage exit status is not the gate."
+          "expected": "0 fail after implementation; the new authenticated GET /admin/tokens/self case was first observed red on the base (404 rather than literal 200). Metadata passes validateTokenMetadata and matches the token created by the separate POST, lastUsedAt is non-null, and secret/digest keys are absent. Both overlap secrets identify the same id; statuses 401, 403 (probe and read-only), 404 (before import and self action paths), 405 with Allow: GET, and 429 retain the auth/throttle order and no-store header. A missing store row after authentication returns 404 token not found. Parser/route-label assertions distinguish exactly /admin/tokens/self from /admin/tokens/:id. Focused-suite coverage exit status is not the gate."
         },
         {
           "command": "bun run check",
@@ -32,6 +32,10 @@
         {
           "command": "bun start",
           "expected": "With an admin import and local test configuration, the service starts; the documented curl request to /admin/tokens/self returns literal 200 and metadata keys only. Record the curl command with variable references and status/key names, never the token or response body."
+        },
+        {
+          "command": "curl -sS -o /dev/null -w '%{http_code}\\n' \"$API/admin/tokens/self\" -H \"Authorization: Bearer $TOKEN\"",
+          "expected": "With bun start running and API/TOKEN set to the local test API and throwaway admin credential, prints literal 200. Contract/metadata-key and no-secret assertions are proved by server.tokens.test.ts; the PR records only the variable-based command, status and key names."
         },
         {
           "command": "gh pr view --json body --jq .body",
