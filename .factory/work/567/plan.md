@@ -11,6 +11,14 @@ Clone heads read for this spec: console `76dab43`, contract `9ab7e24` (package 2
 version 1), api `fb6f1a5`, probe `8fd19c8`, deploy `770eae0`, config `bc87049`. These name the
 snapshots behind every "verified" claim below; they are not pins to copy.
 
+Revision after plan-review (5 November): edit and delete now read `/admin/config` before any
+field or typed-name check and validate only against the view whose revision the form carries
+(R5, R6, Decision 8); expired and replayed form tokens on the check routes are defined
+(Decision 13); every `requestJson` outcome, including redirects and an oversized or unreadable
+answer after a committed write, falls into one of three classes with a fixed status, text and
+People-log rule (Decision 10, R8); the contract-valid ids `.` and `..`, which no URL path can
+carry, are defined as not addressable (Decision 14).
+
 ## Goal
 
 A signed-in person can find, inspect, create, edit, export and delete checks in the Console,
@@ -96,6 +104,30 @@ shows real per-location uptime over the same 90-day window as the existing aggre
    (`schema.ts:98`), no dry-run route, no `/heartbeat/:id/fail` (the second path segment is the
    secret, `api/src/server.ts:203`), TLS uses `rejectUnauthorized: false` and judges expiry only
    (probe `src/check.ts`). None of these is built here.
+14. Check ids: the contract accepts any non-empty string as a check id (`contract/src/schema.ts:19-21`,
+   `:270`; `admin.ts:252`), so `.` and `..` are valid ids of a file or api-created check. The
+   WHATWG URL parser removes the path segments `.`, `..` and their `%2e` forms
+   (case-insensitive), and `encodeURIComponent` leaves `.` unchanged. Run with Bun 1.4.0 at the
+   heads above: `new URL("http://h/admin/checks/.").pathname` is `/admin/checks/`,
+   `.../admin/checks/..` is `/admin/`, `.../admin/checks/%2E` is `/admin/checks/`,
+   `.../checks/%2e%2E/location-uptime` is `/location-uptime`, `.../checks/.../results` stays
+   `/checks/.../results`. `fetch` parses its URL the same way, and the api routes on
+   `new URL(req.url, "http://localhost").pathname` (`api/src/server.ts:612-628`), so no per-id
+   api route (`/checks/:id/results`, `/latency`, `/admin/checks/:id`, `/heartbeat/:id`) can
+   address the ids `.` and `..` today. No other id is changed by the parser once each `/`, `%`,
+   `?` and `#` is percent-encoded.
+15. Console form tokens are bound to the raw path without the query (`console/src/server.ts:169`,
+   `:949`). A refused token runs the route's `renderForm(request, notice)`, which is synchronous
+   and gets only the posted fields (`server.ts:959-965`, `protected-route.ts:53-54`); a replayed
+   token links `Open the page again` to `ctx.path`, the path without the query
+   (`server.ts:953`). `PageRequest` carries `query` for a POST too (`server.ts:933`).
+16. api answers: every response carries the wire header, set before routing
+   (`api/src/server.ts:59-64`, `:883`). A check write answers `2xx` only after `applyWrite`
+   committed (`api/src/admin-routes.ts:240-255`); the `ETag` is the quoted revision
+   `"sha256-<64 hex>"` (`admin-routes.ts:100-102`); `If-Match` must be one quoted revision, else
+   `400`, and is required (`428`) (`admin-routes.ts:105-113`, `:238`). A PUT body id must equal the
+   path id (`admin-routes.ts:235-237`). The contract exports `isAdminRevision`
+   (`contract/src/index.ts:60`).
 
 ## Scope
 
@@ -150,12 +182,22 @@ shows real per-location uptime over the same 90-day window as the existing aggre
 3. **Writes go through a contract client.** The contract adds `requestJson`, a POST/PUT/DELETE
    JSON client with the timeout, size cap and wire check of `fetchJson`, never following a
    redirect and never retrying. Its `http` error carries the api's `ErrorResponse.error` text
-   when the body is one. Later Console items (tokens, maintenance, incidents) reuse it.
+   when the body is one. A failed result also says whether a response arrived and with which
+   status, `ETag` and wire check (`response`), so a caller can tell "the server answered `2xx`
+   but the body was too large or invalid" from "no answer". Later Console items (tokens,
+   maintenance, incidents) reuse it.
 4. **Console routes use exact paths and a query id.** `GET /checks`, `GET /checks/check?id=`,
    `GET /checks/shadowed?id=`, `GET|POST /checks/new`, `GET|POST /checks/edit?id=`,
    `GET|POST /checks/delete?id=`, `GET /checks/export[?id=[&shadowed=1]]`. The `id` parameter
-   must occur once and have 1 to 1024 UTF-16 code units, else the shell `404`. The id is compared
-   with data from `GET /admin/config`; in an api path it is always `encodeURIComponent(id)`.
+   must occur once and be non-empty, else the shell `404`; there is no length cap of its own,
+   because every contract-valid id must stay reachable and the request-line limit of the HTTP
+   server already bounds it. The id is compared
+   with data from `GET /admin/config`. A POST form's `action` is the path with
+   `?id=<encodeURIComponent(id)>`; its form token is issued for the path alone (`/checks/edit`,
+   `/checks/delete`), because the dispatcher binds tokens to the path without the query
+   (Current behavior 15). The handler takes the id from `request.query`, never from a field.
+   An id enters an api path only through one helper, `apiIdSegment(id)`: it returns
+   `undefined` for exactly `.` and `..` (Decision 14) and `encodeURIComponent(id)` otherwise.
 5. **Identity of shadowed entries.** A list row and every link carry whether they address the
    effective check or the shadowed database definition. Runtime data (state, results, uptime,
    latency, SLO) is shown only for the effective check; `/checks/shadowed` shows only the stored
@@ -169,22 +211,41 @@ shows real per-location uptime over the same 90-day window as the existing aggre
    these inputs come back empty with the text `Not kept for safety: enter it again.`, while all
    other non-secret input is kept. Plain header inputs are labelled `Plain value (not secret)`;
    env headers ask only for the variable name (`Secret from the probe environment`).
-8. **Revision use.** Edit and delete send the revision that the page showed as `If-Match`. A
-   create sends the revision of the read made just before it: a create cannot overwrite (an
-   existing id is `409`). The Console never takes a fresh revision for an edit or delete.
+8. **Revision use and trusted context.** Edit and delete send the revision that the page showed
+   as `If-Match: "<revision>"`. A create sends the revision of the read made just before it: a
+   create cannot overwrite (an existing id is `409`). The Console never takes a fresh revision
+   for an edit or delete. Neither `PageRequest` nor the form-token store keeps the stored type,
+   keep markers or name between the page and its POST (Current behavior 15), and the form's
+   hidden fields are never trusted for them. So an edit or delete POST first reads
+   `GET /admin/config`, and every field or typed-name check runs only against the entry of that
+   read, and only after the read's `revision` equals the form's `revision`: then the entry is
+   exactly the one the person saw. Stored type, the names and order of stored literal headers,
+   whether a body is kept, `hasSecret`, the name to type, and the source all come from that entry.
 9. **Form size.** `POST /checks/new` and `POST /checks/edit` accept a form body up to
    524,288 bytes (`MAX_CHECK_FORM_BYTES`); every other POST keeps 8192. 524,288 covers a
    65,536-byte body fully percent-encoded (196,608 bytes), 16 KiB of header names and literals
    percent-encoded (49,152), and the other fields with room. The built JSON must also be at most
    `ADMIN_MAX_BODY_BYTES` (1,048,576, `contract/src/admin.ts:23`) before it is sent.
-10. **People log for check changes.** The action names are the api audit names `check.create`,
-    `check.replace`, `check.delete`. A row is appended after pulse-api answered `2xx`, with
-    target kind `check`, `target_name` the check id, and `value` the new revision from the
-    `ETag`. A write whose answer did not arrive (timeout, network error after the request
-    started, wire mismatch or an invalid `2xx` body) appends a row with `value` `unknown`. A
-    definite refusal (`4xx`, `5xx`) appends nothing, as for team changes. The local row is not
-    atomic with the remote write; if its insert fails after a `2xx`, the page says
-    `Saved in pulse-api. The People log row could not be written.` and logs `error`
+10. **Write outcome classes and the People log.** Every `requestJson` result of a check write
+    falls into exactly one class, decided only by `response` (status and wire check) and never by
+    the body:
+    - `saved`: a response arrived with status `200`, `201` or `204` and wire check `ok`. pulse-api
+      answers `2xx` only after its commit (Current behavior 16), so this holds even when the body
+      then was too large, not JSON, failed validation, or timed out while being read. The body
+      of the write answer is never needed: the Console redirects and the next page reads fresh
+      data.
+    - `refused`: a response arrived with a status of `400` to `599` and wire check `ok`: pulse-api
+      itself refused, nothing was changed.
+    - `unknown`: everything else: no response (timeout or network error before the headers,
+      abort), any `1xx`/`3xx` or other `2xx` status, and any status whose wire check is `absent`
+      or `mismatch` (pulse-api sets the header on every answer, so such an answer came from
+      something in front of it or from another release, which may have forwarded the write).
+    The action names are the api audit names `check.create`, `check.replace`, `check.delete`.
+    `saved` appends one row with target kind `check`, `target_name` the check id, and `value`
+    the unquoted `ETag` revision when it passes `isAdminRevision`, else `unknown`. `unknown`
+    appends one row with `value` `unknown`. `refused` appends nothing, as for team changes. The
+    local row is not atomic with the remote write; if its insert fails after `saved`, the page
+    says `Saved in pulse-api. The People log row could not be written.` and logs `error`
     `check change not logged` with the error name only.
 11. **Old apis.** If `GET /admin/config` passes `validateAdminConfigSummary` but fails
     `validateAdminConfigResponse`, the Checks pages show `This pulse-api is too old for the
@@ -195,6 +256,39 @@ shows real per-location uptime over the same 90-day window as the existing aggre
     heartbeat example: a `<button type="button" data-copy="<element id>" hidden>` that the
     script unhides and that copies the `textContent` of that element. Without JavaScript the
     text stays selectable in a `<pre>`.
+13. **Refused form tokens on check routes.** `renderForm` cannot read pulse-api (it is
+    synchronous, Current behavior 15), so:
+    - `/checks/new`: `renderForm` renders the create form of the posted `type` when it is one of
+      the six (else the type choice page) with the kept non-secret input, the
+      `Not kept for safety: enter it again.` text on write-only inputs, and the expired notice;
+      `409` as today.
+    - `/checks/edit` and `/checks/delete`: `renderForm` renders no form, only the expired notice
+      `This form has expired. Nothing was sent. Open it again to see the current version.` and
+      a link to the same route with `?id=<encodeURIComponent(id)>` from the query (no link when
+      the query id is absent or repeated); `409`. The typed input is not kept: no trusted
+      stored context exists in that step.
+    - Replay (`Already submitted`): `ProtectedRoute` gains optional `reopenHrefOf(request)`; the
+      dispatcher uses it instead of `ctx.path` when set. The check routes return their own path
+      with the encoded query id (edit, delete) or `/checks/new`, so the link never drops the id.
+      Routes without it keep today's link.
+14. **Ids `.` and `..` are not addressable.** No URL path can carry them (Current behavior 14),
+    and the api cannot be asked to change this here. The Console lists such a check, shows its
+    detail and shadowed view from `/admin/config` and exports it (export reads only
+    `/admin/config/export` and `/admin/config`), but never builds an api URL for it:
+    `apiIdSegment` returns `undefined` and every per-id call site handles that before it calls
+    `fetch` or `requestJson`. On the detail page the results, location-uptime and latency panels
+    and the heartbeat usage say `pulse-api cannot address the id "<id>" in a URL path, so its
+    results, per-location uptime and latency cannot be read. Rename the check to use them.`
+    (heartbeat: `... so pulse-api cannot receive pings for it. Rename the check.`). The list row
+    and the aggregate uptime (from `GET /uptime`, no per-id path) render as usual. Edit and Delete
+    are not offered, and `GET` or `POST` of `/checks/edit` or `/checks/delete` for such an id
+    answers `409` `pulse-api cannot address the id "<id>" in a URL path, so the Console cannot
+    change or delete it.` without reading anything but `/admin/config` and without any write.
+    (The api parses even a raw request path with `new URL`, so no client can reach these ids
+    through `/admin/checks/:id`; a file check with such an id is changed in `checks.json`.) Create cannot
+    produce such an id (R4 id rule). Every other id is sent as exactly one segment: the
+    segment `encodeURIComponent(id)` contains no `/`, `?`, `#` or unencoded `%`, and is never a
+    dot segment.
 
 ## Required behavior
 
@@ -212,7 +306,9 @@ shows real per-location uptime over the same 90-day window as the existing aggre
 - Counts above the table: `<n> checks` from `checks` only, plus `<m> shadowed definitions` when
   `m > 0`. Shadowed rows are never counted as checks.
 - Row actions: View (all); Edit (Member+, database source, not shadowed); Export (Member+);
-  Delete (Admin+, database source or shadowed). Hidden actions are presentation only (R9).
+  Delete (Admin+, database source or shadowed); Edit and Delete never for the ids `.` and `..`
+  (Decision 14). Hidden actions are presentation only (R9). Every link carries the id as
+  `?id=<encodeURIComponent(id)>`.
 - Filters (GET form, query names): `q` (case-insensitive substring of id, name or target after
   `trim()`, at most 200 characters), `type` (`http`, `tls`, `tcp`, `dns`, `domain`,
   `heartbeat`; a check without `type` is `http`), `state` (`up`, `degraded`, `down`, `unknown`,
@@ -237,8 +333,9 @@ shows real per-location uptime over the same 90-day window as the existing aggre
 - `404` shell page when `checks` of `/admin/config` has no entry with that id.
 - Round 1: `/admin/config` and `/checks`. Round 2, at the same time: `GET /uptime`,
   `GET /checks/<id>/results?limit=20[&before=<before>]`, `GET /checks/<id>/location-uptime`, and
-  for an HTTP check only `GET /checks/<id>/latency`. A failed round-2 read shows its state in its
-  panel; the rest renders.
+  for an HTTP check only `GET /checks/<id>/latency`, where `<id>` is `apiIdSegment(id)`. For the
+  ids `.` and `..` only `GET /uptime` is read and the other panels show the Decision 14 text. A
+  failed round-2 read shows its state in its panel; the rest renders.
 - Shows: settings of the view (no write-only value; `set` for kept header values and a body;
   env names as stored; for heartbeat `Secret: set`), source, state, `consecutiveDown`, last
   reason, maintenance window when present, certificate days left for TLS and domain.
@@ -265,8 +362,9 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   attempts, reason. `Older results` links to `before=<timestamp of the last row>`; a page with
   `before` also has `Newest results`. A `before` that is not `^[0-9]{1,16}$` is ignored (first
   page). The Console never asks for more than one page per view.
-- Heartbeat usage: `<pre>` with `curl -fsS -X POST -H "Authorization: Bearer <secret>"
-  <pulse-api URL>/heartbeat/<encodeURIComponent(id)>` and the note `Use the address under which
+- Heartbeat usage (not for the ids `.` and `..`, Decision 14): `<pre>` with
+  `curl -fsS -X POST -H "Authorization: Bearer <secret>"
+  <pulse-api URL>/heartbeat/<apiIdSegment(id)>` and the note `Use the address under which
   your job reaches pulse-api. The secret is not shown again.` plus a copy button.
 - Actions by role as in R1.
 
@@ -327,8 +425,9 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   JSON size (`422` `The check is larger than pulse-api accepts (1 MiB).`); read
   `GET /admin/config` (failure states, `502` page); id already in `checks` or `shadowed`
   (`409` form `A check with this id exists.`); session and stored-role recheck (R8); `POST
-  /admin/checks` with `If-Match` of that read; People-log row; `303` to
-  `/checks/check?id=<id>&saved=1`, whose page says `Check saved.`
+  /admin/checks` with `If-Match: "<revision of that read>"`; outcome per R8; for `saved` the
+  People-log row and `303` to `/checks/check?id=<encoded id>&saved=1`, whose page says
+  `Check saved.` A create needs no stored context, so its field checks may run before the read.
 
 ### R5. Edit (`GET|POST /checks/edit?id=<id>`, Member+)
 
@@ -344,11 +443,35 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   is `keep` is refused (`Choose Replace to use the new value.`), so an empty or forgotten input
   never removes or overwrites a value. A kept body with a method of GET or HEAD is refused like
   any body (`A body needs POST, PUT, PATCH, DELETE or OPTIONS.`).
-- Commit order: id format (`404`); field checks (`422`); JSON size; read `/admin/config`; target
-  recheck (gone `404`, now a file check or shadowed `409` pages above); revision recheck (form
-  revision differs from the read: `409` with `staleState`, the kept non-secret input, and the
-  old revision kept in the form); session and role recheck (R8); `PUT /admin/checks/<encoded id>`
-  with `If-Match` of the form; People-log row; `303` to `/checks/check?id=<id>&saved=1`.
+- Stored literal header rows come first, in the header order of the view, at indexes `0` to
+  `k - 1`; their name is shown as text and is not a form input. On POST the handler takes the
+  name of row `i < k` from the trusted entry and reads only `header_<i>_intent` and
+  `header_<i>_value` for it; a posted `header_<i>_name` or `header_<i>_kind` for such a row is
+  ignored. Rows `k` to `19` are free rows (name, kind, value), env headers of the view filled
+  in first.
+- Commit order of a POST (the dispatcher has already checked Origin, size, CSRF, role and used
+  the form token):
+  1. Query id present once and non-empty, else `404`.
+  2. Read `GET /admin/config` (Bearer, `validateAdminConfigResponse`). Failure: the R1 failure
+     state (`502`, `401` banner etc. as on the list) with the heading `Not saved: the current
+     version could not be read.`, the kept non-secret input as text (field label and value, no
+     form), and a link to reopen the edit page; nothing is sent.
+  3. Target: no entry in `checks` and none in `shadowed` → `404`; the effective entry has source
+     `file` → `409` file page; the id is in `shadowed` → `409` shadowed page; the id is `.` or
+     `..` → `409` Decision 14 page.
+  4. Revision: the form's `revision` differs from the read's `revision` → `409` with `staleState`
+     and the kept non-secret input as text (no form, so nothing stale can be sent again) and its
+     `Reload` link to `/checks/edit?id=<encoded id>`. Nothing is sent.
+  5. Field checks against the trusted entry of step 2 (its type, stored literal header names and
+     order, kept body, `hasSecret`) → `422`, the form re-rendered from that entry with the kept
+     non-secret input, the same hidden `revision`, a fresh form token and the summary.
+  6. JSON size (`422` as in R4).
+  7. Session and stored-role recheck (R8).
+  8. `PUT /admin/checks/<apiIdSegment(id)>` with `If-Match: "<form revision>"` and the built body.
+  9. Outcome per R8; for `saved` the People-log row and `303` to
+     `/checks/check?id=<encoded id>&saved=1`.
+- A `GET` reads `/admin/config` once and renders from that entry; its hidden `revision` is that
+  read's revision.
 
 ### R6. Delete (`GET|POST /checks/delete?id=<id>`, Admin+)
 
@@ -357,11 +480,26 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   running. Its results stay in pulse-api and its open incidents are resolved.`; shadowed:
   `Only the database definition is removed. The check from checks.json keeps running.` A file
   check: `409` page `This check comes from checks.json.`
-- Commit order: id (`404`); typed name (`422`, nothing sent); read `/admin/config`; target
-  recheck (gone `404`; file-only `409`; `target` no longer matches `409` stale); revision recheck
-  (`409` stale); session and role recheck (R8); `DELETE` with `If-Match` of the form; People-log
-  row; `303` to `/checks?deleted=1`, whose page says `Check deleted.` No id is echoed from the
-  query.
+- The name to type, the consequence text and `target` come from the server's read, never from
+  the form. The posted `target` is only compared.
+- Commit order of a POST:
+  1. Query id present once and non-empty, else `404`.
+  2. Read `GET /admin/config`. Failure: the R1 failure state with `Not deleted: the current
+     version could not be read.` and a link to reopen; nothing is sent.
+  3. Target from that read: in `shadowed` → `shadowed`; else effective with source `database` →
+     `database`; effective file-only → `409` file page; none → `404`; id `.` or `..` → `409`
+     Decision 14 page. A posted `target` that differs from the derived one → `409` stale.
+  4. Revision: form `revision` differs from the read → `409` `staleState` with `Reload`; no
+     confirmation form is rendered.
+  5. Typed name: `confirm_name` checked with `typedNameError` / `isTypedNameConfirmed`
+     (`console/src/confirm.ts:35-46`: trimmed, NFC, case-sensitive) against the
+     `name` of the entry from step 2 → `422`, the confirmation re-rendered from that entry with
+     the same hidden `revision` and a fresh form token. Nothing is sent.
+  6. Session and stored-role recheck (R8).
+  7. `DELETE /admin/checks/<apiIdSegment(id)>` with `If-Match: "<form revision>"`.
+  8. Outcome per R8; for `saved` the People-log row and `303` to `/checks?deleted=1`, whose page
+     says `Check deleted.` No id is echoed from the query.
+- A `GET` reads `/admin/config` once and renders the confirmation from that entry.
 
 ### R7. Export (`GET /checks/export`, Member+)
 
@@ -389,25 +527,33 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   after both pass.
 - Every write uses `requestJson` with a 5000 ms timeout, `redirect: "manual"`, `content-type:
   application/json`, the Bearer token, and no retry.
-- Answer mapping (form re-rendered with kept non-secret input where a form exists):
+- Answer mapping. The class comes from Decision 10; "form" means the form re-rendered from the
+  trusted entry with the kept non-secret input (create: from the posted type), "text" means the
+  kept non-secret input as text without a form. `<message>` is the api's `message` from
+  `requestJson`, escaped, at most 1000 characters, or `pulse-api gave no reason.` when absent.
 
-  | pulse-api answer | Console answer |
-  | --- | --- |
-  | `201`/`200`/`204` | `303` as in R4 to R6 |
-  | `401` | `502` with the token-rejected banner |
-  | `403` | `502` `The console token lacks the admin or checks scope. Saving checks needs both.` |
-  | `404` | `404` `This check no longer exists.` |
-  | `409` | `409` form with the api's message |
-  | `412` | `412` `staleState` with the kept input |
-  | `413`, `422` | `422` form with the api's message in the summary |
-  | `429` | `503` `pulse-api is throttling the console. Try again in a minute.` |
-  | other `4xx` (400, 428) | `502` `pulse-api refused the request (<status>). Nothing was changed.` |
-  | `5xx` | `502` `pulse-api could not save the change (<status>). Nothing was changed.` |
-  | timeout, network, wire mismatch or absent, invalid `2xx` body | `504` `The result is unknown` with `Open the check to see whether the change was saved.`; People-log row `unknown` |
+  | `requestJson` result | Class | Console answer | People log |
+  | --- | --- | --- | --- |
+  | `ok`, status `200`/`201`/`204`, wire `ok` | saved | `303` as in R4 to R6 | row, `value` revision |
+  | not `ok`, `response.status` `200`/`201`/`204`, `response.wire` `ok` (error `too-large`, `invalid-json`, `validation`, or `timeout` while reading the body) | saved | `303` as in R4 to R6; one `warn` `api answer unreadable` with `call` `write` and `kind` | row, `value` revision from `response.etag`, else `unknown` |
+  | `http` `401`, wire `ok` | refused | `502` with the token-rejected banner, text | none |
+  | `http` `403`, wire `ok` | refused | `502` `The console token lacks the admin or checks scope. Saving checks needs both.`, text | none |
+  | `http` `404`, wire `ok` | refused | `404` `This check no longer exists.` | none |
+  | `http` `409`, wire `ok` | refused | `409` form with `<message>` | none |
+  | `http` `412`, wire `ok` | refused | `412` `staleState`, text, `Reload` | none |
+  | `http` `413` or `422`, wire `ok` | refused | `422` form with `<message>` in the summary | none |
+  | `http` `429`, wire `ok` | refused | `503` `pulse-api is throttling the console. Try again in a minute.`, form | none |
+  | `http` other `400`–`499` (400, 428), wire `ok` | refused | `502` `pulse-api refused the request (<status>): <message> Nothing was changed.`, text | none |
+  | `http` `500`–`599`, wire `ok` | refused | `502` `pulse-api could not save the change (<status>). Nothing was changed.`, text | none |
+  | `http` `300`–`399`, any wire | unknown | `502` `pulse-api answered with a redirect (<status>); redirects are not followed. The result is unknown: open the check to see whether the change was saved. Check that PULSE_API_URL points at pulse-api itself.`, text | row, `unknown` |
+  | any response whose wire is `absent` or `mismatch`, any other status (`1xx`, `2xx` other than above) | unknown | `502` `The answer did not come from a matching pulse-api (<status>). The result is unknown: open the check to see whether the change was saved.`, text | row, `unknown` |
+  | no response: `timeout` or `network` before the headers, `aborted` | unknown | `504` `The result is unknown. Open the check to see whether the change was saved.`, text | row, `unknown` |
 
-- Logs: one `info` `check change` with `action`, `actorId`, `checkId` and `outcome` (`saved` or
-  `unknown`); a failed read logs one `warn` `api read failed` with `call`, `kind` and
-  `status`. No log line, error page, redirect or `/metrics` label holds a header value, body,
+  The rows are checked top to bottom; the first match wins. `<status>` is the number only. No
+  row ever retries or sends a second request.
+- Logs: one `info` `check change` with `action`, `actorId`, `checkId` and `outcome` (`saved`,
+  `refused` with `status`, or `unknown`); a failed read logs one `warn` `api read failed` with
+  `call`, `kind` and `status`. No log line, error page, redirect or `/metrics` label holds a header value, body,
   secret, the Console token, a form token or a CSRF token.
 
 ### R9. Roles and request guards
@@ -430,8 +576,13 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   from `results`, like the first `/uptime` read after migration 3 did. The hourly backfill fills
   them in small batches after start, so later reads use stored rows.
 - A `4xx`/`5xx` after a successful commit is not possible in the api's write path (the audit
-  entry commits in the same transaction), so `5xx` is reported as not saved; only a lost answer
-  is reported as unknown.
+  entry commits in the same transaction), so a `4xx`/`5xx` that carries the wire header is
+  reported as not saved. A proxy in front of pulse-api can answer `502`/`504` after it forwarded
+  the write; such an answer has no wire header and is reported as unknown (Decision 10). A proxy
+  that copies the upstream wire header onto its own error page would be misread as a refusal;
+  the docs name this limit.
+- The ids `.` and `..` stay unusable for per-id api routes (Decision 14); fixing that needs an
+  api route that takes the id outside the path, which is out of scope.
 - Textarea line breaks are sent as CRLF by browsers (HTML form encoding), so a body typed in the
   Console is stored with CRLF. The docs say so.
 - Re-entering a write-only value after an unrelated validation error costs the user time; local
@@ -473,16 +624,20 @@ Checklist items that apply:
   the Console token never appear in HTML (also after a failed POST), redirects, downloads, log
   lines or metrics; the export never contains keep markers.
 - Auth order and status codes: dispatcher order unchanged; session and stored role are
-  rechecked before each outbound write; Viewer/Member/Admin boundaries per route.
+  rechecked before each outbound write; Viewer/Member/Admin boundaries per route; edit and
+  delete validate only against a server read whose revision equals the form's, never against
+  hidden fields (Decision 8).
 - Body and size limits: 524,288 bytes only on the two editor POSTs, 8192 elsewhere; built JSON at
   most 1 MiB; `requestJson` response cap (default 5 MiB); `fetchJson` caps unchanged.
 - Input validation: every form field validated before use; contract validators on every api
   answer at the Console edge; query `id`, `before` and filter parameters validated.
 - Accessor execution: header names become own keys via `Object.fromEntries`; `requestJson`
   parses JSON and reads only own data properties of the error body.
-- SSRF and redirects: the Console calls only its saved pulse-api URL; ids are percent-encoded
-  path segments; writes and reads never follow a redirect; the host-binding line is text, never
-  fetched.
+- SSRF and redirects: the Console calls only its saved pulse-api URL; every id goes through
+  `apiIdSegment`, which yields exactly one percent-encoded segment and refuses `.` and `..`
+  (which the URL parser would turn into another route, Current behavior 14); writes and reads
+  never follow a redirect, and a `3xx` on a write is an unknown outcome; the host-binding line is
+  text, never fetched.
 - Atomic, path-safe writes: no file is written (downloads are responses); the People-log insert
   is one row in its own statement.
 - Dependency pins: contract pinned to a full `main` SHA in api and console; no new package.
@@ -557,6 +712,56 @@ Checklist items that apply:
   shadowed delete is decided by the server read.
 - **Unknown outcome.** The fake api holds the PUT answer past 5000 ms: `504`, one People-log row
   with `value` `unknown`, and the fake api saw exactly one PUT (no retry).
+- **Outcome classes.** Each case is one fake-api answer to one PUT, with the expected Console
+  status and People-log rows written out in the test:
+  - `200` with the wire header, `ETag: "sha256-` + 64 × `a` + `"`, and a body of
+    `DEFAULT_MAX_BODY_BYTES + 1` bytes → `303`, one row with `value` `sha256-aaa…a` (64 `a`). A
+    wrong implementation that maps `too-large` to "invalid answer, not saved" shows an error and
+    writes no row.
+  - `201` with the wire header and body `not json` → `303`, one row.
+  - `200` with the wire header and `ETag: W/"x"` → `303`, one row with `value` `unknown`.
+  - `302` with the wire header and `location: /admin/checks/web` → `502` redirect text, one
+    `unknown` row, exactly one request (the redirect is not followed).
+  - `502` without the wire header (proxy page) → `502` "did not come from a matching pulse-api",
+    one `unknown` row. A wrong implementation that reads it as a refusal writes no row.
+  - `502` with the wire header → `502` `pulse-api could not save the change (502)`, no row.
+  - `200` with `x-pulse-contract: 2` (wire header name `contract/src/version.ts:8`, wire version
+    `1`) → `502` unknown text, one `unknown` row.
+  - `428` with the wire header and `{"error":"If-Match is required"}` → `502`
+    `pulse-api refused the request (428): If-Match is required Nothing was changed.`, no row.
+  - `422` with the wire header and an error body of 6 MiB → `422` form with
+    `pulse-api gave no reason.` (the body is over the cap, so no `message`), no row.
+- **Edit uses the trusted entry.** The page showed `web` at revision R1 with a stored literal
+  header `X-Api-Key` at row 0. The POST carries R1, `header_0_name=X-Evil`, `header_0_intent=keep`
+  and `type=tcp`: the PUT body has `"X-Api-Key":{"keep":true}`, no `X-Evil`, and the HTTP type
+  of the stored entry. The same POST with R0 (stale) answers `409` stale with no form and no
+  PUT; it never answers `422` for a field that only the old view had. A wrong implementation
+  that validates before the read answers `422` "Choose Replace…" for a header that no longer
+  exists.
+- **Delete uses the trusted name.** The page showed `Checkout API` at R1; the file reload changes
+  nothing of `web` but makes R2. POST with R1 and the right typed name → `409` stale, no
+  `DELETE`. To prove the name comes from the read and not from the page, the fake api answers
+  the POST-time read with the name `Shop API` and the unchanged revision R1: typed
+  `Checkout API` → `422`, re-rendered asking for `Shop API`, no `DELETE`.
+- **Expired and replayed tokens.** An edit POST with an expired form token answers `409` with
+  `This form has expired. Nothing was sent.` and a link whose `href` is exactly
+  `/checks/edit?id=a%2Fb` for the id `a/b`; the fake api records no request at all. A replayed
+  token answers `409` `Already submitted` with `Open the page again` linking to
+  `/checks/edit?id=a%2Fb`, not `/checks/edit`.
+- **Ids `.` and `..`.** `apiIdSegment(".")` and `apiIdSegment("..")` are `undefined`;
+  `apiIdSegment("...")` is `...`; `apiIdSegment("a/b")` is `a%2Fb`; `apiIdSegment("%2e")` is
+  `%252e`; `apiIdSegment(".x")` is `.x`. With a database check `..` in the fixture: the detail
+  page answers `200`, the fake api records `GET /admin/config`, `GET /checks` and `GET /uptime`
+  and no other path (a wrong implementation requests `/results` or `/location-uptime`, the paths
+  the URL parser makes of `/checks/../results` and `/checks/../location-uptime`); `POST
+  /checks/delete?id=..` with a valid revision and typed name answers `409` and the fake api
+  records no `DELETE` (a wrong implementation sends `DELETE /admin/`). A heartbeat check `.`
+  shows no curl line. On the api, with a fixture check `.` that has results, a request sent
+  with `node:http` `request` and the literal path `/checks/%2E/location-uptime` (so the client
+  does not normalize it) answers `404` `{"error":"not found"}`: the api parses it as
+  `/checks/location-uptime`, which is no read path (`api/src/server.ts:654`), and never answers
+  the tallies of `.`. The same raw `GET /checks/../results` is parsed as `/results` and answers
+  `405`, which is why the Console must never build such a path.
 - **Filters.** `?type=http&type=tcp` → filter ignored with the notice; `?state=shadowed` →
   ignored; `?source=shadowed&state=up` → no rows (state never matches a shadowed row).
 
@@ -570,7 +775,8 @@ nothing at the heads above):
 | `/checks/:id/location-uptime` | api route | `grep -rn 'location-uptime' .repos/contract/src .repos/config .repos/api/src` |
 | `locationUptimeSchema`, `checkLocationUptimeSchema`, `LocationUptime`, `CheckLocationUptime` | contract schema and types | `grep -rn 'ocationUptime' .repos/contract/src .repos/config` |
 | `validateCheckLocationUptime` | contract validator | `grep -rn 'validateCheckLocationUptime' .repos/contract/src .repos/config` |
-| `requestJson`, `RequestJsonOptions`, `RequestJsonResult` | contract client | `grep -rn 'equestJson' .repos/contract/src .repos/config` |
+| `requestJson`, `RequestJsonOptions`, `RequestJsonResult`, `RequestJsonResponse` | contract client | `grep -rn 'equestJson' .repos/contract/src .repos/config` |
+| `response` (field of the failed `RequestJsonResult`) | field | `grep -n 'response' .repos/contract/src/client.ts` (only local variables named `response`, no exported field) |
 | `good` (field of `LocationUptime`) | field | `grep -n 'good' .repos/contract/src/schema.ts` |
 | `uptime_location_daily` | api table | `grep -rn 'uptime_location_daily' .repos/api/src` |
 
@@ -583,8 +789,10 @@ other variants already have their own `message`, `.repos/contract/src/client.ts:
 Console-only names (not contract): routes `/checks`, `/checks/check`, `/checks/shadowed`,
 `/checks/new`, `/checks/edit`, `/checks/delete`, `/checks/export`
 (`grep -rn '"/checks' .repos/console/src` finds only the navigation path, `navigation.ts:26`);
-`ProtectedRoute.maxFormBytes`, `PageResult` kind `download`, `MAX_CHECK_FORM_BYTES`
-(`grep -rn 'maxFormBytes\|"download"\|MAX_CHECK_FORM_BYTES' .repos/console/src` prints nothing);
+`ProtectedRoute.maxFormBytes`, `ProtectedRoute.reopenHrefOf`, `PageResult` kind `download`,
+`MAX_CHECK_FORM_BYTES`, `apiIdSegment`
+(`grep -rn 'maxFormBytes\|reopenHrefOf\|"download"\|MAX_CHECK_FORM_BYTES\|apiIdSegment' .repos/console/src`
+prints nothing);
 People-log actions `check.create`, `check.replace`, `check.delete` and target kind `check`
 (`check.delete` is also a permission action id in `permissions.ts:43`; the two live in separate
 types, `PeopleAction` and `Action`, and both name the same deed). Form field names are listed in
@@ -624,11 +832,20 @@ Behavior:
   It always passes `redirect: "manual"`, never retries, and shares the timeout, abort, size cap
   and wire handling of `fetchJson`. Order: HTTP status, wire header, size, JSON, validation.
   Result: `{ ok: true, status, value, etag, wire }` (`value` is `undefined` for a `204` or an
-  empty body; `etag` is the raw `etag` header or `null`) or `{ ok: false, error }` with the
-  existing `FetchJsonError`. A non-`2xx` (including `3xx`) answer is `{ kind: "http", status,
-  wire, message? }`; `message` is the `error` string of a JSON `ErrorResponse` body up to
-  `MAX_REASON_LENGTH` (1000) characters read within `maxBytes`, else absent. A `2xx` with a
-  wire mismatch is `wire-mismatch`.
+  empty body; `etag` is the raw `etag` header or `null`; `wire` `"ok" | "absent"`) or
+  `{ ok: false, error, response }` with the existing `FetchJsonError` and
+  `response: RequestJsonResponse | null`, where `RequestJsonResponse` is
+  `{ status: number; etag: string | null; wire: WireVersionCheck }`. `response` is set exactly
+  when the response headers arrived: for `http`, `too-large`, `invalid-json`, `validation`,
+  `wire-mismatch`, and for `timeout` or `aborted` during the body read; it is `null` for
+  `timeout`, `aborted` and `network` before the headers. A non-`2xx` (including `1xx` and
+  `3xx`) answer is `{ kind: "http", status, wire, message? }`; `message` is the `error` string
+  of a JSON `ErrorResponse` body, cut to `MAX_REASON_LENGTH` (1000) characters, when that body
+  fits `maxBytes`; an error body that is over `maxBytes`, not JSON or of another shape gives no
+  `message` and still the `http` error, never `too-large`. A `2xx` with a wire mismatch is
+  `wire-mismatch`; a `2xx` whose body is over `maxBytes` is `too-large` with `response.status`
+  the `2xx`. `requestJson` never classifies an outcome as saved or not: that is the caller's
+  rule (console Decision 10).
 - `fetchJson` is unchanged (its `http` error never has `message`).
 
 Checks:
@@ -639,11 +856,20 @@ Checks:
 - `test/request-json.test.ts` with a hand-written fake `fetch` and fake `schedule`: method, body,
   content type and `redirect: "manual"` are passed; `201` with a valid body; `204` without one;
   `412` with `{"error":"the configuration changed: reload it and retry"}` gives that `message`;
-  `500` with a non-JSON body gives no `message`; `302` is an `http` error; timeout, caller abort,
-  network error, body over `maxBytes`, missing and mismatched wire header; the fake is called
-  exactly once in every case.
+  `500` with a non-JSON body gives no `message`; `302` with a `location` header is an `http`
+  error with `status 302` and `response.status 302`, and the fake saw `redirect: "manual"`;
+  timeout before the headers (`response` `null`), timeout during the body after a `201`
+  (`response.status 201`), caller abort, network error (`response` `null`); a `200` with
+  `etag: "sha256-…"` and a body of `maxBytes + 1` bytes is `too-large` with
+  `response { status: 200, etag: "\"sha256-…\"", wire: { status: "ok" } }` (literal in the
+  test); a `422` with an `ErrorResponse` body of `maxBytes + 1` bytes is `http` `422` without
+  `message`; a `2xx` with wire `2` is `wire-mismatch` with `response.status`; missing wire
+  header on a `201` is `ok` with `wire "absent"`; the fake is called exactly once in every
+  case.
 - `test/types.fixture.ts` uses `CheckLocationUptime`, `LocationUptime`, `RequestJsonOptions`,
-  `RequestJsonResult`.
+  `RequestJsonResult`, `RequestJsonResponse`.
+- Docs (`README.md`, `docs/index.md`): `requestJson`, its result and `response`, and the note
+  that a `2xx` status with a body error means the server answered `2xx`.
 
 Tool facts: `bun run check` is `bun run lint && bun run build && bun run typecheck && bun run
 test` (`package.json:28`); tests use `bun test` with 80 % line coverage (`bunfig.toml:2-3`);
@@ -713,7 +939,12 @@ Checks (`src/location-uptime.test.ts` on a `mkdtemp` database with an injected `
 - Retention removes location rows before the cutoff day and of deleted check ids.
 - HTTP: `200` typed with `validateCheckLocationUptime`; `404` unknown and inactive; `400` bad
   escape; a Bearer header is not required and not authenticated; metric label.
-- These tests fail on `fb6f1a5` (route `404`, table missing) and pass after.
+- Dot ids (Counterexamples, "Ids `.` and `..`"): with a fixture check `.` that has results, the
+  raw `node:http` request to `/checks/%2E/location-uptime` answers `404`
+  `{"error":"not found"}`. This pins current routing; no code is added for it. `docs/rest-api.md`
+  states that per-id routes cannot address the ids `.` and `..`.
+- These tests fail on `fb6f1a5` (route `404`, table missing) and pass after, except the dot-id
+  test, which pins behavior that already holds.
 
 Tool facts: `bun run check` is `bun run lint && bun run typecheck && bun run test`
 (`package.json:20`); `bun test` with 80 % line coverage (`bunfig.toml:2-3`); Biome `2.6.3`
@@ -739,8 +970,11 @@ Files:
 - `src/check-filters.ts` (new: filter parsing and matching)
 - `src/check-export.ts` (new: single and shadowed export documents)
 - `src/check-format.ts` (new: `formatPercent`, budget text, UTC time, target text)
-- `src/server.ts` (register `checkRoutes`, `pathLabel`, download answer, route form limit)
-- `src/protected-route.ts` (`maxFormBytes`, `PageResult` kind `download`)
+- `src/check-outcome.ts` (new: Decision 10 classes from a `RequestJsonResult`)
+- `src/api-path.ts` (new: `apiIdSegment`, Decision 14)
+- `src/server.ts` (register `checkRoutes`, `pathLabel`, download answer, route form limit,
+  `reopenHrefOf` for the replayed-token link)
+- `src/protected-route.ts` (`maxFormBytes`, `reopenHrefOf`, `PageResult` kind `download`)
 - `src/http-context.ts` (`readPostForm`/`readFormFields` take the byte limit)
 - `src/forms.ts` (`MAX_CHECK_FORM_BYTES = 524288`)
 - `src/navigation.ts` (Checks available)
@@ -752,10 +986,13 @@ Files:
 - `src/styles.ts` (tables with their own horizontal scroll, filter bar, editor rows)
 - `src/console-script.ts` (copy buttons, Decision 12)
 - `src/check-form.test.ts`, `src/check-filters.test.ts`, `src/check-export.test.ts`,
-  `src/check-format.test.ts`, `src/server.checks.test.ts`, `src/server.checks-write.test.ts`
-  (new); `src/navigation.test.ts`, `src/people-log.test.ts`, `src/forms.test.ts`,
+  `src/check-format.test.ts`, `src/check-outcome.test.ts`, `src/api-path.test.ts`,
+  `src/server.checks.test.ts`, `src/server.checks-write.test.ts` (new);
+  `src/server.form-token.test.ts`, `src/navigation.test.ts`, `src/people-log.test.ts`, `src/forms.test.ts`,
   `src/server.security.test.ts`
-- `test/fake-api.ts` (replies per method and path, records method, query, headers and body),
+- `test/fake-api.ts` (replies per method and path with own status, headers (wire header present,
+  absent or another value; `etag`; `location`), body bytes and a gate to hold the answer;
+  records method, raw path, query, headers and body in order),
   `test/check-fixtures.ts` (new: config with all six types, file and database sources, a
   shadowed duplicate, all five states, results, uptime, latency, location uptime)
 - `e2e/run.ts`
@@ -766,7 +1003,20 @@ Files:
 Behavior change: yes
 New screens, api writes and People-log rows.
 
-Behavior: R1 to R9 and Decisions 4 to 12. Notes for the implementer:
+Behavior: R1 to R9 and Decisions 4 to 14. Notes for the implementer:
+
+- Edit and delete POST handlers follow the numbered commit orders of R5 and R6 exactly: the
+  `/admin/config` read is step 2, before any field or typed-name check, and those checks take
+  their context only from the entry of that read after its revision matched (Decision 8).
+- `checkOutcome(result)` in `src/check-outcome.ts` is a pure function from a
+  `RequestJsonResult` to `{ class: "saved"; revision: string | null } | { class: "refused";
+  status: number; message?: string } | { class: "unknown"; status: number | null; isRedirect:
+  boolean }`, following the R8 rows top to bottom; `check-write.ts` maps the class to the page
+  and the People-log row. Every per-id api URL is built from `apiIdSegment`; a direct
+  `encodeURIComponent` of an id in an api URL elsewhere is a review defect.
+- `reopenHrefOf` (Decision 13): `isProtectedTokenAccepted` (`server.ts:941-966`) uses
+  `route.reopenHrefOf?.(request)` before the `ctx.path` fallback at `:953`. Existing routes do not
+  set it, so their links stay as they are.
 
 - Routes are `ProtectedRoute`s from `checkRoutes(deps)`, added in `protectedRoutesOf`
   (`server.ts:1105-1107`), like `teamRoutes`. `knownFields` lists every editor field name of R4
@@ -784,7 +1034,8 @@ Behavior: R1 to R9 and Decisions 4 to 12. Notes for the implementer:
   `value` the revision or `unknown`.
 - Docs: `docs/checks.md` (screens, sources and shadowing, write-only fields and intents, CRLF
   bodies, host-binding line, heartbeat usage, export redaction, fixed quorum rule, old-api
-  states); `README.md` endpoint rows and "What works now"; `docs/configuration.md` routes,
+  states, the three write outcome classes and the proxy limit of Risks, ids `.` and `..`, and
+  that an expired edit or delete form keeps no input); `README.md` endpoint rows and "What works now"; `docs/configuration.md` routes,
   the editor form limit in the POST order, log lines, metric path labels; `docs/team.md`
   People-log actions; `docs/index.md` link; `AGENTS.md` end-to-end test list and the check
   modules under "This repository".
@@ -798,6 +1049,11 @@ Checks:
 - `src/check-filters.test.ts`, `src/check-format.test.ts`, `src/check-export.test.ts`:
   Counterexamples for filters, `formatPercent`, budget sign, single and shadowed export (literal
   expected documents written in the test).
+- `src/check-outcome.test.ts`: one case per R8 row and per "Outcome classes" counterexample,
+  with literal `RequestJsonResult` inputs and literal expected classes; row order (a `302`
+  without wire header is a redirect, not a wire case).
+- `src/api-path.test.ts`: the `apiIdSegment` literals of the "Ids `.` and `..`"
+  counterexample.
 - `src/server.checks.test.ts` (real server on port 0, fake api with `test/check-fixtures.ts`):
   list with all six types, five states, both sources and a shadowed duplicate; counts `6 checks`
   and `1 shadowed definition` for the fixture; filters compose and round-trip; reset; empty
@@ -809,9 +1065,18 @@ Checks:
 - `src/server.checks-write.test.ts` (stateful fake api): create and reopen each of the six types;
   edit preserving a stored literal header, an env header, a body and a heartbeat secret (the
   PUT body has keep markers and no `secret`), then replace and remove; `If-Match` values;
-  stale `409` and api `412` keep input; shadowing during edit; delete of database and shadowed
-  checks; typed-name mismatch sends nothing; export bodies and headers; the R8 table row by row;
-  unknown outcome writes one `unknown` row and one request; session ended and role lowered
+  stale `409` and api `412` show the kept non-secret input as text with no form and no
+  write-only value; shadowing during edit; delete of database and shadowed
+  checks; typed-name mismatch sends nothing; export bodies and headers; the R8 table row by row
+  through HTTP, including every "Outcome classes" counterexample with its literal Console status
+  and People-log rows (`200` with an oversized body, `302`, `502` with and without the wire
+  header, `200` with wire `2`, `428`, `422` with an oversized error body); the "Edit uses the
+  trusted entry" and "Delete uses the trusted name" counterexamples, asserting the recorded
+  request list of the fake api (method and path, in order) as a literal; a failed POST-time
+  `/admin/config` read on edit and delete answers the failure state and records no write; the
+  "Expired and replayed tokens" counterexample with the literal `href`; the "Ids `.` and `..`"
+  counterexample with the literal recorded path list; unknown outcome writes one `unknown` row
+  and one request; session ended and role lowered
   between page and POST (`409` `Not saved`, `403`, nothing sent); roles: one allowed and one
   denied test per route (Viewer, Member, Admin, with Owner inherited); missing CSRF, foreign
   Origin, replayed form token never reach the fake api; the 524,288 and 524,289-byte forms and
