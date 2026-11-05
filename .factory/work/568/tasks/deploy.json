@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Prove incident privacy in compose against main while retaining published-image coverage",
+      "files": [
+        "e2e/compose-e2e.sh",
+        "e2e/compose.e2e.yaml",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all Behavior bullets, Manual incident privacy steps 1-15, Checks and Completion evidence; decisions 11-12/14 and Security impact. After contract/api/status/notify merge, add full(default)/dev base selection, dev builds and corresponding setup/service assertions while detecting the api to choose test paths. Preserve #565's api-kind detection/database-check tests. Normalize overlay header, extend static rule-5 validation and its negative test to dev+e2e, and keep all existing static invariants valid for that combination. Add e2e-dev CI with the five service main checkouts, revision reporting, 60-minute build/test timeout, pipefail/log/required ok-line gate, existing pinned actions with persist-credentials false and always teardown. Implement the entire scenario at the specified pre-outage position: auth, D/I/P, note/draft save, marker M and successful-poll/status barriers, absence, web badge up/up/down, persistence/restarts, publish/deduplication/discard and public-only literal metrics. Keep both component channels for D, use only web for badge proof, and resolve internal I through admin routes after legacy 404. Update README/AGENTS and report green full/e2e-dev runs, revisions and security results; hold with the failing step if unrelated main drift cannot be accommodated for both modes.",
+      "acceptance": [
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root; every shell script passes shellcheck."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0; every shell script parses."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; the lint job's helper-syntax checks remain green."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0; the lint job's JSON checks remain green."
+        },
+        {
+          "command": "scripts/check-setup.sh",
+          "expected": "exit 0; existing setups and dev+e2e pass all static invariants, including allowing pulse-<svc>:dev tags for the dev+e2e combination. The latter publishes literal rows api 127.0.0.1 3000 3000, console 127.0.0.1 8082 8082, status - 8080 8080; no new image pin is placed in e2e."
+        },
+        {
+          "command": "bash scripts/check-setup.test.sh",
+          "expected": "exit 0; every existing case passes and the new dev+e2e port mutation is rejected with a rule 5 failure."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/console-setup.test.sh",
+          "expected": "exit 0; all lint-job e2e helper and console setup tests pass."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; the remaining checks of the touched lint job pass."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; existing CLI lint, typecheck, tests and 0.8 coverage gate remain green."
+        },
+        {
+          "command": "E2E_SETUP=invalid bash e2e/compose-e2e.sh",
+          "expected": "nonzero exit immediately with literal E2E_SETUP must be full or dev, before starting the stack."
+        },
+        {
+          "command": "bash -o pipefail -c 'E2E_SETUP=dev bash e2e/compose-e2e.sh | tee /tmp/pulse-568-e2e-dev.log'",
+          "expected": "exit 0 against sibling main checkouts including this feature; all existing steps and privacy steps 1-15 pass. Before absence checks M is visible in proxy/page/feed, manual:<M>:opened is present once, an additional successful poll completes and 3*POLL_INTERVAL elapses. web badge is literally up before private writes, up after the barrier and down after D publication; manual:<D>:opened is once in both component channels. Metrics created/resolved are literally 1/1 at start, 3/1 before api restart, 0/0 immediately after and 1/3 at end; 0 request-counter lines name the admin prefix. Private sentinels stay absent until their public publication, notes/internal remain absent, persisted draft/note survive restart and handled events are not repeated."
+        },
+        {
+          "command": "grep -qx 'ok: manual incident privacy' /tmp/pulse-568-e2e-dev.log",
+          "expected": "exit 0; a skip cannot satisfy the dev gate. Against pre-change api main the route probe gives 404 and this required ok-line check fails."
+        },
+        {
+          "command": "bash -o pipefail -c 'E2E_SETUP=full bash e2e/compose-e2e.sh | tee /tmp/pulse-568-e2e-full.log'",
+          "expected": "exit 0 on the existing published images; every existing scenario remains green."
+        },
+        {
+          "command": "grep -qx 'skip: manual incident privacy (api has no /admin/manual-incidents)' /tmp/pulse-568-e2e-full.log",
+          "expected": "exit 0 on the existing published api; the missing private endpoint takes the documented detection-based skip, independent of E2E_SETUP."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR links green e2e-dev and full CI runs with required ok/skip lines, reports git rev-parse HEAD for all five service main checkouts used by dev, and records all touched-job checks. Applicable Security impact evidence confirms no printed token, post-write positive barriers before absence assertions, public-only anonymous counters/request labels, unchanged approved image pins and existing exact action SHAs with persist-credentials false."
+        }
+      ]
+    }
+  ]
+}
