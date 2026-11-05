@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reject non-list manual-incidents answers before serving or tagging them",
+      "files": [
+        "src/api-filter.ts",
+        "src/server.ts",
+        "src/api-filter.test.ts",
+        "src/server.privacy.test.ts",
+        "src/poller.test.ts",
+        "README.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status — all Behavior bullets, Checks 1-9 and Completion evidence; Decisions 1-6, R1-R7 (including the revised R4 unavailable-page and cache expectations), Counterexamples, Performance impact and Security impact. Keep the filter shape guard and the server failure mapping in this task. Add the HTTP regressions to src/server.privacy.test.ts. The existing manual-incidents.test.ts covers malformed array items and 404, but not a singleton after a successful refresh, so add that regression to src/poller.test.ts. Update both listed docs in the same change. Poller, SSR, sections and syndication production behavior stays as inspected; do not change it to preserve the old invalid-answer page text.",
+      "acceptance": [
+        {
+          "command": "bun test src/api-filter.test.ts",
+          "expected": "0 fail; a focused run may exit nonzero solely because of the repository-wide coverage threshold. For both hide-details values, /api/manual-incidents returns undefined for the internal singleton, draft object, published internal record, public singleton, null, string, number, boolean and empty object of the spec. A throwing title getter is called 0 times and the result is undefined. Non-array /api/checks and /api/components/uptime bodies retain input object identity. The array branch, including [null], stays unchanged. The doc comment documents the cannot-be-served result."
+        },
+        {
+          "command": "bun test src/server.privacy.test.ts",
+          "expected": "0 fail on the branch; a focused run may exit nonzero solely because of coverage. Follow TDD: before changing production code, run the new singleton HTTP regression against main 6336cb78c1440defea94b61df102e9b62a46401d and record its assertion failure caused by a 200 containing a sentinel and an ETag. On the branch, Checks 1-2 cover all non-array counterexamples with hide-details true/false, show-checks true/false, and cache enabled/disabled. Each /api/manual-incidents response is 502 with body exactly {\"error\":\"invalid API response\"}, cache-control exactly no-store and no etag header; no title, update, note or draft sentinel is present in any body or header. If-None-Match: *, the old singleton passthrough tag from the baseline's etagFor helper and the tag from a prior valid list all still give the same 502, never 304. Preserve forwarding of x-pulse-contract as for existing errors. With cache on and an injected clock, a valid list gives 200 and tag T, a singleton observed after TTL expiry gives 502 without falling back to the old list, and a restored valid list after the next expiry gives the original bytes and T. No real sleeps. buildAnswer maps the failure before successful serialization/tagging and stays within complexity 15."
+        },
+        {
+          "command": "bun test src/server.privacy.test.ts --test-name-pattern 'manual incidents'",
+          "expected": "0 fail; a focused run may exit nonzero solely because of coverage. Name the new surface and compatibility regressions with 'manual incidents' so this command selects them. Check 3 covers /, /feed.atom and /badge/component/<fixture id>.svg for every malformed body, including after an earlier successful response once the injected clock expires its raw entries. No malformed-body sentinel or ETag derived from it is served. The page answers literal status 200 and contains the literal text Cannot reach the API. With cache enabled, its ETag differs from the valid-list page ETag observed earlier in the same run, a second request within the cache period returns the same unavailable-page ETag, and If-None-Match with the valid-list page ETag gives 200, never 304. This preserves the existing stored unavailable page: renderSections completes normally (isComplete: true); do not require an incomplete render or change SSR, sections or poller production code. The feed and component badge give 503 unavailable with no etag, also after their earlier 200. The valid-public-array positive control shows the public title on the page, :manual:1:0 in the feed and a 200 component badge. Check 7 also proves /api/components/uptime with checks shown still returns 200, literal body {\"x\":1} and an ETag for upstream {\"x\":1}. Existing tests 'manual incidents: drafts, internal items, notes and draft updates never served' and 'manual incidents: entity tags and 304 depend only on public items' pass without edits."
+        },
+        {
+          "command": "bun test src/poller.test.ts src/manual-incidents.test.ts",
+          "expected": "0 fail; a focused run may exit nonzero solely because of coverage. The new direct-poller fake-fetch regression first accepts a valid list, then treats a non-array /manual-incidents response as an invalid refresh, retains exactly the earlier validated manualIncidents list and never adds the singleton. The existing test 'poller: a 404 means none without error; an earlier list is kept' passes: a first 404 yields [] without error and a later 404 retains the earlier list. Poller, SSR and syndication production guards stay as inspected."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both project and e2e typechecks, and the full test suite pass with 0 failing tests, line coverage at least 80% and cognitive complexity at most 15. No coverage or tooling limit is lowered. Existing filter callers and the hidden-checks, latency and manual-incidents tests retain their behavior. No dependency, contract/config/kit pin or unrelated route behavior changes. README.md documents the non-array manual-incidents 502 invalid-response rule; docs/operation.md also documents the feed/component-badge 503 result and the page's existing unreadable-answer text Cannot reach the API."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0 with Chromium installed as in CI; existing accessibility and real-server browser end-to-end checks stay green. The inspected status repository has no compose end-to-end file; its real HTTP regression tests and e2e/run.ts are the applicable end-to-end checks. Existing CI check, docker on amd64/arm64 and a11y jobs remain green and unchanged."
+        },
+        {
+          "command": "time bun test",
+          "expected": "Run once on unchanged main 6336cb78c1440defea94b61df102e9b62a46401d and once on the implementation branch; both full suites exit 0 with 0 failing tests. Record both bun test CPU times in the PR as required by Performance impact. No A/B benchmark run or change to bench/budgets.json is required."
+        },
+        {
+          "command": "bun start",
+          "expected": "Check 9: start against a local fake API on 127.0.0.1 configured through PULSE_API_URL, with valid fixtures for other routes and a singleton /manual-incidents answer. Exercise /api/manual-incidents with curl -i at the service's actual listening port: status 502, literal body {\"error\":\"invalid API response\"}, Cache-Control: no-store and no ETag. Record the exact start/curl commands and response in the PR using only synthetic data, then stop the local processes."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Completion evidence includes Closes lorenzh/pulse-meta#<child>, the new regression's failing baseline run and passing branch run, bun run check result, the smoke commands/output, both bun test CPU times and the TTL-reuse limit of Decision 4. Check 6 includes the actual A/B commands and table from independently serving identical fixtures through unchanged main 6336cb78c1440defea94b61df102e9b62a46401d and the branch: [publicControl], [], a legacy item without visibility/publishedAt, and PRIVATE_UPSTREAM. For each, record both literal body SHA-256 hashes, both ETags and 304 responses to If-None-Match; hashes, bytes and tags match across revisions. Include [null] compatibility as a counterexample regression. Do not derive compatibility expectations from the changed filter. Security evidence addresses all applicable checklist items: private title/update/note/draft sentinels absent from bodies and headers, no private-content ETag or conditional 304, all non-array top-level shapes rejected, singleton getter calls 0, fixed errors with no copied upstream text in errors/logs. No new dependencies or secrets."
+        }
+      ]
+    }
+  ]
+}
