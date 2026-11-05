@@ -10,24 +10,45 @@ moves every screen that is on console `main` onto those classes. It also fixes t
 #773 defects: radios next to their labels, the mobile checks table, danger delete buttons, and the
 403 page.
 
+It also serves the two design font families itself, from files committed in the console
+repository (owner decision, R15).
+
 The result is a presentation change. Routes, statuses, roles, CSRF, form tokens, cookies, stored
-data, CSP, texts and status meanings stay as they are. #460 and the #718 amendment win over a
+data, texts and status meanings stay as they are. The only new routes are the seven font files,
+and the only CSP change is the added `font-src 'self'`. #460 and the #718 amendment win over a
 board. This spec builds on #718 (shell, states, confirmations, closed): it restyles those parts
 and does not rebuild them.
 
 Inputs read for this spec:
 
-- Issue #774 and its one comment (the issue-review result). The review artifact
+- Issue #774 (current body, re-read for this revision) and its comments. The review artifact
   `.factory/work/774/issue-review.md` gives open points 1–11 and a derived acceptance check. This
   spec adopts them; where it decides an open point, the decision is named below.
+- The owner's decision in the issue comments: the console serves Space Grotesk and JetBrains Mono
+  itself, as committed `woff2` files under the SIL Open Font License, with `font-src 'self'` as
+  the only CSP change. This replaces the "no web font, no CSP change" rule of the first revision
+  of this spec. The words "no … font request" in issue-review acceptance check 2 are superseded
+  by it; the rest of that check stands.
+- The plan-review comment on the first revision (five required changes: fonts, the `:visited`
+  conflict between R3 and browser check 9, console cost estimates, the mobile nav focus offset,
+  concrete test files). This revision answers each of them; the breakdown comment named the same
+  `:visited` conflict.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/774` answered
-  `HTTP 404`, so this feature has no findings yet.
+  `HTTP 404` again for this revision, so this feature has no findings yet.
+- Font sources, read for this revision: the npm tarballs `@fontsource/space-grotesk@5.3.0`
+  (`dist.integrity`
+  `sha512-ksnGizDPXIDuvqcTYTSrmZ+evx9sDlS8rp7+42BQ7wU+spt3twEoXfbJz672C+5CLg6VeUQwRy5RXshWb67LcQ==`)
+  and `@fontsource/jetbrains-mono@5.3.0` (`dist.integrity`
+  `sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==`),
+  both `license: OFL-1.1` in the registry. The file sizes and SHA-256 hashes in R15 were computed
+  from those extracted tarballs.
 - Console clone at `c78c9d5` (`.repos/console`, merge of PR #12, "console check screens").
   The source files read are named in the repository section. Deploy
   `.repos/deploy/e2e/console-setup.sh` lines 273, 308, 327 and 417 grep the page texts `Signed in
   as` and `This browser`. Line 140 greps `Checks: <n>.`. This spec keeps those texts.
-- Console PR lorenzh/pulse-console#14 (#768, tokens and probe locations screens) is open and
-  mergeable. It changes `src/navigation.ts`, `src/styles.ts` (+1 line), `src/shell-line.ts` and
+- Console PR lorenzh/pulse-console#14 (#768, tokens and probe locations screens) is still open
+  (`gh pr view 14 -R lorenzh/pulse-console` answered `"state":"OPEN"`, console `main` is still
+  `c78c9d5`). It changes `src/navigation.ts`, `src/styles.ts` (+1 line), `src/shell-line.ts` and
   `e2e/run.ts`. It is not on `main`; see Risks.
 
 ## Scope
@@ -48,6 +69,9 @@ Inputs read for this spec:
   - team with invites, role, remove, transfer, reset link and reset 2FA;
   - invite `/invite/<token>` and reset `/reset/<token>`;
   - every shared state, including the session-expired notice on sign-in.
+- Self-hosted fonts (R15): seven latin `woff2` files and two OFL license texts committed under
+  `assets/fonts/`, served from seven fixed routes under `/fonts/`, loaded by `@font-face` rules
+  in the shared stylesheet, shipped in the Docker image, and allowed by `font-src 'self'`.
 - The four shared #773 defects listed under Goal.
 - Browser checks in light and in emulated dark color scheme. Unit tests change where markup or
   class names change.
@@ -65,8 +89,13 @@ Inputs read for this spec:
   (`q`). That field is a filter, not the board's global search box (issue-review point 2).
 - No modal or dialog. The 16 px radius token exists only for a later dialog.
 - No change to `/console.js` behavior, no theme script, no resize or overflow detection script.
-- No new route (not even a session-expired route), no setting, no stored value, no new package,
-  no CSS framework, no build step, no web font, no CSP change.
+- No new route other than the seven font routes of R15 (not even a session-expired route), no
+  setting, no stored value, no new package (runtime or dev), no CSS framework, no build step.
+  No font from a CDN or another origin, no font package at runtime, no font subsetting or
+  conversion step in the repository: the committed files are the upstream files byte for byte.
+- No CSP change other than adding `font-src 'self'` (R15). No `<link rel="preload">` for fonts:
+  it would change every document head for a small gain; `font-display: swap` covers the first
+  paint.
 - The remaining #773 items stay in #773:
   - rounding of "Last reason";
   - readable settings labels: labels get the new typography but keep their words;
@@ -82,9 +111,11 @@ Inputs read for this spec:
 
 - `CONSOLE_CSS` in `src/styles.ts` is the only CSS. The rules for it are:
   - no `<style>` element, no `style="…"` attribute and no second stylesheet;
-  - no `@import`, `@font-face` or `url(` to a non-`data:` address;
-  - a `data:` image is allowed by `img-src 'self' data:`, but this spec draws every glyph without
-    one (see R4 and R12).
+  - no `@import`;
+  - `@font-face` only as the seven rules of R15, and `url(` only inside those rules, each to one
+    of the seven `/fonts/…` paths of R15;
+  - no `data:` URI, although `img-src 'self' data:` would allow an image: this spec draws every
+    glyph without one (see R4 and R12).
 - `:root` sets `color-scheme: light dark` and every token below. `@media (prefers-color-scheme:
   dark) { :root { … } }` sets the dark values. No other selector redefines a color token.
 
@@ -142,6 +173,14 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
   - the counts list on the overview;
   - setup keys, recovery codes, link outputs and `code`/`pre`.
 - `pre` and snippet blocks use `--code` fill and `--code-text` text, with radius 6.
+- `body` uses `var(--font-sans)`. `.mono`, `.eyebrow`, `code`, `pre`, `kbd`, `samp`, tags, the
+  wordmark and the dense check-state label use `var(--font-mono)`. Form controls get
+  `font: inherit` so they use the sans stack too.
+- Weights in use, and so the only weights R15 ships: sans 400 (body), 500 (labels, buttons, nav,
+  section headings, callout titles), 600 (confirmation title), 700 (page title, `strong`, `b`);
+  mono 400 (numbers, ids, code), 500 (eyebrow, tags), 600 (wordmark). No rule sets another
+  weight, and no rule sets `font-style: italic` on a mono or sans text (no italic file ships;
+  `em` keeps the browser's synthesized oblique).
 
 ### R3. Buttons
 
@@ -164,8 +203,26 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
     screen needs `.small`; the copy buttons may use it (issue-review point 7).
 - `button:disabled` and `[aria-busy="true"]` get opacity 0.45 and `cursor: default`. No other
   state gets that opacity.
-- Link color rules (`a`, `a:visited`) never override button text. Use `a.button, a.button:visited`
-  with the variant's text color.
+- Link colors and `:visited`. `getComputedStyle` hides the visited color, so the browser check
+  reads the CSS rules (check 9). Every top-level rule whose selector contains `:visited` uses
+  exactly one of these selector parts, with exactly this `color`, and no `:visited` rule sits
+  inside an `@media` block:
+
+  | Selector part | `color` | Why |
+  |---|---|---|
+  | `a:visited` (rule `a, a:visited`) | `var(--accent-text)` | ordinary links |
+  | `a.button:visited` (rule `a.button, a.button:visited`) | `var(--on-strong)` | primary link button |
+  | `a.button.secondary:visited` | `var(--text)` | secondary link button |
+  | `a.button.ghost:visited` | `var(--text)` | ghost link button (confirmation Cancel) |
+  | `a.button.danger:visited` | `var(--bg)` | danger link button |
+  | `.callout a:not(.button):visited` | `var(--text)` | underlined links on a tint |
+  | `.nav-item:visited` | `var(--lead)` | sidebar nav items |
+  | `.nav-item[aria-current="page"]:visited` | `var(--text)` | current nav item |
+  | `.breadcrumbs a:visited` | `var(--muted)` | breadcrumb link |
+
+  The unvisited form of each selector carries the same color. So a visited link never changes
+  color, and no link rule overrides a button's text. A later screen that needs another link
+  color adds a row here and to check 9; it never adds an unlisted `:visited` rule.
 - `submitButton` in `src/html.ts` takes `variant?: "primary" | "secondary" | "ghost" | "danger"`.
   Primary or undefined renders no class. Every other variant renders `class="<variant>"`. The
   output of today's `primary` and `secondary` calls stays byte-identical.
@@ -359,9 +416,17 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
 
 - Every `a`, `button`, `input`, `select`, `textarea`, `summary` and `[tabindex]` gets
   `:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }`.
-- The offset is 3 px everywhere except one place: the nav items in the horizontally scrolling
-  mobile nav row (≤719 px) use `outline-offset: -2px`, because their box would clip an outer
-  outline. The `.table-scroll` box keeps 3 px.
+- The offset is 3 px everywhere, with no exception. The nav items in the horizontally scrolling
+  mobile nav row (≤719 px) also keep `outline-offset: 3px`. An element with `overflow-x: auto`
+  clips at its padding box, so the outline needs room inside it:
+  - the scrolling nav row gets `padding: 6px` on every side, which is more than the 5 px the
+    outline reaches beyond an item (2 px width + 3 px offset);
+  - it gets `scroll-padding-inline: 6px`, so a focused item scrolled into view keeps that room
+    at the row's start and end edges;
+  - the row has no `overflow-y` clip other than the one `overflow-x: auto` implies, and its
+    items have no negative margins.
+  The `.table-scroll` box keeps 3 px; its outline is outside the box, in `main`, which does not
+  clip.
 - The old `#e3a008` outline goes.
 
 ### R10. Shell
@@ -399,7 +464,7 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
   Activity, System), in registry order. When no such entry is visible (viewer, member), the eyebrow
   and its list are not rendered. `visibleNavigation` keeps deciding visibility. A small pure
   helper in `navigation.ts` splits its result into main and instance groups by `minRole`.
-- Nav items:
+- Nav items are `<a class="nav-item" href="…">`:
   - `min-height: 44px; padding: 0 12px; border-radius: 6px`, `--lead` text, weight 500, no
     underline;
   - a 16 px icon from `src/icons.ts` before the text, `aria-hidden`;
@@ -536,6 +601,78 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
   `overflow-wrap: anywhere`. That is presentation only: the copied `textContent` is the same
   bytes.
 
+### R15. Self-hosted fonts (owner decision)
+
+- **Files.** Seven latin-subset static `woff2` files, committed byte for byte from the npm
+  tarballs named under Inputs (path inside the tarball: `package/files/<name>`), plus each
+  tarball's `package/LICENSE` (the SIL Open Font License 1.1 text with the copyright line):
+
+  | Committed file | Family, weight | Bytes | SHA-256 |
+  |---|---|---|---|
+  | `assets/fonts/space-grotesk-latin-400-normal.woff2` | Space Grotesk 400 | 13388 | `65fd17fcbd2e2f522940b5f67ead3d23329e02891aa5495e74d11a499c0b0673` |
+  | `assets/fonts/space-grotesk-latin-500-normal.woff2` | Space Grotesk 500 | 13312 | `1b1a8131d9edf975d9decee81e2f2bf504812f7a4f498e5500f28a613e22e64c` |
+  | `assets/fonts/space-grotesk-latin-600-normal.woff2` | Space Grotesk 600 | 13284 | `685bbbf69fa616df1ef81847c85fc76be097ddfb3468ff2257be54511ab3130f` |
+  | `assets/fonts/space-grotesk-latin-700-normal.woff2` | Space Grotesk 700 | 12840 | `35f8aec56cfd5cbfdb03cc68733a54a0b05bb3617ffcd5fd332badc0b045ca55` |
+  | `assets/fonts/jetbrains-mono-latin-400-normal.woff2` | JetBrains Mono 400 | 21168 | `14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb` |
+  | `assets/fonts/jetbrains-mono-latin-500-normal.woff2` | JetBrains Mono 500 | 21832 | `cb182feeed4d798ff6961d3c79f7026279448fca0676438aaecb21f3fc39553a` |
+  | `assets/fonts/jetbrains-mono-latin-600-normal.woff2` | JetBrains Mono 600 | 21860 | `400c6bfda18d5d14acad1c15d6dcb9f8e13c015e7286317e0b9a482539bef147` |
+  | `assets/fonts/OFL-space-grotesk.txt` | license of `@fontsource/space-grotesk@5.3.0` | 4401 | `18a4de52385f6b988782639d5d0cc1326e5a8c2de9a7f01d7b20d9aedcc60943` |
+  | `assets/fonts/OFL-jetbrains-mono.txt` | license of `@fontsource/jetbrains-mono@5.3.0` | 4524 | `403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b` |
+
+  The fonts total 117684 bytes. The implementer fetches the two tarballs from
+  `https://registry.npmjs.org/@fontsource/<name>/-/<name>-5.3.0.tgz`, checks them against the
+  `dist.integrity` values under Inputs, extracts them into an empty scratch directory and copies
+  only these files. Nothing is added to `package.json` or `bun.lock`. When the implementer cannot
+  reach the registry, it requests a hold; it never substitutes other files.
+  Static per-weight files, not the variable files: the issue asks for "only the weights the
+  design uses", and the variable latin files of the same release (22288 + 40404 bytes) also
+  carry weights the design does not use.
+- **Routes.** Seven fixed GET and HEAD routes, one per font file, with the file name as the last
+  path segment: `/fonts/space-grotesk-latin-400-normal.woff2`, `…-500-…`, `…-600-…`, `…-700-…`,
+  `/fonts/jetbrains-mono-latin-400-normal.woff2`, `…-500-…`, `…-600-…`.
+  - They are entries of the `ROUTES` table in `src/server.ts` (lines 116–142 today) with
+    `access: "public"`, like `/console.css` (line 122). So they answer before setup, run no
+    session gate, keep the `Host` check (`isHostRefused`) and answer `405` with
+    `allow: GET, HEAD` for another method.
+  - The raw path is compared byte for byte, as for every route. The server never builds a file
+    path from request data: each route maps to a constant file name. The license texts are not
+    served.
+  - The response: status `200`, `content-type: font/woff2`, `cache-control: public,
+    max-age=31536000, immutable`, `content-length` of the file, the shared security headers, no
+    `set-cookie`, no body for HEAD. `send` in `src/http-context.ts` (lines 84–99) always sets
+    `no-store` and takes a string; add a byte-body variant or widen it to `string | Uint8Array`,
+    with the cache header passed in. Every other response keeps `no-store`.
+  - The bytes are read once, when `createConsoleServer` runs, from `assets/fonts/` resolved
+    against the module URL (`new URL("../assets/fonts/<name>", import.meta.url)`), not against
+    the working directory. `src/fonts.ts` (new) holds the constant list (route, file name,
+    family, weight) and a pure `loadFonts(readFile)` that returns the bytes per route; the
+    server passes `readFileSync`. A missing file throws a named `Error` subclass, so a broken
+    image fails at startup and not on the first page.
+  - Because the URLs carry no content hash, `immutable` binds the repository: a changed font
+    file gets a new file name and route. `docs/development.md` states this.
+  - `/metrics`: the seven paths count under one new `path` label `/fonts/:file`
+    (`PathLabel` in `src/metrics.ts`, `pathLabel` in `src/server.ts`). Any other `/fonts/…` path
+    is a normal 404 under `other`.
+- **Stylesheet.** Seven `@font-face` rules at the top of `CONSOLE_CSS`, after `[hidden]`:
+  `font-family: "Space Grotesk"` or `"JetBrains Mono"`, `font-style: normal`, `font-weight:
+  <n>` (a single number), `font-display: swap`, `src: url("/fonts/<name>") format("woff2")`. No
+  `woff` fallback, no `local()`, no `unicode-range` (the files hold only the latin subset). The
+  stacks of R1 keep the system fonts as the fallback.
+- **CSP.** `CONTENT_SECURITY_POLICY` in `src/server.ts` (lines 95–96) becomes exactly:
+  `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self';
+  form-action 'self'; base-uri 'none'; frame-ancestors 'none'`. This is the issue's string, with
+  `font-src 'self'` directly after `img-src`. Nothing else in the header set changes.
+- **Image.** The `Dockerfile` copies `src` only (line 12). Add `COPY assets ./assets` after it.
+  `.dockerignore` does not exclude `assets` and stays as it is. The image then carries the
+  fonts and their license texts, as the OFL requires for a redistribution.
+- **Docs.** `README.md`: the assets line (line 14), the endpoint table (a row for `GET
+  /fonts/<file>.woff2` beside `/console.css`, lines 129–130) and the License section (line 140):
+  "MIT, see LICENSE. The fonts in `assets/fonts/` are under the SIL Open Font License 1.1, see
+  the `OFL-*.txt` files beside them." `docs/configuration.md`: the label list (line 111), the CSP
+  line (line 201) and the asset paragraph (line 206). `docs/development.md`: the fonts paragraph
+  (source tarballs, hashes, the new-name rule) and the CI step list (line 79). The console
+  `AGENTS.md` CSP sentence (lines 112–115) gets the new string.
+
 ## Risks
 
 - **Overlap with console PR #14 (#768).** It edits `navigation.ts`, `styles.ts` and `e2e/run.ts`,
@@ -553,10 +690,30 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
   uses.
 - **Tests that pin the old look.** These tests pin the old look and change with this feature:
   - `src/server.test.ts:156` checks the literal `a, a:visited { color: #1b4f9c; }`;
-  - `e2e/run.ts:47` `LINK_COLOUR`, the `visitedRules` CSSOM check (lines 413–429), and the Tab
-    order "Skip to content, Account security, Sign out, Overview" (line 543).
+  - `e2e/run.ts:47` `LINK_COLOUR`, the `visitedRules` CSSOM check (lines 412–429), and the Tab
+    order "Skip to content, Account security, Sign out, Overview" (lines 534–543).
   They are replaced by token-based expectations. Their behavior coverage must not be dropped:
   link color, visited color, focus outline, skip-first and reachability.
+- **Tests that pin the CSP literal.** Eight places hold the old CSP string and must get the new
+  one of R15: `src/server.test.ts` lines 21 and 362, `src/server.security.test.ts` lines 43 and
+  574, `src/server.states.test.ts` line 19, `src/server.team.test.ts` line 19,
+  `src/server.invite.test.ts` line 26 and `src/server.account-shell.test.ts` line 14.
+  `src/server.checks.test.ts:333` and `src/server.test.ts:286` only check a prefix and stay. A
+  missed literal fails `bun test`, so none can be missed silently; the risk is a wrong fix that
+  reads the expected string from `CONTENT_SECURITY_POLICY`. Each test keeps its own literal.
+- **Font files in the image.** The `Dockerfile` copies only `src` today. Without the new
+  `COPY assets ./assets` line the image starts nothing (R15 loads the fonts at server creation),
+  and the CI docker job fails at its `/readyz` wait. The new CI step (Checks) proves the files
+  are served from the image.
+- **Font license.** The OFL allows bundling and redistribution when the license text travels
+  with the font, and forbids selling the fonts alone. Committing the two `OFL-*.txt` files beside
+  the fonts and shipping them in the image meets that. The font files are not renamed in a way
+  that touches a Reserved Font Name: the fontsource files keep the upstream family names, and
+  the OFL texts of both releases list no Reserved Font Name (their copyright lines name only the
+  project authors).
+- **Layout shift from `font-display: swap`.** The first paint uses the fallback stack and
+  swaps when the font arrives. On a cold load this shifts text once. This is the issue's choice;
+  the browser checks wait for `document.fonts.ready` before they measure geometry.
 - **Deploy e2e.** `console-setup.sh` greps `Signed in as`, `This browser`, `Checks: <n>.` and
   `Already submitted`, and extracts the `csrf` and `form_token` inputs. All of them stay, so
   deploy needs no change. The CI job `deploy-dev` (console `ci.yml` lines 210–269) proves it.
@@ -567,18 +724,41 @@ section heading, eyebrow, and mono with `tabular-nums`. The decisions this spec 
 
 ## Performance impact
 
-None expected for `bench/budgets.json` of the api repository (startup CPU, load CPU, idle and
-peak RSS, test CPU, build CPU, wall-clock startup, p95 latency, requests per second, image
-size). Only the console changes: a larger constant CSS string and slightly larger HTML. The api
-bench does not build, start or measure the console. The console's own test CPU can rise by a few
-seconds of extra browser checks, which are not part of `bun run check`.
+**`bench/budgets.json` of the api repository: none expected.** The file has sections `api`,
+`probe`, `status`, `notify`, `contract`, `kit` and `config` and no `console` section, and the api
+bench does not build, start or measure the console. No api, probe, status or notify code
+changes, so none of their keys (`startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`,
+`test_cpu_s`, `startup_wall_ms`, the `p95_*`, `rps`, `image_mb`, the `cold_*` and `eod_*` keys)
+can move. A `bun bench/run.ts` A/B in the api repository would compare identical api code.
+
+**Console costs** (the same kinds of metric, measured on the console). Current values were read
+on the clone `c78c9d5`; the new values are estimates with bounds:
+
+| Metric | Now | After | How to measure |
+|---|---|---|---|
+| `/console.css` bytes | 4055 (`CONSOLE_CSS.length`) | 20–35 KB, bound 49152 bytes | `bun -e 'import("./src/styles.ts").then(m=>console.log(Buffer.byteLength(m.CONSOLE_CSS)))'` on both refs |
+| shell HTML per page | — | +1.5–4 KB: sidebar, breadcrumbs, ≤ 9 nav SVGs of ≤ 300 bytes each | `curl -s -b session=<cookie> http://127.0.0.1:<port>/ \| wc -c` against `bun e2e/run.ts --serve` on both refs |
+| font bytes, cold load | 0 | ≤ 117684 bytes (the sum of R15), only the faces a page uses | browser check 10 sums the font response sizes |
+| requests, cold load of `/` | 3 (HTML, CSS, JS) | ≤ 10 (plus ≤ 7 fonts); warm: 3, the fonts are `immutable` for a year | browser check 10 counts requests |
+| console RSS | — | +0.2 MiB at most: 117684 font bytes held once, plus the larger CSS string | `ps -o rss= -p <pid>` after start, both refs |
+| console startup | — | +< 5 ms: seven sync reads of ≤ 22 KB at server creation | `src/main.startup.test.ts` wall time, both refs |
+| console image | — | +126609 bytes (117684 fonts + 8925 license texts), about +0.13 MB | `docker build -t console:a <ref a>`, `docker build -t console:b .`, `docker image inspect -f '{{.Size}}' console:a console:b` |
+| console test CPU | — | `bun test`: +< 1 s for the new unit tests; `bun run check:browser`: roughly 1.5–2× its wall time, because the design matrix runs twice (two schemes) at two widths | `time bun test`, `time bun run check:browser`, both refs |
+
+No request path gets slower: fonts are served from memory, and HTML rendering adds only string
+concatenation. The PR reports the measured values of this table for both refs.
 
 ## Security impact
 
-Security impact: yes. The change rewrites the HTML of the authentication pages (setup, sign-in,
-factor, invite, reset) and of the admin team routes. It moves the sign-out POST form and the
-confirmation forms, and it renders user-controlled names in new places (initials, breadcrumbs,
-tags).
+Security impact: yes
+The change rewrites the authentication and admin team pages, adds seven public routes and a CSP
+directive, reads files at startup, and changes the Dockerfile and CI.
+
+In detail: it rewrites the HTML of the authentication pages (setup, sign-in, factor, invite,
+reset) and of the admin team routes. It moves the sign-out POST form and the confirmation forms,
+and it renders user-controlled names in new places (initials, breadcrumbs, tags). It adds the
+font routes, `font-src 'self'`, a `COPY` line in the `Dockerfile` and a step in the CI docker
+job.
 
 Checklist items that apply:
 
@@ -598,18 +778,39 @@ Checklist items that apply:
 - **CSRF and form tokens.** Every moved form keeps `csrf` directly followed by `form_token`, then
   `revision` and the hidden fields in their current order. Sign out stays a POST button, never a
   GET link.
-- **CSP.** The header stays byte-identical: `default-src 'none'; script-src 'self'; style-src
-  'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`.
-  There is no `style` attribute, no inline script, no external request and no font request.
-- Not applicable: body and size limits, accessor execution, SSRF and redirects, file writes,
-  dependency pins (no package change), Dockerfiles, CI files.
+- **CSP.** The header gains exactly `font-src 'self'` after `img-src` (R15) and is otherwise
+  byte-identical. Without `font-src`, fonts fall under `default-src 'none'` and are blocked, so
+  the directive is needed. `font-src 'self' data:` or a scheme source would widen it and is
+  wrong. There is no `style` attribute, no inline script and no request to another origin.
+- **Auth order for the new routes.** The font routes are `access: "public"` like `/console.css`,
+  before and after setup. That is safe: they return fixed public bytes, set no cookie, read no
+  session and write nothing. They still pass the `Host` check and the method check (`405`).
+- **Path-safe reads.** The server reads seven constant file names from a directory resolved
+  against the module URL, once at startup. No request value reaches a file path, so `..`,
+  percent-encoding, a double slash or a trailing slash cannot select another file: each is a
+  normal 404 (Counterexamples). The license texts and every other file under `assets/` are not
+  served.
+- **Dependency pins.** No package is added. The font binaries are third-party content: they are
+  pinned by the SHA-256 hashes of R15, which come from the npm tarballs with the named
+  `dist.integrity`, and a unit test and the CI docker step compare served bytes with those
+  literal hashes.
+- **Dockerfiles.** One `COPY assets ./assets` line. The image still runs as `bun` (non-root),
+  ships no test file and keeps its healthcheck and `CMD`; the existing CI checks stay.
+- **CI files.** The docker job gets one more check step (Checks). No action, pin, permission or
+  existing step changes, and nothing is weakened.
+- Not applicable: body and size limits (GET only), accessor execution, SSRF and redirects, file
+  writes.
 
 ## Rollout order
 
 One repository: only `console` changes. No wire field, contract or config pin, api route or
 deploy file changes. A console built from this change runs against the same pulse-api, so no
 older consumer is affected. Deploy `main` keeps working because the texts and form fields it
-greps are unchanged; the console CI job `deploy-dev` checks this.
+greps are unchanged; the console CI job `deploy-dev` checks this. Deploy routes every console
+path to the one console container and holds no path list (`grep -rln '/fonts\|console.css'
+.repos/deploy` finds no file), so the font routes need no deploy change either. A browser that
+cached an old `/console.css` gets the new one on its next page: the stylesheet keeps
+`cache-control: no-store`.
 
 ## Counterexamples
 
@@ -628,8 +829,8 @@ greps are unchanged; the console CI job `deploy-dev` checks this.
     - danger `--bg` on `--error`: light 6.30, dark 8.45;
     - `--muted` on `--surface` (th): light 5.11, dark 5.23;
     - light `--muted` on the row-hover mix `#ede7e5`: 5.49;
-  - link `--accent-text` on `--bg`: light 6.05, dark 6.92;
-  - `--text` on the warning callout fill: light 13.10, dark 9.02.
+    - link `--accent-text` on `--bg`: light 6.05, dark 6.92;
+    - `--text` on the warning callout fill: light 13.10, dark 9.02.
   - Not a text rule: `--field-line` around `--field` is a border (3:1 non-text rule at most).
     Applying 4.5 to it is wrong.
 - **Danger.** A wrong implementation styles only `Delete check` as danger. Each of these must
@@ -681,23 +882,84 @@ greps are unchanged; the console CI job `deploy-dev` checks this.
   "Instance" stands above `Team`, and `Team` is not in the first list.
 - **Unchanged bytes.** `submitButton({label:"A", busyLabel:"B"})` and
   `submitButton({…, variant:"secondary"})` give the same strings as before the change. The CSP
-  header string equals the literal above.
+  header string equals the literal of R15.
+- **CSP.** Each of these fails the exact-string tests: the old string without `font-src`;
+  `font-src 'self'` placed after `frame-ancestors` or before `img-src`; `font-src 'self' data:`;
+  `font-src *`; any change to another directive.
+- **Font routes.** With the seven routes of R15:
+  - `GET /fonts/space-grotesk-latin-700-normal.woff2` → `200`, `font/woff2`, 12840 bytes,
+    SHA-256 `35f8aec5…ca55` (full value in R15), `cache-control: public, max-age=31536000,
+    immutable`, no `set-cookie`; before setup the same;
+  - `HEAD` of it → `200`, `content-length: 12840`, empty body;
+  - `GET …?v=2` → `200`, the same bytes (the query is ignored, as on every route);
+  - `POST` → `405`, `allow: GET, HEAD`;
+  - each of these → `404` and the `other` label: `/fonts/`,
+    `/fonts/space-grotesk-latin-300-normal.woff2` (a weight that is not shipped),
+    `/fonts/Space-Grotesk-latin-400-normal.woff2` (case),
+    `/fonts/space-grotesk-latin-400-normal.woff2/` (trailing slash),
+    `//fonts/space-grotesk-latin-400-normal.woff2`, `/fonts/%2e%2e/package.json`,
+    `/fonts/../src/server.ts`, `/fonts/OFL-space-grotesk.txt` (license texts are not served),
+    `/assets/fonts/space-grotesk-latin-400-normal.woff2` (the directory is not a route);
+  - a wrong implementation that serves `/fonts/<anything>` by joining the name into a path is
+    caught by the `%2e%2e` and `..` cases; one that keeps `no-store` is caught by the cache
+    header assertion; one that answers `application/octet-stream` is caught by the
+    content-type assertion (`nosniff` makes the type matter).
+- **Font bytes.** A served file whose SHA-256 differs from the R15 literal fails, for example
+  the variable `space-grotesk-latin-wght-normal.woff2` (22288 bytes) or a latin-ext file under
+  the latin name. `loadFonts` with a fake `readFile` that throws for one name must throw the
+  named error, not return six fonts.
+- **`@font-face`.** A rule with `font-display: block` or `auto`, a `src` with a second `woff`
+  URL, a `url(` to anything but the seven `/fonts/…` paths, a `font-weight: 300 700` range, or
+  an eighth rule fails the CSS text test.
+- **Title font.** A page whose `h1` computed `font-family` starts with `"Space Grotesk"` but
+  renders in a fallback (font blocked by the CSP, 404, wrong MIME) fails: the check asks
+  Chromium for the platform font actually used (`CSS.getPlatformFontsForNode`), not only the
+  declared stack. `document.fonts.check()` alone is not enough, because it also answers `true`
+  when no face matches.
+- **Visited rules.** A `:visited` rule not listed in R3 fails check 9, for example
+  `a.button:visited { color: var(--accent-text) }` (it would give a link button link text), a
+  `.nav-item:visited` with `var(--accent-text)`, or an `a:visited` rule inside the dark
+  `@media` block. A missing listed rule fails too.
+- **Mobile nav focus.** At 390 px, `outline-offset: -2px` on a nav item fails (the issue asks
+  for 3 px on every control). So does a 3 px offset on a row without the 6 px padding: the
+  outline rectangle (item box grown by 5 px) leaves the row's padding box and is clipped.
 
 ## Contract fields
 
-No new names. The change adds no wire field, JSON key, environment variable, setting, route or
-`/metrics` label. New CSS class names and the internal TypeScript names (`callout`,
-`CalloutKind`, `tone`, the `ghost` and `danger` variants, `src/icons.ts`) live only inside the
-console. The contract and config clones carry no CSS or console renderer names, which this search
-confirms:
-`grep -rln 'callout\|CalloutKind\|check-state\|table-scroll' .repos/contract/src .repos/config`
-finds no file.
+No wire field, JSON key, environment variable or setting is added. The new names are console
+routes and one `/metrics` label value:
+
+| Name | Kind |
+|---|---|
+| `/fonts/space-grotesk-latin-{400,500,600,700}-normal.woff2` | 4 console routes |
+| `/fonts/jetbrains-mono-latin-{400,500,600}-normal.woff2` | 3 console routes |
+| `/fonts/:file` | value of the `path` label of `pulse_console_http_requests_total` |
+| `font-src` | CSP directive in the console response header |
+
+Searches, run from the meta checkout for this revision, each with no match:
+
+- `grep -rn '/fonts' .repos/contract/src` and
+  `grep -rn --exclude-dir=node_modules --exclude-dir=.git '/fonts' .repos/config`: no match.
+- `grep -rn 'woff2\|font-src\|fonts/:file' .repos/contract/src` and the same over
+  `.repos/config` (excluding `node_modules` and `.git`): no match.
+- Inside the console, so no existing route, test route or link prefix collides:
+  `grep -rn '/fonts\|woff2\|font-src' .repos/console/src .repos/console/test
+  .repos/console/e2e`: no match. The link prefixes are `/invite/` and `/reset/`
+  (`src/account-links.ts`), and test routes must start with `/__test/` (`src/server.ts`
+  line 115), so `/fonts/` overlaps neither.
+- `grep -rln '/fonts' .repos/deploy`: no match.
+
+New CSS class names and the internal TypeScript names (`callout`, `CalloutKind`, `tone`, the
+`ghost` and `danger` variants, `nav-item`, `src/icons.ts`, `src/fonts.ts`, `loadFonts`) live only
+inside the console. The contract and config clones carry no such names:
+`grep -rln 'callout\|CalloutKind\|check-state\|table-scroll\|nav-item\|loadFonts'
+.repos/contract/src .repos/config` finds no file outside `node_modules`.
 
 ## Repository: console
 
 Files:
 
-- `src/styles.ts` — rewrite: tokens, dark scheme, typography, the R3–R14 component classes.
+- `src/styles.ts` — rewrite: tokens, dark scheme, typography, the seven `@font-face` rules (R15), the R3–R14 component classes.
 - `src/html.ts` — `submitButton` variants, `plainDocument` layout, `formErrorSummary` as an error
   callout.
 - `src/html.test.ts` — variants, byte-identical primary and secondary, plain layout markup.
@@ -717,19 +979,51 @@ Files:
 - `src/check-routes.ts` — the callouts of the saved, deleted, expired, conflict and `Not saved`
   notices.
 - `src/server.ts` — the callout for `formExpiredNotice` and `formExpiredResendNotice` at lines
-  692 and 976; no route or header change.
-- `src/server.test.ts` — replace the `#1b4f9c` assertion at line 156 with token assertions.
-- The other `src/*.test.ts` and `src/server.*.test.ts` that assert changed class names or markup.
-  Behavior assertions stay.
+  692 and 976; the new CSP string (lines 95–96); the seven font entries in `ROUTES`, their GET
+  and HEAD handling in `handleGet`, and their `pathLabel` case (R15).
+- `src/fonts.ts` (new) — the constant font list and `loadFonts(readFile)` (R15).
+- `src/fonts.test.ts` (new) — `loadFonts` with a fake `readFile`: seven routes, the named error
+  for a missing file.
+- `src/http-context.ts` — a byte body and a caller-supplied `cache-control` for `send` (R15).
+- `src/metrics.ts` — the `"/fonts/:file"` member of `PathLabel`.
+- `assets/fonts/` (new) — the seven `.woff2` files and `OFL-space-grotesk.txt`,
+  `OFL-jetbrains-mono.txt` of R15, byte for byte.
+- `Dockerfile` — `COPY assets ./assets` after line 12.
+- `.github/workflows/ci.yml` — one new step in the `docker` job after "Check the test routes are
+  absent and the script is served" (lines 81–94); see Checks.
+- `src/server.fonts.test.ts` (new) — the font routes over HTTP, every case of the "Font routes"
+  counterexample.
+- Tests with the CSP literal (Risks), each set to the new literal written out:
+  `src/server.test.ts` (lines 21, 362), `src/server.security.test.ts` (lines 43, 574),
+  `src/server.states.test.ts` (line 19), `src/server.team.test.ts` (line 19),
+  `src/server.invite.test.ts` (line 26), `src/server.account-shell.test.ts` (line 14).
+- `src/server.test.ts` also: replace the `#1b4f9c` and `form + form` assertions of the
+  `/console.css` test (lines 148–158) with the CSS checks below, and add the
+  `path="/fonts/:file"` line to the metrics test near line 345.
+- Tests that assert markup this feature changes. Each keeps its behavior assertions and
+  changes only the class names, element names or wrappers it pins: `src/check-editor-page.test.ts`,
+  `src/confirm.test.ts`, `src/html.test.ts`, `src/overview.test.ts`, `src/shell.test.ts`,
+  `src/states.test.ts`, `src/navigation.test.ts`, `src/server.account-shell.test.ts`,
+  `src/server.checks.test.ts`, `src/server.checks-change.test.ts`,
+  `src/server.checks-write.test.ts`, `src/server.confirm.test.ts`,
+  `src/server.form-token.test.ts`, `src/server.overview.test.ts`, `src/server.races.test.ts`,
+  `src/server.roles.test.ts`, `src/server.security.test.ts`, `src/server.setup.test.ts`,
+  `src/server.states.test.ts`, `src/server.team.test.ts`. These are the test files that today
+  match `class=`, `<h2`, `state-`, `notice`, `secondary`, `Access denied`, `table-`, `<header`,
+  `aria-label` or `role=`. A file of this list that needs no edit stays as it is; a test file
+  outside it is edited only when `bun test` shows that it pins changed markup, and the PR names
+  it.
 - `test/fixture-routes.ts` — call `plainConfirmPage` with `tone`; add a fixture route for a
   check state and tag sampler only if the real pages cannot show every kind (prefer real pages).
 - `e2e/run.ts` — the light and dark design matrix (checks below), with the old link, visited and
-  Tab-order checks replaced.
-- `docs/configuration.md` (line 175 and the shell description), `docs/development.md` (line 23):
-  describe the sidebar shell, tokens and color scheme, and the `icons.ts` module. No new endpoint.
+  Tab-order checks replaced, and the font checks.
+- `README.md` (lines 14, 129–130, 140), `docs/configuration.md` (lines 111, 175, 201, 206),
+  `docs/development.md` (lines 22–23, 60, 79 and a fonts paragraph), `AGENTS.md` (the CSP
+  sentence at lines 112–115, and `src/server.fonts.test.ts` in the list of server tests): describe
+  the sidebar shell, tokens and color scheme, the `icons.ts` and `fonts.ts` modules, the font
+  routes and their license, and the new CSP.
 
-Behavior change: yes. Every rendered page changes its markup and look, and the 403 page changes
-its visible text structure.
+Behavior change: yes. Every page changes its markup and look, and seven font routes and `font-src 'self'` are new.
 
 ### Tool facts (verified)
 
@@ -759,7 +1053,7 @@ its visible text structure.
 
 ### Behavior
 
-Implement R1–R14 above. Points that are easy to miss:
+Implement R1–R15 above. Points that are easy to miss:
 
 1. Keep the `<script>` element only in the shell head (`html.ts` `documentHead` with
    `hasScript`). `CONSOLE_JS` stays byte-identical.
@@ -779,6 +1073,9 @@ Implement R1–R14 above. Points that are easy to miss:
    e2e Tab test states this order.
 8. The busy-button behavior and the no-JavaScript paths keep their tests: the plain and typed
    confirmations by Tab and Enter, the account confirmations, and the copy fallback in `<pre>`.
+9. Fonts (R15): the committed bytes are the tarball bytes; no subsetting, renaming of the
+   family, `package.json` entry or lockfile change. The routes are fixed entries, not a prefix
+   handler. Every response other than a font keeps `cache-control: no-store`.
 
 ### Checks
 
@@ -819,9 +1116,38 @@ test.
   - the body contains `color-scheme: light dark`, `@media (prefers-color-scheme: dark)`,
     `--bg: #f2eeec`, `--bg: #271b32`, `--error: #a4262c`, `--error: #f2a7ab`, `--touch: 44px`
     and `[hidden]`;
-  - the body does not contain `@font-face`, `@import`, `1b4f9c` or `overflow-x: hidden`.
+  - the body contains exactly 7 `@font-face`, exactly 7 `font-display: swap` and exactly 7
+    `url(`; each of the seven literal strings `url("/fonts/<name>") format("woff2")` of R15
+    occurs once, written out in the test;
+  - the body contains `--font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI",
+    sans-serif` and `--font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace`;
+  - the body does not contain `@import`, `data:`, `local(`, `1b4f9c`, `overflow-x: hidden` or
+    `outline-offset: -`;
+  - `Buffer.byteLength(body) <= 49152` (the bound of Performance impact).
 - A test over every renderer used in the e2e matrix asserts that the output has no `style="` and
-  no `<style`. Existing security tests keep asserting the exact CSP header.
+  no `<style`.
+- CSP: the eight test literals listed under Files equal the R15 string written out, and
+  `src/server.security.test.ts` keeps asserting the exact header on a page, on `/console.css` and
+  now on one font route.
+- `src/fonts.test.ts`: `loadFonts` with a fake `readFile` returns the seven route paths written
+  out in the test (and no other); a fake that throws for
+  `jetbrains-mono-latin-600-normal.woff2` makes `loadFonts` throw the named error.
+- `src/server.fonts.test.ts` (real server on port 0, before and after setup): every case of the
+  "Font routes" counterexample. For each of the seven routes, the SHA-256 of the body and its
+  length equal the R15 literals written in the test (the independent source is the npm tarball,
+  not the committed file). The metrics text after one font GET contains
+  `pulse_console_http_requests_total{path="/fonts/:file",code="200"} 1`.
+
+CI (`.github/workflows/ci.yml`, job `docker`, new step after lines 81–94, named "Check the fonts
+are served from the image"): `curl` of `/fonts/space-grotesk-latin-700-normal.woff2` and
+`/fonts/jetbrains-mono-latin-400-normal.woff2` from the running container; each must answer
+`200 font/woff2` (`%{http_code} %{content_type}`), and `sha256sum` of the bodies must equal the
+literals `35f8aec56cfd5cbfdb03cc68733a54a0b05bb3617ffcd5fd332badc0b045ca55` and
+`14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb` written in the step; and
+`docker exec console test -f /app/assets/fonts/OFL-space-grotesk.txt -a -f
+/app/assets/fonts/OFL-jetbrains-mono.txt`. The step prints `ok:` lines like its neighbours.
+`docs/development.md` adds it to the numbered list.
 
 Browser checks (`bun run check:browser`, `e2e/run.ts`). Run the matrix in two contexts,
 `colorScheme: "light"` and `colorScheme: "dark"` (Playwright `browser.newContext({ colorScheme
@@ -878,6 +1204,11 @@ For each page and scheme, the browser checks assert:
    - the focused box shows a 2 px outline.
    On the overview, the mobile nav row's `scrollWidth` may exceed its own width, but `Account
    security` and `Sign out` are visible inside the viewport.
+   Mobile nav focus (R9), at 390 px, for each visible nav item reached by Tab:
+   - computed `outline-style` `solid`, `outline-width` `2px`, `outline-offset` `3px`;
+   - the item's border box grown by 5 px on every side lies inside the scrolling row's padding
+     box (the row's `getBoundingClientRect()` minus its border widths), with a tolerance of
+     0.5 px. This proves the outline is not clipped.
 5. **Shell geometry at 1280 px.** The sidebar width is 236 ± 1 px and the top bar height ≥ 64 px.
    At 720 px the sidebar is a column. At 719 px its width equals the viewport width. At 390 px
    the computed `main` padding is `20px 16px 40px`.
@@ -893,14 +1224,51 @@ For each page and scheme, the browser checks assert:
    sign-out-all pages has `background-color` `--error` (literals above). The new-recovery-codes
    page and the plain fixture `resolve-incident` have primary colors. Without JavaScript, both
    confirmation kinds still submit by Tab and Enter (the existing checks stay).
-9. **Links.** A body link (`Sessions` on `/account/security`) has `color` `rgb(122, 66, 144)`
-   light or `rgb(194, 155, 211)` dark. A CSSOM check finds an `a:visited` rule whose `color` is
-   `var(--accent-text)`, and no `:visited` rule with another color. Focus outline as in 1.
-10. **No CSP violation and no request** to another origin or for a font, in either scheme. The
-    existing `watchCsp` and `watchPageCsp` stay.
+9. **Links.** Computed colors, compared with literals:
+   - an ordinary body link (`Sessions` on `/account/security`): `color` `rgb(122, 66, 144)`
+     light or `rgb(194, 155, 211)` dark;
+   - the confirmation Cancel (`a.button.ghost`): `rgb(39, 27, 50)` light or `rgb(223, 215, 212)`
+     dark (`--text`), not the link color;
+   - a non-current nav item (`Checks` on the overview): `rgb(74, 63, 82)` light or
+     `rgb(201, 191, 196)` dark (`--lead`); the current one: `--text` as above;
+   - focus outline as in 1.
+   The visited check replaces `visitedRules` (lines 412–429). It reads every top-level
+   `CSSStyleRule` of the console stylesheet, splits each `selectorText` at commas and keeps the
+   parts that contain `:visited`. The test holds the nine-row table of R3 as a literal map from
+   selector part to `style.color` string (for example `"a:visited" → "var(--accent-text)"`,
+   `"a.button.danger:visited" → "var(--bg)"`). It fails when a part is not in the map, when a
+   rule's `style.color` differs from the map value of its part, or when a map entry has no rule.
+   It also fails when any `CSSMediaRule` holds a rule whose selector contains `:visited`. The
+   expected map is written in the test from R3, never read from `CONSOLE_CSS`. The `ok:` lines
+   name the ordinary-link color and the number of listed button, callout, nav and breadcrumb
+   rules.
+10. **No CSP violation, no other origin, fonts only from the seven routes**, in either scheme.
+    The existing `watchCsp` and `watchPageCsp` stay. A `page.on("request")` listener fails on a
+    request to another origin, and on a font request (`resourceType() === "font"`) whose path is
+    not one of the seven R15 paths written in the test. On a cold context (new context, empty
+    cache), the load of `/` after sign-in makes at most 10 requests to the console after the
+    document navigation starts, and its font responses sum to at most 117684 bytes; the check
+    prints both numbers (`ok: cold / made <n> requests, <m> font bytes`) for the Performance
+    table.
 11. **Hostile and long data.** A check named `<img src=x onerror=alert(1)>` renders as text in
     the list, breadcrumb and confirmation. No dialog opens and no element is created. A
     70-character email and a 300-character check name fit at 390 px.
+12. **Fonts load and are used**, in both schemes, on the overview, sign-in and the typed
+    confirmation (sign-in covers the plain document, before a session):
+    - every font response seen by the page has status `200` and `content-type: font/woff2`;
+      on the overview, at least the responses for
+      `/fonts/space-grotesk-latin-700-normal.woff2` (page title) and
+      `/fonts/jetbrains-mono-latin-600-normal.woff2` (wordmark) are seen;
+    - after `await document.fonts.ready`, `document.fonts` holds a `FontFace` with family
+      `Space Grotesk`, weight `700` and `status` `"loaded"`;
+    - the computed `font-family` of the page `h1` starts with `"Space Grotesk"`;
+    - through a Chromium CDP session (`page.context().newCDPSession(page)`, `DOM.getDocument`,
+      `DOM.querySelector` for `h1`, `CSS.enable`, `CSS.getPlatformFontsForNode`), the fonts used
+      for the `h1` text include one with `familyName` `Space Grotesk` and `isCustomFont` `true`,
+      and it covers all glyphs of the title (`glyphCount` equal to the sum over the list);
+    - the same CDP check on a `.mono` element (a check id or count) gives `JetBrains Mono`.
+    Geometry checks (3, 4, 5, 6) run after `document.fonts.ready`, so the font swap cannot move
+    a measured box after it was read.
 
 Manual smoke: run `bun e2e/run.ts --serve` and open overview, checks, edit, sign-in, team and a
 confirmation in Chromium with the OS or devtools scheme set to light and to dark. Then run
@@ -916,3 +1284,8 @@ commands and the result in the PR.
   to #773.
 - The PR says whether #768 (console PR #14) was on `main` at the start. This is the shared
   finding named in Risks.
+- The PR shows `sha256sum assets/fonts/*` and states that it equals the R15 table, names the
+  two tarballs and their `dist.integrity`, and shows the green docker step "Check the fonts are
+  served from the image".
+- The PR fills the console-cost table of Performance impact with measured values for the base
+  ref and the PR head.
