@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "The shell 404 shows one sentence and preserves its title and overview link",
+      "files": [
+        "src/states.ts",
+        "src/states.test.ts",
+        "src/server.security.test.ts",
+        "src/server.confirm.test.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — Behavior, Tests (TDD order) 1–4, Docs and Completion evidence; Required behavior 1–3, Definition: sentence count, Counterexamples and Acceptance. First add the independent HTTP regression named 'shell 404 explanatory paragraph has one sentence' using signedIn()/getPage(), and record its red run on main 9a3ef14 before changing production copy. Extract only paragraphs without an anchor inside the rendered main, assert exactly 1 paragraph, strip tags and decode escapeHtml entities, then use Intl.Segmenter('en', { granularity: 'sentence' }) and count nonempty segments against the literal 1. Keep any extraction helper beside its only caller. Change only the notFoundState() sentence to 'There is no page at this address; go to the overview.', record green, update all stale full/partial literals, add the equivalent rendered paragraph and sentence counts to checkNotFound in e2e/run.ts, and update only the quoted wording in both docs. Preserve all existing heading, title, link, shell/security, HEAD and plain-404 checks. Complete all checks and PR evidence in this task.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.security.test.ts --test-name-pattern 'shell 404 explanatory paragraph has one sentence'",
+          "expected": "Red phase, before the copy change on console main 9a3ef14fc8a0335f8bf70f56023868633a56525e with only the new regression added: 0 pass, 1 fail; the sentence-count assertion reports Expected: 1 / Received: 2 from the rendered GET /no-such-page explanatory paragraph. The preceding literal status 404 and paragraph count 1 assertions pass. Record the command, revision and failure output; a literal-copy mismatch or coverage failure alone does not prove the defect."
+        },
+        {
+          "command": "bun test src/server.security.test.ts --test-name-pattern 'shell 404 explanatory paragraph has one sentence'",
+          "expected": "Green phase after the one-line copy change: 1 pass, 0 fail; the same rendered-output regression asserts status 404, exactly 1 explanatory paragraph and exactly 1 nonempty English Intl.Segmenter sentence, with both counts written as literals. Record the passing output; a focused run can still fail the global coverage threshold."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e, and the full test suite pass with the existing 80% line-coverage gate. Updated literal assertions pass; the shell 404 retains one h1, no duplicate h2, split('Page not found') length 3, its document title and href='/' overview link, unchanged shell headers/scripts, HEAD status 404 with an empty body, and unsigned/POST plain 404 responses."
+        },
+        {
+          "command": "bunx playwright install chromium && bun run check:browser",
+          "expected": "exit 0; checkNotFound reads textContent from rendered main#main paragraphs containing no anchor and asserts exactly 1 paragraph and 1 nonempty English Intl.Segmenter sentence. The exact new sentence is visible, exactly 1 Page not found title is visible, and clicking Go to the overview reaches /. Existing browser checks remain green."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Manual check while the fixture service runs: sign in using its fixture credentials and visit /does-not-exist; observe HTTP status 404, exactly 1 visible Page not found heading, the sentence 'There is no page at this address; go to the overview.' and a working Go to the overview link to /. Record the command and observed result, then stop the fixture."
+        },
+        {
+          "command": "git grep -n 'Check the address, or go to the overview'",
+          "expected": "No output, exit 1 for no matches; no old two-sentence copy remains in tracked console code, tests or docs."
+        },
+        {
+          "command": "git diff main -- src ':!src/*.test.ts'",
+          "expected": "The sole production-code change is the one-line replacement in src/states.ts:92 with 'There is no page at this address; go to the overview.'. Security/scope checklist: no changes to status codes, routing, GET/HEAD or plain text 404 handling, shell markup, h1/title, the overview link, session/role gates, headers/CSP, form tokens or Link not valid. No packages, pins, config, Dockerfile, CI or other repositories change. Performance impact: none expected; Security impact: no."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0 for the console PR; all applicable CI jobs pass, including check, docker on ubuntu-24.04 and ubuntu-24.04-arm, browser and deploy-dev. The existing deploy-dev job starts the pulse-deploy main dev Compose stack with this console checkout and passes E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml. Do not weaken CI or edit deploy; follow console AGENTS.md if the two-factor flow exposes a deploy defect."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names issue #754 and includes the red/green command, baseline 9a3ef14, Expected: 1 / Received: 2 before and 1 pass / 0 fail after, full-check and browser results, manual-service command/result, old-copy search and one-line production-diff evidence, CI results including Compose deploy-dev, and any known limits. Counts are literal expectations applied to rendered output, not derived from src/states.ts or a hard-coded copy."
+        }
+      ]
+    }
+  ]
+}
