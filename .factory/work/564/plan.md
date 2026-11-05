@@ -385,7 +385,7 @@ a removed and re-used id or a changed role is a stale form. Every POST form carr
 | `GET`/`POST /invite/<token>` | public | none | `name`, `password`, `password_confirm` | `303`; `404`, `409`, `422` |
 | `GET`/`POST /reset/<token>` | public | none | `password`, `password_confirm` | `303` to `/sign-in?reset=done`; `404`, `422` |
 
-The #563 routes `POST /account/recovery-codes`, `POST /account/authenticator` (`action=start`)
+The #563 routes `POST /account/recovery-codes`, `POST /account/authenticator` (`action=new`, the value the console accepts at `src/account-routes.ts:113-126` and its form sends at `src/account-pages.ts:67`)
 and `POST /account/sessions/sign-out-all` keep their routes and answers and gain one: `409` when
 the guard of section 17 fails.
 
@@ -584,7 +584,7 @@ userId, passwordHash?: string }`:
 - **Authenticator setup.** `factorStore.savePendingAuthenticatorFor(guard, secret, now)`. In
   stage `full`, `passwordHash` = H0. In stage `enrol` there is no password step, so the guard has
   no `passwordHash` and checks only the session row. When the guard fails, `POST
-  /account/authenticator` (`action=start`) answers `409` with the start page and the same error,
+  /account/authenticator` (`action=new`) answers `409` with the start page (`startView`, `src/account-routes.ts:189`) and the same error,
   and no `pending_authenticators` row is written. Today the foreign key makes this a `500`.
 - **Sign out all.** `store.deleteOtherSessionsFor(guard)` without `passwordHash`. When the guard
   fails, `POST /account/sessions/sign-out-all` answers `409` with the confirmation page and the
@@ -798,7 +798,7 @@ value from the module under test.
      same Admin changes the password from session S2 (`303`, which deletes S1). On release `409`
      and the codes are unchanged.
    - Authenticator setup vs reset: a Member without an authenticator (switch off), held at the
-     password step of `POST /account/authenticator` `action=start`. An Admin's reset link for the
+     password step of `POST /account/authenticator` `action=new`. An Admin's reset link for the
      Member is used. On release `409` (not `500`) and 0 `pending_authenticators` rows of the
      Member.
    - Sign out all vs reset: the test opens a raw connection to the server, sends the headers of
