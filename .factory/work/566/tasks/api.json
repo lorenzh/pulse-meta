@@ -26,8 +26,8 @@
           "expected": "exit 0; lint, typecheck and full tests pass with line coverage at least 80%."
         },
         {
-          "command": "bun run test",
-          "expected": "exit 0 on the base before implementation and on the completed change; record both measured test_cpu_s values against the independent 5.6 s budget named in Performance impact, without inventing a timing result or requiring the full bench A/B."
+          "command": "for run in 1 2 3; do bash -c 'bun run test >/dev/null 2>&1; times'; done",
+          "expected": "Run once on main before implementation and once on the completed branch on the same machine and checkout. For each run, test_cpu_s is the user plus system seconds on the second line of times (waited children), as independently defined by bench/measure.ts:47-71 and bench/run.ts:161-166. Report the median of the 3 values per side and branch-minus-main difference; the plan expects an increase well under 0.1 s against its 5.6 s budget and 1.6 s floor. Plain bun run test is not a CPU measurement; no full bench A/B is required."
         },
         {
           "command": "bun start",
@@ -35,7 +35,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR records the red-first /self failure, check results, before/after test_cpu_s and live curl evidence. Its security checklist cites tests/commands for metadata-only responses, unchanged throttle/auth/status order, the 4096-byte token body limit, validated responses and unchanged dependency pins. REST route/scopes/token/status tables and operation rotation guidance describe /self."
+          "expected": "The PR records the red-first /self failure, check results, both test_cpu_s medians from 3 runs per side with their difference and the bash times measurement method, and live curl evidence. Its security checklist cites tests/commands for metadata-only responses, unchanged throttle/auth/status order, the 4096-byte token body limit, validated responses and unchanged dependency pins. REST route/scopes/token/status tables, README endpoint documentation and operation rotation guidance describe /self."
         }
       ]
     }

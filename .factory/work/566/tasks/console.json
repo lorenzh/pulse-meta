@@ -33,11 +33,11 @@
         },
         {
           "command": "bun test src/token-view.test.ts src/token-write.test.ts src/people-log.test.ts",
-          "expected": "0 fail; preset arrays are literal [read], [read,checks,admin], [read,incidents,admin], [read,checks,incidents,admin]. Injected-clock tests prove Never, all lifecycle and location states, separate eu/EU groups, last-admin detection, 10:00/00:59/ended countdown boundaries and the specified SHA-256 revision fields (lastUsedAt unchanged, revokedAt changed). Every section 6 outcome row is exercised with fake fetch, timeout 5000 ms, redirects unfollowed and 1 write attempt; absent session or demoted role gives 0 writes. Saved/unknown events use literal token.create/token.rotate/token.revoke and target_kind token, target_id NULL, id or unknown target_name, secret-free scopes/location values and the unknown suffix; failed People inserts preserve the API outcome. Focused-suite coverage exit status is not the gate."
+          "expected": "0 fail; preset arrays are literal [read], [read,checks,admin], [read,incidents,admin], [read,checks,incidents,admin]. Injected-clock tests prove Never, all lifecycle and location states, separate eu/EU groups, last-admin detection, 10:00/00:59/ended countdown boundaries and the specified SHA-256 revision fields (lastUsedAt and previousValidUntil unchanged, revokedAt changed). Every section 6 outcome row is exercised with fake fetch, timeout 5000 ms, redirects unfollowed and 1 write attempt; absent session or demoted role gives 0 writes. Events use literal token.create/token.rotate/token.revoke, target_kind token, target_id NULL, id or unknown target_name, secret-free scopes/location values and the unknown suffix. With a throwing People insert, timeout yields 504 and wire mismatch yields 502 with the unchanged unknown text, neither Saved in pulse-api. nor could not be written, exactly 1 error token change not logged (error name only) and 1 API write. Confirmed create/rotate/revoke retain success and add SAVED_NOT_LOGGED_TEXT; confirmed unreadable-body 502 keeps lost-answer text and adds only The People log row could not be written. Focused-suite coverage exit status is not the gate."
         },
         {
-          "command": "bun run lint && bun run typecheck",
-          "expected": "exit 0; the existing routes still compile and all new common modules are covered by their accompanying tests."
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite remain green with at least 80% line coverage after the setup behavior change and shared modules."
         }
       ]
     },
@@ -71,11 +71,11 @@
         },
         {
           "command": "bun run check:browser",
-          "expected": "exit 0; existing Playwright/axe checks and new Tokens cases pass: create shows #token-secret, copy works where clipboard is available, navigate away and Back leaves 0 pulse_ secret occurrences in the DOM, reload/resubmit shows Already submitted, typed-name revoke works, countdown follows datetime, JavaScript-off create/revoke works, 0 CSP violations, correct keyboard focus order, and no horizontal overflow at literal widths 390 and 1280."
+          "expected": "exit 0; existing Playwright/axe checks and new Tokens cases pass: create shows #token-secret, copy works where clipboard is available, navigate away and Back leaves 0 pulse_ occurrences in the DOM, reload/resubmit shows Already submitted, typed-name revoke works, JavaScript-off create/revoke works, 0 CSP violations, correct keyboard focus order and no horizontal overflow at 390 and 1280 px. Countdown follows returned previousValidUntil: an init-script wrapper of setInterval/clearInterval observes set=0 on /tokens and the create result, set=1 on the rotate result, changed text after 1100 ms, and ended with active=0 after 3500 ms for an overlap of 2000 ms. At most 1 interval serves all countdowns and pagehide clears it; pagehide and persisted pageshow clear every data-secret block."
         },
         {
-          "command": "bun run lint && bun run typecheck",
-          "expected": "exit 0; Tokens navigation is available only to Admin/Owner and Probes remains unavailable until T4. README/configuration, linked docs/tokens.md and AGENTS.md describe the implemented Tokens routes and real-server check."
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage. Tokens navigation is available only to Admin/Owner and Probes remains unavailable until T4. README/configuration, linked docs/tokens.md and AGENTS.md describe the implemented Tokens routes and real-server check."
         }
       ]
     },
@@ -100,11 +100,11 @@
       "acceptance": [
         {
           "command": "bun test src/probe-snippet.test.ts src/settings.test.ts src/main.startup.test.ts src/shell-line.test.ts",
-          "expected": "0 fail; literal expected env command, docker-run text, Compose YAML/command and rotation restart lines cover both network modes and both block_private values. Location it's uses the specified POSIX quote escape, $(id) stays literal, a\"b$HOME becomes JSON-quoted YAML with $$, Unicode location yields n-code-zone-1 and !!! yields location. Derived filenames/container/project use 32-character slug limit and last 6 token-id hex characters and stay stable on rotate. Env command has exactly 1 secret occurrence; docker-run, Compose file and command have 0. Three optional settings are read after SECRET_KEY_FILE in URL/image/network order, blank means unset, one URL trailing slash is removed, and invalid settings exit 2 with pulse-console: <name>: <rule> and 0 offending-value occurrences in output. No implicit copy of the console API URL. Focused-suite coverage exit status is not the gate."
+          "expected": "0 fail; literal expected env command, docker-run text, Compose YAML/command and rotation restart lines cover both network modes and both block_private values. Every rendered Compose start, restart and stop line is compared with a fixed literal containing -p '<base>' -f '<base>.compose.yaml'; dropping -p fails the Compose project counterexample. Location it's uses the specified POSIX quote escape, $(id) stays literal, a\"b$HOME becomes JSON-quoted YAML with $$, Unicode location yields n-code-zone-1 and !!! yields location. Derived filenames/container/project use 32-character slug limit and last 6 token-id hex characters and stay stable on rotate. Env command has exactly 1 secret occurrence; docker-run, Compose file and command have 0. Three optional settings are read after SECRET_KEY_FILE in URL/image/network order, blank means unset, one URL trailing slash is removed, and invalid settings exit 2 with pulse-console: <name>: <rule> and 0 offending-value occurrences in output. No implicit copy of the console API URL. Focused-suite coverage exit status is not the gate."
         },
         {
-          "command": "bun run lint && bun run typecheck",
-          "expected": "exit 0; pure builders perform no I/O and reuse shellQuote. Optional prefills are passed through production startup without requiring changes to existing test server callers. README and docs/configuration.md list PULSE_CONSOLE_PROBE_API_URL, PULSE_CONSOLE_PROBE_IMAGE and PULSE_CONSOLE_PROBE_NETWORK in that order with validation and prefill-only semantics."
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage. Pure builders perform no I/O and reuse shellQuote. Optional prefills are passed through production startup without requiring changes to existing test server callers. README and docs/configuration.md list PULSE_CONSOLE_PROBE_API_URL, PULSE_CONSOLE_PROBE_IMAGE and PULSE_CONSOLE_PROBE_NETWORK in that order with validation and prefill-only semantics."
         }
       ]
     },
@@ -141,7 +141,7 @@
         },
         {
           "command": "bun run check:browser",
-          "expected": "exit 0; all previous checks and Tokens/Probes flows pass in Playwright/axe. Probe add exposes the four pre blocks and selectable snippets, rotation displays the returned countdown, both secret-bearing POST pages clear secrets on pagehide and persisted pageshow, Tokens create/show-once/revoke still pass, 0 CSP violations, no horizontal scroll at 390/1280 px, usable keyboard order, JavaScript-off create/revoke and selectable text."
+          "expected": "exit 0; all previous checks and Tokens/Probes flows pass in Playwright/axe. Probe add exposes the four pre blocks and selectable snippets, rotation displays the returned countdown, both secret-bearing POST pages clear secrets on pagehide and persisted pageshow, Tokens create/show-once/revoke still pass, 0 CSP violations, no horizontal scroll at 390/1280 px, usable keyboard order, JavaScript-off create/revoke and selectable text. Keep T2's timer instrumentation assertions for both screens: set=0 on list/create, set=1 on rotate, text changes after 1100 ms, ended and active=0 after 3500 ms with previousValidUntil now+2000 ms, and active=0 on pagehide."
         },
         {
           "command": "bun e2e/run.ts --serve",
