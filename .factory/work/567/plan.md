@@ -111,7 +111,7 @@ shows real per-location uptime over the same 90-day window as the existing aggre
    index scan over `results_by_sample (check_id, location, timestamp)` (`service.ts:547-555`).
    No stored tally keeps the location, so `uptime_daily` cannot be relabelled per location.
 12. api public reads: `/checks/:id/results` pages newest first with `limit` (default 100, max
-   1000) and exclusive `before`, returning a whole tie group (`api/docs/rest-api.md:147-160`);
+   1000) and exclusive `before`, returning whole timestamp groups, so a page can hold more than `limit` rows and `limit=20` can return 21 (`api/docs/rest-api.md:147-160`);
    `/checks/:id/latency` is HTTP-only and answers `404` `unknown check` for other types and
    inactive ids (`rest-api.md:193-195`).
 13. Deferred by #460 section 19 and the issue review, and verified absent: no paused state
@@ -396,7 +396,7 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   over 30 days, objective <target> %`, and `budgetRemaining` with one decimal: `x.x % of the
   error budget left` when the raw value is `>= 0`, `Error budget exceeded (x.x %)` when it is
   `< 0`. The sign comes from the raw value, not from the rounded text.
-- Recent results: 20 per page, newest first: time, location, status, status code, latency,
+- Recent results: the Console requests `limit=20` and shows complete timestamp groups, so a page can have more than 20 rows (21 when the 20th and 21st rows share a timestamp), newest first: time, location, status, status code, latency,
   attempts, reason. `Older results` links to `before=<timestamp of the last row>`; a page with
   `before` also has `Newest results`. A `before` that is not `^[0-9]{1,16}$` is ignored (first
   page). The Console never asks for more than one page per view.
