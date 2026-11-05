@@ -199,6 +199,8 @@ Back to the [index](index.md).
 ## Runners: self-hosted first, GitHub-hosted as fallback
 `factory.yml`, `factory-run.yml`, `factory-unblock.yml`, `factory-sweep.yml`, `factory-audit.yml` and `factory-report-open.yml` start with a job `runner` that calls `runner-pick.yml`. It answers `runs-on`: the self-hosted runners (labels `self-hosted`, `pulse-meta`, `bwrap`) when they are available, else `ubuntu-24.04`. Jobs that react to pull requests (`factory-fan-out.yml`, `report-check.yml`) and the report build and Pages deploy stay on GitHub-hosted runners, so no pull request code runs on the self-hosted host.
 
+The manual `docker-probe.yml` does not use the pick: it runs on the Docker-capable test runner (label `docker-test`) and checks the rootless Docker daemon and that the entrypoint's access token stays out of reach of a job. Start it with `gh workflow run docker-probe.yml`; the input `runner` (a JSON array of labels, for example `["self-hosted","pulse-meta"]`) points it at other runners.
+
 `GITHUB_TOKEN` cannot list runners. The script `scripts/runner-heartbeat.sh` runs every minute on the runner host (cron), counts idle online runners and writes the variables `RUNNERS_IDLE` and `RUNNERS_BEAT`. No idle runner, a heartbeat older than 180 s or a missing variable means hosted. Set the variable `RUNNERS_FORCE=hosted` to switch the self-hosted runners off by hand.
 
 Limit: the pick is made once per run. A runner that dies between the pick and the job start leaves the job queued (GitHub waits up to 24 hours); cancel the run and start it again. The self-hosted runners have no sudo, so the bubblewrap steps of `factory-run.yml` rely on the preinstalled `bwrap`; node comes from `actions/setup-node`.
