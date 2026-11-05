@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Authenticated clients can identify their token through GET /admin/tokens/self",
+      "files": [
+        "src/token-routes.ts",
+        "src/server.tokens.test.ts",
+        "src/token-routes.test.ts",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Behavior (Required behavior section 1), all Checks and Completion evidence; Counterexamples /self before :id, no actions, auth and overlap; Performance impact api/test_cpu_s; Security impact for the new admin route; Acceptance evidence 1. Keep parser, route label, dispatch, real-server regression tests and route documentation together. Use the optional token-routes.test.ts for literal parser and metrics/auth-label cases.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.tokens.test.ts src/token-routes.test.ts",
+          "expected": "0 fail after implementation; the new authenticated GET /admin/tokens/self case was first observed red on the base (404 rather than literal 200). Metadata passes validateTokenMetadata and matches the token created by the separate POST, lastUsedAt is non-null, and secret/digest keys are absent. Both overlap secrets identify the same id; statuses 401, 403 (probe and read-only), 404 (before import and self action paths), 405 with Allow: GET, and 429 retain the auth/throttle order and no-store header. Parser/route-label assertions distinguish exactly /admin/tokens/self from /admin/tokens/:id. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and full tests pass with line coverage at least 80%."
+        },
+        {
+          "command": "bun run test",
+          "expected": "exit 0 on the base before implementation and on the completed change; record both measured test_cpu_s values against the independent 5.6 s budget named in Performance impact, without inventing a timing result or requiring the full bench A/B."
+        },
+        {
+          "command": "bun start",
+          "expected": "With an admin import and local test configuration, the service starts; the documented curl request to /admin/tokens/self returns literal 200 and metadata keys only. Record the curl command with variable references and status/key names, never the token or response body."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR records the red-first /self failure, check results, before/after test_cpu_s and live curl evidence. Its security checklist cites tests/commands for metadata-only responses, unchanged throttle/auth/status order, the 4096-byte token body limit, validated responses and unchanged dependency pins. REST route/scopes/token/status tables and operation rotation guidance describe /self."
+        }
+      ]
+    }
+  ]
+}

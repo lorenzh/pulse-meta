@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Console e2e scripts can reuse setup and TOTP helpers without changing setup behavior",
+      "files": [
+        "e2e/console-lib.sh",
+        "e2e/console-setup.sh"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: deploy, Behavior item 2 and its console-setup.test.sh regression check: extract req/location/csrf/form_token_args/expect/expect_location, TOTP wait/password helpers and the reusable setup-to-signed-in-owner two-factor flow into a sourced library. Preserve console-setup.sh auto/legacy/two-factor behavior, output, action-bound form tokens and secret handling; do not change its existing stub tests. This pure refactor prepares the shared setup interface consumed by T2.",
+      "acceptance": [
+        {
+          "command": "bash e2e/console-setup.test.sh",
+          "expected": "exit 0 with the existing test unchanged; legacy/two-factor flows and all four form layouts retain action-specific form tokens, replay behavior and 0 fixture-secret occurrences in output."
+        },
+        {
+          "command": "shellcheck -x e2e/console-lib.sh e2e/console-setup.sh && bash -n e2e/console-lib.sh && bash -n e2e/console-setup.sh",
+          "expected": "exit 0 from the repository root; the library is sourced without executing a scenario on import."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Compose e2e runs the rendered probe snippets within 10000 ms and CI requires the result",
+      "files": [
+        "dev/compose.yaml",
+        "dev/README.md",
+        "e2e/console-probes.sh",
+        "e2e/snippet.mjs",
+        "e2e/snippet.test.sh",
+        "e2e/compose-e2e.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Behavior items 1, 3 (all ten scenario steps and parent cleanup) and 4; all Checks and Completion evidence; Acceptance evidence 3, Counterexample One interval (deploy), Rollout order and Security impact CI/secret handling. Use T1 library and merged api/console main. Add dev-only optional prefills, exact pre-id HTML decoder and literal entity tests, new console-probes scenario before persistence, published-image skip and CI gate. Run actual rendered env/docker/Compose/restart text in a temporary directory with caller COMPOSE_FILE/COMPOSE_PROJECT_NAME, fresh TOTP owner setup, result timestamps from GET /locations and the literal 10000 ms window, not a timeout derived from the implementation.",
+      "acceptance": [
+        {
+          "command": "bash e2e/snippet.test.sh && bash e2e/console-setup.test.sh",
+          "expected": "exit 0; snippet decoding selects the requested pre id and matches literal decoded strings for &amp;, &lt;, &gt;, &quot; and &#39;. Existing setup regression suite still passes unchanged with 0 secret occurrences in output."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root, including the newly added/tracked scripts and sourced library."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0 for every shell script, including the new files."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0 for every helper, including e2e/snippet.mjs."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0 for every tracked JSON file."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; dev prefills are literal http://api:3000, pulse-probe:dev and pulse-dev_default. All setup rules still pass, especially rules 3/4; full/minimal/demo and common image pins retain their existing configuration."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; the remaining checks of the touched CI lint job pass. Docker Compose version is at least 2.23 as required by that job."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint/workflow validation, CLI typecheck and full CLI tests remain green."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with sibling main revisions including this spec's merged api/console changes; output contains ==> All checks passed and four new success lines: the specified literals ok: docker run probe e2e-run reported within 10 s, ok: compose probe e2e-compose reported within 10 s and ok: console probe locations, plus a secret-free success line for the rotated probe reporting within the same bound. The existing ok: manual incident privacy also remains. The new step runs the actual rendered snippets on pulse-e2e_default, verifies Awaiting first result then Reporting, and obtains lastResultAt >= host t0 with the observing poll starting <= 10000 ms after t0 for both starts and the rotated restart. Old/new secrets each receive 200 on /probe/checks during overlap; revoked e2e-compose gets 401 and its location history remains. Both created secrets and the rotated secret have 0 hits in step output, API/console logs and console database files. Probe containers, snippet project and work directory are removed on success and failure before parent network teardown."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the unchanged full published-image setup; literal skip: console probe locations (published images) and ==> All checks passed are printed, and the skipped scenario performs 0 console token mutations or snippet launches."
+        },
+        {
+          "command": "gh pr checks && gh pr view --json body --jq .body",
+          "expected": "CI lint and e2e-dev pass; e2e-dev requires the exact ok: console probe locations line. PR lists new ok lines and independent service revision SHAs printed by CI, full-suite compatibility and check results, with 0 secrets. Security checklist names evidence for executing rendered commands only in the throwaway directory, shell/YAML decoding, token/log/database secrecy and cleanup on both success and failure. README/dev README/AGENTS describe the new settings, commands, scenario and CI gate."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Token metadata, identity reads and single-attempt writes have shared tested rules",
+      "files": [
+        "src/connection-test.ts",
+        "src/connection-test.test.ts",
+        "src/server.setup.test.ts",
+        "src/api-failure.ts",
+        "src/token-read.ts",
+        "src/token-read.test.ts",
+        "src/token-view.ts",
+        "src/token-view.test.ts",
+        "src/token-write.ts",
+        "src/token-write.test.ts",
+        "src/people-log.ts",
+        "src/people-log.test.ts",
+        "test/fake-api.ts",
+        "test/token-fixtures.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, shared read/write and pure-view module boundaries in Behavior; Required behavior sections 2-3, section 4 preset/state/last-admin/countdown calculations, section 5 exact-location grouping/state calculations, section 6 shared revision, grant, live guard, outbound outcome mapping and People log rules. Implement common modules and their unit tests, plus the complete setup /self change and fallback HTTP tests; route-specific sequencing and rendered states follow in T2 and T4. Checks: token-view.test.ts, token-write.test.ts, people-log.test.ts and setup fallback rows; Counterexamples for presets, last used, grouping, revision and countdown. Document setup compatibility with this change.",
+      "acceptance": [
+        {
+          "command": "bun test src/connection-test.test.ts src/server.setup.test.ts src/token-read.test.ts",
+          "expected": "0 fail; /admin/config then valid /admin/tokens/self 200 confirms adminScope; only self 404 falls back to /admin/tokens, whose 200 means confirmed and 404 means not-checked. Other self/fallback failures retain section 2 texts, with no configured token or self body in a browser response. Shared reads validate token/list/location contracts, reject missing/wrong wire headers, make fresh self reads, preserve readable lists on partial failures and send 0 Authorization headers to public /locations. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun test src/token-view.test.ts src/token-write.test.ts src/people-log.test.ts",
+          "expected": "0 fail; preset arrays are literal [read], [read,checks,admin], [read,incidents,admin], [read,checks,incidents,admin]. Injected-clock tests prove Never, all lifecycle and location states, separate eu/EU groups, last-admin detection, 10:00/00:59/ended countdown boundaries and the specified SHA-256 revision fields (lastUsedAt unchanged, revokedAt changed). Every section 6 outcome row is exercised with fake fetch, timeout 5000 ms, redirects unfollowed and 1 write attempt; absent session or demoted role gives 0 writes. Saved/unknown events use literal token.create/token.rotate/token.revoke and target_kind token, target_id NULL, id or unknown target_name, secret-free scopes/location values and the unknown suffix; failed People inserts preserve the API outcome. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; the existing routes still compile and all new common modules are covered by their accompanying tests."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Admins can create, rotate and revoke Tokens with secrets shown once",
+      "files": [
+        "src/token-routes.ts",
+        "src/token-pages.ts",
+        "src/server.ts",
+        "src/navigation.ts",
+        "src/navigation.test.ts",
+        "src/console-script.ts",
+        "src/styles.ts",
+        "src/server.tokens.test.ts",
+        "test/token-fixtures.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/tokens.md",
+        "docs/index.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Required behavior section 4 in full, section 3 Tokens identity failures and section 6 Tokens mutation order and show-once boundaries; Behavior route registration/routeRole/stored API URL/escaping/no-store/CSP. Checks: Tokens real-server matrix, Tokens browser create/copy/Back/revoke, countdown, accessibility, layout and JavaScript-off flows, navigation and Tokens documentation. Counterexamples: own id versus same name, last admin and expiry banner, grant, presets, typed name, stale confirmation, replay and lost answer. Build on T1 and extend the existing single script for pagehide/persisted-pageshow secret clearing and countdowns with tests in the same task.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.tokens.test.ts src/navigation.test.ts",
+          "expected": "0 fail; Owner/Admin list active and revoked/expired non-probe tokens in API order, including id/source/UTC/last-use/access/state and the probe-count link. All four preset POST bodies match literal arrays and omit expiresAt. Create 201 and rotate 200 yield direct no-store POST pages 200 with #token-secret[data-secret], copy/save-now text and the returned overlap deadline; revoke yields 303 and the notice. Member/Viewer every GET and forged POST return 403 with 0 writes; own-id rotate/revoke return 409 with 0 writes and no GET form, while another token with the same name is not protected. Assert last-admin, expired/revoked, wrong screen 404, grant, stale revision, typed-name 422, authoritative API 409, every refusal/unknown/lost-answer outcome, live role/session guard and People-log failure behavior. Self 404/invalid/unreachable/wire failures remove actions and give mutation 503 with 0 writes; self 401 uses tokenRejectedBanner. Replay returns 409 Already submitted with exactly 1 API write. Secret scans of DB, events, logs, metrics and subsequent pages have 0 hits. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; existing Playwright/axe checks and new Tokens cases pass: create shows #token-secret, copy works where clipboard is available, navigate away and Back leaves 0 pulse_ secret occurrences in the DOM, reload/resubmit shows Already submitted, typed-name revoke works, countdown follows datetime, JavaScript-off create/revoke works, 0 CSP violations, correct keyboard focus order, and no horizontal overflow at literal widths 390 and 1280."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; Tokens navigation is available only to Admin/Owner and Probes remains unavailable until T4. README/configuration, linked docs/tokens.md and AGENTS.md describe the implemented Tokens routes and real-server check."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Probe snippets quote operator values safely and accept validated optional prefills",
+      "files": [
+        "src/probe-snippet.ts",
+        "src/probe-snippet.test.ts",
+        "src/shell-line.ts",
+        "src/settings.ts",
+        "src/settings.test.ts",
+        "src/main.ts",
+        "src/main.startup.test.ts",
+        "src/http-context.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Required behavior section 5 Snippets and Rotate (probe) snippet builders, including location/name/URL/image/network validation shared with the form, and section 7 optional settings; pure probe-snippet.ts boundary and shell-line.ts comment. Checks: all snippet/naming counterexamples, literal outputs and secret isolation; settings order/defaults/diagnostics. Wire prefills from main.ts through optional ConsoleServerDeps fields in its actual declaration at src/http-context.ts, keeping existing callers green; T4 consumes them in the form. Counterexamples: shell/YAML quoting, Unicode/empty/long slug, dollar interpolation, no network, invalid location/URL/image/network and stable names on rotation.",
+      "acceptance": [
+        {
+          "command": "bun test src/probe-snippet.test.ts src/settings.test.ts src/main.startup.test.ts src/shell-line.test.ts",
+          "expected": "0 fail; literal expected env command, docker-run text, Compose YAML/command and rotation restart lines cover both network modes and both block_private values. Location it's uses the specified POSIX quote escape, $(id) stays literal, a\"b$HOME becomes JSON-quoted YAML with $$, Unicode location yields n-code-zone-1 and !!! yields location. Derived filenames/container/project use 32-character slug limit and last 6 token-id hex characters and stay stable on rotate. Env command has exactly 1 secret occurrence; docker-run, Compose file and command have 0. Three optional settings are read after SECRET_KEY_FILE in URL/image/network order, blank means unset, one URL trailing slash is removed, and invalid settings exit 2 with pulse-console: <name>: <rule> and 0 offending-value occurrences in output. No implicit copy of the console API URL. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; pure builders perform no I/O and reuse shellQuote. Optional prefills are passed through production startup without requiring changes to existing test server callers. README and docs/configuration.md list PULSE_CONSOLE_PROBE_API_URL, PULSE_CONSOLE_PROBE_IMAGE and PULSE_CONSOLE_PROBE_NETWORK in that order with validation and prefill-only semantics."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Admins can manage probe credentials and the complete screens pass browser and security checks",
+      "files": [
+        "src/probe-routes.ts",
+        "src/probe-pages.ts",
+        "src/server.ts",
+        "src/navigation.ts",
+        "src/navigation.test.ts",
+        "src/styles.ts",
+        "src/server.probes.test.ts",
+        "test/token-fixtures.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/tokens.md",
+        "docs/index.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Required behavior section 5 in full (routes/list/all state-table rows/add/snippets/rotation), section 3 Probes self failures, section 6 Probes mutation order/People rows/show-once, and section 7 editable form prefills. Consume T1 shared operations and T3 builders/settings; reuse T2 secret clearing/countdown. Checks: Probes HTTP matrix and browser cases, final navigation/documentation, complete repository checks, manual agent-browser acceptance and Completion evidence; Security impact checklist and Acceptance evidence 2. Probe version/results per minute remain deferred per #460. Cross-service runnable-snippet compose acceptance belongs to deploy, after both source changes merge.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.probes.test.ts src/navigation.test.ts",
+          "expected": "0 fail; all five location-state rows plus reporting-with-0-active warning render from the exact-name union of probe credentials and /locations, sorted by code units, with every credential/source/id/last-use/state shown and a separate Revoked table where specified. Last-used activity alone stays Awaiting first result; /locations failure keeps credentials and shows Last result unknown. Owner/Admin add/rotate/revoke work per credential; duplicates report the literal fixture active count, heartbeat/65-character/control-character names and invalid URL/image/network fail validation, missing checks grant refuses create, and prefills remain editable. Successful add renders #probe-env-command[data-secret], #probe-docker-run, #probe-compose-file and #probe-compose-command with copy buttons/help; rotate renders stable env filename, actual overlap and recreation instructions. Revoke uses typed location, returns 303 and retains history. All GET/forged POST role, self, kind, stale, inactive, grant, session and replay cases follow section 6 (403/404/409/422/503; 0 refused writes, 1 replayed write total). People events and database/log/metric scans contain 0 secrets. Focused-suite coverage exit status is not the gate."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; full lint, typecheck and test suite pass with line coverage at least 80%, including setup fallback, both real-server screen suites, snippet literals, shared outcomes and People events. Navigation has 9 entries, 4 unavailable; Admin/Owner see Overview, Checks, Tokens, Probes, Team, while Member/Viewer see Overview, Checks."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; all previous checks and Tokens/Probes flows pass in Playwright/axe. Probe add exposes the four pre blocks and selectable snippets, rotation displays the returned countdown, both secret-bearing POST pages clear secrets on pagehide and persisted pageshow, Tokens create/show-once/revoke still pass, 0 CSP violations, no horizontal scroll at 390/1280 px, usable keyboard order, JavaScript-off create/revoke and selectable text."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Fixture console is available for the required agent-browser session; record its local URL for the next acceptance command without printing any secret-bearing page or credential."
+        },
+        {
+          "command": "agent-browser open \"$CONSOLE_FIXTURE_URL/sign-in\"",
+          "expected": "Record manual agent-browser commands and secret-free outcomes in the PR: sign in; create a token with the secret visible; reload the POST answer to 409 Already submitted; revoke by typed name; add a probe location and see four snippets; own-token confirmation has no form and a forged curl POST using the session cookie returns 409 with 0 writes. Do not publish snapshots or command arguments containing secrets."
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "With local test configuration, exercise both implemented screens once against api main with /self and report results; if that API change is not yet merged, record the section 3 read-only banner and mutation refusal against the older API as explicitly permitted by Completion evidence."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR includes full check/browser results, the required manual agent-browser commands/outcomes and live-start evidence. Security checklist cites tests/commands for secret-only-once responses (0 DB/log/event/metric/storage/URL leaks), unchanged dispatcher auth/Origin/CSRF/form-token order and body limits, fresh self/own-token/last-admin/grant/live guards, contract/input validation, shell/YAML/HTML injection resistance, no redirects/retries and unchanged CSP/runtime dependencies. Documentation describes both screens, presets, overlap, own-token rule, all location states, snippet image/network/reachable-API prerequisites and three settings; AGENTS lists both new server suites."
+        }
+      ]
+    }
+  ]
+}
