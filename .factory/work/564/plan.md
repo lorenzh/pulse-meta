@@ -206,10 +206,28 @@ denied with the lowest allowed role of that row, or denied because the target is
   handler. The handler of a target route then runs: field format and id format (`422` or `404`),
   target lookup (`404` shell page `Page not found`), the target rule (`403` shell page), the
   revision check (`409` with `staleState`), the typed name (`422`), the commit.
-- **The commit re-checks.** Every team mutation runs in one `BEGIN IMMEDIATE` transaction that
-  re-reads the actor's role and the target row and evaluates the rule again. Actor no longer
-  allowed: `403`. Target gone: `404`. Target's revision changed: `409`. A denied or refused
-  request changes no row and writes no People event.
+- **The commit re-checks the session, then the actor, then the target.** The gate admits the
+  session before the dispatcher awaits the POST body (`src/server.ts:895-903`), and a form token
+  stays usable after its session row is deleted. A request paused while its body arrives can
+  therefore resume after a password reset, a 2FA reset, a role change, a removal, a transfer or a
+  sign out all from another session has deleted its session. So every team mutation (every
+  `POST /team/*` of section 8) runs in one `BEGIN IMMEDIATE` transaction whose first step is the
+  session guard of section 17 without a password hash: a `sessions` row with the digest of the
+  request's session id and `user_id` = the actor's id still exists (the guard type and check of
+  section 17, unchanged). In order:
+  1. Session row gone: `409` shell page `Not saved` with `Your password or session changed while
+     this was saved. Nothing was changed.` (`role="alert"`, a link `Reload` to the GET of the
+     same route, or to `/team` for `/team/invites` and `/team/require-2fa`). This comes before
+     the actor check, so a demotion during the body read answers `409`, not `403`.
+  2. The actor's role, re-read from `users`, no longer allows the row: `403`.
+  3. Target gone: `404`. 4. Target's revision changed: `409` with `staleState`. 5. The rule
+     again for the actor and the re-read target: `403`.
+  A refused request changes no row, writes no People event, shows no link and writes no `team
+  change` log line. The handler gets the session id from the new `PageRequest.sessionId` field
+  (`src/protected-route.ts:8-22`, filled in `pageRequest`, `src/server.ts:826-842` from
+  `signedIn.id`); the field is never rendered or logged. The dispatcher order itself is
+  unchanged. A session guard failure does not change cookies; the next request of that cookie is
+  anonymous and gets `303` to sign-in.
 - **Role source.** The role is read from the `users` row on every request (`currentSession`,
   `src/server.ts:193-205`, reads the user already). It is never cached in the session row or a
   cookie. A demotion, a removal and a transfer take effect on the next request of every session.
@@ -307,15 +325,20 @@ Migration 3:
   owner".
 - `instance`: new column `require_2fa_all INTEGER NOT NULL DEFAULT 0 CHECK (require_2fa_all IN
   (0, 1))`.
-- `invites(id INTEGER PRIMARY KEY AUTOINCREMENT, token_digest TEXT NOT NULL UNIQUE, email TEXT NOT
+- No table uses `AUTOINCREMENT`, as in migrations 1 and 2 (`src/database.ts`), so SQLite makes
+  no `sqlite_sequence` table and the table list of `src/database.test.ts:97-104` gains exactly
+  the three new tables. Ids still never repeat where they are shown: `invites` and
+  `people_events` rows are never deleted, so a rowid is always max + 1; `reset_links` ids are
+  never shown or sent (links are found by digest); a reused `users` id is caught by `revision`.
+- `invites(id INTEGER PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE, email TEXT NOT
   NULL, role TEXT NOT NULL CHECK (role IN ('admin','member','viewer')), created_by INTEGER
   REFERENCES users(id) ON DELETE SET NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT
   NULL, used_at INTEGER, revoked_at INTEGER, accepted_user_id INTEGER)`.
-- `reset_links(id INTEGER PRIMARY KEY AUTOINCREMENT, token_digest TEXT NOT NULL UNIQUE, kind TEXT
+- `reset_links(id INTEGER PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE, kind TEXT
   NOT NULL CHECK (kind IN ('team','owner-recovery')), user_id INTEGER NOT NULL REFERENCES users(id)
   ON DELETE CASCADE, target_role TEXT NOT NULL, issued_by INTEGER REFERENCES users(id) ON DELETE
   SET NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`.
-- `people_events(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor_kind TEXT NOT
+- `people_events(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, actor_kind TEXT NOT
   NULL CHECK (actor_kind IN ('user','container')), actor_user_id INTEGER, actor_email TEXT,
   actor_name TEXT, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id INTEGER,
   target_email TEXT, target_name TEXT, from_role TEXT, to_role TEXT, value TEXT)`. No foreign
@@ -374,16 +397,19 @@ a removed and re-used id or a changed role is a stale form. Every POST form carr
 | --- | --- | --- | --- | --- |
 | `GET /team` | shell | Admin (`team.view`) | | `200` Team page |
 | `POST /team/invites` | shell | Admin (row 14) | `email`, `role` | `200` link page; `403`, `409`, `422` |
-| `GET`/`POST /team/invites/revoke?invite=<id>` | plain confirmation | Admin (row 14; Owner for an admin invite, row 15) | | `303` to `/team`; `403`, `404` |
+| `GET`/`POST /team/invites/revoke?invite=<id>` | plain confirmation | Admin (row 14; Owner for an admin invite, row 15) | | `303` to `/team`; `403`, `404`, `409` |
 | `GET`/`POST /team/role?user=<id>` | shell form | Owner (rows 18, 19) | `role`, `revision` | `303` to `/team`; `403`, `404`, `409`, `422` |
 | `GET`/`POST /team/remove?user=<id>` | typed confirmation | Admin (rows 16, 17) | `revision`, `confirm_name` | `303` to `/team`; `403`, `404`, `409`, `422` |
 | `GET`/`POST /team/reset-link?user=<id>` | plain confirmation | Admin (rows 20, 21, 22) | `revision` | `200` link page; `403`, `404`, `409` |
 | `GET`/`POST /team/reset-2fa?user=<id>` | plain confirmation | Admin (rows 23, 24) | `revision` | `303` to `/team`; `403`, `404`, `409` |
 | `GET`/`POST /team/transfer?user=<id>` | typed confirmation | Owner (row 25) | `revision`, `confirm_name` | `303` to `/sign-in?transfer=done`; `403`, `404`, `409`, `422` |
-| `POST /team/require-2fa` | shell | Owner (`team.require-2fa`) | `value` (`on`, `off`) | `303` to `/team`; `403`, `422` |
+| `POST /team/require-2fa` | shell | Owner (`team.require-2fa`) | `value` (`on`, `off`) | `303` to `/team`; `403`, `409`, `422` |
 | `GET`/`POST /account/password` | account (stage `full`) | every role (row 27) | `password`, `new_password`, `new_password_confirm` | `303` to `/account/password?changed=1`; `401`, `409`, `422`, `429` |
 | `GET`/`POST /invite/<token>` | public | none | `name`, `password`, `password_confirm` | `303`; `404`, `409`, `422` |
 | `GET`/`POST /reset/<token>` | public | none | `password`, `password_confirm` | `303` to `/sign-in?reset=done`; `404`, `422` |
+
+Every `POST /team/*` can also answer `409` `Not saved` when its session row was deleted while the
+body was read (section 3); the `409` of the table includes it.
 
 The #563 routes `POST /account/recovery-codes`, `POST /account/authenticator` (`action=new`, the value the console accepts at `src/account-routes.ts:113-126` and its form sends at `src/account-pages.ts:67`)
 and `POST /account/sessions/sign-out-all` keep their routes and answers and gain one: `409` when
@@ -512,8 +538,9 @@ transaction: set the actor's role to `admin`, then the target's to `owner` (this
 `users_one_owner`), delete every session of both people (the current one included), write
 `owner.transfer`. The answer is `303` to `/sign-in?transfer=done` with the session cookie deleted;
 the sign-in page shows `Ownership is transferred. Sign in again.` Two concurrent transfers end
-with exactly one Owner: the second commit re-reads an actor that is no longer Owner and answers
-`403`.
+with exactly one Owner: the first commit deleted the actor's sessions, so the second commit's
+session guard answers `409` `Not saved` (section 3); if its session somehow remained, the re-read
+actor is no longer Owner and it answers `403`.
 
 ### 16. Own password
 
@@ -545,12 +572,25 @@ reads the user, awaits verification and then calls `startSession` with no re-che
 (`src/server.ts:693-726`). A reset that commits during that wait would leave a session made with
 the old password. So:
 
-- **Sign-in** (changed by #564). The password step creates its session through a new store
-  function in one `BEGIN IMMEDIATE` transaction: delete the old cookie's row and expired rows,
-  re-read the user by id, and insert the session only when the row exists and its `password_hash`
-  equals the hash that was verified. Otherwise no session: `401` with `Wrong email or password.`,
-  a counted throttle failure, `warn` `sign-in failed` with reason `credentials`, and no session
-  `set-cookie`.
+- **Sign-in** (changed by #564). The password step creates its session in one `BEGIN IMMEDIATE`
+  transaction: delete the old cookie's row and expired rows, re-read the user by id, and insert
+  the session only when the row exists and its `password_hash` equals the hash that was
+  verified. Otherwise the transaction writes nothing (the old cookie's row stays) and the answer
+  is `401` with `Wrong email or password.`, a counted throttle failure, `warn` `sign-in failed`
+  with reason `credentials`, and no session `set-cookie`.
+  - **Injectable boundaries stay.** The account store gains one function,
+    `inImmediateTransaction<T>(work: () => T): T` (`db.transaction(work).immediate()`). Sign-in
+    runs inside it the same store calls as today's `startSession` (`src/server.ts:752-761`):
+    `store.deleteSession` (when a cookie was sent), `store.deleteExpiredSessions`,
+    `store.userById`, then `store.createSession`, each called through `ctx.deps.store`. A throw of
+    any of them rolls the transaction back and propagates as today: the reservation is released
+    and the answer is `500`. So the throttle tests of `src/server.sign-in.test.ts:317-329`, which
+    replace `deleteSession`, `deleteExpiredSessions` and `createSession` of the store through a
+    `Proxy`, keep their code and expected values: six `500` answers each, then `303` after the
+    method works again. These tests must pass unchanged; a sign-in that bypasses those three
+    store methods (for example a single new SQL statement) fails them and is a defect.
+  - `startSession` stays for setup, the factor step and invite acceptance; the guarded variant is
+    used only by the password step of sign-in.
 - **The second-factor step** needs no change: a reset, removal, role change or 2FA reset deletes
   the user's sessions, and `completeTotpSignIn`, `completeRecoverySignIn` and
   `confirmAuthenticator` already abort when their session or pending row is gone
@@ -595,6 +635,11 @@ userId, passwordHash?: string }`:
   (`src/factor-store.test.ts:65-308`, `src/account-store.test.ts:217-234`). Their routes call only
   the guarded ones. `confirmAuthenticator`, `completeTotpSignIn` and `completeRecoverySignIn`
   already abort when their pending or session row is gone, so they need no guard.
+- **Team mutations.** Every team store mutation takes the actor as a `CredentialGuard` without
+  `passwordHash` (`{ sessionId: request.sessionId, userId: request.user.id }`) and runs the guard
+  first in its own transaction, then the checks of section 3. A failed guard returns a
+  `session-gone` result, which the route answers with the `409` `Not saved` page of section 3.
+  The reason is the same: the dispatcher awaits the body after the gate.
 
 Every new hash has a fresh random salt (argon2id through `Bun.password.hash`), so a reset to the
 same text gives a different hash and H0 never matches by accident. The check never compares
@@ -806,6 +851,29 @@ value from the module under test.
      Member's reset link is used and the Member signs in again (session S2). Then the test sends
      the rest of the body. The answer is `409` and the S2 row still exists. No timer is used: the
      server cannot go on before the body is complete.
+   - Sign-in failure injection: the three throttle tests of `src/server.sign-in.test.ts:317-329`
+     (a `Proxy` store whose `deleteSession`, `deleteExpiredSessions` or `createSession` throws)
+     run with their code unchanged and still give six `500` answers each, then `303`.
+5b. **Team commits from a revoked session, deterministic** (`src/server.team.test.ts`). Each case
+   opens a raw connection to the server, sends the headers of a team POST with the actor's
+   session cookie, the session's `csrf` and a form token issued by that session's GET, and half
+   of the body. While the body is incomplete the test makes another change through normal
+   requests, then sends the rest. No timer is used: the server cannot go on before the body is
+   complete. Expected values are literals:
+   - Admin `POST /team/invites` (`email=new@example.com`, `role=member`); the Owner resets the
+     Admin's 2FA (`303`). The answer is `409`, its body contains `Your password or session
+     changed while this was saved. Nothing was changed.` and no `/invite/`; `invites` has 0
+     rows and `people_events` has exactly 1 new row (`user.2fa-reset`).
+   - Admin `POST /team/reset-link?user=<member>`; the Owner changes the Admin's role to `member`
+     (`303`). The answer is `409`, not `403`; `reset_links` has 0 rows for the Member.
+   - Admin `POST /team/remove?user=<viewer>` with the right `confirm_name`; the Admin's own reset
+     link (made by the Owner) is used (`303`). The answer is `409`; the Viewer's `users` row and
+     sessions still exist; no `user.remove` row.
+   - Owner `POST /team/require-2fa` (`value=on`) from session S1; the Owner posts sign out all
+     from session S2 (`303`, which deletes S1). The answer is `409`; `instance.require_2fa_all`
+     is still `0`; no `team.require-2fa` row.
+   - Control: the same held invite POST with no change in between answers `200` with the link
+     page, and `invites` has 1 row. So the guard is not always refusing.
 6. **2FA requirement.** Each case follows the sequence of section 5 (literal statuses and
    locations):
    - Invited Admin: the accept POST answers `303` to `/account/authenticator`; with that cookie
@@ -910,8 +978,10 @@ Checklist items that apply:
   commit. An own password change commits only if its session still exists and the stored hash is
   still the verified one. New recovery codes, authenticator setup and sign out all write only if
   the request's session row (and, after a password step, the verified hash) still exists at
-  commit; a stale new-codes request returns no codes. Gated fakes and a held body test all of
-  them (acceptance 5a).
+  commit; a stale new-codes request returns no codes. Every team mutation writes only if the
+  request's session row still exists at commit (`409` `Not saved` otherwise), because the
+  dispatcher reads the body after the gate. Gated fakes and a held body test all of them
+  (acceptance 5a, 5b).
 - **Body and size limits.** Forms keep the 8192-byte cap; passwords 12 to 128 code points; names
   1 to 100; emails 3 to 254; ids at most 16 digits; tokens exactly 43 characters.
 - **Input validation.** Role values (never `owner` from a client), ids, emails, names, typed
@@ -975,9 +1045,13 @@ not change.
   - An Admin is demoted to Member, then posts an invite from a page opened before: `303` to
     `/sign-in?next=…`, because the demotion deleted that session (the gate runs before the body).
     After a new sign-in as Member the same invite answers `403`.
-  - An Admin's invite passes the role step and the Owner demotes that Admin before the commit:
-    the commit re-reads the actor, answers `403`, and writes no invite (a wrong implementation
-    trusts the role read at the start of the request).
+  - An Admin's invite passes the role step and, while its body is still arriving, the Owner
+    demotes that Admin: the demotion deleted the session, so the commit's session guard answers
+    `409` `Not saved` and writes no invite and no People event (a wrong implementation trusts the
+    session and role read before the body and creates the invite; acceptance 5b).
+  - A wrong implementation re-checks only the actor's role: an Admin's held invite POST whose
+    2FA the Owner resets meanwhile keeps the role `admin`, and the invite would be created from a
+    session that no longer exists. It must answer `409`.
   - The Owner opens the transfer page twice, transfers to Admin A, then submits the old form for
     Admin B: `303` to sign-in (sessions ended). After a new sign-in as Admin: `403`.
 - **Transfer sessions.** A wrong implementation keeps the former Owner's current session. After a
@@ -1075,6 +1149,9 @@ clone (`176fb6ed14b2f14b730a9fd1757239f210f97a29`, the console pin) and the conf
 | `team-store`, `account-links`, `team-routes`, `team-pages`, `link-routes`, `people-log`, `team-console` | 0 | 0 |
 | `teamStore`, `createTeamStore` (server dependency and factory function) | 0 | 0 |
 | `CredentialGuard`, `replaceRecoveryCodesFor`, `savePendingAuthenticatorFor`, `deleteOtherSessionsFor` (store type and functions) | 0 | 0 (also 0 in console `src`) |
+| `inImmediateTransaction` (account store function) | 0 | 0 (also 0 in console `src` and `test`) |
+| `Not saved` (page title) | 0 | 0 (also 0 in console `src` and `test`) |
+| `sessionId` (new field of the console type `PageRequest`) | 0 | 0; 48 matches in console `src` and `test`, all parameters and fields of the same meaning (a session id), none a field of `PageRequest` |
 | `permissions` | 0 | 17 matches, all GitHub workflow `permissions:` keys and their tests; no code name |
 
 The People action names do not equal any api audit action (contract `src/audit.ts:6-23`:
@@ -1093,15 +1170,16 @@ Files:
 Every backticked item in this list is a file path.
 
 - `src/database.ts` (migration 3, schema version 3)
-- `src/database.test.ts` (schema version 3 at `:87` and `:227`; the new tables in the list at
-  `:97-104` and their columns in the list after `:111`; the newer-version case at `:204-207`
+- `src/database.test.ts` (schema version 3 at `:87` and `:227`; the three new tables in the list
+  at `:97-104` and their columns in the list after `:111`, with no `sqlite_sequence` entry; the newer-version case at `:204-207`
   becomes `user_version = 4` and `schema version 4 is newer than this console (3)`)
 - `src/server.upgrade.test.ts` (`:82` expects `user_version` `3` instead of `2`; the rest of the
   upgrade test stays)
 - `src/main.startup.test.ts` (the newer-version case at `:191` and `:196` becomes `user_version =
   4` and `schema version 4 is newer than this console (3)`; acceptance 12)
-- `src/account-store.ts` (stored role, instance switch, the verified-hash session start, role and
-  password updates used by the team store, `deleteOtherSessionsFor`)
+- `src/account-store.ts` (stored role, instance switch, `inImmediateTransaction` for the
+  verified-hash session start, role and password updates used by the team store,
+  `deleteOtherSessionsFor`)
 - `src/account-store.test.ts` (`:50` and `:85` expect the instance with
   `isTwoFactorRequiredForAll: false`; tests of the new functions)
 - `src/factor-store.ts` (`replaceRecoveryCodesFor`, `savePendingAuthenticatorFor` and the
@@ -1124,9 +1202,12 @@ Every backticked item in this list is a file path.
 - `src/account-links.test.ts` (new)
 - `src/team-store.ts` (new: invites, reset links, role change, removal, 2FA reset, transfer, the
   organisation switch and the own password compare-and-set, each in one transaction with its
-  People event)
+  People event; every team mutation takes the actor's `CredentialGuard` and runs it first)
 - `src/team-store.test.ts` (new)
-- `src/team-routes.ts` (new: the protected team routes)
+- `src/team-routes.ts` (new: the protected team routes; the `409` `Not saved` answer of a failed
+  session guard)
+- `src/protected-route.ts` (`PageRequest` gains `sessionId: string`, the id of the request's
+  session, at `:8-22`)
 - `src/team-pages.ts` (new: Team page, role form, link pages, invite and reset forms)
 - `src/link-routes.ts` (new: GET and POST of the invite and reset links)
 - `src/states.ts` (the Owner-target form of the 403 state)
@@ -1134,8 +1215,9 @@ Every backticked item in this list is a file path.
 - `src/navigation.ts` (the `team` entry becomes available)
 - `src/navigation.test.ts` (7 unavailable entries; Admin and Owner see Overview and Team)
 - `src/server.ts` (route table and path labels for the new routes, the link-route matching, the
-  team routes in `protectedRoutesOf`, the predicate call, the verified-hash sign-in, the sign-in
-  notices, the form-token refusal path label)
+  team routes in `protectedRoutesOf`, `sessionId: signedIn.id` in `pageRequest` at `:826-842`,
+  the predicate call, the verified-hash sign-in through `inImmediateTransaction` with the same
+  store calls as `startSession`, the sign-in notices, the form-token refusal path label)
 - `src/http-context.ts` (the required `teamStore` dependency of `ConsoleServerDeps`, beside
   `factorStore` at `:39`)
 - `src/main.ts` (creates the team store from the opened database, `createTeamStore(db)`, and
@@ -1162,7 +1244,8 @@ Every backticked item in this list is a file path.
 - `src/server.password.test.ts` (new)
 - `src/server.races.test.ts` (new)
 - `src/server.sign-in.test.ts` (sign-in versus a reset or removal during verification; its server
-  deps add `teamStore` at `:123`)
+  deps add `teamStore` at `:123`; the failure-injection `Proxy` at `:75-88` and the throttle
+  tests at `:317-329` stay unchanged and pass)
 - `src/server.security.test.ts` (sentinel scans for link tokens; its server deps add `teamStore`
   at `:95`)
 - `test/team-console.ts` (new: a signed-in console with one user per role, each Admin and the
@@ -1186,7 +1269,8 @@ nowhere else:
   `src/main.startup.test.ts:191`, `:196`;
 - the table and column lists of migration 3: `src/database.test.ts:97-104` and the column list
   after `:111` (the new tables `invites`, `people_events`, `reset_links`, their columns and
-  `instance.require_2fa_all`; no existing entry goes);
+  `instance.require_2fa_all`; no existing entry goes; no `sqlite_sequence` table or column is
+  added, because migration 3 uses no `AUTOINCREMENT`);
 - the `Instance` value with `isTwoFactorRequiredForAll: false`: `src/account-store.test.ts:50`,
   `:85`;
 - the predicate's new organisation argument: `src/two-factor-policy.test.ts:5`,
@@ -1194,7 +1278,10 @@ nowhere else:
 - the navigation entries and the role type (`src/navigation.test.ts`);
 - server deps that gain `teamStore` (the files named above).
 
-No other `expect` changes. A test that fails for another reason is a defect of the change.
+No other `expect` changes. In particular the sign-in failure-injection tests
+(`src/server.sign-in.test.ts:317-329`) keep their code and expected values: the sign-in
+revalidation calls the same three store methods inside `inImmediateTransaction` (section 17). A
+test that fails for another reason is a defect of the change.
 
 ### Order of work
 
@@ -1206,7 +1293,9 @@ no later step leaves `src/server.upgrade.test.ts`, `src/main.startup.test.ts`,
 process) can come with the link routes; its newer-version case (`:191`, `:196`) moves with the
 migration. The guarded store functions of section 17 and their `409` answers land with the
 password work (sign-in revalidation, own password change), because their race tests share the
-gated fakes of acceptance 5a.
+gated fakes of acceptance 5a. `PageRequest.sessionId` and the session guard of the team store
+land with the first team route that mutates, so no team route ever commits without the guard;
+acceptance 5b lands with the last of the team routes it names.
 
 ### Prerequisite check
 
@@ -1279,7 +1368,8 @@ the form-token rules, `/healthz`, `/readyz`, `/metrics`, the start errors and th
 - `docs/configuration.md`: schema version 3 and the new tables; the role step and target checks
   in the protected order; the public link orders (anonymous CSRF, `a:` form token, session
   rotation only after an invite commit); the sign-in and own-password re-checks and the guarded
-  writes of new recovery codes, authenticator setup and sign out all (`409`); the widened 2FA
+  writes of new recovery codes, authenticator setup and sign out all (`409`); the session guard of
+  every team commit (`409` `Not saved`); the widened 2FA
   rule; new metrics labels and log lines; the recovery command's settings and texts.
 - `docs/team.md` (new): the matrix of this spec, target rules, invite and reset rules, the 2FA
   requirement, transfer, People log contents, and "API tokens and console roles".
