@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Pure modules for ids, shell lines, display formats, filters and exports",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/api-path.ts",
+        "src/api-path.test.ts",
+        "src/shell-line.ts",
+        "src/shell-line.test.ts",
+        "src/check-format.ts",
+        "src/check-format.test.ts",
+        "src/check-filters.ts",
+        "src/check-filters.test.ts",
+        "src/check-export.ts",
+        "src/check-export.test.ts",
+        "docs/checks.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, pure helper modules for the Checks screens; Decisions 1, 4-5, 11-12, 14; Counterexamples (Display percent, Budget sign, Filters, Ids `.` and `..`, Shell lines); R7 export documents; Rollout order. Pin merged contract main. Implement apiIdSegment as the single per-id API path boundary, rejecting exactly '.' and '..'. Decision 12 and Counterexamples (Shell lines): implement shellQuote, hostBindingLine and heartbeatLine in src/shell-line.ts as the only builders of both copied lines. Always single-quote the complete value and escape each apostrophe with the POSIX quote sequence. Build the host-binding object with Object.fromEntries, JSON.stringify the entire object, then quote the entire JSON text. Add every literal shell test and /bin/sh round trip in this task: quote both the Authorization placeholder and the whole heartbeat URL; the detail-page HTTP rendering test follows in T3, the editor consumes the helper in T5 and the clipboard text is verified in T8. Describe the POSIX-shell quoting in docs/checks.md. Implement formatPercent, the budget text, UTC time and target text in src/check-format.ts, the filter parsing and matching in src/check-filters.ts and the single and shadowed export documents in src/check-export.ts (R7), each with literal tests; no route, page, fake API or fixture file is added here and the current lint/typecheck/tests stay green.",
+      "acceptance": [
+        {
+          "command": "bun test src/api-path.test.ts src/check-format.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Literal formatting: 100 -> '100 %', 99.995 and 99.9999999 -> '99.99 %', 12.345 -> '12.34 %', 0 -> '0.00 %', null -> 'No results'; -0.04 budget shows 'Error budget exceeded (-0.0 %)'. apiIdSegment('.') and apiIdSegment('..') are undefined; '...' -> '...', 'a/b' -> 'a%2Fb', '%2e' -> '%252e', '.x' -> '.x'."
+        },
+        {
+          "command": "bun test src/check-filters.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Repeated/empty/invalid filters show the specified ignored-values notice; source=shadowed&state=up matches 0 rows."
+        },
+        {
+          "command": "bun test src/shell-line.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Expected strings are written out as literals from Counterexamples (Shell lines), never calculated with the helper being tested. For https://a';id;'b/ and PULSE_HEADER_TOKEN the exact host line is PULSE_PROBE_HEADER_HOSTS='{\"PULSE_HEADER_TOKEN\":[\"a'\\'';id;'\\''b\"]}'; for the two-header dollar-parenthesis/double-quote fixture it is PULSE_PROBE_HEADER_HOSTS='{\"PULSE_HEADER_A\":[\"a$(id)b\\\"c\"],\"PULSE_HEADER_B\":[\"api.example.com\"]}'. shellQuote('') returns the literal two single quotes; shellQuote('plain') returns 'plain'; the apostrophe case returns ''\\'''. The exact heartbeat lines are curl -fsS -X POST -H 'Authorization: Bearer <secret>' 'http://localhost:3000/heartbeat/nightly-backup' and curl -fsS -X POST -H 'Authorization: Bearer <secret>' 'https://a'\\'';id;'\\''b/heartbeat/x'. Bun.spawnSync with /bin/sh round-trips the first assignment to exactly {\"PULSE_HEADER_TOKEN\":[\"a';id;'b\"]} on stdout and no other output. set -- over the hostile heartbeat arguments yields exactly 6 words: -fsS, -X, POST, -H, Authorization: Bearer <secret>, https://a';id;'b/heartbeat/x. Assert successful shell exit and literal stdout."
+        },
+        {
+          "command": "bun test src/check-export.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Literal all/single/shadowed export documents follow R7, preserve env names and redacted ordering, filter maintenance/redacted by checkId and contain no source/hasSecret/keep marker or stored literal/body/secret."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. Existing Overview, navigation and security tests stay green; the contract dependency is the merged contract main SHA and no other dependency is added."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Checks list and redacted export download read the api with bounded parallel validated reads",
+      "files": [
+        "src/check-routes.ts",
+        "src/check-read.ts",
+        "src/check-pages.ts",
+        "src/server.ts",
+        "src/protected-route.ts",
+        "src/api-failure.ts",
+        "src/api-failure.test.ts",
+        "src/metrics.ts",
+        "src/styles.ts",
+        "test/fake-api.ts",
+        "test/check-fixtures.ts",
+        "src/server.checks.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/checks.md",
+        "docs/index.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, list route, bounded reads, failure states and export download; R1 list, R7 export, R9 for these routes; Decisions 1, 4-5, 11, 14; Counterexamples (Filters, Roles for reads/exports, Ids `.` and `..`); Rollout order. T1 has already added the pure modules apiIdSegment, shell-line, check-format, check-filters and check-export; build on them. Extend the fake API compatibly to select by method/path with controlled wire/status/etag/location/body/gated responses and record method, raw path, query, headers and body in order; keep existing Overview tests working. Add literal six-type/source/state fixtures. Extend the fixtures with heartbeat id nightly-backup and HTTP URL https://a';id;'b/ plus env header PULSE_HEADER_TOKEN. Add bounded parallel validated reads for the list and the export, panel/old-api failures, query validation without an id-specific length cap, filtering/counts/empty/file-health states, and all/single/shadowed redacted export. Add the secure GET/HEAD download PageResult, the production list and export routes with metric labels, and responsive tables in the one styles module. Mutation actions stay inactive until T6 and T7, and the Checks navigation entry until T8; direct URLs reach the production read/export routes, with existing navigation tests still green. Update the list/export docs here. The detail and shadowed pages follow in T3.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.checks.test.ts src/api-failure.test.ts src/navigation.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. The literal fixture renders '6 checks' and '1 shadowed definition'; all 6 types, 5 live states, file/database/shadowed sources, combined URL filters, reset, empty and no-match states work. File-health banners show the specified status text, the api message, the last valid version time and 'Console checks can still be changed.'. Export uses status 200, application/json; charset=utf-8, attachment filenames checks.json/check.json, cache-control no-store and security headers; HEAD has no body. Unknown ids and malformed export query shapes return 404; Viewer export is 403. Public reads have no Authorization; only the saved API URL is contacted, all per-id calls pass through apiIdSegment; its defined outputs stay one path segment and '.'/'..' cause 0 per-id requests, redirects are not followed and failed reads log exactly 1 warning each. Route metric labels omit ids, queries and credentials. Capture new route-test failures on 76dab43 before implementation."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The list and export routes keep the existing Overview and navigation tests green and add no mutation action."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Check detail and shadowed pages show settings, history, locations and copy text",
+      "files": [
+        "src/check-routes.ts",
+        "src/check-read.ts",
+        "src/check-pages.ts",
+        "src/console-script.ts",
+        "src/styles.ts",
+        "test/fake-api.ts",
+        "test/check-fixtures.ts",
+        "src/server.checks.test.ts",
+        "docs/checks.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, detail and shadowed pages; R2 detail, R3 shadowed, R9 for these routes; Decisions 1, 4-5, 11-12, 14; Counterexamples (Display percent, Budget sign, Roles for reads/exports, Ids `.` and `..`, Shell lines); Rollout order. T1 and T2 have already added the pure modules, the fake API, the fixtures, the list route, the bounded reads and the export; build on them. Add the detail read in two rounds (round 1 reads run together, round-2 panels fail independently): settings/history detail, shadowed identity, results with limit=20 shown as complete timestamp groups, uptime, latency for HTTP only and location uptime joined by name, plus the shadowed page without runtime data. Add the heartbeat and host-binding copy text in the one script, rendered through hostBindingLine and heartbeatLine of T1, with detail-page HTTP rendering tests for the shell lines. Make no per-id api call for ids '.' and '..'. Mutation actions stay inactive until T6 and T7. Update the detail docs here.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.checks.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. A real detail-page HTTP response contains pulse-kit's escapeHtml of the literal host line, never the unsafe old interpolated template; the heartbeat example quotes the complete URL. The clipboard source remains pre textContent and the text stays selectable without JavaScript. Real-server tests prove Viewer reads and Member export with denied direct requests/Owner inheritance; exact query-id validation gives shell 404; round-1 reads run together and round-2 panels fail independently. Locations join by name, including one-sided names/stale/heartbeat rows, full-window counts, aggregate 90 days and SLO absent/null/negative. HTTP alone requests latency, displays 14 recent days plus the remainder; results request limit=20 and render complete timestamp groups, so a page can have more than 20 rows (the api returns 21 rows for limit=20 when the 20th and 21st rows share a timestamp), with only 1 before page, invalid before is ignored. Shadowed pages have no runtime data. No token/rejected token/network/5000 ms timeout/status/wire/JSON/shape failures use shared states; old source-less API disables Checks while Overview works, and location-uptime 404 shows only 'Location uptime needs a newer pulse-api.'. Missing/repeated/empty query id yields 404; an existing id longer than 1024 code units remains reachable. For fixture id '..', detail is 200 and the literal request list is ['GET /admin/config','GET /checks','GET /uptime'] with no per-id calls; render the Decision 14 text in results/location-uptime/latency panels, render aggregate uptime normally, list/export the entry. Heartbeat id '.' shows the fixed unavailable-ping text and no curl line. Dot ids also remain viewable/exportable when shadowed. Other ids use apiIdSegment, with recorded literal encoded paths."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The T1 and T2 checks stay green and the detail and shadowed pages add no mutation action."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Editor input parsing builds literal contract inputs with write-only value intents",
+      "files": [
+        "src/check-form.ts",
+        "src/check-form.test.ts",
+        "docs/checks.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, form-to-contract parser; R4 fields/defaults/validation and R5 intent/trusted-row rules; Decisions 6-8; Counterexamples (Form size body fixture, Field rules, Write-only intents, Header name, Duplicate header names, Edit uses the trusted entry). This independently tested form-to-contract boundary precedes the editor pages (T5) and the routes (T6, T7). Build a literal AdminCheckInput per type, millisecond defaults and bounds, 20 header and 10 assertion rows, a local field error for a free header named exactly __proto__ before building an AdminCheckInput, own-key construction for every other header name and the heartbeat secret rules. On edit parsing/rendering require an explicit trusted AdminCheckView: fixed id/type, literal-header names/order, body/hasSecret come only from that context. Stored literal rows come first with names rendered as text, not inputs; ignore forged name/kind/type fields, read only intent/value for those rows. T7 supplies that view only after a successful POST-time read and matching revision. Document fields and intents in docs/checks.md. Before Object.fromEntries or contract validation, enforce the R4 case-insensitive duplicate-name rule in row-index order across every used stored literal keep/replace row and used free row; remove frees the name. Run the __proto__ rule first. A duplicate produces the exact R4 error on the later row, without any built input. This task adds parser tests; T5 adds rendering tests, T6 and T7 HTTP tests and T8 browser tests.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Parameterized tests use literal expected AdminCheckInput objects for HTTP/TLS/TCP/DNS/domain/heartbeat, including defaults, 1500 ms round-trip and omission of fields from other types. All R4 field bounds and cross-field checks are covered: expected_status '200 , 204' -> [200,204], '2xx'/'299-200' -> 422; availability 100/89.999/'1e2' -> 422 and 99.999 accepted; domain interval 3599999 -> 422; heartbeat empty grace -> 0; 'my check' and 'a/b' ids -> 422 on create; empty keyword omitted; HEAD with JSON assertion rejected. DNS record/expected/resolver rules, retry/timeout/interval constraints, parsed assertion JSON and heartbeat secret length/alphabet/prefix rules pass their explicit valid/invalid fixtures."
+        },
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Independently written duplicate fixtures produce no built AdminCheckInput and the literal error \"This header is already set in another row (names are compared without case).\" on header_1_name: stored row 0 X-Api-Key with keep plus free row 1 X-Api-Key=plain new; the same with x-api-key; two free rows Accept and ACCEPT; and a stored replace row colliding with a used free row. Detection precedes object construction and validateAdminCheckInput, with stored keep/replace rows included and remove rows excluded. Row 0 remove plus free row 1 X-Api-Key=env PULSE_HEADER_KEY yields exactly headers {\"X-Api-Key\":{\"env\":\"PULSE_HEADER_KEY\"}}. Every other exact-case or different-case used duplicate is also rejected locally, rather than silently collapsed or left to the contract. The __proto__ field check runs before duplicate detection."
+        },
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. An unchanged literal X-Api-Key/body becomes {'keep':true}; remove omits only that value, replace needs a nonempty new value, typed input with keep is rejected, kept body with GET/HEAD is rejected, and heartbeat keep emits no secret. A free row named exactly '__proto__' returns a field error on header_<i>_name with literal message '__proto__ is not an allowed header name.' and no built input; '__Proto__' and 'X-Proto' remain ordinary headers and become own keys in the serialized input. Given a trusted HTTP view with stored literal X-Api-Key at index 0, forged type=tcp/header_0_name=X-Evil/header_0_kind=env with keep still emits the HTTP input and {'X-Api-Key':{'keep':true}}, no X-Evil; literal-header names/order come only from the supplied view."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The parser adds no route and no page; the T1 to T3 checks stay green."
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "step",
+      "title": "Editor pages render all six types with host-binding text, fixed quorum notes and no retained secrets",
+      "files": [
+        "src/check-editor-page.ts",
+        "src/check-editor-page.test.ts",
+        "src/styles.ts",
+        "src/console-script.ts",
+        "test/check-fixtures.ts",
+        "docs/checks.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, editor HTML; R4 form rendering and R5 trusted-row rendering; Decisions 6-8 and 12; Counterexamples (Form size body fixture, Write-only intents, Edit uses the trusted entry, Shell lines). T4 has already added the parser; build on it. Render safe retained-input models, editor HTML and error summaries, millisecond defaults and bounds, 20 header and 10 assertion rows, host-binding copy text, the TLS-expiry note and the heartbeat password input. On edit rendering require an explicit trusted AdminCheckView: fixed id and type, stored literal rows first with names rendered as text, not inputs. Never redisplay typed literal values/body/secret after a failure. Reuse the T1 shell-line module for every host-binding line; never splice a hostname into a shell/JSON template or introduce another builder. Add literal editor rendering tests and POSIX-shell operator instructions. Render R4's fixed quorum paragraph above Submit on both create and edit for HTTP/TLS/TCP/DNS/domain, and its heartbeat-specific paragraph instead for heartbeat; no editor input name contains quorum or location. The routes that supply the trusted view are T7. This task adds rendering tests; T6 and T7 add HTTP tests and T8 browser tests.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-editor-page.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Rendering tests prove fixed edit id/type, password/new-password heartbeat input, controls/labels/ms units, 20 header rows with max(existing+3,5) initially visible, 10 assertion rows, escaped text and field-linked errors. Failed-form models/HTML contain none of the sentinel literal/body/secret strings and show 'Not kept for safety: enter it again.'. Host-binding text combines env variables with the URL hostname, copies textContent via the same-origin script and remains selectable without JavaScript; no inline scripts/styles are added. Stored names render as text with no header_0_name/header_0_kind controls; env/free rows follow the stored literal rows. For the trusted HTTP view at https://a';id;'b/ with env header PULSE_HEADER_TOKEN, editor HTML contains pulse-kit escapeHtml applied to the independently written literal PULSE_PROBE_HEADER_HOSTS='{\"PULSE_HEADER_TOKEN\":[\"a'\\'';id;'\\''b\"]}'; it never contains the unsafe interpolated template. Host-binding rendering calls hostBindingLine from src/shell-line.ts, the same builder used for detail; the expected line is not derived from that builder."
+        },
+        {
+          "command": "bun test src/check-editor-page.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. For both create and edit of each HTTP, TLS, TCP, DNS and domain form, assert the independently written literal paragraph \"Every probe runs this check. It is down when at least two locations report down; with one reporting location, that location decides. Choosing locations or a quorum per check is not available yet.\" above Submit. For both heartbeat forms assert instead \"Heartbeat checks are not run by probes and have no quorum; your job pings pulse-api. With no ping for longer than the period plus the grace time, the check is down at once.\", and absence of the probe paragraph. No editor has an input whose name contains quorum or location."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The editor pages add no route; the T1 to T4 checks stay green."
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "kind": "step",
+      "title": "Create checks with revision-safe writes, classified outcomes and People-log rows",
+      "files": [
+        "src/check-write.ts",
+        "src/check-routes.ts",
+        "src/check-outcome.ts",
+        "src/check-outcome.test.ts",
+        "src/server.ts",
+        "src/protected-route.ts",
+        "src/http-context.ts",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/api-failure.ts",
+        "src/people-log.ts",
+        "src/people-log.test.ts",
+        "src/account-store.ts",
+        "src/account-store.test.ts",
+        "src/metrics.ts",
+        "src/confirm.ts",
+        "src/confirm.test.ts",
+        "test/fake-api.ts",
+        "test/check-fixtures.ts",
+        "src/server.checks-write.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.security.test.ts",
+        "src/server.form-token.test.ts",
+        "docs/checks.md",
+        "docs/team.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, shared write infrastructure and the create route; R4 create commit order, R8, R9; Decisions 4, 6-10, 13-14; Counterexamples (Form size, Revision, Roles, Unknown outcome, Outcome classes, Expired and replayed tokens for create, Duplicate header names for create); Security impact. T1-T5 have already added the helper modules, reads, parser and editor pages; build on them. Register the create editor and activate its action using the T5 forms. Create validates fields/JSON size before its fresh config read. Add route-specific form limits in the existing dispatch order. Recheck session and stored role immediately before dispatch after all awaited reads/checks; use small account-store bridges/tests for existing credential guard and People insertion without exposing a raw database to routes. Implement pure checkOutcome with literal table-driven cases and response-metadata classification in R8 order; check-write maps each class to status/text/log/People row. No redirect or retry. Use apiIdSegment at each mutation call. Implement synchronous token-refusal rendering and optional reopenHrefOf in protected-route and server: create recovers posted type/non-secret fields, replay links retain id, other routes retain existing behavior; the edit/delete use of reopenHrefOf is T7. Enforce duplicate-header errors locally for create with the literal message and header_1_name field before building headers, and prove no outbound POST. Implement R6 step 5 by changing isTypedNameConfirmed to typed.trim().normalize(\"NFC\") === expected.trim().normalize(\"NFC\"), retaining case/inner-space significance; typedNameError names expected.trim() and the delete page passes name.trim() as targetName (the delete route is T7). Existing confirmation tests and team behavior stay green. Add confirm.test.ts literal rows and the matching docs/development.md helper description. Pair each behavior with unit/HTTP/race tests here and update the create docs; T7 adds edit and delete and T8 the browser/stack evidence.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-outcome.test.ts src/server.checks-write.test.ts src/people-log.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Pure literal RequestJsonResult-to-class tests and HTTP tests cover every R8 row in order, independently of body contents. Wire-ok 200/201/204, even with too-large/invalid-json/validation/body-timeout, are saved -> 303 and 1 People row; unreadable body also gives 1 warn api answer unreadable (call write/kind). An oversized 200 with ETag '\"sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"' records value sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa. 201 body 'not json' still saves; weak ETag W/\"x\" records unknown. Refused wire-ok statuses map literally: 401/403 -> 502 with prescribed token messages; 404 -> 404; 409 -> 409 form; 412 -> 412 stale text/no form; 413/422 -> 422 form; 429 -> 503 form; 400/428 and 500-599 -> 502 text, all with 0 People rows. A wire-ok 428 includes 'pulse-api refused the request (428): If-Match is required Nothing was changed.'; wire-ok 422 with 6291456-byte error body renders 422 'pulse-api gave no reason.' and 0 rows. Redirect 302, with or without wire, is unknown -> 502 redirect text and 1 unknown row, checked before generic wire failures. Proxy 502 without wire and 200 with wire 2 -> 502 unmatched-api text/1 unknown row; wire-ok 502 -> 502 'pulse-api could not save the change (502). Nothing was changed.'/0 rows. Other 1xx/2xx statuses and absent/mismatched wire are unknown -> 502; no response (timeout/network/abort before headers) -> 504/1 unknown row. Every dispatched case sends exactly 1 mutation, never follows Location or retries."
+        },
+        {
+          "command": "bun test src/server.checks-write.test.ts src/forms.test.ts src/account-store.test.ts src/server.security.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. '__Proto__' and 'X-Proto' remain accepted own keys; built JSON over 1048576 bytes is rejected before a write. Valid 65536-byte HTTP body of 32768 'é' characters succeeds; 524288-byte editor form reaches field checks, 524289 returns 413 and 0 API requests; 9000-byte /team/invites still returns 413. Missing CSRF, foreign Origin, repeated known fields and replayed tokens cannot reach the API. Viewer view, Member create and Owner inheritance have allowed/denied GET/HEAD/POST coverage for the create editor and its POST (export is covered in T2). A gated config read followed by session removal yields 409 Not saved, or stored-role lowering yields 403, with 0 mutations."
+        },
+        {
+          "command": "bun test src/confirm.test.ts src/server.checks-write.test.ts src/server.form-token.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Create with free Accept/ACCEPT returns the same 422 at header_1_name with recorded API requests [] and no POST. Confirmation literal rows [typed,expected,result] are [\"Checkout API\",\" Checkout API \",true], [\" Checkout API \",\" Checkout API \",true], [\"Checkout  API\",\" Checkout API \",false], [\"checkout api\",\" Checkout API \",false]; existing rows remain unchanged. typedNameError(\"x\",\" Checkout API \") is exactly \"The name does not match. Type Checkout API exactly.\". The new first confirmation row fails on 76dab43. Expired create uses posted valid type and kept non-secret fields; unknown type shows choices."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The T1 to T5 checks remain green. Success redirects 303 to /checks/check?id=<encoded id>&saved=1 and shows Check saved. Exactly 1 People row per saved/unknown outcome uses check.create, target_kind check, target_id NULL, target_name check id, unquoted validated ETag revision or unknown; refused writes append 0. A failed People insert after save shows 'Saved in pulse-api. The People log row could not be written.' and logs error 'check change not logged' with error name only. Each dispatched saved/refused/unknown write logs 1 info 'check change' with action/actorId/checkId/outcome (status for refused). Other routes retain default 8192-byte limit and existing replay links. Capture new mutation-test failures on 76dab43 and passing results for the PR. Literal header values, bodies, heartbeat secrets and the Console token occur 0 times in the pages of the create route."
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "kind": "step",
+      "title": "Edit and delete checks from the trusted entry with shadowing, dot-id and expiry rules",
+      "files": [
+        "src/check-write.ts",
+        "src/check-routes.ts",
+        "src/check-pages.ts",
+        "src/server.ts",
+        "src/protected-route.ts",
+        "test/fake-api.ts",
+        "test/check-fixtures.ts",
+        "src/server.checks-write.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.security.test.ts",
+        "src/server.form-token.test.ts",
+        "src/check-form.test.ts",
+        "src/check-editor-page.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/checks.md",
+        "docs/team.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, edit and delete routes; R5, R6, R8, R9; Decisions 4, 6-10, 13-14; Counterexamples (Revision, Shadowing during edit, Duplicate header names, Delete, Roles, Edit uses the trusted entry, Delete uses the trusted name, Expired and replayed tokens, Ids `.` and `..`); Security impact. T6 has already added the create route, the outcome classes, the People-log rows, the form limits, the confirmation change and reopenHrefOf; build on them. Register the edit and delete routes and activate their actions using the T4 and T5 forms. Create validates fields/JSON size before its fresh config read; edit/delete read GET /admin/config at step 2 before field or typed-name validation, derive source/target and compare the shown revision, then validate only against that trusted entry. On edit GET and POST, check membership in shadowed before absence from checks or effective file ownership; a shadowed id also has an effective file entry, so checking file ownership first is wrong. A free __proto__ header row returns the R4 local 422 field error with no outbound mutation. Preserve the form revision for PUT/DELETE. Failed reads and stale revisions show safe input as text without a form and send no write. Hide Edit and Delete for ids '.' and '..' on the list and detail pages (Decision 14). Use apiIdSegment at each mutation call; reject '.'/'..' GET/POST edit/delete with 409 and only a config read. Use reopenHrefOf for expired edit/delete: the encoded-id link without form/input/API reads. Enforce duplicate-header errors locally for edit, and add HTTP deletion for a stored name with outer spaces. Add server.checks.test.ts GET assertions for both editor quorum texts and the heartbeat exception. R8 Logs and Repository: console Checks define the token-leak boundary: CSRF and form tokens are permitted only in their intended hidden csrf/form_token controls, including the shell sign-out form on error and expiry pages. Follow src/server.security.test.ts:395-417; assert the literal controls exist before removing exactly those controls for the leak scan. Track the session CSRF value and every form token issued during the test, including shell tokens. Scan the remaining HTML, headers except the session’s own Set-Cookie lines, redirects, downloads, logs and metrics with literal zero-occurrence expectations. Never assert these tokens are absent from complete page HTML or omit the required hidden controls to pass a scan. Edit/delete pages for a failed POST-time config read, a stale revision or an expired token have no editor/confirmation form; the shell sign-out form remains. Validation errors that require re-rendering still include their editor/confirmation form and intended hidden controls.. Pair each behavior with unit/HTTP/race tests here and update the mutation docs; T8 completes browser/stack evidence.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.checks-write.test.ts src/server.checks.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. Stateful fake API creates/reopens all 6 types, preserves then replaces/removes HTTP literal/env headers and bodies, preserves/replaces heartbeat secret and records correct If-Match. Wrong-type fields are omitted; create and edit with a free row named '__proto__' both return 422 with field error '__proto__ is not an allowed header name.' on header_<i>_name, and the fake API's literal mutation request list is [] (no POST or PUT). This is local rejection, not an upstream 422: the rejected create records no API read and edit records only GET /admin/config after matching the shown revision. Over HTTP, a kept stored X-Api-Key row 0 plus free X-Api-Key row 1, and separately x-api-key row 1, both return 422 with field header_1_name and literal message \"This header is already set in another row (names are compared without case).\"; recorded requests are exactly [\"GET /admin/config\"] and the mutation list is [] in each edit case. Stored row 0 remove plus free row 1 X-Api-Key=env PULSE_HEADER_KEY sends exactly one PUT whose headers are the literal {\"X-Api-Key\":{\"env\":\"PULSE_HEADER_KEY\"}}. With a database fixture named \" Checkout API \" and a matching revision, typed Checkout API or typed \" Checkout API \" each yields 303 Location /checks?deleted=1 and exactly [\"GET /admin/config\",\"DELETE /admin/checks/web\"]; typed \"Checkout  API\" yields 422 with that literal error, requests [\"GET /admin/config\"] and no DELETE. The delete page labels the trimmed target name. For both create and edit of each HTTP, TLS, TCP, DNS and domain form, assert the independently written literal paragraph \"Every probe runs this check. It is down when at least two locations report down; with one reporting location, that location decides. Choosing locations or a quorum per check is not available yet.\" above Submit. For both heartbeat forms assert instead \"Heartbeat checks are not run by probes and have no quorum; your job pings pulse-api. With no ping for longer than the period plus the grace time, the check is down at once.\", and absence of the probe paragraph. No editor has an input whose name contains quorum or location. These paragraph assertions exercise real editor GET routes in src/server.checks.test.ts. Assert literal recorded method/path lists for the trusted-entry/name counterexamples: matching R1 with forged header_0_name=X-Evil/type=tcp reads GET /admin/config then sends PUT /admin/checks/web preserving HTTP and X-Api-Key keep, no X-Evil; stale R0 reads only GET /admin/config, returns 409 with safe text/no form and no PUT, before any field error. R1 delete after R2 returns 409 with no DELETE; fake read name Shop API at unchanged R1 requires Shop API, so Checkout API gives 422 and no DELETE. Failed edit/delete config read gives the specified failure state/headings and no write. For an Admin with id web present in checks as source file and in shadowed, GET /checks/edit?id=web and POST /checks/edit?id=web both return 409 with literal text 'Shadowed by checks.json: only Delete and Export are possible.' and link hrefs /checks/delete?id=web and /checks/export?id=web&shadowed=1; each handler records exactly ['GET /admin/config'], with no PUT. Neither response shows 'This check comes from checks.json. Edit the file to change it.'. File-only targets yield 409 with that file text; missing targets yield 404; target forgery cannot choose another definition. Wrong-case typed name gives 422; shadowed delete sends 1 DELETE and leaves the file check. Valid create uses the latest read revision; edit/delete use the form revision; upstream 412 remains 412 with safe text/no form. Expired edit/delete tokens return 409 with no input/form/API request and literal href /checks/edit?id=a%2Fb or /checks/delete?id=a%2Fb; replay returns 409 Already submitted with that same id-preserving link. GET/POST edit/delete for '.'/'..' returns 409 with only GET /admin/config recorded and 0 writes. GET /checks/edit for the hostile-host HTTP fixture returns HTML containing pulse-kit's escapeHtml of the literal PULSE_PROBE_HEADER_HOSTS='{\"PULSE_HEADER_TOKEN\":[\"a'\\'';id;'\\''b\"]}', as does its detail page; stored values and the Console token remain absent. Member edit, Admin delete and Owner inheritance have allowed/denied GET/HEAD/POST coverage for the edit and delete routes, and a Member or Viewer is denied delete. With a checks.json banner (invalid, unreadable or written-not-applied) the list keeps Add a check, Edit and Delete for database checks. For the ids '.' and '..' the list and detail pages hide Edit and Delete."
+        },
+        {
+          "command": "bun test src/server.checks-write.test.ts src/server.security.test.ts src/server.form-token.test.ts",
+          "expected": "All selected tests pass, 0 fail; focused coverage may fail the global threshold. The R8 leak test follows src/server.security.test.ts:395-417 and exercises every failure and expiry path plus redirects and downloads. Sentinels are the fixture literal header value, body, heartbeat secret, Console token, session CSRF value and every form token issued in the test (including sign-out tokens). On each page holding a form, first assert the independently written literal hidden controls <input type=\"hidden\" name=\"csrf\" value=\"<csrf>\"> and <input type=\"hidden\" name=\"form_token\" value=\"<token>\"> for its actual issued values. CSRF and form tokens are permitted only in the intended hidden controls of page forms and the shell sign-out form. Remove exactly those complete controls from the body, never all inputs or all token strings; then each sentinel has literal occurrence count 0 in the remaining HTML and in response headers excluding only the session’s own Set-Cookie lines. Other Set-Cookie lines remain in the scan. The same 0-occurrence assertions cover redirects, downloads, every log line and /metrics text. Unstripped HTML contains 0 occurrences of literal header/body/secret/Console-token sentinels. The reused CSRF token is expected in every signed-in page’s sign-out hidden control, including failure/expiry pages; an assertion requiring it absent from the whole HTML is a defect. Text, links, unrelated attributes and scripts receive no token exception."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck including e2e and the full test suite pass with the existing 80% line coverage gate. The T1 to T6 checks remain green. An edit success redirects 303 to /checks/check?id=<encoded id>&saved=1 and shows Check saved.; a delete success redirects 303 to /checks?deleted=1 and shows Check deleted.; their People rows use check.replace and check.delete with the same target_kind, target_id, target_name and revision rules as check.create. Literal header values, bodies, heartbeat secrets and the Console token occur 0 times in complete HTML, including all failure/expiry pages. CSRF and form tokens occur only in their intended hidden csrf/form_token controls, including the shell sign-out form. The dedicated leak scan asserts those exact controls first, removes only them, and checks 0 occurrences of every sentinel in remaining HTML, response headers apart from the session’s own Set-Cookie lines, redirects, downloads, logs and metrics; token absence from complete page HTML is not required."
+        }
+      ]
+    },
+    {
+      "id": "T8",
+      "kind": "final",
+      "title": "Ship Checks navigation with complete browser, real-stack and operational validation",
+      "files": [
+        "src/navigation.ts",
+        "src/navigation.test.ts",
+        "e2e/run.ts",
+        "test/fake-api.ts",
+        "test/check-fixtures.ts",
+        "src/server.checks.test.ts",
+        "src/server.checks-write.test.ts",
+        "src/server.security.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/checks.md",
+        "docs/team.md",
+        "docs/index.md",
+        "AGENTS.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, e2e Checks, Tool facts and Completion evidence; full R1-R9/Decisions 4-14 regression acceptance; Security impact checklist; Rollout order. Activate the production Checks navigation entry after T1-T7 complete, and update its unit/HTTP/browser expectations. This task has behaviorChange true as required by the section; navigation activation is its runtime change. Extend the existing Chromium/axe harness against real production check routes and a stateful fake API, with JavaScript enabled and disabled. Finish the endpoint/module/operator docs, CRLF body behavior, source/shadowing/write-only/export/fixed-quorum/heartbeat/TLS-expiry/old-API guidance, all three outcome classes and proxy-header limitation, dot-id restrictions, trusted-read ordering, expired edit/delete forms keeping no input, log and metric descriptions, form-size POST order, People actions and AGENTS test list. Run all required repository/browser/deploy checks, review the whole security checklist, and put actual red/green and manual real-API evidence in the PR. The real API integration exercise is the spec's manual Completion evidence; it must include probe visibility, preserved write-only data, collisions, export/delete and both audit logs. Do not add a deploy feature or change image pins; use its existing CI deploy-dev scenario. Finish Decision 12 literal browser/copy coverage and the copied-shell-text Security impact item: whole-value JSON serialization plus POSIX single quoting precedes HTML escaping in both detail and editor. Final evidence also covers: duplicate names rejected before header construction; trimmed/NFC typed deletion of names with outer spaces; contract smoke export list (covered in the contract task); fixed quorum text and heartbeat exception in every create/edit form; behaviorChange true on every Console task. Finish docs/checks.md with one used row per case-insensitive header name, outer-space-insensitive typed deletion, and the same fixed quorum wording as the editor; docs/development.md describes both confirmation names being trimmed. Complete the R8 token-leak evidence and docs: page/error-page CSRF and form tokens are allowed only in intended hidden csrf/form_token controls, including sign-out. Assert those controls, strip exactly them, and require zero sentinel occurrences in remaining HTML, response headers except the session’s own Set-Cookie lines, redirects, downloads, logs and metrics, following src/server.security.test.ts:395-417; do not require token absence from complete HTML.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; full lint, typecheck (including e2e) and tests pass at the existing 80% line coverage gate. All unit/HTTP checks from T1-T7 remain green. PR body includes this output, the new screen-test failures on 76dab43 and passing counterparts, and evidence for every applicable Security impact checklist item: literal header values/bodies/heartbeat secrets/Console token absent from complete HTML and all other outputs; CSRF/form tokens confined to their intended hidden csrf/form_token controls, including shell sign-out on error/expiry pages, with exact-control assertions before removal and literal 0-occurrence scans of remaining HTML, headers excluding only the session’s own Set-Cookie lines, redirects, downloads, logs and metrics; current session and stored-role checks with fixed dispatch order; editor-only 524288-byte/unrelated 8192-byte caps and 1048576-byte JSON cap; validated queries and contract answers; local 422 rejection of a free '__proto__' header row on create/edit with no outbound write, and own-key '__Proto__'/'X-Proto' headers; shadowed-before-file edit checks on GET/POST with the literal 409 text and Delete/Export hrefs; saved-URL-only calls through apiIdSegment with literal '.'/'..' blocked/no redirects/no retries; redacted no-store downloads and single-statement People rows; full merged contract main pin and no added package. README and all listed docs agree with R1-R9, Decisions 4-14 and rollout compatibility, including trusted POST reads, status/wire-based saved/refused/unknown outcomes, committed writes with unreadable responses, proxy wire-header limitation, dot-id restrictions and id-preserving expiry/replay links. Security evidence includes shellQuote/hostBindingLine/heartbeatLine as the only shell builders, complete JSON serialization with Object.fromEntries and complete-value/URL quoting; apostrophe, $(...), double-quote and empty/plain fixtures use independently written literals and /bin/sh round trips. Navigation tests assert exactly 9 registry entries with 6 unavailable; Viewer and Member see [\"Overview\",\"Checks\"], Admin and Owner see [\"Overview\",\"Checks\",\"Team\"], and shell links include href=\"/checks\". Every Console task has behaviorChange true. Full regression evidence includes the duplicate-header 422/no-write cases, explicit remove-to-env headers object, trimmed-name confirmation literal rows and HTTP DELETE, and the literal editor quorum rules from R4; docs/checks.md and docs/development.md match these behaviors."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; real Checks routes support create/edit/reopen for HTTP/TLS/TCP/DNS/domain/heartbeat, composed filtering, detail, shadowed identity, redacted download, conflict recovery and typed delete in JavaScript-on and JavaScript-off contexts. Axe reports 0 violations on list/detail/shadowed/each editor/delete confirmation; keyboard focus, labels, textual status, busy-button behavior and security assertions pass; CSP violations count is 0. List/detail fit 390 px, editors work at 1280 px. Host-binding and heartbeat copy buttons copy the displayed text with JavaScript and remain hidden with selectable text without it. For https://a';id;'b/ with PULSE_HEADER_TOKEN, the detail and editor pre textContent and copied writeText argument (or actual clipboard) equal the independently written literal PULSE_PROBE_HEADER_HOSTS='{\"PULSE_HEADER_TOKEN\":[\"a'\\'';id;'\\''b\"]}'. Heartbeat copied text equals the literal prefix curl -fsS -X POST -H 'Authorization: Bearer <secret>' ' followed only by the fake API base URL (test input) and literal /heartbeat/nightly-backup'. Verify the displayed line also equals this expected text; do not compare clipboard only against page output or helper output. The dangerous fixture remains selectable and copy buttons stay hidden without JavaScript. Include browser output in the PR. For both create and edit of each HTTP, TLS, TCP, DNS and domain form, assert the independently written literal paragraph \"Every probe runs this check. It is down when at least two locations report down; with one reporting location, that location decides. Choosing locations or a quorum per check is not available yet.\" above Submit. For both heartbeat forms assert instead \"Heartbeat checks are not run by probes and have no quorum; your job pings pulse-api. With no ping for longer than the period plus the grace time, the check is down at once.\", and absence of the probe paragraph. No editor has an input whose name contains quorum or location. Exercise these assertions in both JavaScript-on and JavaScript-off flows, and enter Checks through its production navigation link. Browser deletion also covers the existing name with outer spaces."
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "After starting a real local pulse-api with temporary database, checks.json containing 1 file check, probe tokens and admin-tokens.json, complete the spec's manual scenario: create HTTP with a literal header and body; reopen and rename it; authorized GET /probe/checks confirms both values preserved without publishing them; add its id to checks.json and observe 'Shadowed by checks.json'; export the shadowed definition without stored values; delete only the database definition, leaving the file check running. API audit and People log each record check.create, check.replace and check.delete, with confirmed revisions in People rows. Record actual start/HTTP/browser commands, statuses and sanitized observations in the PR, including body CRLF behavior. This is required evidence against the real API, in addition to fake-API automated tests."
+        },
+        {
+          "command": "(cd \"$PULSE_DEPLOY_CHECKOUT\" && scripts/init-secrets.sh && docker compose -f dev/compose.yaml up -d --build && scripts/wait-ready.sh dev/compose.yaml 900 && E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml)",
+          "expected": "exit 0 with the existing deploy-dev two-factor flow, using a disposable pulse-deploy main checkout and its documented sibling source layout with this Console checkout, plus fresh test volumes; all readiness/setup/sign-in/recreation assertions pass. Record commands/output or the matching green deploy-dev CI job in the PR. Teardown the disposable stack afterward. A two-factor failure that follows the Console spec is reported as a deploy defect per AGENTS.md; do not weaken the job or edit deploy from Console."
+        }
+      ]
+    }
+  ]
+}
