@@ -282,7 +282,15 @@ services:
     name: "<network>"]
 ```
 
-`#probe-compose-command`: `docker compose -f '<base>.compose.yaml' up -d`
+`#probe-compose-command`: `docker compose -p '<base>' -f '<base>.compose.yaml' up -d`
+
+The `-p` flag is required, not decoration: an inherited `COMPOSE_PROJECT_NAME` overrides the
+file's top-level `name:` (verified with Docker Compose 2.40.3: `COMPOSE_PROJECT_NAME=pulse-e2e
+docker compose -f p.compose.yaml config` prints `name: pulse-e2e`; with `-p pulse-probe-x-abc123`
+it prints `name: pulse-probe-x-abc123`), so without `-p` a shell that has it set would recreate
+the `probe` service of another project. `-f` likewise overrides an inherited `COMPOSE_FILE`.
+Every Compose line the console renders (start, restart, stop) carries both `-p '<base>'` and
+`-f '<base>.compose.yaml'`.
 
 The page shows: 1. save the token (env command, with "Run it on the probe host in the directory
 where the probe files live. It holds the token: it is shown only once."); 2a. `docker run` or 2b.
@@ -293,7 +301,7 @@ admin token never appears in a snippet.
 
 **Rotate (probe).** The result page shows the new `#probe-env-command` for the same `<base>.env`
 (with `data-secret`), the overlap deadline as in section 4, and the restart lines:
-`docker compose -f '<base>.compose.yaml' up -d --force-recreate` and, for `docker run`,
+`docker compose -p '<base>' -f '<base>.compose.yaml' up -d --force-recreate` and, for `docker run`,
 `docker rm -f '<base>'` followed by "run your docker run line again". It says that the env file
 is read when the container is created, so a plain `docker restart` keeps the old token.
 
@@ -350,9 +358,21 @@ Outcome mapping (the outcome is decided by status and wire header first, as in
 `token.revoke`, target kind `token` (`target_kind = 'token'`, `target_name = <token id>` or
 `unknown` for a create whose answer had no id, `target_id = NULL`), value `scopes=<comma list>`
 for admin-side tokens and `location=<location>` for probe tokens; for an unknown outcome the
-value ends with ` (unknown)`. A failed insert is logged as an error and the page adds
-"Saved in pulse-api. The People log row could not be written." It never turns a success into a
-failure. No secret, digest or snippet goes into the row, a log line or a metric.
+value ends with ` (unknown)`. A failed insert is logged as an error (`token change not logged`,
+error name only, as `src/check-write.ts:183-185`) and never changes the outcome class:
+
+- **Confirmed write** (create `201` / rotate `200` with a valid body, revoke `200`, all wire ok):
+  the page or the revoke notice adds `SAVED_NOT_LOGGED_TEXT` ("Saved in pulse-api. The People log
+  row could not be written.", `src/check-write.ts:16`).
+- **Confirmed write with an unreadable body** (the `502` lost-answer row): the lost-answer text
+  stays as it is and adds only "The People log row could not be written." (it already says that
+  pulse-api made the change).
+- **Unknown outcome** (timeout, network error after send, wire mismatch, redirect): the unknown
+  text stays exactly as it is; nothing is added, and in particular never "Saved in pulse-api."
+  This is the rule of `src/check-write.ts:205-208`, where the unknown branch ignores the result
+  of the insert.
+
+No secret, digest or snippet goes into the row, a log line or a metric.
 
 **Show-once boundaries.**
 
@@ -367,7 +387,10 @@ failure. No secret, digest or snippet goes into the row, a log line or a metric.
   restore shows no secret. Without JavaScript the page is `no-store` and its URL is a POST
   answer, so Back re-requests it and gets "Already submitted".
 - `/console.js` also updates every `time[data-countdown]` once a second (`mm:ss left`, at zero
-  "ended"). No request, no storage. The CSP stays as it is.
+  "ended"). No request, no storage. The CSP stays as it is. The timer exists only while at least
+  one `time[data-countdown]` is above zero: the script starts no interval on a page without one,
+  starts at most one interval per page for all of them, and clears it when every countdown has
+  reached zero (at most 600 ticks after a fresh rotation) and on `pagehide`.
 
 ### 7. Console: settings
 
@@ -390,11 +413,31 @@ The console never copies its own `PULSE_API_URL` into a snippet unasked.
   and one store read on the new route. `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`,
   `peak_rss_mib`, `startup_wall_ms`, the p95 latencies, `rps` and `image_mb`: none expected (the
   bench load never calls `/admin/tokens/self`, and no code on the result or read paths changes).
-  `test_cpu_s`: up by well under 0.1 s (a handful of HTTP tests), against a budget of 5.6 s. The
-  implementer runs `bun run test` before and after and reports both CPU times; a full
-  `bun bench/run.ts --a main --b <branch>` A/B is not required for this change.
-- console, deploy: no budget in `bench/budgets.json`. The console pages make up to three parallel
-  api reads (tokens, self, locations), each with the existing 5000 ms timeout.
+  `test_cpu_s`: up by well under 0.1 s (about ten HTTP tests on a server that the file already
+  starts), against a budget of 5.6 s and a floor of 1.6 s (`bench/budgets.json:23-28`).
+  How it is measured: the bench defines `test_cpu_s` as user + system CPU seconds of
+  `bun run test` and its waited children (`bench/measure.ts:47-71`, `bench/run.ts:161-166`);
+  plain `bun run test` prints no CPU time. The implementer reproduces that number with the bash
+  builtin `times`, which prints the user and system time of waited children on its second line:
+  `bash -c 'bun run test >/dev/null 2>&1; times'`, run 3 times on `main` and 3 times on the
+  branch in the same checkout and machine; the value per run is user + system of the second line,
+  the result per side is the median of its 3 values, and the PR reports both medians and their
+  difference. A full `bun bench/run.ts --a main --b <branch>` A/B is not required for this change.
+- console, deploy: no budget in `bench/budgets.json` (its blocks are `api`, `config`,
+  `contract`, `kit`, `notify`, `probe`, `status`; the bench repositories are the same seven,
+  `api bench/refs.ts:5`). So no gating or reported metric can move. The server-side cost: the
+  console pages make up to three parallel api reads (tokens, self, locations), each with the
+  existing 5000 ms timeout, only when an Admin or Owner opens these pages.
+- Browser countdown (`/console.js`, client side only, not a bench metric): direction up, size
+  negligible. It runs only on a rotate result page, as one 1000 ms interval for the whole page
+  that rewrites the text of at most a few `<time>` elements, for at most 600 ticks (the 10-minute
+  overlap), and is cleared at zero and on `pagehide`; no request, no layout-dependent read. Other
+  pages start no timer. Measurement: the browser check (`e2e/run.ts`) adds an init script that
+  wraps `window.setInterval` and `window.clearInterval` and keeps two numbers, `set` (calls of
+  `setInterval`) and `active` (ids set and not yet cleared). It asserts the literal values
+  `set = 0` on `/tokens` and on the create result page, `set = 1` on the rotate result page,
+  that the countdown text changes after 1100 ms, and that on a rotate result whose
+  `previousValidUntil` is now + 2000 ms the text reads "ended" and `active = 0` after 3500 ms.
 
 ## Security impact
 
@@ -418,9 +461,13 @@ Checklist items that apply:
   `validateTokenSecretResponse`, `validateLocationsResponse`).
 - **Injection into copied text.** Shell words through `shellQuote`; YAML scalars through JSON
   string encoding plus `$$`; HTML escaping separately. Names are derived, never the raw
-  location.
+  location. Every rendered Compose line carries `-p '<base>' -f '<base>.compose.yaml'`, so an
+  inherited `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE` in the person's shell cannot point the
+  snippet at another project's `probe` service.
 - **CI.** The new e2e step runs commands that the console rendered; it runs them in a temporary
-  directory with throwaway tokens and removes its containers and files on success and failure.
+  directory with throwaway tokens, with the parent's `COMPOSE_*` variables removed
+  (`snippet_run`), checks that the stack's own probe container is untouched, and removes its
+  containers and files on success and failure.
 
 ## Rollout order
 
@@ -460,6 +507,8 @@ bump with `scripts/bump-images.sh`; the new screens are accepted only on candida
 | Typed name | Token name `ops ` typed as `ops` → confirmed (trim); typed `Ops` → mismatch (case-sensitive). |
 | Show once | Reload of the create answer → `409 Already submitted`, the fake api records 1 create. GET `/tokens` afterwards holds no `pulse_` secret. |
 | Lost answer | Api answers `201` with wire ok and body `{}` → `502` lost-answer text, People row value ends ` (unknown)`, no second create. |
+| People log failure after an unknown outcome | The fake api never answers the create (the 5000 ms timeout fires) and the People insert throws → `504` with the unknown text only; the page holds neither "Saved in pulse-api." nor "could not be written"; one `error` log line `token change not logged`; 1 api write. A wrong implementation that reuses the saved branch shows "Saved in pulse-api.". The same with a wire-header mismatch → `502`, same assertions. |
+| People log failure after a confirmed write | Create `201` with a valid body and a throwing insert → show-once page `200` with the secret and `SAVED_NOT_LOGGED_TEXT`; never an error page. |
 | Last used | `lastUsedAt: null` → `Never`, not `1970-01-01`. |
 | Location rule | `heartbeat` → field error; 65 characters → field error; `eu\u0007` → field error; `  eu  ` → stored and shown as `eu`. |
 | Location grouping | Tokens with locations `eu` and `EU` are two groups. Two active tokens for `eu` show as two rows in one group, each with its own Rotate and Revoke. |
@@ -469,10 +518,11 @@ bump with `scripts/bump-images.sh`; the new screens are accepted only on candida
 | Names | location `Ünïcode Zone/1` → slug `n-code-zone-1` (non-ASCII letters are outside `[a-z0-9]`); location `!!!` → slug `location`; base is `pulse-probe-<slug>-<6 hex>`. |
 | Network | `network` empty → no `--network` flag and no `networks:` keys; `-net` → field error (first character). |
 | Countdown | `previousValidUntil` = now + 600000 → `10:00 left`; = now + 59000 → `00:59 left`; `null` → "The old secret no longer works." Remaining time = `max(0, floor((previousValidUntil − now) / 1000))` seconds, shown as `mm:ss`. |
-| One interval (deploy) | A probe whose first accepted result arrives later than 10000 ms after `t0` fails the step, even if it reports later. |
+| Compose project | The Compose command is `docker compose -p '<base>' -f '<base>.compose.yaml' up -d`; a builder that drops `-p` fails the literal-string unit test. In deploy, the stack's `probe` container id (`docker compose ps -q probe` of `pulse-e2e`) is the same before and after the snippet starts, restarts and stops; a launch that inherited `COMPOSE_PROJECT_NAME=pulse-e2e` would recreate it and fail. |
+| One interval (deploy) | Deadline `t0 + 10000` ms. A poll that starts at `t0 + 9500` ms and returns at `t0 + 10300` ms with the result fails the step, though the result may have been accepted before the deadline: only an observation that has finished by the deadline counts. A probe whose first result is accepted after the deadline fails even if it reports later. A poll that hangs is cut at the deadline by its `--max-time` and fails the step. The same rule holds for the Compose launch and the rotation restart. |
 
 Statistics: none. The "within one interval" rule of the deploy check is defined in the deploy
-section (window, sample, clock).
+section (deadline, request bounds, clock); it is a single deadline test, not a statistic.
 
 ## Contract fields
 
@@ -530,18 +580,36 @@ store is a separate read) answer `404 token not found`. The auth path stays
   (`:477-481`) and the statuses get the `/self` row; `docs/operation.md` "Token rotation" says a
   client can confirm its identity with `/self`.
 
-Tool facts: `bun run check` = `bun run lint && bun run typecheck && bun run test`
-(`package.json` `scripts.check`); coverage at least 80 % of lines (`bunfig.toml:1-4`); CI job
-`check` uses `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
-(`.github/workflows/ci.yml:17-18`), which runs install, lint, typecheck and test with Bun 1.4.0
-(pinned file lines 22-38; identical to the config clone); Biome extends
-`@lorenzh/pulse-config/biome.json` (`biome.json:2`, pinned file identical to the clone, includes
-`**` minus dist, node_modules, bun.lock, html, test fixtures).
+Tool facts (api `main` 32704fd; config pin `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, read with
+`gh api "repos/lorenzh/pulse-config/contents/<path>?ref=04108fa…"`; both pinned files below are
+byte-identical to the config clone, checked with `diff -q`):
+
+- Runtime: Bun 1.4.0 (`package.json:8-10` `engines.bun`, `package.json:35` `packageManager`).
+- Scripts: `typecheck` = `bun node_modules/typescript7/bin/tsc --noEmit` (`package.json:14`),
+  `test` = `bun test` (`package.json:15`), `lint` = `biome check . && pulse-eslint . &&
+  pulse-workflows` (`package.json:16`), `check` = `bun run lint && bun run typecheck && bun run
+  test` (`package.json:20`). Pins: `@biomejs/biome` 2.6.3 (`package.json:23`),
+  `@lorenzh/pulse-config` at the pin (`package.json:24`), `typescript7` = `typescript@7.0.2`
+  (`package.json:27`).
+- Test runner: `[test]` with `coverage = true`, `coverageThreshold = { lines = 0.8, functions =
+  0 }` and the ignore patterns `**/*.test.ts`, `test/**`, `**/test/**`, `dist/**`
+  (`bunfig.toml:1-4`).
+- CI: job `check` = `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa…`
+  (`.github/workflows/ci.yml:17-18`), without the `build` input. The pinned `check.yml` sets up
+  Bun 1.4.0 (`check.yml:22-24`), then runs `bun install --frozen-lockfile` (`:25-26`),
+  `bun run lint` (`:27-28`), `bun run typecheck` (`:29-30`) and `bun run test` (`:37-38`); the
+  build steps (`:31-36`) are skipped because `build` defaults to `false` (`:6-9`).
+- Biome scope: `biome.json:1-3` only `extends` `@lorenzh/pulse-config/biome.json`; the pinned
+  file includes `**` minus `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html` and
+  `**/test/fixtures` (`biome.json:10-17` of config), with `ignoreUnknown` (`:9`) and the
+  `.gitignore` honoured (`:3-7`). So `src/token-routes.ts` and `src/server.tokens.test.ts` are
+  in scope; `noNonNullAssertion` is off only in `**/*.test.ts` and `**/test/**` (`:53-64`).
 
 **Completion evidence.** `bun run check` passes; the PR names the red-first run of the `/self`
 test; `bun start` with an admin token and one `curl -sS "$API/admin/tokens/self" -H
 "Authorization: Bearer $TOKEN"` answers `200` (report the status and the keys, not the body);
-`test_cpu_s` before and after from `bun run test`.
+the two `test_cpu_s` medians of the Performance impact method (`bash -c 'bun run test
+>/dev/null 2>&1; times'`, 3 runs per side).
 
 ## Repository: console
 
@@ -596,8 +664,14 @@ Module boundaries: snippets are pure (`probe-snippet.ts`, no I/O); views are pur
   env command contains it exactly once. `token-view.test.ts` covers presets (exact scope arrays
   as literals), state texts with an injected `now`, grouping by exact location, the last-admin
   rule, the revision (a change of `lastUsedAt` keeps it, a change of `revokedAt` changes it) and
-  the countdown values of the counterexamples. `token-write.test.ts` covers every outcome row
-  with a fake fetch, and that nothing is retried.
+  the countdown values of the counterexamples. The Compose start, restart and stop lines are
+  compared with literals that hold `-p '<base>' -f '<base>.compose.yaml'` (the "Compose project"
+  counterexample). `token-write.test.ts` covers every outcome row with a fake fetch, that
+  nothing is retried, and the People-log rule of section 6 with a store whose `appendPeople`
+  throws: timeout and wire mismatch keep the unknown text with neither "Saved in pulse-api." nor
+  "could not be written" (one `error` log line, 1 write); a confirmed create, rotate and revoke
+  add `SAVED_NOT_LOGGED_TEXT`; the lost-answer `502` adds only "The People log row could not be
+  written.".
 - HTTP (real server, port 0, fake api): `server.tokens.test.ts` and `server.probes.test.ts` cover,
   for Owner and Admin: list, create with each preset, show once, rotate, revoke with typed name;
   for Member and Viewer: `403` on every GET and forged POST, 0 api writes; own-token forged
@@ -610,7 +684,9 @@ Module boundaries: snippets are pure (`probe-snippet.ts`, no I/O); views are pur
 - Browser (`bun run check:browser`, `e2e/run.ts`, Playwright and axe as today) against the fixture
   console and fake api: Tokens create → secret visible in `#token-secret`, copy button works where
   the clipboard is available, navigate away and Back → no `pulse_` text in the DOM; revoke with
-  typed name; Probes add → the four `<pre>` blocks; rotate shows the countdown; no CSP violation;
+  typed name; Probes add → the four `<pre>` blocks; rotate shows the countdown and the timer
+  counts of the Performance impact section (`0` intervals on `/tokens` and the create result,
+  `1` on the rotate result, `0` active after a 2000 ms countdown ended); no CSP violation;
   no horizontal scroll at 390 px and 1280 px; keyboard focus order through the forms; JavaScript
   off: create and revoke work and the snippet text is selectable.
 - Manual `agent-browser` check (#566 acceptance), as in the #718 spec (check 13) against
@@ -623,16 +699,36 @@ Module boundaries: snippets are pure (`probe-snippet.ts`, no I/O); views are pur
   describes both screens, the presets, show once, rotation overlap, the own-token rule, the
   location states, the snippets and their prerequisites (network, reachable API URL, image).
 
-Tool facts: `bun run check` = lint, typecheck, test (`package.json` `scripts.check`);
-`check:browser` = `bun e2e/run.ts` (`package.json` `scripts.check:browser`); coverage at least
-80 % of lines (`bunfig.toml:1-4`); CI job `check` uses the pinned
-`lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
-(`.github/workflows/ci.yml:17-18`; pinned file identical to the config clone), job `browser`
-runs `bun run check:browser` after `bunx playwright install --with-deps chromium`
-(`.github/workflows/ci.yml`, job `browser`), job `deploy-dev` runs
-`E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml` against deploy `main`;
-Biome extends `@lorenzh/pulse-config/biome.json` (`biome.json:2`; pinned file identical to the
-clone).
+Tool facts (console `main` c78c9d5; config pin `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`;
+the pinned `check.yml` and `biome.json` are byte-identical to the config clone, checked with
+`diff -q`):
+
+- Runtime: Bun 1.4.0 (`package.json:8-10`, `package.json:35`).
+- Scripts: `typecheck` runs `tsc --noEmit` for the root and for `-p e2e` (`package.json:13`),
+  so `e2e/run.ts` is type-checked; `test` = `bun test` (`package.json:14`); `lint` = `biome
+  check . && pulse-eslint . && pulse-workflows` (`package.json:15`); `check` = `bun run lint &&
+  bun run typecheck && bun run test` (`package.json:18`); `check:browser` = `bun e2e/run.ts`
+  (`package.json:19`). Pins: `@axe-core/playwright` 4.14.0 (`package.json:22`),
+  `@biomejs/biome` 2.6.3 (`:23`), `@lorenzh/pulse-config` at the pin (`:24`), `playwright`
+  1.64.1 (`:28`), `typescript7` = `typescript@7.0.2` (`:29`).
+- Test runner: `[test]` with `coverage = true`, 80 % line threshold and the ignore patterns
+  `**/*.test.ts`, `test/**`, `**/test/**`, `dist/**` (`bunfig.toml:1-4`); so `test/fake-api.ts`
+  and `test/token-fixtures.ts` are not counted.
+- CI `check`: `.github/workflows/ci.yml:17-18` uses the pinned `check.yml` without `build`; it
+  sets up Bun 1.4.0 (`check.yml:22-24`) and runs install (`:25-26`), `bun run lint`
+  (`:27-28`), `bun run typecheck` (`:29-30`), `bun run test` (`:37-38`).
+- CI `browser`: `.github/workflows/ci.yml:270-287`: Bun 1.4.0 (`:279-281`), `bun install
+  --frozen-lockfile` (`:282-283`), `bunx playwright install --with-deps chromium` (`:284-285`),
+  `bun run check:browser` (`:286-287`).
+- CI `deploy-dev`: `.github/workflows/ci.yml:210-268` checks out deploy, api, probe, status and
+  notify at `main` (`:220-249`), starts `dev/compose.yaml` with `--build` (`:252-253`), waits
+  (`:254-255`) and runs `E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh
+  dev/compose.yaml` (`:256-258`). It does not run `e2e/console-probes.sh`; that runs only in
+  deploy's `e2e-dev`.
+- Biome scope: `biome.json:1-3` only extends the config file; the pinned file includes `**`
+  minus `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html`, `**/test/fixtures`
+  (config `biome.json:10-17`), so `src/`, `test/` and `e2e/` are all in scope;
+  `noNonNullAssertion` is off only in `**/*.test.ts` and `**/test/**` (config `biome.json:53-64`).
 
 **Completion evidence.** `bun run check` and `bun run check:browser` pass; the agent-browser
 commands and outcomes in the PR; `PULSE_API_URL=http://localhost:3000 bun start` against a local
@@ -655,6 +751,13 @@ Files:
 
 Behavior change: yes. New dev settings and a new e2e step and CI gate.
 
+**Task cut.** Every task of this section is a behavior change (`behaviorChange: true`, the
+section's line). The helper extraction (item 2) is not a task of its own: it is a pure move, so
+alone it would have to be `false` and contradict this section. It goes into the same task as the
+dev prefills (item 1), which add new settings to `dev/compose.yaml`; `bash
+e2e/console-setup.test.sh` guards the move inside that task. The scenario, the trap, the CI gate
+and the docs (items 3 and 4) form the second task.
+
 **Behavior.**
 
 1. `dev/compose.yaml` console service (`:87-105`) gets
@@ -665,13 +768,47 @@ Behavior change: yes. New dev settings and a new e2e step and CI gate.
    outside `common/services.yaml` (rule 4). `full`, `minimal` and `demo` stay unchanged; the
    `full/README.md` text is not required. `dev/README.md` lists the three variables.
 2. `e2e/console-lib.sh`: the shared helpers of `e2e/console-setup.sh:51-97` (`req` to `expect_location`), `:201-230` (`totp_after`, `password_step`) and the
-   two-factor setup flow, sourced by both scripts. `bash e2e/console-setup.test.sh` passes
-   unchanged (it is the guard of this move).
+   two-factor setup flow, sourced by both scripts with `# shellcheck source=e2e/console-lib.sh`
+   and `source e2e/console-lib.sh` from the repository root (the convention of
+   `e2e/compose-e2e.sh:866-867`). `bash e2e/console-setup.test.sh` passes unchanged (it is the
+   guard of this move).
 3. `e2e/console-probes.sh`, called by `compose-e2e.sh` as a new step "Console probe locations"
-   placed before "Persistence across down and up" (`e2e/compose-e2e.sh:1090`). It uses the
-   caller's `COMPOSE_FILE` and `COMPOSE_PROJECT_NAME` (`pulse-e2e`), so the stack network is
+   placed before "Persistence across down and up" (`e2e/compose-e2e.sh:1090`). Its stack
+   commands (`docker compose ps`, `logs`, `exec`) use the caller's exported `COMPOSE_FILE` and
+   `COMPOSE_PROJECT_NAME=pulse-e2e` (`e2e/compose-e2e.sh:12`, `:25`), so the stack network is
    `pulse-e2e_default`. On `E2E_SETUP=full` the step prints
-   `skip: console probe locations (published images)` and does nothing else. On `dev`:
+   `skip: console probe locations (published images)` and does nothing else.
+
+   **Isolation of the snippets.** The parent environment overrides a Compose file's `name:`
+   (`e2e/compose-e2e.sh:316-317` relies on exactly that), so every command that comes from a
+   snippet (env command, `docker run`, Compose start, the rotation restart lines, and the
+   cleanup `docker compose -p '<base>' -f '<base>.compose.yaml' down`) runs through one helper
+   `snippet_run <text>` = `(cd "$work" && env -u COMPOSE_PROJECT_NAME -u COMPOSE_FILE -u
+   COMPOSE_PROFILES -u COMPOSE_ENV_FILES -u COMPOSE_PATH_SEPARATOR bash -c "$text")`, where
+   `$work` is the `mktemp -d` directory, which holds no `.env`. The snippet itself also carries
+   `-p '<base>'` (section 5), so the isolation is defence in depth, not the only guard. Before
+   the first launch the step records `stack_probe=$(docker compose ps -q probe)`; after each
+   launch, after the rotation restart and after the cleanup it requires the same id, and it
+   requires `docker ps -q --filter label=com.docker.compose.project=<compose base>` to list
+   exactly one running container while the Compose snippet runs. A mismatch fails with
+   `FAIL: the snippet touched the pulse-e2e probe`.
+
+   **The one-interval rule (all three timed waits).** `now_ms` = `${EPOCHREALTIME/./}` divided by
+   1000 under `LC_ALL=C` (bash 5 builtin, microseconds; host clock, which the containers share;
+   `api_port` is the published api port that `compose-e2e.sh` already uses in `api()`,
+   `e2e/compose-e2e.sh:115`, passed to the script as an argument). For a wait that
+   starts at `t0`: `deadline = t0 + 10000`. Loop: `left = deadline - now_ms`; if `left <= 0`,
+   fail. Otherwise one request `curl -fsS --connect-timeout <s> --max-time <s>
+   "http://127.0.0.1:${api_port}/locations"` with `<s>` = `min(2000, left)` ms written as
+   seconds with three decimals (curl takes fractions), then `t_done = now_ms`. The wait passes
+   only when that answer lists the location with `lastResultAt >= t0` and `t_done <= deadline`.
+   An answer that holds the result but finished after the deadline fails (the "One interval"
+   counterexample). If the answer does not hold it, sleep `min(1000, deadline - now_ms)` ms (skip
+   when not positive) and loop. So no request runs past the deadline and the observation itself
+   happens inside the interval. The step prints `t_done - t0` in its `ok:` line as
+   `(<n> ms)`.
+
+   On `dev`:
    1. Set up the console and sign in the Owner with TOTP through the library (fresh
       `console-data`: `compose-e2e.sh` runs `down -v` first, `:361`).
    2. `GET /probes` → `200`. Add location `e2e-run` with `api_url=http://api:3000`,
@@ -679,50 +816,87 @@ Behavior change: yes. New dev settings and a new e2e step and CI gate.
       `#probe-env-command`, `#probe-docker-run` with `e2e/snippet.mjs`. The env command matches
       `PULSE_PROBE_TOKEN=pulse_[A-Za-z0-9_-]{43}` (checked, never printed).
    3. `GET /probes` shows `e2e-run` with `Awaiting first result`.
-   4. In a `mktemp -d` work directory: run the env command, take `t0` = host epoch ms, run the
-      docker-run text with `bash -c`, then poll `GET /locations` on the api every 1 s until an
-      entry `e2e-run` has `lastResultAt >= t0`. Pass when the poll that sees it starts at most
-      10000 ms after `t0`. 10000 is a literal: the `intervalMs` of `status-page` in
-      `e2e/ro/checks.json`, the largest interval of the checks this probe runs (e2e-post is
-      skipped, it needs `PULSE_HEADER_SVC_TOKEN`). Clock: the host clock; the probe container
-      shares it. The image is already built by the dev e2e (`compose-e2e.sh` "Build the dev
-      images"), so no pull is timed. Print `ok: docker run probe e2e-run reported within 10 s`.
+   4. In `$work`: `snippet_run` the env command, take `t0 = now_ms`, `snippet_run` the
+      docker-run text, then the one-interval wait for `e2e-run`. 10000 is a literal: the
+      `intervalMs` of `status-page`, `e2e-tcp` and `e2e-dns` in `e2e/ro/checks.json`, the largest
+      interval of the checks this probe runs (`e2e-post` is skipped by the probe because
+      `PULSE_HEADER_SVC_TOKEN` is not set, `probe src/client.ts:164`, `:289`; the checks added
+      by "Checks via the admin API" also use 10000 or 4000, `e2e/compose-e2e.sh:954`, `:977`,
+      `:997`). A new check runs after a random delay below 1000 ms (`probe
+      src/scheduler.ts:39-46`), so the bound leaves room for the container start. The image is
+      already built by the dev e2e ("Build the dev images", `e2e/compose-e2e.sh:364`), so no
+      pull is timed. Print `ok: docker run probe e2e-run reported within 10 s (<n> ms)`.
    5. `GET /probes` shows `e2e-run` with `Reporting`.
-   6. Add location `e2e-compose` the same way; save `#probe-compose-file` as the file the page
-      names, run `#probe-compose-command`; same 10000 ms rule; print
-      `ok: compose probe e2e-compose reported within 10 s`.
+   6. Add location `e2e-compose` the same way; save `#probe-compose-file` in `$work` as the file
+      the page names, take `t0`, `snippet_run` `#probe-compose-command`; the one-interval wait;
+      print `ok: compose probe e2e-compose reported within 10 s (<n> ms)`.
    7. Rotate the `e2e-run` credential through `/probes/rotate`; during the overlap both the old
       and the new secret answer `200` on `GET /probe/checks` (curl with the header built from the
-      env files, output discarded); run the new env command and the shown restart lines; a new
-      result of `e2e-run` arrives within 10000 ms of the restart.
+      env files, output discarded, `--max-time 5`); `snippet_run` the new env command, take
+      `t0`, `snippet_run` the shown `docker rm -f` line and then the docker-run text again; the
+      container's environment holds the new secret (`docker inspect` of `Config.Env` compared
+      with `grep -qxF`, output discarded, never printed); the one-interval wait for a result of
+      `e2e-run` with `lastResultAt >= t0`; print
+      `ok: rotated probe e2e-run reported within 10 s (<n> ms)`.
    8. Revoke the `e2e-compose` credential through `/probes/revoke` with the typed location; its
       secret now answers `401` on `GET /probe/checks`; `GET /locations` still lists
       `e2e-compose` (history kept).
    9. Secret scan: neither created secret, nor the rotated one, appears in the step output, in
       `docker compose logs` of console and api, or in the console database files (the scan
       pattern of `e2e/console-setup.sh` step 13).
-   10. Remove the probe containers and the Compose project, then print
-       `ok: console probe locations`.
-   The `cleanup` trap of `compose-e2e.sh` (`:70-97`) also removes both containers, the snippet
-   Compose project and the work directory, before its `docker compose down -v`, so a failed step
-   never blocks the network removal.
-4. `.github/workflows/ci.yml` `e2e-dev` (`:296-301`) also requires
-   `grep -qx 'ok: console probe locations' e2e-dev.log`.
+   10. Remove the probe containers (`docker rm -f '<run base>'`) and the Compose project
+       (`snippet_run "docker compose -p '<compose base>' -f '<compose base>.compose.yaml' down"`),
+       check the stack's probe id once more, then print `ok: console probe locations`.
+   The `cleanup` trap of `compose-e2e.sh` (`:70-97`) also removes both containers and the
+   snippet Compose project through `snippet_run` (so the inherited `pulse-e2e` project is never
+   the target of that `down`), then the work directory, all before its own `docker compose down
+   -v` (`:89`), so a failed step never blocks the network removal. The bases are recorded in
+   shell variables as soon as the page shows them, so the trap knows them after a failure.
+   No file under `e2e/` contains the text `image:` (rule 3 of `scripts/check-setup.sh:60-66`
+   greps `e2e`): the Compose file is only ever read from the page, and the fixture of
+   `e2e/snippet.test.sh` uses another YAML key.
+4. `.github/workflows/ci.yml` `e2e-dev` (`:295-301`) also requires
+   `grep -qx 'ok: console probe locations' e2e-dev.log` after the existing
+   `grep -qx 'ok: manual incident privacy' e2e-dev.log` (`:301`).
 
-**Checks.** Shell lint and `bash -n` of every `.sh` (`.github/workflows/ci.yml` `lint` job,
-step "shellcheck and bash -n"); `node --check` of every `.mjs` (same job, step "node --check");
-`bash e2e/console-setup.test.sh`; `bash e2e/snippet.test.sh` (expected decoded strings are
-literals in the test); `scripts/check-setup.sh` and `bash scripts/check-setup.test.sh` (the dev
-settings keep rules 3 and 4); `E2E_SETUP=dev bash e2e/compose-e2e.sh` with every sibling at
-`main` (api and console with this spec merged) ends with `==> All checks passed` and prints the
-four new `ok:` lines; `bash e2e/compose-e2e.sh` (full, published images) prints the skip line and
-passes as before.
+**Checks.** `shellcheck -x` and `bash -n` of every tracked `.sh` (`.github/workflows/ci.yml:34-37`);
+`node --check` of every tracked `.mjs` (`:38-39`); `bash e2e/console-setup.test.sh` (`:50-51`);
+`bash e2e/snippet.test.sh` (expected decoded strings are literals in the test; it also feeds a
+`<pre>` with `&#39;` and `&amp;` and requires the literal decoded line); `scripts/check-setup.sh`
+and `bash scripts/check-setup.test.sh` (`:52-55`; the dev settings keep rules 3 and 4);
+`E2E_SETUP=dev bash e2e/compose-e2e.sh` with every sibling at `main` (api and console with this
+spec merged) ends with `==> All checks passed` and prints the four new `ok:` lines (`docker run`,
+`compose`, `rotated`, `console probe locations`); `bash e2e/compose-e2e.sh` (full, published
+images) prints the skip line and passes as before. Isolation check before CI: in a shell with
+`COMPOSE_PROJECT_NAME=pulse-e2e` exported, `snippet_run "docker compose -p '<base>' -f
+'<base>.compose.yaml' config"` prints `name: <base>` (the literal base the page showed), and the
+same command without `-p` and without the helper prints `name: pulse-e2e`; the PR records both
+outputs.
 
-Tool facts: the `lint` job checks Docker Compose >= 2.23 and runs shellcheck, `bash -n`,
-`node --check` and `jq empty` (`.github/workflows/ci.yml:18-41`); the CLI `check` job uses the
-pinned `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
-(`.github/workflows/ci.yml:15-16`); Biome does not cover `e2e/` or `dev/` (`biome.json:14-17`
-ignore `!dev`, `!e2e`).
+Tool facts (deploy `main` 770eae0; config pin `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, whose
+`check.yml` and `biome.json` are byte-identical to the config clone, checked with `diff -q`):
+
+- CI `lint` (`.github/workflows/ci.yml:19-63`, `ubuntu-24.04`): "Tool versions (Compose >=
+  2.23)" (`:26-33`); "shellcheck and bash -n" = `git ls-files -z '*.sh' | xargs -0 shellcheck
+  -x` and `… | xargs -0 -n 1 bash -n` (`:34-37`), so a new `.sh` is checked once it is tracked;
+  "node --check" of every tracked `.mjs` (`:38-39`); "jq empty" of every tracked `.json`
+  (`:40-41`); the stub test `bash e2e/console-setup.test.sh` (`:50-51`); `scripts/check-setup.sh`
+  (`:52-53`) and `bash scripts/check-setup.test.sh` (`:54-55`). The new step `bash
+  e2e/snippet.test.sh` goes next to `:50-51`.
+- CI `e2e-dev` (`.github/workflows/ci.yml:250-305`): checks out api, probe, status, notify and
+  console at `main` (`:258-287`), prints their revisions (`:288-292`), runs `E2E_SETUP=dev bash
+  e2e/compose-e2e.sh | tee e2e-dev.log` with `pipefail` (`:295-300`) and greps `ok: manual
+  incident privacy` (`:301`); teardown `docker compose -p pulse-e2e … down -v` (`:302-305`).
+- CI `check` (`.github/workflows/ci.yml:16-17`) uses the pinned `check.yml` (Bun 1.4.0
+  `check.yml:22-24`; lint, typecheck, test `:27-30`, `:37-38`) on the CLI; `test` = `bun test
+  --coverage cli` (`package.json:13`), `lint` = `biome check . && pulse-eslint . &&
+  pulse-workflows` (`package.json:14`), Biome 2.6.3 (`package.json:21`). None of this section's
+  files are in that job's test or Biome scope.
+- Biome scope: deploy's `biome.json:3-28` replaces the inherited `files.includes` (config
+  `biome.json:10-17`, `**` minus dist, node_modules, bun.lock, html, test fixtures) with
+  `cli/**` and the root config files (`biome.json:5-11`) and excludes `!dev` (`:16`) and `!e2e`
+  (`:17`), so no file of this section is linted by Biome; shellcheck, `bash -n` and `node
+  --check` are its checks.
 
 **Completion evidence.** The CI jobs `lint` and `e2e-dev` pass on the PR; the PR lists the new
 `ok:` lines from `e2e-dev.log` and the service revisions it ran against (the job prints them,
@@ -736,12 +910,16 @@ ignore `!dev`, `!e2e`).
 2. **console** create, show once and revoke: `server.tokens.test.ts`, `server.probes.test.ts`,
    `bun run check:browser` and the agent-browser record in the PR. Write counts in the fake api
    (`0`, `1`) and scopes (`["read","checks","admin"]`) are literals.
-3. **deploy** snippet runs: `E2E_SETUP=dev bash e2e/compose-e2e.sh` in `e2e-dev` prints
-   `ok: docker run probe e2e-run reported within 10 s`,
-   `ok: compose probe e2e-compose reported within 10 s` and `ok: console probe locations`. The
-   10 s bound is the literal `intervalMs` 10000 of `status-page` in `e2e/ro/checks.json`; the
-   timestamps come from pulse-api's `GET /locations`, an independent service, not from the
-   console under test.
+3. **deploy** snippet runs: `E2E_SETUP=dev bash e2e/compose-e2e.sh` in `e2e-dev` prints lines
+   that start with `ok: docker run probe e2e-run reported within 10 s (`,
+   `ok: compose probe e2e-compose reported within 10 s (` and
+   `ok: rotated probe e2e-run reported within 10 s (`, and the exact line
+   `ok: console probe locations` (the CI gate). The 10 s bound is the literal 10000 ms, the
+   `intervalMs` of `status-page` in `e2e/ro/checks.json`; each pass needs an answer of pulse-api's
+   `GET /locations` (an independent service, not the console under test) that finished by
+   `t0 + 10000` ms on the host clock and holds `lastResultAt >= t0`. The stack's `probe`
+   container id is unchanged across every snippet command (compared with the id read before the
+   first launch, a separate `docker compose ps -q probe` call).
 
 ## Risks
 
