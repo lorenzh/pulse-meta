@@ -306,8 +306,12 @@ One repository: only `console` changes. Its only consumer is the `deploy-dev` CI
   line and `owner@example.com)` on the next is wrong. The check: the client rects of a `Range`
   over the text of `.account-email` must have exactly 1 distinct `top` value, rounded to whole
   px.
-- **Long e-mail.** A 70-character address must give `document.documentElement.scrollWidth <=
-  390`, and the span's `textContent` must equal `(` + the full address + `)`. A wrong fix uses
+- **Visited colour.** A rule `a { color: #1b4f9c; }` without `a:visited` leaves visited links
+  purple and is wrong. A browser check that reads `getComputedStyle(a).color` on a visited link
+  cannot catch this, because browsers report the unvisited colour for privacy. The checks read
+  the stylesheet rules and the served CSS text against the literal colour instead.
+- **Long e-mail.** A 70-character address (`"a".repeat(58) + "@example.com"`, length `70`)
+  must give `document.documentElement.scrollWidth <= 390`, and the span's `textContent` must equal `(` + the full address + `)`. A wrong fix uses
   `white-space: nowrap` with no wrap fallback, which overflows. Another wrong fix uses
   `overflow: hidden` on `html` or `body`, which `assertFits` (`e2e/run.ts:146-155`) rejects.
 - **Gap.** On `/sign-in/factor` at 390 px, the vertical gap between consecutive `<form>`
@@ -355,8 +359,8 @@ Files:
 - `src/overview-read.ts`: only if needed to pass the error through; its log fields stay
 - `src/api-failure.test.ts`, `src/states.test.ts`, `src/shell.test.ts`,
   `src/overview-read.test.ts`, `src/server.overview.test.ts`, `src/server.security.test.ts`,
-  `src/server.sessions.test.ts`, `src/server.recovery.test.ts`, `src/server.form-token.test.ts`:
-  new and updated tests
+  `src/server.sessions.test.ts`, `src/server.recovery.test.ts`, `src/server.form-token.test.ts`,
+  `src/server.test.ts`: new and updated tests
 - `test/fixture-routes.ts`: `api-refused` fixture
 - `test/signed-in-console.ts`: optional `ownerEmail`
 - `e2e/run.ts`: browser checks
@@ -456,6 +460,10 @@ Required behavior 1 to 8 and decisions D1 to D7 above apply. Guidance:
    - `shell.test.ts` expects `<span class="account-email">(o@example.com)</span>`.
    - `states.test.ts` expects the kind paragraph for each of the four kinds and none for
      `invalid`.
+   - The existing test `GET /console.css serves the stylesheet` (`src/server.test.ts:148`)
+     also expects the served body to contain the literal line
+     `a, a:visited { color: #1b4f9c; }` and the literal `form + form { margin-top: 1rem; }`.
+     The expected strings are written in the test, not read from `CONSOLE_CSS`.
 5. **Browser checks in `e2e/run.ts`** (`bun run check:browser`), with the env owner
    `demo-owner@example.com`:
    - **Layout.** In `checkLayout`, at 390 and at 1280 px, visit the four account routes and the
@@ -468,7 +476,8 @@ Required behavior 1 to 8 and decisions D1 to D7 above apply. Guidance:
      `Overview` and no `Team`.
    - **E-mail.** At 390 px, on `/` and on each of the four routes, the Range-rect check of the
      counterexample gives exactly 1 distinct top. Then start a second signed-in console with a
-     70-character `ownerEmail` (for example `"a".repeat(57) + "@example.com"`). On `/` the page
+     70-character `ownerEmail`: `"a".repeat(58) + "@example.com"` (58 + 12 = 70 characters).
+     The check first asserts that the address `length` is the literal `70`. On `/` the page
      fits at 390 px and the span text equals the literal full address in parentheses.
    - **404.** On `/does-not-exist`:
      - `page.getByText("Page not found", { exact: true })` has a count of 1 visible element;
@@ -488,8 +497,20 @@ Required behavior 1 to 8 and decisions D1 to D7 above apply. Guidance:
      Then reset every switch and confirm that the summary is back.
    - **Links.** For the header `Account security`, a link on `/account/security`, the Cancel
      links and `Continue` on the recovery-code result, `getComputedStyle(a).color` is
-     `rgb(27, 79, 156)`. Check it before and after the link was visited. Tabbing to each link
-     gives a non-`none` outline, using the `focusedOutline` helper (`e2e/run.ts:218`).
+     `rgb(27, 79, 156)`. This proves the unvisited colour only: browsers report the unvisited
+     colour from `getComputedStyle` for a visited link, for privacy (MDN, "Privacy and the
+     :visited selector"), so a computed-style read cannot detect a wrong visited colour.
+     Tabbing to each link gives a non-`none` outline, using the `focusedOutline` helper
+     (`e2e/run.ts:218`).
+   - **Visited links.** The visited colour is checked on the rules, not on computed style. In
+     the page, walk every `CSSStyleRule` of `document.styleSheets` (the one `/console.css`
+     sheet). Expected values are literals:
+     - at least 1 rule has `a:visited` in its `selectorText` selector list and
+       `style.color === "rgb(27, 79, 156)"`;
+     - every rule whose `selectorText` contains `:visited` has `style.color` equal to `""` or
+       `"rgb(27, 79, 156)"`, so no later rule gives visited links another colour.
+     A wrong implementation that writes only `a { color: #1b4f9c; }` leaves visited links in
+     the browser's default purple and fails the first assertion.
    - **Gap.** At 390 px on `/sign-in/factor` (3 forms) and on `/account/authenticator` in its
      replace state (2 forms), each gap between consecutive forms is at least 12 px.
    - **No JavaScript.** Extend `checkAccountNoScript` (`e2e/run.ts:409`):
