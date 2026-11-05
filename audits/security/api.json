@@ -91,5 +91,41 @@
       "excerpt": "getter ran: config.parseConfig <- accessor checks (runs 1)\ngetter ran: tokens.parseTokens <- accessor tokens (runs 1)\ncases: 523, unexpected throws: 9, getter runs: 8\n  throw: server.validateResult <- throwing Proxy: Error: trap\n  throw: tokens.bearerSecret <- symbol: TypeError: Cannot convert a symbol to a string\nJSON.parse makes accessors? false",
       "commits": { "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c" }
     }
-  ]
+  ],
+  "review": {
+    "state": "audit-review",
+    "date": "2026-11-05",
+    "startedAt": "15:11:40 UTC",
+    "metaHead": "56f4e34c37eed30e7bb5e9cf07343104b9fddd50",
+    "scope": "The API clone HEAD matches the audited commit. The audit's meta commit is the parent of the report commit, with no change to docs/approved-packages.md. Dependency clone HEADs are newer; disposable copies were fetched and checked out at the reported contract, kit and config pins. Installed contract dist, kit src and config bin trees match those pinned copies (diff -qr exit 0). Read-only clones were not changed.",
+    "result": "All three P3 findings independently spot-checked and reproduced; none removed or regraded. One issue candidate. No P1 or P2 findings. All eight checklist entries and their recorded checks were reviewed; no audit gate remains.",
+    "checks": [
+      {
+        "command": "jq . audits/security/api.json; python3 /tmp/pulse-api-review.8Z12WYvl/validate-report.py",
+        "exitCode": 0,
+        "excerpt": "JSON/Markdown: 3 matching findings, ids and severities; 8 matching checklist items/statuses; required fields present; 1 candidate; all examined commits verified"
+      },
+      {
+        "command": "TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp BUN_INSTALL_CACHE_DIR=/tmp/pulse-api-review.8Z12WYvl/bun-cache bun install --frozen-lockfile (disposable API copy)",
+        "exitCode": 0,
+        "excerpt": "115 packages installed; Bun 1.4.0; contract #9ab7e24, kit #c6d2cba, config #04108fa and zod 4.6.7 match the frozen lockfile. Setting a writable temporary directory resolved the runner's initial EROFS installation error."
+      },
+      {
+        "command": "TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp timeout 10m bun test (unchanged disposable API copy)",
+        "exitCode": 0,
+        "excerpt": "741 pass, 0 fail; 869 expect() calls; 87 files; 98.93% line coverage. Includes security sentinels, auth ordering, oversized bodies before writes, hostile validation, accessor rejection, file-write exclusivity and backup path checks."
+      },
+      {
+        "command": "TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp timeout 2m bun /tmp/pulse-api-review.8Z12WYvl/reproduce.ts (independent harness, own loopback server and in-memory database)",
+        "exitCode": 0,
+        "excerpt": "legacy DELETE 2MB body: 204; GET after: 404\nprivate DELETE 2MB body: 413; GET after: 200\nlegacy DELETE with a request in its body: responses=1 statuses=204\nlegacy resolve 2MB body: 413; resolvedAt after: null\nGET /admin/manual-incidents 2MB body: 200\nGET /admin/manual-incidents/99999 2MB body: 404\nGET /admin/config, /admin/tokens and /admin/audit 2MB body: 413 each\nlegacy DELETE with unknown token: 401; incident unchanged; probe token: 403\nchunked 300MB GET /admin/manual-incidents admin: 200\ngetters ran in parseConfig, parseCheck, parseTokens and parseAdminTokens; throwing Proxy propagated from all four and validateResult; bearerSecret(symbol) threw TypeError\nvalidateResult and contract validator: getter runs 0; JSON.parse makes accessors? false\nlocal route log token leaks: 0\nlocal server stopped; in-memory database closed"
+      },
+      {
+        "command": "bun node_modules/@lorenzh/pulse-config/bin/pulse-workflows.js (disposable API copy)",
+        "exitCode": 0,
+        "excerpt": "pulse-workflows: ok (2 files, 8 uses). Package, Docker and workflow pins also compared with docs/approved-packages.md; non-test source search confirms no outbound HTTP or socket client."
+      }
+    ],
+    "limitations": "The review spot-checks the P3 cases rather than recreating the audit's full 523-case fuzz matrix, startup matrix and slow-request measurements. Docker images were inspected from source, not rebuilt, and dependency advisory queries were not repeated. The full existing test suite passed. The independent harness and copies were removed after review; all attack requests targeted the harness's own 127.0.0.1 listener. No production or shared service was attacked."
+  }
 }

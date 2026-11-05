@@ -287,3 +287,22 @@ The auth script sent 78 requests:
 - **`.dockerignore`.** It does not list `admin-tokens.json`. The `Dockerfile` copies only `package.json`, `bun.lock` and `src/`, so the file never reaches the image, only the build context.
 - **Unpinned `git` in the build stage.** The build stage of the `Dockerfile` runs `apk add --no-cache git` without a version. Only that stage uses it.
 - **Dev advisory.** `bun audit` reports `minimatch@10.2.6` (moderate) in the dev-only lint toolchain of pulse-config. It is not in the image.
+
+## Review
+
+`audit-review` started at 15:11:40 UTC on 2026-11-05, on meta report commit `56f4e34c37eed30e7bb5e9cf07343104b9fddd50`. The API clone HEAD matches the audited commit. The audit's meta commit is the parent of this report commit; `git diff 1463761750cef5ffa446950e3e831073c9595a10 HEAD -- docs/approved-packages.md` exits 0 with no output. Dependency clone HEADs are newer, so disposable copies were fetched and checked out at the reported contract, kit and config pins. `git rev-parse HEAD` confirms each SHA, and `diff -qr` of installed contract `dist`, kit `src` and config `bin` against those pinned copies exits 0. Read-only clones were not changed.
+
+All three P3 findings independently reproduce. None was removed or regraded; one remains an issue candidate. The body-limit findings require unusual bodies on authenticated DELETE or GET requests, and the parser finding requires inputs that HTTP headers and parsed JSON cannot supply. There are no P1 or P2 findings. All eight checklist entries and their recorded checks were reviewed; no audit gate remains.
+
+The independent harness ran its own server on `127.0.0.1` and used an in-memory database. It asserts the observed behavior, so exit 0 confirms reproduction. The harness and disposable copies were removed after review.
+
+| Check or command | Exit | Output |
+| --- | --- | --- |
+| `jq . audits/security/api.json`; `python3 /tmp/pulse-api-review.8Z12WYvl/validate-report.py` | 0 each | Three matching findings, ids and severities; eight matching checklist items/statuses; required fields present; one candidate; all examined commits verified. |
+| `TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp BUN_INSTALL_CACHE_DIR=/tmp/pulse-api-review.8Z12WYvl/bun-cache bun install --frozen-lockfile` in the disposable API copy | 0 | 115 packages installed with Bun 1.4.0; contract, kit, config and zod match the frozen lockfile. Setting a writable temporary directory resolved the runner's initial `EROFS` installation error. |
+| `TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp timeout 10m bun test` in the unchanged API copy | 0 | `741 pass, 0 fail`; 869 `expect()` calls; 87 files; 98.93% line coverage. Includes security sentinels, auth ordering, oversized bodies before writes, hostile validation, accessor rejection, file-write exclusivity and backup path checks. |
+| `TMPDIR=/tmp/pulse-api-review.8Z12WYvl/tmp timeout 2m bun /tmp/pulse-api-review.8Z12WYvl/reproduce.ts` | 0 | Legacy DELETE with 2 MB: `204`, subsequent GET `404`; private DELETE: `413`, subsequent GET `200`. Legacy resolve: `413`, `resolvedAt: null`. Request inside the DELETE body: one response, `204`. Unknown token: `401`, incident unchanged; probe token: `403`. Private GET list: `200`, missing id: `404`, versus `413` for config, tokens and audit with the same body. Chunked 300 MB private GET: `200`. |
+| Same independent harness, parser cases | 0 | Getters ran in `parseConfig`, `parseCheck`, `parseTokens` and `parseAdminTokens`; throwing Proxy exceptions propagated from those four and `validateResult`; `bearerSecret(symbol)` threw `TypeError`. `validateResult` and the contract validator ran zero getters on ordinary accessor objects; parsed JSON has no accessors. Local route logs leaked zero tokens. Server stopped and database closed. |
+| `bun node_modules/@lorenzh/pulse-config/bin/pulse-workflows.js` in the API copy | 0 | `pulse-workflows: ok (2 files, 8 uses)`. Package, Docker and workflow pins were also compared with the approved list; the non-test source search confirms no outbound HTTP or socket client. |
+
+Limits: the review spot-checks the P3 cases rather than recreating the audit's full 523-case fuzz matrix, startup matrix and slow-request measurements. Docker images were inspected from source, not rebuilt, and dependency advisory queries were not repeated. The full existing test suite passed. All attack requests targeted the harness's own loopback listener; no production or shared service was attacked.
