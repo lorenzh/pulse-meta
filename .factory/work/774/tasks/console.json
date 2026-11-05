@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Serve the pinned font files with exact CSP, caching and image packaging",
+      "files": [
+        "src/fonts.ts",
+        "src/fonts.test.ts",
+        "src/server.fonts.test.ts",
+        "src/server.ts",
+        "src/http-context.ts",
+        "src/metrics.ts",
+        "src/server.test.ts",
+        "src/server.security.test.ts",
+        "src/server.states.test.ts",
+        "src/server.team.test.ts",
+        "src/server.invite.test.ts",
+        "src/server.account-shell.test.ts",
+        "assets/fonts/",
+        "assets/fonts/space-grotesk-latin-400-normal.woff2",
+        "assets/fonts/space-grotesk-latin-500-normal.woff2",
+        "assets/fonts/space-grotesk-latin-600-normal.woff2",
+        "assets/fonts/space-grotesk-latin-700-normal.woff2",
+        "assets/fonts/jetbrains-mono-latin-400-normal.woff2",
+        "assets/fonts/jetbrains-mono-latin-500-normal.woff2",
+        "assets/fonts/jetbrains-mono-latin-600-normal.woff2",
+        "assets/fonts/OFL-space-grotesk.txt",
+        "assets/fonts/OFL-jetbrains-mono.txt",
+        "Dockerfile",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "Repository: console; R15 asset provenance, loadFonts, fixed public GET/HEAD routes, byte responses, /fonts/:file metrics, exact CSP addition, Docker COPY, docker-job font check and font/endpoint/license documentation; Risks: eight CSP literals; Checks: fonts.test.ts, server.fonts.test.ts, CSP and CI font checks. Fetch only the two 5.3.0 tarballs and verify their named dist.integrity and R15 hashes; hold if unavailable. Keep CSS/font-face and page restyling for T2. At child start record the base ref and whether #768/console PR #14 is merged, per Risks, without rebuilding its screens.",
+      "acceptance": [
+        {
+          "command": "bun run lint",
+          "expected": "exit 0; existing workflow pins, permissions and checks remain intact"
+        },
+        {
+          "command": "bun run typecheck",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun test src/fonts.test.ts src/server.fonts.test.ts src/server.test.ts src/server.security.test.ts src/server.states.test.ts src/server.team.test.ts src/server.invite.test.ts src/server.account-shell.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). Seven fixed routes return 200 before and after setup, font/woff2, public, max-age=31536000, immutable, R15 literal lengths and SHA-256 values, and no cookie; HEAD is empty with the same length; query preserves bytes; POST is 405 with GET, HEAD. All listed invalid raw paths return 404 under other; Host refusal remains. Fake missing-file read throws a named error. One font GET produces pulse_console_http_requests_total{path=\"/fonts/:file\",code=\"200\"} 1; all non-font responses keep no-store"
+        },
+        {
+          "command": "sha256sum assets/fonts/*",
+          "expected": "All nine SHA-256 values equal the independent R15 table from @fontsource/space-grotesk@5.3.0 and @fontsource/jetbrains-mono@5.3.0, including both unmodified OFL texts; the seven fonts total 117684 bytes"
+        },
+        {
+          "command": "git diff -- package.json bun.lock",
+          "expected": "Empty output; fetching font tarballs adds no runtime or dev dependency"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Render the shared design vocabulary in the sidebar shell, plain layout and states",
+      "files": [
+        "src/styles.ts",
+        "src/html.ts",
+        "src/html.test.ts",
+        "src/icons.ts",
+        "src/shell.ts",
+        "src/shell.test.ts",
+        "src/navigation.ts",
+        "src/navigation.test.ts",
+        "src/states.ts",
+        "src/states.test.ts",
+        "src/server.test.ts",
+        "src/server.states.test.ts",
+        "src/server.roles.test.ts",
+        "src/server.account-shell.test.ts",
+        "src/server.races.test.ts",
+        "src/server.confirm.test.ts",
+        "src/server.form-token.test.ts",
+        "src/server.overview.test.ts",
+        "src/overview.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.checks-change.test.ts",
+        "src/server.checks-write.test.ts",
+        "src/server.team.test.ts",
+        "src/server.security.test.ts",
+        "src/check-editor-page.test.ts",
+        "src/confirm.test.ts",
+        "test/fixture-routes.ts",
+        "e2e/run.ts",
+        "docs/configuration.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "Repository: console; R1-R4, R5 CSS, R6 CSS, R7 CSS, R8 shared callout and optional-action emptyState, R9, R10, R11 panel/grid CSS, R12 plainDocument, R13 and R14; R15 seven @font-face rules and stacks. Implement all shared CSS in one rewrite, all nine R3 visited selectors, ghost/danger submitButton variants, icons, navigation grouping, escaped code-point initials, breadcrumbs and responsive shell. Unit Checks for html, shell, states and /console.css, including breakpoint text and no-inline-style assertions on these renderers. Update tests of these shared renderers and their existing consumers in this task to preserve behavior assertions. Update existing e2e selectors, link/visited/focus and Tab-order expectations now; retain ordinary Cancel expectations until T3 switches its markup. Do not implement the page-specific migrations allocated to T3/T4 or change CONSOLE_JS.",
+      "acceptance": [
+        {
+          "command": "bun run lint",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run typecheck",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun test src/html.test.ts src/shell.test.ts src/navigation.test.ts src/states.test.ts src/server.test.ts src/server.states.test.ts src/server.roles.test.ts src/server.account-shell.test.ts src/server.races.test.ts src/server.confirm.test.ts src/server.form-token.test.ts src/server.overview.test.ts src/overview.test.ts src/server.checks.test.ts src/server.checks-change.test.ts src/server.checks-write.test.ts src/server.team.test.ts src/server.security.test.ts src/check-editor-page.test.ts src/confirm.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). Existing status, role, escaping, secret and form-token assertions remain. Primary/secondary button strings are byte-identical, new classes are ghost/danger; plain layout has one h1 and no script. Every initials counterexample matches; viewer/member omit Instance and admin groups Team; sign-out keeps csrf then form_token. 403 stays 403, has one Access denied heading and a Go to the overview link; 404 keeps its h1 and sentence. Shared alert/status output is a callout; emptyState accepts no action"
+        },
+        {
+          "command": "bun -e 'import(\"./src/styles.ts\").then(m => console.log(Buffer.byteLength(m.CONSOLE_CSS)))'",
+          "expected": "At most 49152 bytes. The /console.css tests assert literal light/dark tokens, all seven fixed font URLs with font-display: swap, exactly 7 @font-face and 7 url( occurrences, the two font stacks, [hidden], all breakpoint rules, the 3px focus offset and the R3 visited map; no @import, data:, local(, 1b4f9c, hidden root overflow or negative outline offset"
+        },
+        {
+          "command": "git diff -- src/console-script.ts",
+          "expected": "Empty output; the one shell script and its behavior remain unchanged"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Apply panels, callouts and destructive confirmation tones to account and team flows",
+      "files": [
+        "src/confirm.ts",
+        "src/confirm.test.ts",
+        "src/team-pages.ts",
+        "src/team-routes.ts",
+        "src/pages.ts",
+        "src/account-pages.ts",
+        "src/server.ts",
+        "src/html.test.ts",
+        "src/server.account-shell.test.ts",
+        "src/server.confirm.test.ts",
+        "src/server.form-token.test.ts",
+        "src/server.races.test.ts",
+        "src/server.security.test.ts",
+        "src/server.setup.test.ts",
+        "src/server.states.test.ts",
+        "src/server.team.test.ts",
+        "src/server.invite.test.ts",
+        "src/server.checks-change.test.ts",
+        "src/server.checks-write.test.ts",
+        "test/fixture-routes.ts",
+        "e2e/run.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "Repository: console; R3 destructive/safe submits; R8 mapping in pages.ts, account-pages.ts, team-pages.ts, team-routes.ts and server.ts; R11 confirmation renderers, every required-tone caller including fixtures, account panels and role form; R12 plain-page bodies/footers. Restyle setup, owner, sign-in/factor, authenticator, password, recovery codes, security, sessions, all team/invite/reset pages. Preserve all form fields/order and deploy-grepped text. Add required tone only to plain ConfirmView; typed confirmations stay intrinsically danger without a tone field. Convert remaining team alert output including the no-authenticator branch under R8's audit rule. Confirm tests and HTTP tests of the migrated flows belong here. Update existing browser Cancel expectations to ghost --text and retain no-JS, busy-button and copy fallback coverage.",
+      "acceptance": [
+        {
+          "command": "bun run lint",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run typecheck",
+          "expected": "exit 0; every plain-confirm caller explicitly chooses safe or danger; typed callers need no tone"
+        },
+        {
+          "command": "bun test src/confirm.test.ts src/html.test.ts src/server.account-shell.test.ts src/server.confirm.test.ts src/server.form-token.test.ts src/server.races.test.ts src/server.security.test.ts src/server.setup.test.ts src/server.states.test.ts src/server.team.test.ts src/server.invite.test.ts src/server.checks-change.test.ts src/server.checks-write.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). Delete check, Revoke invite, Remove, Make owner, Reset 2FA and Sign out all other sessions submit as danger; Make reset link, Change role, Create new recovery codes and Resolve incident remain primary. Confirmations use panel bodies/feet with Cancel before Submit, ghost Cancel and mono typed field; csrf, form_token, revision and extras keep order. Team, Pending invites and Sessions table regions have tabindex=0 and their literal accessible names"
+        },
+        {
+          "command": "bun test src/server.setup.test.ts src/server.states.test.ts src/server.team.test.ts src/server.account-shell.test.ts src/server.invite.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). Existing route/status/auth assertions remain, including 409/412/422/503 and staged sign-in. Error, warning, success and session-expired info callouts follow the R8 mapping with unchanged roles/text; setup retains connection-result and Connected. Wire version: 1. Checks: <n>.; Signed in as, This browser and Already submitted remain. Migrated renderers emit no inline styles or extra scripts"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "step",
+      "title": "Use shared components throughout overview and check screens with accessible mobile tables",
+      "files": [
+        "src/overview.ts",
+        "src/overview.test.ts",
+        "src/check-pages.ts",
+        "src/check-detail-pages.ts",
+        "src/check-editor-page.ts",
+        "src/check-editor-page.test.ts",
+        "src/check-routes.ts",
+        "src/server.overview.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.checks-change.test.ts",
+        "src/server.checks-write.test.ts",
+        "src/server.test.ts",
+        "e2e/run.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "Repository: console; R2 mono counts/ids/timestamps/env names/URLs/numbers; R5 radio rows and type-choice panels; R6 table boxes/hint; R7 all state dots/dense labels and tags; R8 overview/check-specific callout mapping and viewer emptyState; R11 detail panels, settings grid; R14 wrapping. Cover overview, checks list/detail/new/edit/shadowed/delete and export links while leaving export bytes and filters unchanged. Finish saved/deleted/expired/Not saved/conflict/SAVED_NOT_LOGGED callouts in check-routes.ts and SHADOWED_PAGE_TEXT in detail. Complete the renderer audit that every alert/status is a callout and no renderer has inline styles. The four #773 fixes are radios, table accessibility, danger via T3 and 403 via T2; other #773 defects stay out of scope. Keep existing browser flows green as wrappers change; final matrix additions are T5.",
+      "acceptance": [
+        {
+          "command": "bun run lint",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun run typecheck",
+          "expected": "exit 0"
+        },
+        {
+          "command": "bun test src/overview.test.ts src/check-editor-page.test.ts src/server.overview.test.ts src/server.checks.test.ts src/server.checks-change.test.ts src/server.checks-write.test.ts src/server.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). All editor radios render label.choice with input before a text span; six type-choice links keep their href/text. Checks table is a region named Checks table with tabindex=0 and the exact hint Scroll sideways to see all columns.; detail tables are labelled <section heading> table. State labels stay unchanged beside the six dot kinds, numeric cells are mono/right-aligned, info tags have --bg fill, and settings dt words stay unchanged"
+        },
+        {
+          "command": "bun test src/server.checks.test.ts src/server.checks-change.test.ts src/server.checks-write.test.ts src/server.overview.test.ts",
+          "expected": "All selected tests pass, 0 fail (a focused run may fail only the global coverage threshold). Existing create/edit/delete/filter/shadowed/export/secret/status coverage remains; source tags and panels escape hostile text. Overview counts keep their meaning and get mono/state dots; viewer empty installation has no action. Check notices use the R8 literal mapping. Renderer tests across the complete browser matrix reject style attributes and style elements"
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "kind": "final",
+      "title": "Prove both color schemes, responsive behavior, font use and release evidence",
+      "files": [
+        "e2e/run.ts",
+        "test/fixture-routes.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "Repository: console; Checks: browser checks 1-12 in full and manual smoke; Completion evidence; Performance impact; Security impact checklist; Risks shared #768 finding. Extend rather than weaken existing browser coverage, add fixtures only where real pages cannot show all variants, and finish documentation. All unit/code changes and their tests are T1-T4. Run the complete matrix in light/dark at 1280x800 and 390x844, with literal expected colors, font paths and visited map independent of production code. Preserve all existing axe tags/rules, no-JS confirmations/copy fallback and busy behavior. Final handoff includes required local/CI/deploy checks, all cost measurements against the recorded base, the security audit, font provenance, matrix output and all PR evidence named in the spec.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint and both TypeScript projects pass, the full suite has 0 failures and at least 80% line coverage without weakening shared tooling"
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; checks 1-12 print ok lines for both schemes and both widths on overview, checks list, HTTP edit, sign-in and typed delete. Literal primary/danger/input/focus colors match; zero axe/CSP violations and no other-origin requests. Radios are 18px, adjacent within 12 +/- 1px, centered within 2px and on >=44px rows, and keyboard-operable. No document overflow at 390px and html/body overflow-x stays visible. Checks scroll box is named/focusable, its hint visible, ArrowRight changes scrollLeft and Actions can be reached. Sidebar is 236 +/- 1px, topbar >=64px, 719/720 and 900/901 boundaries pass, mobile nav outlines are 2px with 3px offset inside 6px padding. 403 has one heading and working overview link; 404 is neutral. All destructive and safe confirmations, no-JS paths, Tab order, hidden copy fallback, hostile/long data and nine-row visited map pass. Cold / uses <=10 requests and <=117684 font bytes. Font HTTP responses are 200 font/woff2, seven-route allowlist holds, FontFace 700 is loaded, title computed family starts Space Grotesk, and CDP proves actual custom Space Grotesk and JetBrains Mono use after document.fonts.ready"
+        },
+        {
+          "command": "docker build --tag pulse-console:local .",
+          "expected": "exit 0; image contains assets and both OFL texts while retaining the non-root user, no-test/dev-package rules, healthcheck and CMD"
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "CI jobs check, docker on amd64 and arm64, deploy-dev and browser are green. The docker font step verifies 200 font/woff2 and literal SHA-256 35f8aec56cfd5cbfdb03cc68733a54a0b05bb3617ffcd5fd332badc0b045ca55 and 14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb, plus both OFL files in /app/assets/fonts/"
+        },
+        {
+          "command": "E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 when run from a separate pulse-deploy main checkout with this console head and the initialized/ready dev compose stack, exactly as the unchanged console CI deploy-dev job sets it up. Setup, two-factor, account and team flows pass; no deploy repository edits or weakened job"
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Fixture service starts; exercise overview, checks, edit, sign-in, team and a confirmation in Chromium in light and dark, then stop it. Record commands and observed results; text, roles, safe/destructive controls and keyboard paths remain usable"
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "Service starts and a changed page is exercised once as console AGENTS.md requires, then stop it; report command and result without publishing setup codes, secrets or private details"
+        },
+        {
+          "command": "sha256sum assets/fonts/*",
+          "expected": "All nine full hashes equal R15's independent npm-tarball table; include output, both 5.3.0 tarballs and their dist.integrity in the PR"
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; complete the Security impact checklist review of encoding/hostile names, secret leaks, auth/status/CSRF/form-token order, exact CSP, fixed path-safe font reads and byte pins, Dockerfile and CI changes. No unaddressed applicable finding"
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body includes all Completion evidence: successful local checks and green CI/font-image step; ok matrix lines for both schemes/widths; four fixed and remaining #773 items; whether #768 was merged at child start; smoke results; security checklist results; font hashes/tarball integrity. Performance impact table contains measured base/head CSS and shell-HTML bytes, cold/warm requests/font bytes, RSS, startup, image bytes and unit/browser test times, using that section's measurement commands, not estimates or api benchmarks"
+        }
+      ]
+    }
+  ]
+}
