@@ -72,8 +72,18 @@ Strict object `{ id, checkIds, start, end, note }`:
 
 - `id`: window id (D1).
 - `checkIds`: array of 1 to 50 non-empty strings, without duplicates. Order is kept as sent.
-- `start`, `end`: integer epoch milliseconds, `0 <= start < end <= 8640000000000000`. Half-open
-  `[start, end)` as today. Past, current and planned windows may be created, replaced and deleted.
+- `start`, `end`: integer epoch milliseconds, `0 <= start < end <= 253402300799999`
+  (`MAX_MAINTENANCE_TIME`, `9999-12-31T23:59:59.999Z`). Half-open `[start, end)` as today. Past,
+  current and planned windows may be created, replaced and deleted.
+  Why this limit: the export (D8) writes each database window time as `new Date(ms).toISOString()`
+  and must pass the unchanged `adminConfigExportSchema`, whose times are
+  `z.iso.datetime({ offset: true })` (contract `src/admin.ts:281-282`, Zod `4.6.7` pinned in contract
+  `package.json:39`). That check takes only a four-digit year. Any time after year 9999 is written
+  with an expanded year: the JavaScript maximum `8640000000000000` becomes
+  `+275760-09-13T00:00:00.000Z`, and the export schema refuses it (the plan-review ran this with Zod
+  4.6.7). `253402300800000` becomes `+010000-01-01T00:00:00.000Z` and is refused as well. So every
+  value up to `253402300799999` exports in a valid form, and every value above it would break D8.
+  File windows keep their current rule.
 - `note`: plain text of 1 to 500 characters (UTF-16 code units, `String.prototype.length`, as the
   contract's existing `plainText` counts), no leading or trailing whitespace, no control character
   (`\p{Cc}`, so a note is one line). These rules apply only to database notes.
@@ -325,7 +335,8 @@ Not applicable: probe HTTP client, SSRF, redirects, Dockerfiles, CI.
 | reference | a database check id that is shadowed (so its id is the effective file check) | 201: the id is effective |
 | note length | `""`, 501 × `a`, 251 × `😀` (502 code units) | 422; 1 and 500 × `a` are 201; 250 × `😀` is 201 |
 | note text | `" x"`, `"x "`, `"a\nb"`, `"a\u0007b"` | 422 (database only); the same notes in a file window still load if non-empty (unchanged file rule) |
-| times | `start: 1.5`, `start: -1`, `end: 8640000000000001`, `start == end`, `end < start`, ISO string | 422 |
+| times | `start: 1.5`, `start: -1`, `end: 253402300800000`, `end: 8640000000000000`, `start == end`, `end < start`, ISO string | 422 |
+| time upper bound | `start: 253402300799998, end: 253402300799999` | 201; `GET /admin/config/export` then holds `end: "9999-12-31T23:59:59.999Z"` and passes `validateAdminConfigExport` (literal `ok: true`); a wrong limit of `8640000000000000` would export `+275760-09-13T00:00:00.000Z` and fail it |
 | id syntax | `"0"`, `"12"`, `"Web"`, `"-a"`, 65 characters, `""` | 422 on POST; `"a"` and 64 characters are 201 |
 | path/body id | `PUT /admin/maintenance/a` with body id `b` | 400 |
 | old index paths | `DELETE /admin/maintenance/0` with one file window | 409, file unchanged; `/admin/maintenance/7` with one file window: 404 |
@@ -356,7 +367,7 @@ before this spec (`grep -rn -- '<name>' contract/src`, `grep -rln -- '<name>' co
 | Name | Kind |
 | --- | --- |
 | `MAINTENANCE_WINDOW_ID` | id regex `^[a-z][a-z0-9._-]*$` |
-| `MAX_MAINTENANCE_WINDOW_ID` (64), `MAX_MAINTENANCE_CHECKS` (50), `MAX_MAINTENANCE_NOTE` (500) | limits |
+| `MAX_MAINTENANCE_WINDOW_ID` (64), `MAX_MAINTENANCE_CHECKS` (50), `MAX_MAINTENANCE_NOTE` (500), `MAX_MAINTENANCE_TIME` (253402300799999) | limits |
 | `ADMIN_MAINTENANCE_PHASES`, `AdminMaintenancePhase` | `["planned","current","past"]` |
 | `adminMaintenanceWindowInputSchema`, `AdminMaintenanceWindowInput`, `validateAdminMaintenanceWindowInput` | request body of `POST`/`PUT /admin/maintenance[/:id]` |
 | `adminMaintenanceWindowSchema`, `AdminMaintenanceWindow`, `validateAdminMaintenanceWindow` | one list entry and the write response |
@@ -413,6 +424,15 @@ Checks (written first, failing on `66818a2` because the exports do not exist):
 
 - input: accepts `{id:"a", checkIds:["web"], start:0, end:1, note:"x"}`; every counterexample row of
   D2 (ids, checkIds, times, note) is refused with a path in the error.
+- time boundary: `MAX_MAINTENANCE_TIME === 253402300799999` (literal). The input schema accepts
+  `end: 253402300799999` and refuses `end: 253402300800000` and `end: 8640000000000000` at path
+  `end`. Compatibility proof: build an export object whose single maintenance entry has
+  `start: new Date(253402300799998).toISOString()` and `end: new Date(253402300799999).toISOString()`.
+  The test asserts the literal string `"9999-12-31T23:59:59.999Z"` for `end`, and
+  `validateAdminConfigExport` returns literal `ok: true`. The same object with
+  `end: "+275760-09-13T00:00:00.000Z"` returns `ok: false`. The literals come from ECMAScript
+  `Date.prototype.toISOString` (four-digit year up to 9999, expanded `+YYYYYY` year after it), not
+  from the code under test.
 - view/list: accepts a file entry `{id:null,index:0,source:"file",checkIds:["web"],...}` and a
   database entry; refuses a database entry with `index: 0`, a file entry with two check ids, an
   unknown key, a `shadowed` entry with `source: "file"`.
@@ -453,11 +473,16 @@ Files:
 - `src/service.ts` (cache clear on a new window array)
 - `src/start.ts`
 - `src/metrics.ts` (only if the write metric needs a kind or result value)
-- tests: `src/maintenance-write.test.ts`, `src/server.maintenance-admin.test.ts`,
-  `src/effective-maintenance.test.ts`, `src/config.maintenance.test.ts`,
-  `src/service.maintenance.test.ts`, `src/config-admin.test.ts` (file-window write cases become
-  read-only cases), `src/config-export.test.ts`, `src/db.migrations.test.ts`,
-  `src/start.file-fallback.test.ts`, `src/docs-claims.test.ts`
+- `src/maintenance-write.test.ts` (new: writer unit tests, revision, audit, cap, rollback)
+- `src/server.maintenance-admin.test.ts` (new: HTTP tests of checks 1 to 5 on a real server)
+- `src/effective-maintenance.test.ts` (new: projection, shadow split, array identity)
+- `src/config.maintenance.test.ts` (existing: optional file `id`, duplicate id)
+- `src/service.maintenance.test.ts` (existing: cache clear, tie order)
+- `src/config-admin.test.ts` (existing: file-window write cases become read-only cases)
+- `src/config-export.test.ts` (existing: projected windows, time boundary)
+- `src/db.migrations.test.ts` (existing: step 8)
+- `src/start.file-fallback.test.ts` (existing: windows after a start from the snapshot)
+- `src/docs-claims.test.ts` (existing: reload sentence)
 - docs: `README.md`, `docs/configuration.md`, `docs/operation.md`, `docs/rest-api.md`,
   `docs/concepts.md`
 
@@ -533,6 +558,10 @@ Checks (written first; the four marked ★ are the issue's "Done when" and fail 
     the file window then one entry per effective check of `w` with ISO times, no `id`, and no
     shadowed window. Both validators are the ones of contract `66818a2`, whose behavior the
     contract task keeps; the expected `ok: true` is literal.
+    Boundary: `POST` a window with `start: 253402300799998, end: 253402300799999` gets 201, its
+    export entry has `end` equal to the literal `"9999-12-31T23:59:59.999Z"`, and the whole export
+    passes `validateAdminConfigExport` of contract `66818a2` (literal `ok: true`). `POST` and `PUT`
+    with `end: 253402300800000` or `end: 8640000000000000` get 422 and leave the list unchanged.
 11. Migration: a database at `user_version` 7 opens, gets version 8 and an empty
     `maintenance_definitions`; a snapshot without window ids loads.
 12. Docs claim test of the reload sentence.
