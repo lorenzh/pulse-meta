@@ -211,17 +211,19 @@ groups. When `GET /locations` fails, the groups show "Last result unknown (pulse
 | `api_url` | required; the console's URL rules (`src/settings.ts:27`, `:32-42`): http or https, no whitespace or control character, no credentials, query or fragment, at most 2048 characters; one trailing `/` dropped | `PULSE_CONSOLE_PROBE_API_URL` |
 | `image` | required; 1 to 255 characters of `[A-Za-z0-9._/:@-]`, first character `[A-Za-z0-9]` | `PULSE_CONSOLE_PROBE_IMAGE` |
 | `network` | optional; `[A-Za-z0-9][A-Za-z0-9_.-]{0,127}` (Docker network name) | `PULSE_CONSOLE_PROBE_NETWORK` |
-| `block_private` | checkbox, off by default | off |
+
+These five fields are the whole form. There is no private-range control (#460 s7: "A Console
+switch is later work"): the route reads only the fields of this table, so a forged
+`block_private=on` or `PULSE_PROBE_BLOCK_PRIVATE_RANGES=true` in the POST body changes nothing,
+and the snippets always carry the probe's default `false` (`probe docs/configuration.md:19`,
+`:265`).
 
 Help texts: under `api_url` "The address the probe uses to reach pulse-api. The console reaches
 it at <console's API URL>; a probe on another host needs an address it can reach." Under
 `network` "For a probe on the same Docker host as pulse-api: the Compose network of the stack
-(for example `pulse_default`). Leave empty for a remote probe." Under `block_private`:
-"`PULSE_PROBE_BLOCK_PRIVATE_RANGES`: when on, this probe refuses private, loopback, link-local
-and cloud metadata addresses. Off by default for self-hosted probes, so checks of internal
-services work." The console token needs `checks` to mint a probe token (grant rule); without it
-the form is replaced by "The console token lacks the checks scope, so it cannot create probe
-tokens."
+(for example `pulse_default`). Leave empty for a remote probe." The console token needs `checks`
+to mint a probe token (grant rule); without it the form is replaced by "The console token lacks
+the checks scope, so it cannot create probe tokens."
 
 A location that already has an active credential is allowed (the api allows several tokens per
 location, `api docs/concepts.md:76`): the form POST adds another credential and the result page
@@ -256,7 +258,7 @@ docker run -d --name '<base>' --restart unless-stopped \
   --env-file '<base>.env' \
   -e 'PULSE_API_URL=<api_url>' \
   -e 'PULSE_LOCATION=<location>' \
-  -e 'PULSE_PROBE_BLOCK_PRIVATE_RANGES=<true|false>' \
+  -e 'PULSE_PROBE_BLOCK_PRIVATE_RANGES=false' \
   '<image>'
 ```
 
@@ -274,7 +276,7 @@ services:
     environment:
       PULSE_API_URL: "<api_url>"
       PULSE_LOCATION: "<location>"
-      PULSE_PROBE_BLOCK_PRIVATE_RANGES: "<true|false>"
+      PULSE_PROBE_BLOCK_PRIVATE_RANGES: "false"
     [networks: [pulse]]
 [networks:
   pulse:
@@ -295,7 +297,12 @@ Every Compose line the console renders (start, restart, stop) carries both `-p '
 The page shows: 1. save the token (env command, with "Run it on the probe host in the directory
 where the probe files live. It holds the token: it is shown only once."); 2a. `docker run` or 2b.
 save the Compose file as `<base>.compose.yaml` and run the command; 3. "The location appears as
-Awaiting first result until the probe posts its first result." Each `<pre>` has a copy button.
+Awaiting first result until the probe posts its first result." Under the snippets, the
+explanation of #460 s7 (fixed text, not a control): "`PULSE_PROBE_BLOCK_PRIVATE_RANGES=false` is
+the probe's default: its checks may connect to private, loopback, link-local and cloud metadata
+addresses, so checks of internal services work. To block those addresses on this probe, change
+the value to `true` in the docker run line or the Compose file before you start it. The probe
+reads it once at start." Each `<pre>` has a copy button.
 The secret is never put in an `-e` flag, a Compose file, a URL or a query string. A Console
 admin token never appears in a snippet.
 
@@ -318,12 +325,23 @@ steps (`src/server.ts:1086-1101`, `src/protected-route.ts`):
 4. The target is the own token (`id` equals self `id`) → `409` page "This is the console's own
    token. Nothing was changed." No write. Also on GET of the confirmation pages, which then
    render no form.
-5. The target is revoked or expired → `409` "This token is already revoked or expired."
-6. The confirmation `revision` differs from the current one → the existing stale state (`409`,
-   `src/states.ts:97`). `revision` = lowercase hex SHA-256 of the JSON array
+5. The confirmation `revision` differs from the current one → the existing stale state (`409`,
+   `staleState`, `src/states.ts:97-105`, heading "Changed since you opened it"). `revision` =
+   lowercase hex SHA-256 of the JSON array
    `[id, name, scopes, location, expiresAt, revokedAt, rotatedAt]`. `lastUsedAt` and
    `previousValidUntil` are not part of it, so a probe using the token does not make the
    confirmation stale.
+6. The target is revoked or expired (with a matching revision) → `409` "This token is already
+   revoked or expired." No write.
+
+Precedence of 5 over 6, on purpose: a token revoked by someone else between GET and POST has a
+new `revokedAt`, so its revision changed and the person gets the stale state (step 5), never the
+"already revoked" text. Step 6 is reached only with a revision that matches the current row:
+a token that expired between GET and POST (its `expiresAt` was already set, so the revision is
+unchanged), or a forged POST whose revision was computed from the already revoked row. On GET of
+a confirmation page for a token that is already revoked or expired, the page answers the step 6
+`409` and renders no form (there is nothing to confirm). Both texts are `409` and make no write;
+only the text differs.
 7. Revoke only: typed name check (`typedNameError`, `src/confirm.ts:43`) against the token name
    on `/tokens/revoke`, the location on `/probes/revoke`; mismatch → `422` with the page again.
 8. Revoke only: the target is the last active admin token (the rule of
@@ -503,7 +521,8 @@ bump with `scripts/bump-images.sh`; the new screens are accepted only on candida
 | Last admin | The list holds one active admin token that is not the console's (console token expired in the fixture) → no Revoke link; a forged POST → `409`, 0 writes. An api `409 cannot revoke the last active admin token` (race) → confirmation again with that message, never "Revoked". |
 | Grant | Console token `[read, admin]`: presets Manage checks, Post incidents, Full access are disabled; forged `preset=full` → field error, 0 writes. Add location → refused (needs `checks`). |
 | Presets | `preset=checks` sends exactly `["read","checks","admin"]`; `preset=read` sends `["read"]`; `preset=admin` (not a preset) → `422`, 0 writes. |
-| Stale confirmation | The token is revoked by someone else between GET and POST → `revokedAt` changed → stale `409`, 0 writes. A probe posts a result in between (only `lastUsedAt` changed) → not stale. |
+| Stale confirmation | The token is revoked by someone else between GET and POST → `revokedAt` changed → stale `409` with "Changed since you opened it", not "already revoked or expired" (step 5 runs before step 6), 0 writes. An implementation that checks the revoked state first shows the wrong text and fails. A probe posts a result in between (only `lastUsedAt` changed) → not stale. |
+| Already revoked or expired | A token with `expiresAt` = GET time + 1000 ms, POSTed after it expired with the revision shown on GET → revision unchanged → `409` "This token is already revoked or expired.", 0 writes. A forged POST for a revoked token with the revision of the revoked row → the same `409`. GET `/tokens/revoke?id=<revoked id>` → `409` with that text and no `<form>`. |
 | Typed name | Token name `ops ` typed as `ops` → confirmed (trim); typed `Ops` → mismatch (case-sensitive). |
 | Show once | Reload of the create answer → `409 Already submitted`, the fake api records 1 create. GET `/tokens` afterwards holds no `pulse_` secret. |
 | Lost answer | Api answers `201` with wire ok and body `{}` → `502` lost-answer text, People row value ends ` (unknown)`, no second create. |
@@ -517,6 +536,8 @@ bump with `scripts/bump-images.sh`; the new screens are accepted only on candida
 | YAML quoting | location `a"b$HOME` → `PULSE_LOCATION: "a\"b$$HOME"`; Compose resolves it to `a"b$HOME`. |
 | Names | location `Ünïcode Zone/1` → slug `n-code-zone-1` (non-ASCII letters are outside `[a-z0-9]`); location `!!!` → slug `location`; base is `pulse-probe-<slug>-<6 hex>`. |
 | Network | `network` empty → no `--network` flag and no `networks:` keys; `-net` → field error (first character). |
+| No private-range switch | The add-location form has no `block_private` (or any private-range) input. A forged POST with `block_private=on` and `PULSE_PROBE_BLOCK_PRIVATE_RANGES=true` added → `200`, and the docker-run text holds `-e 'PULSE_PROBE_BLOCK_PRIVATE_RANGES=false'` and the Compose file `PULSE_PROBE_BLOCK_PRIVATE_RANGES: "false"`; no `=true` anywhere in the snippets. |
+| Rotation baseline (deploy) | Only the old container reports: the old `e2e-run` container posts a result at `t + 200` ms, and the replacement never reports (for example its image name is wrong). A wrong sequence that takes `t0 = t` before `docker rm -f` sees `lastResultAt >= t0` (the api keeps one maximum timestamp per location, with no credential, `api src/service.ts:431-436`, `:1259`) and passes falsely. The correct sequence removes the old container first, requires it gone, takes `t0` only then, and requires one baseline answer with `lastResultAt < t0`; the replacement's absence then fails the wait. |
 | Countdown | `previousValidUntil` = now + 600000 → `10:00 left`; = now + 59000 → `00:59 left`; `null` → "The old secret no longer works." Remaining time = `max(0, floor((previousValidUntil − now) / 1000))` seconds, shown as `mm:ss`. |
 | Compose project | The Compose command is `docker compose -p '<base>' -f '<base>.compose.yaml' up -d`; a builder that drops `-p` fails the literal-string unit test. In deploy, the stack's `probe` container id (`docker compose ps -q probe` of `pulse-e2e`) is the same before and after the snippet starts, restarts and stops; a launch that inherited `COMPOSE_PROJECT_NAME=pulse-e2e` would recreate it and fail. |
 | One interval (deploy) | Deadline `t0 + 10000` ms. A poll that starts at `t0 + 9500` ms and returns at `t0 + 10300` ms with the result fails the step, though the result may have been accepted before the deadline: only an observation that has finished by the deadline counts. A probe whose first result is accepted after the deadline fails even if it reports later. A poll that hangs is cut at the deadline by its `--max-time` and fails the step. The same rule holds for the Compose launch and the rotation restart. |
@@ -666,7 +687,9 @@ Module boundaries: snippets are pure (`probe-snippet.ts`, no I/O); views are pur
   rule, the revision (a change of `lastUsedAt` keeps it, a change of `revokedAt` changes it) and
   the countdown values of the counterexamples. The Compose start, restart and stop lines are
   compared with literals that hold `-p '<base>' -f '<base>.compose.yaml'` (the "Compose project"
-  counterexample). `token-write.test.ts` covers every outcome row with a fake fetch, that
+  counterexample). The private-range literals are `-e 'PULSE_PROBE_BLOCK_PRIVATE_RANGES=false'`
+  and `PULSE_PROBE_BLOCK_PRIVATE_RANGES: "false"`; the builder takes no private-range input
+  (its input type has no such field). `token-write.test.ts` covers every outcome row with a fake fetch, that
   nothing is retried, and the People-log rule of section 6 with a store whose `appendPeople`
   throws: timeout and wire mismatch keep the unknown text with neither "Saved in pulse-api." nor
   "could not be written" (one `error` log line, 1 write); a confirmed create, rotate and revoke
@@ -675,7 +698,11 @@ Module boundaries: snippets are pure (`probe-snippet.ts`, no I/O); views are pur
 - HTTP (real server, port 0, fake api): `server.tokens.test.ts` and `server.probes.test.ts` cover,
   for Owner and Admin: list, create with each preset, show once, rotate, revoke with typed name;
   for Member and Viewer: `403` on every GET and forged POST, 0 api writes; own-token forged
-  rotate/revoke `409` with 0 writes; last-admin; grant; stale; lost answer; replay `409` with 1
+  rotate/revoke `409` with 0 writes; last-admin; grant; the step 5/6 precedence (revoked between
+  GET and POST → "Changed since you opened it"; expired between GET and POST with the shown
+  revision → "This token is already revoked or expired."; GET of the confirmation of a revoked
+  token → `409` without `<form>`; 0 writes in each); the add-location form holds no
+  private-range input and a forged `block_private=on` still renders `=false`; lost answer; replay `409` with 1
   api write; self `404` (banner, every mutation `503`, 0 writes); `GET /locations` failure; the
   role or session removed between GET and POST (`writeGuardProblem`) with 0 writes; People rows
   with no secret; and a scan of the test database file for the fake secrets (0 hits). The
@@ -812,7 +839,8 @@ and the docs (items 3 and 4) form the second task.
    1. Set up the console and sign in the Owner with TOTP through the library (fresh
       `console-data`: `compose-e2e.sh` runs `down -v` first, `:361`).
    2. `GET /probes` → `200`. Add location `e2e-run` with `api_url=http://api:3000`,
-      `image=pulse-probe:dev`, `network=pulse-e2e_default`, `block_private` off → `200`; read
+      `image=pulse-probe:dev`, `network=pulse-e2e_default`, `name` empty (the five fields; there is no
+      private-range field) → `200`; read
       `#probe-env-command`, `#probe-docker-run` with `e2e/snippet.mjs`. The env command matches
       `PULSE_PROBE_TOKEN=pulse_[A-Za-z0-9_-]{43}` (checked, never printed).
    3. `GET /probes` shows `e2e-run` with `Awaiting first result`.
@@ -832,12 +860,30 @@ and the docs (items 3 and 4) form the second task.
       print `ok: compose probe e2e-compose reported within 10 s (<n> ms)`.
    7. Rotate the `e2e-run` credential through `/probes/rotate`; during the overlap both the old
       and the new secret answer `200` on `GET /probe/checks` (curl with the header built from the
-      env files, output discarded, `--max-time 5`); `snippet_run` the new env command, take
-      `t0`, `snippet_run` the shown `docker rm -f` line and then the docker-run text again; the
-      container's environment holds the new secret (`docker inspect` of `Config.Env` compared
-      with `grep -qxF`, output discarded, never printed); the one-interval wait for a result of
-      `e2e-run` with `lastResultAt >= t0`; print
-      `ok: rotated probe e2e-run reported within 10 s (<n> ms)`.
+      env files, output discarded, `--max-time 5`). Then, in this order:
+      1. `snippet_run` the new env command (rewrites `<base>.env`; the running container keeps
+         the old secret, it read the file at creation).
+      2. `snippet_run` the shown `docker rm -f '<run base>'` line, then require
+         `docker ps -aq --filter "name=^<run base>$"` to print nothing (the old container and its
+         in-memory result buffer, `probe src/buffer.ts`, are gone; the docker-run snippet mounts
+         no volume, so nothing is replayed).
+      3. Only now take `t0 = now_ms`. A probe stamps a result with its wall clock at check start
+         (`probe src/check.ts:120`, `:149`), and the api keeps per location only the maximum of
+         those timestamps, without the credential (`api src/service.ts:431-436`, `:1259`), so
+         after step 2 no result with `timestamp >= t0` can come from the old container.
+      4. Baseline: one `GET /locations` (same curl bounds) must list `e2e-run` with
+         `lastResultAt < t0`; otherwise fail with `FAIL: e2e-run reported after the old probe
+         was removed` (something else still reports for this location, so a later pass would
+         prove nothing).
+      5. `snippet_run` the docker-run text again; the container's environment holds the new
+         secret (`docker inspect` of `Config.Env` compared with `grep -qxF`, output discarded,
+         never printed).
+      6. The one-interval wait from `t0` for `e2e-run` with `lastResultAt >= t0`; print
+         `ok: rotated probe e2e-run reported within 10 s (<n> ms)`. The time between `t0` and the
+         launch (steps 4 and 5) counts against the 10000 ms.
+      This is the "Rotation baseline" counterexample: with `t0` taken before the removal, a last
+      result of the old container would satisfy the wait although the replacement never
+      reported.
    8. Revoke the `e2e-compose` credential through `/probes/revoke` with the typed location; its
       secret now answers `401` on `GET /probe/checks`; `GET /locations` still lists
       `e2e-compose` (history kept).
@@ -917,7 +963,9 @@ Tool facts (deploy `main` 770eae0; config pin `04108fa0c67d9a79c0f6d1ade4dd78df3
    `ok: console probe locations` (the CI gate). The 10 s bound is the literal 10000 ms, the
    `intervalMs` of `status-page` in `e2e/ro/checks.json`; each pass needs an answer of pulse-api's
    `GET /locations` (an independent service, not the console under test) that finished by
-   `t0 + 10000` ms on the host clock and holds `lastResultAt >= t0`. The stack's `probe`
+   `t0 + 10000` ms on the host clock and holds `lastResultAt >= t0`. For the rotation, `t0` is
+   taken only after the old container is removed and gone, and a baseline answer with
+   `lastResultAt < t0` precedes the relaunch, so only the replacement can pass. The stack's `probe`
    container id is unchanged across every snippet command (compared with the id read before the
    first launch, a separate `docker compose ps -q probe` call).
 
