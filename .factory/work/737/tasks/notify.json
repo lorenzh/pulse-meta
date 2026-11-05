@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Listed private manual incidents keep their ledger keys across retention expiry",
+      "files": [
+        "src/api.ts",
+        "src/notifier.ts",
+        "test/manual-flip.test.ts",
+        "test/api.test.ts",
+        "test/manual-incidents.test.ts",
+        "docs/operation.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all What each file gets bullets, acceptance 1-8 and Completion evidence; Decisions 1-5, Required behavior R1-R4, Counterexamples C1-C12 and Security impact. Add ManualIncidentsResult.listedIds using the existing descriptor-based safeId before the privacy guard and accepted incident ids; return an empty set on 404. Replace #visibleManual only after successful non-404 reads; preserve last-good and undefined semantics. Use listedIds only for pruning, never seeding, detection, routing or payloads. Keep ledger format 4, Ledger.prune, retention timing, dependencies and normal sending unchanged. Add the injected-clock internal/draft retention regressions, all event keys, pruned control, restart, absence versus failure, private-first publication, malformed listed items and safe-id cases. Preserve existing privacy and compatibility assertions, and verify a genuinely new public update is sent once after republication. Update docs/operation.md with listed private/malformed retention and the omitted-item limit. test/manual-incidents.test.ts needs changes only if C6/C7 coverage is missing; README.md needs changes only if its existing wording becomes wrong, as allowed by the section.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-flip.test.ts",
+          "expected": "Before the production fix, run the new regression against notify f5007bfd5497035152e075d733124ca4cac87a9f. Acceptance 1 fails because ledger.has(\"all\", \"manual:9:opened\") is false instead of true, or republication writes 2 lines instead of 1. Capture the failing run for the PR. A coverage-only failure is not evidence of the defect."
+        },
+        {
+          "command": "bun test test/manual-flip.test.ts test/api.test.ts test/manual-incidents.test.ts test/feeds.test.ts test/prune.test.ts",
+          "expected": "After the fix: 0 fail. Acceptance 1 uses one clock injected into Ledger and Notifier, retention 1 day, an initial empty feed, and all/web file channels. At START + 3 * DAY both channels retain manual:9:opened, while manual:50:opened seeded at START is absent, proving pruning ran; republication leaves exactly [\"manual:9:opened\"] per channel. Acceptance 2 retains all 3 opened/update/resolved keys across the draft flip, with exactly 3 total lines per channel after republication; a later eligible prune after successful [] removes them (C8), whereas 500 or 404 keeps the last good presence (C9). Restart from the same ledger path adds 0 lines (acceptance 3). A draft-only id has no ledger key before publication and exactly 1 opened delivery per eligible channel afterward (C6/C7). Malformed listed safe ids retain keys (C3); string, fractional, unsafe and missing ids add no protection (C5). C12 returns rejected [{index:3,id:5,reason:\"invalid\"}], incidents [manualIncident({id:4})] and listedIds {1,2,4,5} for the spec's exact fixture. Existing acceptance 6 assertions remain unchanged, including private skipped count 0 then malformed-public count 1 and older-api compatibility. A new public update after republication is delivered exactly once (R4). Focused coverage may fail its threshold despite 0 failed tests; the full-suite coverage gate is checked separately."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 with Bun 1.4.0: lint, typecheck and the complete test suite pass; line coverage is at least 80% and cognitive complexity stays within 15 per function. Shared tooling, coverage thresholds and existing acceptance 6 assertions are unchanged."
+        },
+        {
+          "command": "PULSE_NOTIFY_CONFIG=\"$PULSE_737_SMOKE_CONFIG\" PULSE_NOTIFY_STATE=\"$PULSE_737_SMOKE_STATE\" PULSE_API_URL=\"$PULSE_737_SMOKE_API_URL\" bun run start",
+          "expected": "Acceptance 8: prepare the named temporary file-channel config, fresh ledger path and local fake-api URL. Let the initial empty manual feed establish the channel, then serve one public manual incident and the same id as internal. Exactly 1 line is written to the channel file. Stop the service cleanly and record the actual resolved command and result. The injected-clock regression, rather than this smoke, proves retention expiry."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; no whitespace errors."
+        },
+        {
+          "command": "git diff -- src/api.ts src/notifier.ts test/manual-flip.test.ts test/api.test.ts test/manual-incidents.test.ts docs/operation.md README.md",
+          "expected": "Review against the spec's Security impact checklist and Decisions 1-5: only own numeric safe-integer ids enter the presence set, with no coercion or getter execution; no private content or private id is added to logs, metrics, payloads or ledger rows; existing body/size limits remain unchanged. listedIds only controls pruning, replaces the last successful set and does not create keys. Ledger format remains 4 and no ledger code or dependency pin changes. Retention docs state that listed private/malformed items retain keys and omitted items are unprotected. Leave the conditionally listed test/manual-incidents.test.ts and README.md unchanged if their existing coverage/wording suffices."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Completion evidence: the PR body names #737, links the failing acceptance 1 run on f5007bfd5497035152e075d733124ca4cac87a9f and the passing run, includes bun run check output and the resolved smoke command with exactly 1 output line, records the applicable security checklist results, and states the spec's known limit that an item omitted from the API feed is not protected."
+        }
+      ]
+    }
+  ]
+}
