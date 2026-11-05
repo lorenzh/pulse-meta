@@ -54,7 +54,7 @@ one.
 | #718 | Single-use form tokens, `a:` (anonymous CSRF) and `s:` (session) bindings, the `/console.js` busy button | `src/form-tokens.ts`, `src/server.ts:260-294`, `src/http-context.ts:200-228`, `src/console-script.ts` | Every new POST form carries `form_token` after `csrf`. No new script. |
 | #563 | Session stages `factor`, `enrol`, `full`; one access gate; a `full` row of a user who must have 2FA and has none counts as `enrol`; a password sign-in of such a user starts stage `enrol` and answers `303` to `/account/authenticator` | `src/server.ts:193-254`, `:729-748`, `src/account-store.ts:23-62` | An invited Admin's first session is `enrol`. A promoted Admin and a recovered Owner have no session left (the role change or the reset ended them), so their old cookie goes to `/sign-in?next=…`; their next password sign-in starts `enrol`. A live `full` session of a Member or Viewer counts as `enrol` once the switch is on. |
 | #563 | The one 2FA predicate `isSecondFactorRequired` and `signInStage` | `src/two-factor-policy.ts:6`, `:11` | Widened to every Admin and to the organisation switch. |
-| #563 | TOTP with sealed seeds, recovery codes, enrolment, factor sign-in, session list, sign out all, `recheckPassword`, `deleteOtherSessions` | `src/factor-store.ts`, `src/account-routes.ts:134-172`, `src/account-store.ts:91-92` | 2FA reset deletes these rows; own password change uses `recheckPassword` and ends other sessions. |
+| #563 | TOTP with sealed seeds, recovery codes, enrolment, factor sign-in, session list, sign out all, `recheckPassword`, `deleteOtherSessions` | `src/factor-store.ts`, `src/account-routes.ts:134-172`, `src/account-store.ts:91-92` | 2FA reset deletes these rows; own password change uses `recheckPassword` and ends other sessions. New codes, authenticator setup and sign out all call guarded store variants (section 17); the flows are otherwise unchanged. |
 | #563 / deploy | The secret key file, provisioned by deploy (`deploy/README.md:62-66`) | `PULSE_CONSOLE_SECRET_KEY_FILE` | Unchanged. Admin enrolment needs it as Owner enrolment does. |
 
 ### Engineering choices
@@ -109,7 +109,8 @@ a hold.
   item. The People log has no viewer here; item C adds the Activity page.
 - Sign-in events in the People log.
 - Any change to TOTP, recovery codes, enrolment, the session list or the factor throttle (#563),
-  apart from the predicate widening and the 2FA reset of another person.
+  apart from the predicate widening, the 2FA reset of another person and the commit guards of
+  section 17 (new recovery codes, authenticator setup, sign out all).
 - A copy button. Links are selected and copied by hand from a read-only input; `/console.js` is
   not changed.
 - Editing status or notify settings (matrix row 10: Owner, not built in v1).
@@ -384,6 +385,10 @@ a removed and re-used id or a changed role is a stale form. Every POST form carr
 | `GET`/`POST /invite/<token>` | public | none | `name`, `password`, `password_confirm` | `303`; `404`, `409`, `422` |
 | `GET`/`POST /reset/<token>` | public | none | `password`, `password_confirm` | `303` to `/sign-in?reset=done`; `404`, `422` |
 
+The #563 routes `POST /account/recovery-codes`, `POST /account/authenticator` (`action=start`)
+and `POST /account/sessions/sign-out-all` keep their routes and answers and gain one: `409` when
+the guard of section 17 fails.
+
 The required role in the table is the route's coarse `requiredRole` (the lowest role of its rows,
 from `minimumRole`). The row of the actual target is checked in the handler (section 3). The
 navigation `team` entry becomes available. `/account/security` (`src/account-pages.ts:144-160`)
@@ -554,6 +559,42 @@ the old password. So:
 - **Reset and recovery POST**: the commit re-checks validity; a reset deletes every other unused
   link of the user, so two links of one user never both commit.
 - **Invite accept**: the commit re-checks that the invite is live and the email is free.
+
+The same rule covers the #563 account writes that run after an `await`. Today they write without a
+re-check: `postNewCodes` awaits `recheckPassword` and then calls `replaceRecoveryCodes`
+(`src/account-routes.ts:322-338`); `createPending` awaits `recheckPassword` in stage `full` and
+then calls `savePendingAuthenticator` (`:174-204`, the call at `:188` and the write at `:203`); `postSignOutAll` awaits the body read
+and then calls `deleteOtherSessions` (`:359-372`). A reset, a 2FA reset, a role change, a removal or an own
+password change from another session can commit during that wait and delete the request's
+session. Then a paused new-codes request would still write and show fresh codes. So each of these
+writes gets a guarded store function. All use one guard type, `CredentialGuard = { sessionId,
+userId, passwordHash?: string }`:
+
+- **The guard.** In one `BEGIN IMMEDIATE` transaction, the write runs only when a `sessions` row
+  with the digest of `sessionId` and `user_id = userId` still exists. When `passwordHash` is set,
+  the user's stored `password_hash` must also still equal it. That value is H0 =
+  `current.user.passwordHash`, the hash that `recheckPassword` verified. Otherwise the function
+  writes nothing and returns `{ ok: false }`.
+- **New recovery codes.** `factorStore.replaceRecoveryCodesFor(guard, digests)` with
+  `passwordHash` = H0. When the guard fails, `POST /account/recovery-codes` answers `409` with the
+  new-codes page and the error `Your password or session changed while this was saved. Nothing
+  was changed.` The body holds no recovery code and no `id="recovery-codes"` list
+  (`src/account-pages.ts:238`). The `recovery codes created` log line is not written, and the
+  stored codes stay as they were.
+- **Authenticator setup.** `factorStore.savePendingAuthenticatorFor(guard, secret, now)`. In
+  stage `full`, `passwordHash` = H0. In stage `enrol` there is no password step, so the guard has
+  no `passwordHash` and checks only the session row. When the guard fails, `POST
+  /account/authenticator` (`action=start`) answers `409` with the start page and the same error,
+  and no `pending_authenticators` row is written. Today the foreign key makes this a `500`.
+- **Sign out all.** `store.deleteOtherSessionsFor(guard)` without `passwordHash`. When the guard
+  fails, `POST /account/sessions/sign-out-all` answers `409` with the confirmation page and the
+  same error. No session row is deleted, so a session started after the reset (for example the
+  person's own new sign-in) stays.
+- The guarded functions run the guard before the write in the same transaction. A new function
+  is added because the current ones keep their behavior and their tests
+  (`src/factor-store.test.ts:65-308`, `src/account-store.test.ts:217-234`). Their routes call only
+  the guarded ones. `confirmAuthenticator`, `completeTotpSignIn` and `completeRecoverySignIn`
+  already abort when their pending or session row is gone, so they need no guard.
 
 Every new hash has a fresh random salt (argon2id through `Bun.password.hash`), so a reset to the
 same text gives a different hash and H0 never matches by accident. The check never compares
@@ -743,6 +784,28 @@ value from the module under test.
      `409`, hash unchanged.
    - Reset first, then own change: a reset held while hashing P1; the own change to P2 commits
      (`303`); the reset is released and answers `303`; the stored hash is the reset's.
+   - New codes vs reset link: an Admin with an authenticator and 10 recovery codes (written by the test through the
+     unguarded `replaceRecoveryCodes`) posts `POST
+     /account/recovery-codes`, held in the current-password verification. The Owner makes a reset
+     link for that Admin and the link is used (`303`). On release the request answers `409` with
+     `Your password or session changed while this was saved. Nothing was changed.`, its body has
+     no `id="recovery-codes"`, the Admin's `recovery_codes` digests equal the 10 from before, and
+     no `recovery codes created` log line was written.
+   - New codes vs 2FA reset: the same held request, and the Owner resets the Admin's 2FA (`303`).
+     On release it answers `409` and the Admin has 0 `recovery_codes` and 0 `authenticators`
+     rows.
+   - New codes vs own password change from another session: the held request's session S1; the
+     same Admin changes the password from session S2 (`303`, which deletes S1). On release `409`
+     and the codes are unchanged.
+   - Authenticator setup vs reset: a Member without an authenticator (switch off), held at the
+     password step of `POST /account/authenticator` `action=start`. An Admin's reset link for the
+     Member is used. On release `409` (not `500`) and 0 `pending_authenticators` rows of the
+     Member.
+   - Sign out all vs reset: the test opens a raw connection to the server, sends the headers of
+     `POST /account/sessions/sign-out-all` for a Member's session S1 and half of the body. The
+     Member's reset link is used and the Member signs in again (session S2). Then the test sends
+     the rest of the body. The answer is `409` and the S2 row still exists. No timer is used: the
+     server cannot go on before the body is complete.
 6. **2FA requirement.** Each case follows the sequence of section 5 (literal statuses and
    locations):
    - Invited Admin: the accept POST answers `303` to `/account/authenticator`; with that cookie
@@ -845,7 +908,10 @@ Checklist items that apply:
   answer; it is only rotated after a committed invite acceptance.
 - **Credential races.** Sign-in creates a session only if the verified hash is still stored at
   commit. An own password change commits only if its session still exists and the stored hash is
-  still the verified one. Gated fakes test both (acceptance 5a).
+  still the verified one. New recovery codes, authenticator setup and sign out all write only if
+  the request's session row (and, after a password step, the verified hash) still exists at
+  commit; a stale new-codes request returns no codes. Gated fakes and a held body test all of
+  them (acceptance 5a).
 - **Body and size limits.** Forms keep the 8192-byte cap; passwords 12 to 128 code points; names
   1 to 100; emails 3 to 254; ids at most 16 digits; tokens exactly 43 characters.
 - **Input validation.** Role values (never `owner` from a client), ids, emails, names, typed
@@ -974,6 +1040,13 @@ not change.
     reset commits must answer `409`, and the reset's password remains.
   - A wrong implementation compares only the hash: a change whose session was deleted by a role
     change during the hash must answer `409`.
+  - A wrong implementation guards only the password routes of #564: a new-codes request held in
+    its password check while a 2FA reset commits writes 10 fresh codes for a user without an
+    authenticator and shows them. It must answer `409` with no codes and 0 `recovery_codes`
+    rows.
+  - A wrong implementation checks the guard before the transaction: the check passes, the reset
+    commits, and the write follows. The guard and the write must be in one `BEGIN IMMEDIATE`
+    transaction.
 - **Form-token budget.** A team of 60 users: the Team page renders 2 POST forms plus sign-out, so
   every form on it still submits (a wrong implementation with one form per action and row evicts
   its own tokens past 100 and answers `409` `This form has expired`).
@@ -1001,6 +1074,7 @@ clone (`176fb6ed14b2f14b730a9fd1757239f210f97a29`, the console pin) and the conf
 | `/account/password` | 0 | 0 |
 | `team-store`, `account-links`, `team-routes`, `team-pages`, `link-routes`, `people-log`, `team-console` | 0 | 0 |
 | `teamStore`, `createTeamStore` (server dependency and factory function) | 0 | 0 |
+| `CredentialGuard`, `replaceRecoveryCodesFor`, `savePendingAuthenticatorFor`, `deleteOtherSessionsFor` (store type and functions) | 0 | 0 (also 0 in console `src`) |
 | `permissions` | 0 | 17 matches, all GitHub workflow `permissions:` keys and their tests; no code name |
 
 The People action names do not equal any api audit action (contract `src/audit.ts:6-23`:
@@ -1019,16 +1093,30 @@ Files:
 Every backticked item in this list is a file path.
 
 - `src/database.ts` (migration 3, schema version 3)
-- `src/database.test.ts`
+- `src/database.test.ts` (schema version 3 at `:87` and `:227`; the new tables in the list at
+  `:97-104` and their columns in the list after `:111`; the newer-version case at `:204-207`
+  becomes `user_version = 4` and `schema version 4 is newer than this console (3)`)
+- `src/server.upgrade.test.ts` (`:82` expects `user_version` `3` instead of `2`; the rest of the
+  upgrade test stays)
+- `src/main.startup.test.ts` (the newer-version case at `:191` and `:196` becomes `user_version =
+  4` and `schema version 4 is newer than this console (3)`; acceptance 12)
 - `src/account-store.ts` (stored role, instance switch, the verified-hash session start, role and
-  password updates used by the team store)
-- `src/account-store.test.ts`
+  password updates used by the team store, `deleteOtherSessionsFor`)
+- `src/account-store.test.ts` (`:50` and `:85` expect the instance with
+  `isTwoFactorRequiredForAll: false`; tests of the new functions)
+- `src/factor-store.ts` (`replaceRecoveryCodesFor`, `savePendingAuthenticatorFor` and the
+  `CredentialGuard` type)
+- `src/factor-store.test.ts` (the guard: session row gone, hash changed, both present; the
+  existing tests stay)
+- `src/server.factor.test.ts` (`:34` calls the predicate with the organisation argument, `{
+  isRequiredForAll: false }`; expected value unchanged)
 - `src/roles.ts` (a role check for stored values)
 - `src/roles.test.ts`
 - `src/permissions.ts` (new: action ids, matrix, minimum roles, target rule)
 - `src/permissions.test.ts` (new)
 - `src/two-factor-policy.ts` (the widened predicate)
-- `src/two-factor-policy.test.ts`
+- `src/two-factor-policy.test.ts` (`:5` passes the organisation argument; new cases for Admin,
+  Member, Viewer and the switch)
 - `src/people-log.ts` (new: the append function and event type)
 - `src/people-log.test.ts` (new)
 - `src/account-links.ts` (new: link token creation, digest, raw-path matching, link building from
@@ -1054,15 +1142,14 @@ Every backticked item in this list is a file path.
   passes it as `teamStore` to `createConsoleServer`, as `store` and `factorStore` are made and
   passed at `src/main.ts:34-38` and `:69-86`; `main.ts` still never sets `roleOf` or
   `testRoutes`)
-- `src/main.startup.test.ts` (acceptance 12: the spawned process answers the link routes and
-  migrates to schema 3)
 - `src/server.test.ts` (server deps add `teamStore: createTeamStore(db)` beside `factorStore`
   at `:61`; no expected value changes)
 - `src/server.setup.test.ts` (the same at `:114`)
 - `src/server.form-token.test.ts` (the same at `:116`)
 - `src/two-factor-harness.ts` (the same at `:111`)
 - `test/signed-in-console.ts` (the same at `:91`)
-- `src/account-routes.ts` (own password change)
+- `src/account-routes.ts` (own password change; new codes, authenticator setup and sign out all
+  call the guarded store functions and answer `409` when the guard fails)
 - `src/account-pages.ts` (the password page, the `Change password` link)
 - `src/metrics.ts` (path labels)
 - `src/styles.ts` (layout of the new pages at 390 px)
@@ -1091,9 +1178,35 @@ Every backticked item in this list is a file path.
 Behavior change: yes. It adds roles, team routes, account links, the recovery command, a
 migration and the sign-in revalidation.
 
-Existing tests that construct the server or render navigation may change only where this spec
-changes their expected value (the navigation entries, the role type) and where their server deps
-gain `teamStore`; no other `expect` changes.
+Existing tests change only where this spec changes their expected value or their inputs, and
+nowhere else:
+
+- the schema version (`2` to `3`) and the newer-version case (`3` to `4`, `(2)` to `(3)`):
+  `src/database.test.ts:87`, `:204-207`, `:227`; `src/server.upgrade.test.ts:82`;
+  `src/main.startup.test.ts:191`, `:196`;
+- the table and column lists of migration 3: `src/database.test.ts:97-104` and the column list
+  after `:111` (the new tables `invites`, `people_events`, `reset_links`, their columns and
+  `instance.require_2fa_all`; no existing entry goes);
+- the `Instance` value with `isTwoFactorRequiredForAll: false`: `src/account-store.test.ts:50`,
+  `:85`;
+- the predicate's new organisation argument: `src/two-factor-policy.test.ts:5`,
+  `src/server.factor.test.ts:34` (expected values unchanged);
+- the navigation entries and the role type (`src/navigation.test.ts`);
+- server deps that gain `teamStore` (the files named above).
+
+No other `expect` changes. A test that fails for another reason is a defect of the change.
+
+### Order of work
+
+The migration, `SCHEMA_VERSION = 3`, the `Instance` field and the predicate signature land in the
+same step as every test update of the list above. So `bun run check` passes after the first step;
+no later step leaves `src/server.upgrade.test.ts`, `src/main.startup.test.ts`,
+`src/database.test.ts`, `src/account-store.test.ts`, `src/two-factor-policy.test.ts` or
+`src/server.factor.test.ts` red. The startup test's acceptance 12 (link routes on the spawned
+process) can come with the link routes; its newer-version case (`:191`, `:196`) moves with the
+migration. The guarded store functions of section 17 and their `409` answers land with the
+password work (sign-in revalidation, own password change), because their race tests share the
+gated fakes of acceptance 5a.
 
 ### Prerequisite check
 
@@ -1115,13 +1228,15 @@ Implement "Required behavior" sections 1 to 21 in console:
 - the widened 2FA predicate and the organisation switch;
 - invites, reset links, 2FA reset, role change, removal, transfer, own password change;
 - the People log with atomic writes;
-- the sign-in revalidation and the own password compare-and-set;
+- the sign-in revalidation, the own password compare-and-set and the guarded writes of new
+  recovery codes, authenticator setup and sign out all;
 - the owner recovery command;
 - metrics labels and log lines as specified.
 - the team store created in `src/main.ts` and passed to the server, proven by acceptance 12.
 
 Existing behavior stays: setup, sign-in (except the revalidation before its session write), the
-second-factor flows, sign-out, sign out all, the throttles, cookies, CSP, the dispatcher order,
+second-factor flows (except the `409` of the guards when the session or hash changed during the
+request), sign-out, sign out all (same exception), the throttles, cookies, CSP, the dispatcher order,
 the form-token rules, `/healthz`, `/readyz`, `/metrics`, the start errors and their texts.
 
 ### Tool facts (verified)
@@ -1163,7 +1278,8 @@ the form-token rules, `/healthz`, `/readyz`, `/metrics`, the start errors and th
   sentence of "Sign out" (line 35) describes the built change; the loopback-mode link limit.
 - `docs/configuration.md`: schema version 3 and the new tables; the role step and target checks
   in the protected order; the public link orders (anonymous CSRF, `a:` form token, session
-  rotation only after an invite commit); the sign-in and own-password re-checks; the widened 2FA
+  rotation only after an invite commit); the sign-in and own-password re-checks and the guarded
+  writes of new recovery codes, authenticator setup and sign out all (`409`); the widened 2FA
   rule; new metrics labels and log lines; the recovery command's settings and texts.
 - `docs/team.md` (new): the matrix of this spec, target rules, invite and reset rules, the 2FA
   requirement, transfer, People log contents, and "API tokens and console roles".
