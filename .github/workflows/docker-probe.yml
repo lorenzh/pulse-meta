@@ -35,7 +35,7 @@ jobs:
           id
           echo "DOCKER_HOST=${DOCKER_HOST:-unset}"
           uname -a
-          info="$(docker info --format '{{.ServerVersion}} {{.SecurityOptions}} {{.Driver}}')"
+          info="$(timeout 120 docker info --format '{{.ServerVersion}} {{.SecurityOptions}} {{.Driver}}')"
           echo "$info"
           grep -q rootless <<< "$info" || { echo "::error::the Docker daemon is not rootless"; exit 1; }
           docker compose version
@@ -44,8 +44,8 @@ jobs:
         name: Run containers
         run: |
           set -euo pipefail
-          docker run --rm hello-world
-          docker run --rm alpine:3 id
+          timeout 120 docker run --rm hello-world
+          timeout 120 docker run --rm alpine:3 id
 
       - id: compose
         name: Two compose stacks side by side
@@ -60,10 +60,13 @@ jobs:
               ports:
                 - "127.0.0.1:${PORT}:80"
           YAML
-          PORT=18080 docker compose -p probe-a -f "$dir/compose.yml" up -d --wait
-          PORT=18081 docker compose -p probe-b -f "$dir/compose.yml" up -d --wait
-          curl -fsS -o /dev/null http://127.0.0.1:18080/ && echo "port 18080 answers"
-          curl -fsS -o /dev/null http://127.0.0.1:18081/ && echo "port 18081 answers"
+          PORT=18080 timeout 120 docker compose -p probe-a -f "$dir/compose.yml" up -d --wait
+          PORT=18081 timeout 120 docker compose -p probe-b -f "$dir/compose.yml" up -d --wait
+          # One command per line: a failing curl inside an && list would not stop the step.
+          timeout 120 curl -fsS -o /dev/null http://127.0.0.1:18080/
+          echo "port 18080 answers"
+          timeout 120 curl -fsS -o /dev/null http://127.0.0.1:18081/
+          echo "port 18081 answers"
 
       - name: Clean up compose stacks
         if: always()
@@ -71,7 +74,7 @@ jobs:
           set +e -uo pipefail
           dir="$RUNNER_TEMP/docker-probe"
           for p in probe-a probe-b; do
-            [[ -f "$dir/compose.yml" ]] && PORT=0 docker compose -p "$p" -f "$dir/compose.yml" down -v --remove-orphans
+            [[ -f "$dir/compose.yml" ]] && PORT=0 timeout 120 docker compose -p "$p" -f "$dir/compose.yml" down -v --remove-orphans
             docker ps -aq --filter "label=com.docker.compose.project=$p" | xargs -r docker rm -f
           done
           rm -rf "$dir"
@@ -112,17 +115,48 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
-          # $1 is the pattern; the container prints one count per source, nothing else.
-          out="$(docker run --rm --privileged -v /:/host alpine:3 sh -c '
+          # The container prints "counts found-flag", the comm of PID 1 and, if found, `ls -lnL` of the
+          # token file; never its content. $1 is the pattern. rootlesskit copies /run up, so
+          # /run/secrets can be a symlink that does not resolve under /host: try the link target
+          # under /host and PID 1's root as well.
+          # shellcheck disable=SC2016 # the script is for sh inside the container, not this shell
+          out="$(timeout 120 docker run --rm --privileged -v /:/host alpine:3 sh -c '
             e=$({ cat /host/proc/[0-9]*/environ 2>/dev/null; true; } | tr "\0" "\n" | grep -cE "$1")
             c=$({ cat /host/proc/[0-9]*/cmdline 2>/dev/null; true; } | tr "\0" "\n" | grep -cE "$1")
-            s=$(grep -rhsE "$1" /host/run/secrets | wc -l)
-            r=0; cat /host/run/secrets/github_token >/dev/null 2>&1 && r=1
-            echo "$e $c $s $r"
+            t=$(readlink /host/run/secrets 2>/dev/null); case "$t" in /*) t="/host$t/github_token" ;; *) t= ;; esac
+            f=
+            for x in /host/run/secrets/github_token $t /host/proc/1/root/run/secrets/github_token; do
+              if [ -e "$x" ]; then f="$x"; break; fi
+            done
+            r=0
+            if [ -n "$f" ]; then
+              s=$(grep -rhsE "$1" "${f%/*}" | wc -l)
+              if cat "$f" >/dev/null 2>&1; then r=1; fi
+            else
+              s=$(grep -rhsE "$1" /host/run/secrets | wc -l)
+            fi
+            echo "$e $c $s $r ${f:+1}"
+            cat /host/proc/1/comm 2>/dev/null || echo unknown
+            if [ -n "$f" ]; then ls -lnL "$f"; fi
           ' sh 'ACCESS_TOKE[N]|gh[p]_[A-Za-z0-9]|github_pa[t]_')"
-          read -r e c s r <<< "$out"
-          echo "token-like strings: environ $e, cmdline $c, /run/secrets $s; token file readable: $r"
-          [[ "$e" == 0 && "$c" == 0 && "$s" == 0 && "$r" == 0 ]]
+          lsline=
+          { read -r e c s r found; read -r comm; IFS= read -r lsline || true; } <<< "$out"
+          comm="$(tr -cd 'A-Za-z0-9._-' <<< "$comm")"
+          echo "PID 1 seen by the daemon: $comm"
+          echo "token-like strings: environ $e, cmdline $c, secrets $s"
+          if [[ "${found:-}" != 1 ]]; then
+            file="not verified"
+            echo "::warning::token file not found under /host; its access is not verified"
+          elif [[ "$r" == 0 ]]; then
+            file=pass
+            echo "token file (numeric owner, mode): $lsline"
+            echo "cat of the token file fails"
+          else
+            file=fail
+            echo "::error::a privileged container can read the token file"
+          fi
+          { echo "pid1_comm=$comm"; echo "token_file=$file"; } >> "$GITHUB_OUTPUT"
+          [[ "$e" == 0 && "$c" == 0 && "$s" == 0 && "$file" != fail ]]
 
       - name: Summary
         if: always()
@@ -134,6 +168,8 @@ jobs:
           ENVIRON: ${{ steps.environ.outcome }}
           SECRET: ${{ steps.secret.outcome }}
           PRIVILEGED: ${{ steps.privileged.outcome }}
+          TOKEN_FILE: ${{ steps.privileged.outputs.token_file }}
+          PID1_COMM: ${{ steps.privileged.outputs.pid1_comm }}
         run: |
           set -euo pipefail
           res() { case "$1" in success) echo pass ;; failure) echo fail ;; *) echo "$1" ;; esac; }
@@ -147,4 +183,6 @@ jobs:
             echo "| No token in readable /proc/*/environ | $(res "$ENVIRON") |"
             echo "| /run/secrets/github_token not readable | $(res "$SECRET") |"
             echo "| No token through a privileged container | $(res "$PRIVILEGED") |"
+            echo "| Token file found by the privileged container, cat fails | ${TOKEN_FILE:-not run} |"
+            echo "| PID 1 seen by the daemon (comm) | ${PID1_COMM:-unknown} |"
           } >> "$GITHUB_STEP_SUMMARY"
