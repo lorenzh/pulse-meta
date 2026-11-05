@@ -39,14 +39,27 @@ item is later public again, its old events are not sent a second time.
    from its own data property descriptor and keeps only a safe integer. The contract `integer`
    for a manual incident id is `z.int()` (`contract/src/schema.ts:44`), so every accepted id is
    also a safe integer.
-7. The api clone has no `visibility` or `publishedAt` yet (`grep -rn visibility api/src` prints
+7. The ledger's manual key parser accepts only unsigned digits: `MANUAL_KEY = /^manual:(\d+):/`
+   (`notify/src/ledger.ts:572`, used in `isPrunable` at `ledger.ts:1195-1196`). The detector
+   writes the key as `` `manual:${id}:${event}` `` (`notify/src/detector.ts:100`, `:112`), so id
+   `-9` gives `manual:-9:opened`. That key does not match `MANUAL_KEY`, so `isPrunable` treats it
+   as an unprotected key and deletes it after the retention, even when `visibleManual` holds
+   `-9`. The contract accepts negative ids (`manualIncidentSchema.id` is `integer`,
+   `contract/src/schema.ts:864`, `integer = z.int()` at `:44`), and so does `safeId`. The api
+   never assigns one (`manual_incidents.id INTEGER PRIMARY KEY AUTOINCREMENT`,
+   `api/src/db.ts:58`, starts at 1). So a non-positive id can come only from a manual database
+   edit or an api bug, the same origins as this issue. Today it loses its keys even while it is
+   listed as public. `INCIDENT_KEY` and `REMINDER_KEY` (`ledger.ts:570-571`) have the same
+   unsigned form for automatic incident ids.
+8. The api clone has no `visibility` or `publishedAt` yet (`grep -rn visibility api/src` prints
    nothing outside tests). Today a filtered item can only come from a newer api with a bug or a
    manual database edit, as the issue says.
 
 ## Scope
 
 - notify only: `src/api.ts` (presence ids in the manual fetch result), `src/notifier.ts` (prune
-  presence from those ids), tests, and docs (`docs/operation.md`, `README.md` if its retention or
+  presence from those ids), `src/ledger.ts` (the manual key parser also matches a negative id,
+  decision 5), tests, and docs (`docs/operation.md`, `README.md` if its retention or
   privacy wording needs it).
 
 ## Non-goals
@@ -54,8 +67,12 @@ item is later public again, its old events are not sent a second time.
 - No change to what is sent. Drafts and internal items are still never sent, and no new event
   type, recall or purge is added. Decision 6 of #568 (visibility is fixed at publication) stays
   the supported policy.
-- No ledger format change. Format stays 4 (`ledger.ts:31`). Keys, timestamps, the `prune`
-  signature and the hourly cadence stay the same.
+- No ledger format change. Format stays 4 (`ledger.ts:31`). Stored keys, columns, timestamps,
+  the `prune` signature and the hourly cadence stay the same. The only `ledger.ts` change is the
+  `MANUAL_KEY` regular expression that reads existing keys (decision 5).
+- No change for negative automatic incident ids (`INCIDENT_KEY`, `REMINDER_KEY`). The api
+  assigns them with `AUTOINCREMENT` (`api/src/db.ts:34`) and this issue is about manual
+  incidents.
 - No change to automatic `/incidents` pruning or validation, alert-state pruning, retry, resend
   or the at-least-once crash semantics.
 - No protection for an item that the api omits from the feed. Notify cannot tell "omitted" from
@@ -87,14 +104,27 @@ item is later public again, its old events are not sent a second time.
    with it. On a 404 or a failed read, `#visibleManual` keeps the last value. Before any good
    read it stays `undefined`, so every manual key is kept. A successful empty array means
    absence: old settled keys can be pruned again.
-5. **Ledger unchanged.** `Ledger.prune(maxAgeMs, visible, visibleManual)` already takes a
-   presence set. It now gets a larger set, and `ledger.ts` does not change.
+5. **The ledger matches every id it can be asked to protect.** `Ledger.prune(maxAgeMs, visible,
+   visibleManual)` already takes a presence set and now gets a larger one. Its key parser must
+   cover the same id domain as `safeId` and the contract (every safe integer, negative and `0`
+   included). So `MANUAL_KEY` becomes `/^manual:(-?\d+):/` (`ledger.ts:572`), and `isPrunable`
+   keeps `Number(match[1])` (`"-9"` gives `-9`). No other `ledger.ts` line changes, and the
+   stored format does not change (format 4, same keys). The detector never writes `-0` or a
+   leading zero (`` `${id}` ``), so `Number` maps each written key back to its id. This also
+   fixes a listed **public** negative id, which today loses its keys while it is listed. That
+   prevents a resend and changes nothing that is sent for api-assigned (positive) ids. The
+   alternative (narrow R1 to non-negative ids and leave the parser) was rejected: it would leave
+   a contract-valid id that notify accepts and sends without the protection that every other
+   id has.
 
 ## Required behavior
 
 - R1: An id listed in a successful `/manual-incidents` array (public, internal, draft or
-  malformed, with a safe integer `id`) keeps all its settled `manual:<id>:` keys (opened, update,
-  resolved), however old, until a successful read no longer lists it.
+  malformed, with a safe integer `id`: any value for which `Number.isSafeInteger` is true,
+  negative and `0` included) keeps all its settled `manual:<id>:` keys (opened, update,
+  resolved), however old, until a successful read no longer lists it. The domain is the
+  contract's `z.int()` (`contract/src/schema.ts:44`, `:864`) and `safeId` (`api.ts:53-58`); the
+  ledger parser covers it after decision 5.
 - R2: An id absent from the last successful manual array loses its settled keys once they are
   older than `PULSE_NOTIFY_STATE_RETENTION_DAYS`, at the next eligible hourly prune. This is the
   same as today.
@@ -134,15 +164,35 @@ Per metric, with direction and rough size:
   under 1 ms and under 0.1 MiB for 1 000 items. The bound is the 5 MiB response cap
   (`contract/src/client.ts:7`, `PULSE_NOTIFY_API_MAX_BYTES`), and notify already parses that much
   JSON today.
-- **Longer retention of filtered items**: this is a production-only effect on idle and peak RSS
-  and on the ledger file. A listed private or invalid id keeps its settled `manual:<id>:` rows
-  (opened, each update, resolved) in every channel, instead of losing them at the first prune
-  past the retention. The ledger keeps every entry in memory (`notify/src/ledger.ts:590`
-  `#channels`). So the kept rows are RSS that `main` would free at that prune. They are never
-  more than what `main` holds just before that prune, so peak RSS does not rise above today's
-  peak for the same history. Only the drop after the prune is missing. Expected size: well under
-  1 MiB for 100 private ids x 3 keys x 2 channels (600 entries). This grows linearly and ends
-  when the api stops listing the id. No new rows are written (decision 3).
+- **Longer retention of filtered items**: a production-only effect. It **can raise** idle and
+  peak RSS, startup CPU (ledger load), the hourly prune CPU and the ledger file **above `main`**.
+  A listed private or invalid id keeps its settled `manual:<id>:` rows (opened, each update,
+  resolved) in every channel for as long as the api lists it, instead of losing them at the
+  first prune past the retention. Across successive cohorts this adds up: `main` frees cohort 1
+  after its retention while it records cohort 2, and so on. The branch keeps every earlier cohort
+  that is still listed, and later deliveries come on top. So the branch's ledger is not bounded by
+  `main`'s peak for the same history. Its extra rows are
+  `sum over listed, filtered, once-delivered ids of (keys of that id) x (channels that hold it)`.
+  It grows linearly with the cohorts and shrinks when the api stops listing an id (R2). Listed
+  private ids that were never public add no row (decision 3).
+  Where it costs:
+  - Memory: the ledger mirrors every row in memory (`notify/src/ledger.ts:590` `#channels`,
+    filled by `loadRows`, `ledger.ts:430-437`, `SELECT * FROM entries`). A settled row without
+    a payload (`seeded`, `delivered`, `dropped`; `settle` clears it, `ledger.ts:891-904`) is one
+    `Map` entry with the key string and `{ status, at }`. Rough size: 0.2 to 0.5 KiB with SQLite
+    page cache. A `failed` row keeps its notification and recipients (`ledger.ts:117-119`,
+    `:891`), so roughly 1 to 3 KiB.
+  - Startup CPU: `loadRows` reads every row at open, linear in rows.
+  - Prune CPU: `prune` filters every entry of every channel each hour (`ledger.ts:1157-1159`),
+    linear in rows. `pending()` and `failed()` (`ledger.ts:933`, `:948`) also scan all rows.
+  Rough size: a realistic flip history of 100 filtered ids x 4 keys x 2 channels (800 rows) is
+  under 0.5 MiB RSS and under 1 ms of extra prune or load CPU. The 5-cohort measurement below
+  (4 800 extra seeded rows) is expected to show about 1 to 3 MiB more RSS and a few ms more open
+  and prune CPU. The theoretical bound comes from the feed: the 5 MiB response cap
+  (`contract/src/client.ts:7`) lists at most about 30 000 minimal items. `main` already keeps
+  that many rows for a public feed of the same size, because a listed public id is protected
+  today. So the branch's worst case equals what `main` accepts for an equally large public feed.
+  It adds no new kind of bound.
 - `image_mb`: **no change**. The image copies only `package.json`, production `node_modules` and
   `src` (`notify/Dockerfile`), adds no dependency, and changes a few lines in `src`.
 
@@ -154,26 +204,37 @@ section):
    notify `f5007bf` (A) and on the branch (B), 5 runs each, alternating A, B. Take the median of
    each side, for example with `/usr/bin/time -f '%U %S' bun run test` and summing the two
    values. Report both medians and B - A. Check: B - A <= 0.25 s (literal from this spec).
-2. Filtered items across the retention. Write a throwaway local script outside the repository
-   (not committed) and run it with `bun <script> <notify worktree>`. `ledger.ts` does not
-   change, so one run on the branch covers both sides: the two cases differ only in the
-   presence set that each side's `notifier.ts` would pass. Each case gets a fresh temp dir. The
-   script opens `new Ledger(<tmp>/state.json, { now: () => clock })` with `clock = T0`. It then
-   marks N = 1 000 manual ids x 3 keys (`manual:<id>:opened`, `manual:<id>:update:x`,
-   `manual:<id>:resolved`) as handled in 2 channels with `ledger.seed(<channel>, keys)`
-   (`notify/src/ledger.ts:809`). Seeded keys are settled entries (status `seeded`) with
-   `at = T0`. They hold no stored notification, so the RSS value is a lower bound. Then it sets
-   `clock = T0 + 2 * 86_400_000`, runs `Bun.gc(true)`, and calls
-   `ledger.prune(86_400_000, new Set(), presence)` with:
-   (a) `presence = new Set()`: what `main` builds when the feed lists all N items as internal;
-   (b) `presence` = the N ids: what the branch builds from `listedIds`.
-   Report the count that `prune` returns. The expected literals are (a) 6 000 and (b) 0. Also
-   report the `process.cpuUsage()` delta of the call, and `process.memoryUsage().rss` in MiB
-   after a second `Bun.gc(true)`. The RSS difference (b) - (a) is the cost of the kept rows. Its
-   expected size (well under 1 MiB per 600 entries, so a few MiB for 6 000) is reported, not
-   gated. Separately, serve a JSON array of 1 000 internal items from `Bun.serve` on
-   `127.0.0.1:0`. Call `fetchManualIncidents` 20 times on A and on B and report the median CPU
-   per call. Expected: B - A is under 1 ms.
+2. Filtered items across several retention cycles. Write a throwaway local script outside the
+   repository (not committed) and run it with the branch's `Ledger`, as
+   `bun <script> <notify worktree> <mode>` with `<mode>` `main` or `branch`. Each mode runs in
+   its own process and its own fresh temp dir, so RSS values do not mix. The two modes differ
+   only in the presence set that each side's `notifier.ts` would pass. The ledger change of
+   decision 5 does not affect these positive ids. Constants: `DAY = 86_400_000`, retention
+   `DAY`, C = 5 cycles, N = 200 ids per cohort, 3 keys per id (`manual:<id>:opened`,
+   `manual:<id>:update:x`, `manual:<id>:resolved`), 2 channels `a` and `b`.
+   - Open `new Ledger(<tmp>/ledger, { now: () => clock })`.
+   - For cycle k = 0 .. 4: set `clock = T0 + k * 2 * DAY`. Seed cohort k (ids
+     `k * 200 + 1 .. (k + 1) * 200`) in both channels with `ledger.seed(<channel>, keys)`
+     (`notify/src/ledger.ts:809`; seeded rows are settled with `at = clock`). Cohort k is the
+     public cohort, and every earlier cohort is still listed but now internal. Then call
+     `ledger.prune(DAY, new Set(), presence)` with presence = the ids of cohort k (`main`: only
+     public ids) or the ids of cohorts 0 .. k (`branch`: `listedIds`). After `Bun.gc(true)`,
+     report the prune count, the `process.cpuUsage()` delta of the prune call, the rows
+     `ledger.entries("a").length + ledger.entries("b").length` (`ledger.ts:742`) and
+     `process.memoryUsage().rss` in MiB.
+   - After cycle 4: `ledger.close()`, then time `new Ledger(<same path>)` with
+     `process.cpuUsage()` (the startup load). Report that CPU delta and the RSS after
+     `Bun.gc(true)`.
+   Expected literals (from the arithmetic of this setup, 200 x 3 x 2 = 1 200 rows per cohort):
+   - prune counts per cycle: `main` `[0, 1200, 1200, 1200, 1200]`, `branch` `[0, 0, 0, 0, 0]`;
+   - rows after cycle 4: `main` 1 200, `branch` 6 000; rows after the reopen are the same.
+   The CPU and RSS values are reported, not gated. Expected: `branch` minus `main` is about 1 to
+   3 MiB RSS and a few ms of prune and open CPU after cycle 4, and the gap grows by the same
+   step each cycle. If the RSS gap exceeds 10 MiB, say so in the PR. Seeded rows hold no
+   payload, so this is a lower bound for `failed` rows.
+   Separately, serve a JSON array of 1 000 internal items from `Bun.serve` on `127.0.0.1:0`.
+   Call `fetchManualIncidents` 20 times on A and on B and report the median CPU per call.
+   Expected: B - A is under 1 ms.
 3. Stack metrics (startup, load, RSS, image). Do not run `bun bench/run.ts` before merge: the
    harness cannot select a notify branch. For notify it uses A = newest `v*` tag or
    `bench/baseline.json`, and B = `main`. `--others-ref` pins every non-api repository to one
@@ -190,7 +251,10 @@ definition.
 Checklist items that apply:
 - **Input validation:** the id is accepted only as an own data property that is a safe integer.
   Strings (`"7"`), floats (`7.5`), `2 ** 53`, arrays and objects add
-  nothing. No `Number()` coercion.
+  nothing. No `Number()` coercion. Negative ids and `0` are valid (contract `z.int()`). The
+  ledger key parser (`MANUAL_KEY`) reads only keys that notify itself wrote; its widened form
+  `/^manual:(-?\d+):/` stays anchored, has no nested quantifier (no backtracking blow-up), and
+  maps a key only to a safe integer that notify accepted before.
 - **Accessor execution:** the id is read through `Object.getOwnPropertyDescriptor(...).value`
   (`safeId`). No getter runs. JSON input has none, but the helper must stay descriptor-based.
 - **Secrets in errors, logs and responses:** no title, message, note, draft, visibility or
@@ -231,6 +295,17 @@ Rule decision 2 (safe id only):
 - C5: a private item with `id: "9"` (string) does not protect `manual:9:*`. An implementation
   that coerces with `Number()` fails. Same for `id: 9.5` and `id: 9007199254740992`
   (`2 ** 53`), and for an item without `id`.
+
+Rule R1/decision 5 (the ledger parser covers the full id domain):
+- C13: ledger channel `c` holds settled `manual:-9:opened`, `manual:0:opened`,
+  `manual:9:opened` and `manual:-90:opened`, all at T0. At T0 + 2 days,
+  `prune(DAY, new Set(), new Set([-9, 0]))` returns `2` and leaves exactly
+  `manual:-9:opened` and `manual:0:opened`. Notify `main` (`/^manual:(\d+):/`) returns `3` and
+  deletes `manual:-9:opened`. An implementation that drops the sign
+  (`/^manual:-?(\d+):/` gives `9` for `-9`) also returns `3` and fails. One that matches
+  `-?\d+` but compares strings with the set also fails.
+- C14: the internal flip of acceptance 1 with incident id `-9` instead of `9` keeps
+  `manual:-9:opened` and sends 1 line in total. Notify `main` sends 2.
 
 Rule decision 3 (presence never creates keys):
 - C6: draft 12 is listed privately at first start and in later polls, then published. Exactly one
@@ -287,14 +362,16 @@ No route, metric, env var, config key, ledger key or contract field is added or 
 Files:
 - `src/api.ts`
 - `src/notifier.ts`
+- `src/ledger.ts`
 - `test/manual-flip.test.ts` (new)
+- `test/ledger.test.ts`
 - `test/api.test.ts`
 - `test/manual-incidents.test.ts`
 - `docs/operation.md`
 - `README.md`
 
-Behavior change: yes. Ledger keys of listed private manual incidents survive retention pruning,
-so a republished incident is not sent again.
+Behavior change: yes. Ledger keys of listed private manual incidents (and of negative manual
+ids) survive retention pruning, so a republished incident is not sent again.
 
 What each file gets:
 - `src/api.ts`: `ManualIncidentsResult` gets `listedIds: Set<number>` with a doc comment ("the
@@ -307,6 +384,11 @@ What each file gets:
   `this.#visibleManual = manualResult.listedIds` (replacing `notifier.ts:406`). Update the field
   comment at `notifier.ts:198` ("ids listed by the last successful read, private or invalid
   ones too; kept on 404 or a failed read"). Nothing else reads `listedIds`.
+- `src/ledger.ts`: only `MANUAL_KEY` (`ledger.ts:572`) becomes `/^manual:(-?\d+):/`. Keep
+  `Number(manual[1])` in `isPrunable` (`ledger.ts:1195-1196`). Do not touch `INCIDENT_KEY`,
+  `REMINDER_KEY`, the schema, `LEDGER_VERSION` or the `prune` doc comment beyond saying that a
+  manual id may be negative.
+- `test/ledger.test.ts`: one new test for C13 (literals `2` and the two remaining keys).
 - `test/manual-flip.test.ts`: the regression (acceptance 1 and 2 below). The issue's review
   called it `flip.test.ts`, and the `manual-` prefix matches the other manual test files. It
   uses the patterns of `test/prune.test.ts` (one `clock` injected into `Ledger` and `Notifier`,
@@ -384,24 +466,39 @@ Acceptance (every expected value is a literal written in the test):
    waiting in real time.
 9. Performance (see `## Performance impact`, steps 1 and 2). The `test_cpu_s` A/B on `f5007bf`
    vs the branch, 5 alternating runs per side, gives a median B - A of at most 0.25 s (literal
-   from this spec). The ledger script prints the prune counts 6 000 for case (a) and 0 for
-   case (b) (literals), and the CPU and RSS values of both cases. The `fetchManualIncidents`
+   from this spec). The multi-cycle ledger script prints, per mode, the prune counts
+   `[0, 1200, 1200, 1200, 1200]` (`main`) and `[0, 0, 0, 0, 0]` (`branch`), the rows after
+   cycle 4 and after the reopen, 1 200 (`main`) and 6 000 (`branch`) (all literals), and per
+   cycle the prune CPU and RSS, plus the reopen CPU and RSS. The `fetchManualIncidents`
    median CPU per call over 1 000 internal items differs by under 1 ms between A and B. If
    test CPU rises by more than 0.25 s, make the new tests cheaper (share one fake api and
    ledger per file, no real-time waits) before asking for review. Do not raise a budget.
+10. **Negative id** (C13, C14). `test/ledger.test.ts`: the C13 prune returns `2` and leaves
+    exactly `["manual:-9:opened", "manual:0:opened"]` in channel `c`. `test/manual-flip.test.ts`:
+    acceptance 1 also runs with id `-9` (for example a loop over `[9, -9]`), with 1 line per
+    channel in total. Both fail on notify `f5007bf…` (the ledger test returns `3`; the flip test
+    loses `manual:-9:opened`) and pass after the change.
 
-Completion evidence: PR names #737, links the failing run of acceptance 1 on `f5007bf…` and the
-passing run, the `bun run check` output and the smoke command. It also gives the numbers of
-acceptance 9: both `test_cpu_s` medians and B - A, the prune counts, the CPU and RSS of cases
-(a) and (b), and the fetch medians. It states that the stack metrics are left to the nightly
+Completion evidence: PR names #737, links the failing runs of acceptance 1 and 10 on
+`f5007bf…` and the passing runs, the `bun run check` output and the smoke command. It also
+gives the numbers of acceptance 9: both `test_cpu_s` medians and B - A, the per-cycle prune
+counts, rows, prune CPU and RSS of both modes, the reopen CPU and RSS, and the fetch medians. It states that the stack metrics are left to the nightly
 api bench. It states the known limit: an item that the api omits from the feed is not
 protected.
 
 ## Risks
 
-- **Over-retention:** ids of malformed or private listed items now keep their keys. These are
-  bounded by the feed itself (an item drops out when the api stops listing it), and their keys
-  are small rows. This is wanted (decision 1).
+- **Over-retention:** ids of malformed or private listed items now keep their keys. Across
+  successive flip cohorts the ledger, its RSS, its load at startup and the hourly prune scan
+  grow beyond `main`, linearly in the listed filtered ids that were once delivered. They are
+  bounded by the feed itself (an item drops out when the api stops listing it). The bound is
+  the same as `main` already accepts for a public feed of that size. Kept `failed` rows also
+  keep their stored notification (public-era content) longer, and an operator can still
+  resend them by hand with the existing `failed` CLI. This is wanted (decision 1); the
+  multi-cycle measurement of acceptance 9 shows the size.
+- **Parser widening:** `MANUAL_KEY` now also matches `manual:-<n>:` keys. A listed public
+  negative id is then protected too, which today it is not. Positive ids behave as before
+  (C13 keeps `manual:9:opened` prunable).
 - **A wrong id gets protection:** a hostile or buggy api can list any integer id and keep that
   key alive. The worst effect is a ledger row kept longer, never a send. This is the same trust
   as today's public feed.
