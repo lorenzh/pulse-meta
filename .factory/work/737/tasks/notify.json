@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Listed manual incidents, including negative ids, keep deduplication across retention expiry",
+      "files": [
+        "src/api.ts",
+        "src/notifier.ts",
+        "src/ledger.ts",
+        "test/manual-flip.test.ts",
+        "test/ledger.test.ts",
+        "test/api.test.ts",
+        "test/manual-incidents.test.ts",
+        "docs/operation.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all What each file gets bullets, acceptance 1-10 and Completion evidence; Decisions 1-5, Required behavior R1-R4, Counterexamples C1-C14, Performance impact steps 1-3 and Security impact. Add ManualIncidentsResult.listedIds using the existing descriptor-based safeId before the privacy guard and accepted incident ids; return an empty set on 404. Replace #visibleManual only after successful non-404 reads; preserve last-good and undefined semantics. Use listedIds only for pruning, never seeding, detection, routing or payloads. Widen only MANUAL_KEY to /^manual:(-?\\d+):/ and preserve Number(manual[1]) so the ledger protects every safe-integer manual id, including negative ids and 0. Keep ledger format 4, stored keys, schema, prune signature, retention timing, automatic key parsers, dependency pins and normal sending unchanged. Add the injected-clock internal/draft retention regressions, all event keys, pruned control, restart, absence versus failure, private-first publication, malformed listed items and safe-id cases. Add C13 in test/ledger.test.ts and run the internal flip for both 9 and -9 (C14). Preserve existing privacy and compatibility assertions, and verify a truly new public update is sent once after republication. Measure test CPU A/B, five-cohort retention growth with separate main/branch-mode processes, reopen CPU/RSS and private-feed fetch CPU as specified; put results in the PR and leave stack measurements to the nightly api bench after merge. Keep measurement scripts outside the repository and do not raise budgets. Update docs/operation.md with listed private/malformed retention and the omitted-item limit. test/manual-incidents.test.ts needs changes only if C6/C7 coverage is missing; README.md needs changes only if its existing wording becomes wrong, as allowed by the section.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-flip.test.ts test/ledger.test.ts",
+          "expected": "Before the production fix, run the new tests against notify f5007bfd5497035152e075d733124ca4cac87a9f and capture failing evidence for acceptance 1 and 10. The internal flip for id 9 loses manual:9:opened at retention expiry (has is false instead of true, or republication writes 2 lines instead of 1). The id -9 flip loses manual:-9:opened too. C13 seeds channel c with manual:-9:opened, manual:0:opened, manual:9:opened and manual:-90:opened at T0; at T0 + 2 days, prune(86400000, new Set(), new Set([-9, 0])) returns 3 on main instead of the required literal 2. A parser that drops the sign also returns 3. A coverage-only failure is not evidence of either defect."
+        },
+        {
+          "command": "bun test test/manual-flip.test.ts test/ledger.test.ts test/api.test.ts test/manual-incidents.test.ts test/feeds.test.ts test/prune.test.ts",
+          "expected": "After the fix: 0 fail. Acceptance 1 and 10 run the internal flip for ids 9 and -9 with one clock injected into Ledger and Notifier, retention 1 day, an initial empty feed, and all/web file channels. At START + 3 * DAY both channels retain the delivered opened key, while manual:50:opened seeded at START is absent, proving pruning ran. Republication leaves exactly [\"manual:9:opened\"] or [\"manual:-9:opened\"] per channel, respectively (1 line total). C13 returns exactly 2 and leaves exactly [\"manual:-9:opened\", \"manual:0:opened\"] in channel c. Acceptance 2 retains all 3 opened/update/resolved keys across the draft flip, with exactly 3 total lines per channel after republication; a later eligible prune after successful [] removes them (C8), whereas 500 or 404 keeps the last good presence (C9). Before any good manual read, manual keys remain protected (C10). Stop and reopen the ledger at the same path and create a new Notifier; republication adds 0 lines (acceptance 3). A draft-only id has no ledger key before publication and exactly 1 opened delivery per eligible channel afterward (C6/C7). Malformed listed safe ids retain keys (C3); string, fractional, unsafe and missing ids add no protection (C5). C12 returns rejected [{index:3,id:5,reason:\"invalid\"}], incidents [manualIncident({id:4})] and listedIds {1,2,4,5} for the spec's exact fixture. Existing acceptance 6 assertions remain unchanged, including private skipped count 0 then malformed-public count 1 and older-api compatibility. A truly new public update after republication is delivered exactly once (R4). Focused coverage may fail its threshold despite 0 failed tests; the full-suite coverage gate is checked separately."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 with Bun 1.4.0: lint, typecheck and the complete test suite pass; line coverage is at least 80% and cognitive complexity stays within 15 per function. Shared tooling, coverage thresholds and existing acceptance 6 assertions are unchanged."
+        },
+        {
+          "command": "PULSE_NOTIFY_CONFIG=\"$PULSE_737_SMOKE_CONFIG\" PULSE_NOTIFY_STATE=\"$PULSE_737_SMOKE_STATE\" PULSE_API_URL=\"$PULSE_737_SMOKE_API_URL\" bun run start",
+          "expected": "Acceptance 8: prepare the named temporary file-channel config, fresh ledger path and local fake-api URL. Let the initial empty manual feed establish the channel, then serve one public manual incident and the same id as internal. Exactly 1 line is written to the channel file. Stop the service cleanly and record the actual resolved command and result. The injected-clock regression, rather than this smoke, proves retention expiry."
+        },
+        {
+          "command": "for pulse_737_round in 1 2 3 4 5; do (cd \"$PULSE_737_BASELINE_DIR\" && /usr/bin/time -f '%U %S' bun run test) || exit; /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "Acceptance 9 / Performance impact step 1: prepare PULSE_737_BASELINE_DIR as a separate notify checkout at f5007bfd5497035152e075d733124ca4cac87a9f, with the same Bun 1.4.0 and locked dependencies; run from the implementation checkout. All 10 full-suite runs pass. Alternate A then B 5 times on the same machine, sum user + sys for each run, and report median A, median B and B - A in seconds. The measured median B - A is <= 0.25 s, the literal cap in the spec. If over that cap, reduce the new tests' CPU cost using shared fixtures and the injected clock, then rerun; never raise budgets or weaken coverage. This local measurement matches the CPU definition in api/bench/run.ts:165-166 and api/bench/measure.ts:47-48."
+        },
+        {
+          "command": "bun \"$PULSE_737_PERF_DIR/retention.ts\" \"$PWD\" main && bun \"$PULSE_737_PERF_DIR/retention.ts\" \"$PWD\" branch",
+          "expected": "Acceptance 9 / Performance impact step 2: create the throwaway script outside the repository; do not commit it. Use the branch Ledger in both modes, each in a separate process and fresh temp directory, with an injected clock. Constants: DAY=86400000, retention DAY, 5 cycles k=0..4, 200 positive ids per cohort, 3 literal keys per id (manual:<id>:opened, manual:<id>:update:x, manual:<id>:resolved), channels a and b. At clock=T0+k*2*DAY seed cohort k (ids k*200+1 through (k+1)*200) in both channels. Prune with an empty automatic presence set and manual presence equal to cohort k in main mode or cohorts 0..k in branch mode; earlier cohorts model once-delivered incidents still listed as internal. Expected literal prune counts: main [0,1200,1200,1200,1200], branch [0,0,0,0,0]. Report each cycle's count, rows (sum of entries in a and b), prune process.cpuUsage() delta and RSS in MiB after Bun.gc(true). Rows after cycle 4 are exactly 1200 for main and 6000 for branch. Close and reopen the same ledger, report open CPU and post-GC RSS, and assert the reopened row counts are again exactly 1200 and 6000. CPU and RSS are reported, not gated; expected branch-minus-main scale is about 1-3 MiB RSS and a few ms prune/open CPU by cycle 4. Call out an RSS gap over 10 MiB in the PR. Seeded rows lack payloads, so this is a lower bound for failed rows. Keep expected counts literal, close ledgers and clean temporary directories. The signed parser change does not affect these positive ids."
+        },
+        {
+          "command": "bun \"$PULSE_737_PERF_DIR/manual-fetch.ts\" \"$PULSE_737_BASELINE_DIR\" \"$PWD\"",
+          "expected": "Acceptance 9 / Performance impact step 2: create this throwaway script outside the repository and do not commit it. Serve a JSON array of exactly 1000 internal manual items using Bun.serve on 127.0.0.1 port 0, with the existing required wire headers. Measure process.cpuUsage() around fetchManualIncidents for 20 calls on A (f5007bfd5497035152e075d733124ca4cac87a9f) and 20 on B on the same machine. Report both median CPU times per call and B - A; B - A is < 1 ms, the literal bound in the spec. Close the local server. Performance impact step 3: leave startup, load, RSS and image stack metrics to the nightly api bench after merge; do not run bench/run.ts as a notify-branch comparison because it cannot select different notify refs for A and B."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; no whitespace errors."
+        },
+        {
+          "command": "git diff -- src/api.ts src/notifier.ts src/ledger.ts test/manual-flip.test.ts test/ledger.test.ts test/api.test.ts test/manual-incidents.test.ts docs/operation.md README.md",
+          "expected": "Review against the spec's Security impact checklist and Decisions 1-5: only own numeric safe-integer ids enter the presence set, including negative ids and 0, with no coercion or getter execution; no private content or private id is added to logs, metrics, payloads or ledger rows; existing body/size limits remain unchanged. listedIds only controls pruning, replaces the last successful set and does not create keys. MANUAL_KEY is /^manual:(-?\\d+):/, anchored without nested quantifiers, with Number(manual[1]) preserving the sign; automatic key parsers, schema, stored keys, ledger format 4, prune signature and dependency pins stay unchanged. Only the manual regex changes in ledger.ts, apart from an optional clarification that a manual id may be negative. Retention docs state that listed private/malformed items retain keys and omitted items are unprotected. Leave the conditionally listed test/manual-incidents.test.ts and README.md unchanged if their existing coverage/wording suffices."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Completion evidence: the PR body names #737, links the failing acceptance 1 and 10 runs on f5007bfd5497035152e075d733124ca4cac87a9f and the passing runs, includes bun run check output and the resolved smoke command with exactly 1 output line, records the applicable security checklist results, and states the known limit that an item omitted from the API feed is not protected. Acceptance 9 evidence gives both test_cpu_s medians and B - A (<= 0.25 s); five-cycle prune counts main [0,1200,1200,1200,1200] and branch [0,0,0,0,0]; per-cycle rows, prune CPU and RSS of both modes; final and reopened row counts 1200 for main and 6000 for branch; reopen CPU and RSS; and both fetch CPU medians and B - A (< 1 ms). Report observed retention growth and any RSS gap over 10 MiB; seeded rows are a lower bound for failed payload rows. State that startup/load/RSS/image stack metrics are left to the nightly api bench after merge. No budget is raised and no scratch measurement script is committed."
+        }
+      ]
+    }
+  ]
+}
