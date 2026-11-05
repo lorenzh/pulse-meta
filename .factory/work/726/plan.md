@@ -46,7 +46,16 @@ Sources: issue #726, the issue review `.factory/work/726/issue-review.md`, deplo
    - The fake appends every POST to a request log in the temp directory: the path and the names of the fields. It also records whether the `form_token` sent was issued for that path. The log is never printed.
    - Layouts (one environment variable of the fake, test-internal):
      - `pr9`: the forms and their order exactly as in PR #9 (sessions page with only a `/sign-out` form; a separate sign-out-all confirmation; `/sign-out` after the target on factor and authenticator pages), newline-separated.
-     - `around`: every page the script posts from carries a `/sign-out` decoy form with its own token **before** the target form, and a second decoy with the action `<target path>/x` and its own token **after** it. All HTML is on one line. This defeats first-match, greedy last-match and prefix-match selection.
+     - `around`: on every page the script posts from, the target form sits between two decoy forms, each with its own distinct token (the fake issues a token per action, so the three tokens differ). The order on the page is fixed:
+       1. **Before** the target: a prefix decoy, `action="<target path>/x"` (for example `/account/sessions/sign-out-all/x`, `/sign-in/factor/x`, `/setup/x`). Its action starts with the target path.
+       2. The target form, `action="<target path>"` (on the factor page, both `/sign-in/factor` forms, next to each other and sharing one token).
+       3. **After** the target: an unrelated decoy, `action="/sign-out"`. Its action neither starts with the target path nor is a prefix of it.
+
+       All HTML of the page is on one line. Each wrong selector then takes a decoy token, and the fake answers 409:
+       - first-match (first `form_token` on the page) and prefix-match (first form whose action starts with `<path>`) take the prefix decoy's token, because it comes first;
+       - greedy last-match on the line takes the `/sign-out` decoy's token.
+
+       Only the exact-action selector takes the target's token. The prefix decoy must come **before** the target. If it came after, a prefix selector would reach the target first and pass.
      - `none`: no `form_token` anywhere (legacy console before PR #11).
      - `mixed`: the `/setup` and `/setup/owner` forms carry tokens. The `/sign-in` form has none, but the sign-in page carries a token-bearing `/sign-out` decoy.
    - Cases, each a separate run of the script with a fresh fake state:
@@ -80,9 +89,9 @@ One repository: only pulse-deploy changes.
 
 ## Counterexamples
 - Sessions page plus confirmation page (`pr9`): a script that takes the first token on `/account/sessions` sends the `/sign-out` token to `/account/sessions/sign-out-all`. The fake, like the console, answers 409. Case A must fail with `FAIL: step 11 sign out all: status 409, want 303` on the old script.
-- A script that adds the missing GET but keeps first-match selection passes `pr9` and fails `around` (decoy before target).
-- A script that flattens the body and keeps the greedy `.*name="form_token"` takes the last token on the line, the `<path>/x` decoy, and fails `around`.
-- A script that matches `action="<path>` without the closing quote, or as a regex, picks the `<path>/x` form, or `/account/sessions` against `/account/sessions/sign-out-all`. It must be rejected.
+- A script that adds the missing GET but keeps first-match selection passes `pr9` and fails `around`. The first token on each page belongs to the `<path>/x` prefix decoy before the target, so the fake answers 409 at step 2 (`POST /setup`).
+- A script that flattens the body and keeps the greedy `.*name="form_token"` takes the last token on the line, the `/sign-out` decoy after the target, and fails `around` with 409.
+- A prefix selector matches `action="<path>` without the closing quote, as a regex, or as `[[ $action == "$path"* ]]`. It takes the first form whose action starts with the path. In `around` that is the `<path>/x` decoy, which comes before the target, so it sends the decoy's token and gets 409 in cases B and C. With an exact comparison, the same layout passes. Acceptance evidence 3 checks this with a mutant of the fixed script.
 - A script that falls back to "any token on the page" when the target form has none sends the decoy token in `mixed` (case E). The fake answers 409 for a token on a tokenless form, and the request-log check fails.
 - A script that does not reset `ftok` sends the owner-form token to `/sign-in` in `mixed`, and 8b replays instead of printing the skipped line.
 - Step 7 sending the sign-in page's token to `/setup` passes on the real console (404 first) but fails the request-log rule "no `form_token` on step 7".
@@ -104,9 +113,10 @@ No new names in the contract or config. The only new names are inside pulse-depl
 ## Acceptance evidence
 1. `bash e2e/console-setup.test.sh` passes on the new script with 6 cases (A to F). Expected values are literals in the test: exit codes 0/1, statuses 303/409/500, the `ok:` texts, the zero `form_token` count of case D. The only exception is N from `full/config/api/checks.json`.
 2. The same unchanged test file fails on the old script. Run it from a worktree at the base commit: `git worktree add /tmp/old 0157775f8046dbfd18f14d153322adfa6a44ca30`, copy the new `e2e/console-setup.test.sh` there, then run `bash /tmp/old/e2e/console-setup.test.sh`. It must exit non-zero, and case A must report the script's `FAIL: step 11 sign out all: status 409, want 303`. A syntax error, a missing helper or a missing stub does not count as this proof. The PR quotes the failing line.
-3. `git ls-files -z '*.sh' | xargs -0 shellcheck -x` and `git ls-files -z '*.sh' | xargs -0 -n 1 bash -n` pass from the deploy root (`ci.yml:34-37`), and so does `bun run lint` (the `check` job, see the repository section).
-4. On a local `dev` stack built with pulse-console at PR #9 head (`c071619`, or its newer head, SHA named in the PR), after `scripts/wait-ready.sh dev/compose.yaml 900`: `E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml` exits 0 and prints steps 1 to 13. The PR quotes the `ok:` lines only.
-5. After the merge: the rerun `deploy-dev` job of pulse-console PR #9 is green. The deploy CI `dev` job on the merge commit (console `main`, auto flow) stays green.
+3. Prefix selection fails and exact selection passes on the same layout. Copy the fixed script and the test file into a temporary directory that keeps the `e2e/` layout and has `full/config/api/checks.json` (or into a scratch worktree of the PR branch). In that copy only, change the action comparison of `form_token_args` from exact to prefix: drop the closing `"` from the action pattern, or compare with `[[ $action == "$path"* ]]`, whichever fits the implementation. Run the test on the copy. It must exit non-zero, and cases B and C must fail with a `status 409` line of the script (expected values: the literal 409 of the fake and the literal step texts). The unmodified fixed script passes the same cases (evidence 1). The PR quotes the mutant's diff (one line) and its failing lines. Then the temporary copy is removed. Nothing of it is committed.
+4. `git ls-files -z '*.sh' | xargs -0 shellcheck -x` and `git ls-files -z '*.sh' | xargs -0 -n 1 bash -n` pass from the deploy root (`ci.yml:34-37`), and so does `bun run lint` (the `check` job, see the repository section).
+5. On a local `dev` stack built with pulse-console at PR #9 head (`c071619`, or its newer head, SHA named in the PR), after `scripts/wait-ready.sh dev/compose.yaml 900`: `E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml` exits 0 and prints steps 1 to 13. The PR quotes the `ok:` lines only.
+6. After the merge: the rerun `deploy-dev` job of pulse-console PR #9 is green. The deploy CI `dev` job on the merge commit (console `main`, auto flow) stays green.
 
 ## Repository: deploy
 Files:
@@ -138,11 +148,12 @@ Tool facts (verified):
 Checks to run before handoff (from the deploy root):
 - `bash e2e/console-setup.test.sh`
 - the old-script proof of acceptance evidence 2
+- the prefix-mutant proof of acceptance evidence 3 (in a temporary copy, never committed)
 - `git ls-files -z '*.sh' | xargs -0 shellcheck -x` and `git ls-files -z '*.sh' | xargs -0 -n 1 bash -n`
 - `bun install --frozen-lockfile && bun run check` (the workflow file changed)
 - the other `lint` job steps stay green: `bash e2e/published-port.test.sh`, `bash e2e/metric-is.test.sh`, `bash e2e/manual-count.test.sh`, `bash e2e/outage-history.test.sh`
-- when Docker is available: acceptance evidence 4 against pulse-console PR #9, and the auto flow against console `main` (`bash e2e/console-setup.sh dev/compose.yaml` on a fresh `dev` stack)
+- when Docker is available: acceptance evidence 5 against pulse-console PR #9, and the auto flow against console `main` (`bash e2e/console-setup.sh dev/compose.yaml` on a fresh `dev` stack)
 
 Completion evidence:
-- The PR names #726 and lists: the passing test output (`console-setup.test: 6 cases passed`); the failing line of the old-script run; the shellcheck and `bun run check` results; the `ok:` lines of the real two-factor run against PR #9 with the console SHA, or the reason it could not run locally.
+- The PR names #726 and lists: the passing test output (`console-setup.test: 6 cases passed`); the failing line of the old-script run; the one-line diff and the failing lines of the prefix mutant; the shellcheck and `bun run check` results; the `ok:` lines of the real two-factor run against PR #9 with the console SHA, or the reason it could not run locally.
 - After the merge, the rerun of pulse-console PR #9 `deploy-dev` turns green. That run is outside this PR and is recorded on #722.
