@@ -112,8 +112,25 @@ switches back to the valid list → `200` with the same bytes and ETag T.
 
 R4. `/`, `/feed.atom` and `/badge/component/<id>.svg` show none of the malformed body's text
 and carry no ETag derived from it. Feed and component badge answer `503 unavailable` (as
-today), also after an earlier success. The SSR page keeps its existing unavailable behavior
-(`isComplete: false`, `server.ts:736-749`).
+today), also after an earlier success. The SSR page keeps its existing `200` unavailable page
+and its existing cache behavior; no SSR code changes. How that works today and after the change:
+- SSR reads `/api/manual-incidents` through the same proxy answer (`ssr.ts:77-99`, `read` =
+  `cachedAnswer`/`readWithDeps`, `server.ts:593-618,771-779`). The poller catches the failed
+  refresh and publishes the error state (`poller.ts:401-420`, `getManualIncidents`
+  `poller.ts:318-342`); `buildSections` renders the banner and the unavailable section from it
+  (`sections.ts:71-77`). `renderSections` therefore returns `isComplete: true`
+  (`server.ts:736-739`); `isComplete: false` is only for a render exception
+  (`server.ts:740-743`) and is not expected here. With the cache on, the page is stored with
+  `etagFor(ctx, html)` of the rendered HTML (`server.ts:785`), which contains no malformed text,
+  and it is rebuilt when the raw entries expire, as for every other upstream failure.
+- The only visible difference is the error kind of that page. On `main` the singleton reaches the
+  poller as a `200` and its validator rejects it, so the kind is `invalid` ("The API sent an
+  unexpected answer.", `render.ts:590-591`). After the change the poller reads the `502`, a
+  fetch `http` error (`poller.ts:212-213`), so the kind is `unreachable` ("Cannot reach the
+  API.", `render.ts:586-589`). That is exactly what the page shows today for every other
+  unreadable upstream answer (invalid JSON, wrong media type, too large: all `502` from
+  `fetchRaw`, `server.ts:415-431`), so it is the expected result of the issue's "result it already
+  uses for an unreadable upstream answer". Do not change the poller or SSR to keep `invalid`.
 
 R5. The poller rejects a non-array `/manual-incidents` body as a failed refresh, does not add it to
 `manualIncidents`, keeps the earlier validated list, and still treats `404` as "no manual
@@ -224,8 +241,9 @@ Implement decisions 1-6 and R1-R7 above. In short:
   complexity limit.
 - The poller, SSR and syndication guards stay as they are.
 - Docs: README line 61 adds that a non-array `/manual-incidents` answer is `502`
-  `invalid API response`; `docs/operation.md` near line 176-177 says the same and that the feed
-  and component badge then answer `503`.
+  `invalid API response`; `docs/operation.md` near line 176-177 says the same, that the feed
+  and component badge then answer `503`, and that the page treats it like any other unreadable
+  answer (`Cannot reach the API.`, the existing text of `docs/operation.md:157`).
 
 ### Tool facts (verified)
 
@@ -269,9 +287,13 @@ TDD per status `AGENTS.md`: write the HTTP regression first and record that it f
    period; singleton → literal `502` above; clock past the period; valid list again → `200` with
    ETag equal to T and body equal to the first `200` body (same run, two independent reads).
    No real sleeps.
-3. Page, feed, component badge (R4): with each malformed body, `/` contains no sentinel;
+3. Page, feed, component badge (R4): with each malformed body, `/` answers `200` (literal),
+   contains no sentinel and contains the literal text `Cannot reach the API.`; with the cache on,
+   its `etag` differs from the page ETag served with the valid list in the same run, and a second
+   request within the cache period gives the same page ETag (stored, as on every other upstream
+   failure); `If-None-Match` with the page ETag of the valid list gives `200`, not `304`.
    `/feed.atom` and `/badge/component/<fixture id>.svg` answer `503` with no `etag` header, also
-   after an earlier `200` of the same surface. Positive control in the same test file: with the
+   after an earlier `200` of the same surface. No SSR, sections or poller source changes. Positive control in the same test file: with the
    valid public array, the page contains the public title, the feed contains `:manual:1:0`, the
    badge answers `200` (so absence cannot pass because everything failed).
 4. Poller (R5): a direct poller test with a fake `fetch` returning a singleton for
