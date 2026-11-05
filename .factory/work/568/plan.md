@@ -432,6 +432,11 @@ page, the browser refresh, the resolved history, `/feed.atom` or `/badge/compone
 with `PULSE_STATUS_HIDE_DETAILS` on or off. The allow-list (`status/src/api-filter.ts:3-14`) is
 unchanged: no `/api/admin/...` path, no credential, no write route.
 
+The browser runs the guard too, so status serves the new contract module
+`/pulse-contract/manual-incident-public.js`: one new entry in the served-module allow-list
+`contractModules` (`status/src/server.ts:189-205`); every other file name stays refused
+(Repository: status).
+
 Conditional requests (decision 16): for each of `/api/manual-incidents`, `GET /`, `/feed.atom` and
 `/badge/component/<id>.svg`, an upstream that serves the public items plus any private items
 gives the same body bytes and the same `ETag` as an upstream that serves only the public items,
@@ -469,6 +474,14 @@ and restart behavior of public incidents do not change.
   'Admin|ConfigView|validateAdmin|configView|shadowed|CheckSource'` prints nothing. Their
   existing tests must pass unchanged on the new pin; a failure caused only by the pin move is a
   shared finding (status and notify sections).
+- **Status serves contract modules to the browser by allow-list.** The new contract module
+  `manual-incident-public.js` is imported by the contract's `index.js`, but status serves only the
+  file names in `contractModules` (`status/src/server.ts:189-205`, check at `:254`). A pin move
+  without the new entry makes the browser module graph fail (`404`), so the page never refreshes
+  in the browser. The status section adds the entry in the same change as the pin move and tests
+  it (Repository: status). No other target serves contract files to a browser: `grep -rln
+  'validate-audit.js' api/src notify/src console/src deploy` prints nothing; only
+  `status/src/server.ts` matches.
 - **Concurrent edit and publish.** Two operators: one saves a new draft text while the other
   publishes. Whichever transaction commits first wins; the publish publishes the draft text stored
   at that moment. Known limit, documented; no revision check in this spec.
@@ -555,6 +568,10 @@ Checklist items that apply:
    validators, the admin shapes of `2.0.0` and `WIRE_VERSION` unchanged). The api and console pin
    `176fb6e…` (`2.0.0`) and status, notify, probe pin `7ce23aaf…`; nothing changes at run time.
 2. **api, status and notify** each move their pin to the merged `2.1.0` SHA and merge in any order:
+   - The status pin move and the new `contractModules` entry for `manual-incident-public.js` land
+     in one PR, so no status build on `main` serves an `index.js` that imports an unserved file.
+     A status on the old pin keeps its old allow-list and the old contract `index.js`, which does
+     not import the new module.
    - New status or notify against an **older api** (with or without #565): the older public feed
      has no `visibility` or `publishedAt`, so the guard passes every item, as today.
    - **Older status and notify** (images `0.1.0` and older `main`, contract pin `7ce23aaf…`)
@@ -626,6 +643,14 @@ Privacy (each must be absent from every public surface):
   second. A wrong implementation that tags the upstream bytes, or filters only the JSON proxy,
   gets a different tag on at least one surface.
 
+Browser modules:
+
+- Status with the contract pin moved to `2.1.0` and `contractModules` unchanged:
+  `GET /pulse-contract/manual-incident-public.js` answers `404`, the import-graph test fails, and
+  the page's poller cannot load in the browser. The correct change answers `200` with a
+  JavaScript type. A wrong fix that serves every file of the contract directory answers `200` for
+  `/pulse-contract/manual-incident-public.d.ts`; the correct allow-list answers `404`.
+
 Publication and ordering:
 
 - Second `POST /admin/manual-incidents/<id>/publish` after a successful one: `409 manual incident
@@ -685,7 +710,9 @@ New names, all in contract `src/` (field names on the new `InternalManualInciden
 exports, including every lowercase schema constant and the new module file). Every name of the
 table below is searched by its full text; `grep` is case-sensitive, so `publicManualIncident`
 does not match `isPublicManualIncident`. Searches of the contract clone (`176fb6e…`, version
-`2.0.0`) and the config clone, run from the meta checkout:
+`2.0.0`) and the config clone, run from the meta checkout. The module name is also searched in
+the status clone, which serves contract modules by file name: `grep -rn 'manual-incident-public'
+.repos/status/src | wc -l` prints `0`, so the new `contractModules` entry collides with nothing.
 
 ```
 $ for n in visibility publishedAt savedAt author notes '"draft"' 'draft:' \
@@ -761,7 +788,8 @@ shows that no service uses the new route prefix yet. Not new: `MANUAL_INCIDENT_M
 | `validateInternalManualIncident`, `validateInternalManualIncidentsResponse`, `validateManualIncidentDraftInput`, `validateManualIncidentNoteInput` | validators |
 | `manualIncidentDraftSchema`, `manualIncidentNoteSchema`, `internalManualIncidentSchema`, `manualIncidentDraftInputSchema`, `manualIncidentNoteInputSchema` | zod schema constants |
 | `isPublicManualIncident`, `publicManualIncident` | functions |
-| `src/manual-incident-public.ts` | module file |
+| `src/manual-incident-public.ts` (built to `dist/manual-incident-public.js`) | module file |
+| status path `/pulse-contract/manual-incident-public.js` (entry `"manual-incident-public.js"` of `contractModules`) | served browser module |
 | audit actions `manual-incident.edit`, `.draft-save`, `.draft-discard`, `.publish`, `.note-add`, `.note-delete` | `AUDIT_ACTIONS` values |
 | routes `/admin/manual-incidents`, `/:id`, `/:id/draft`, `/:id/publish`, `/:id/notes`, `/:id/notes/:noteId` | api routes |
 
@@ -816,6 +844,11 @@ Behavior:
   `validateManualIncidentsResponse` and `WIRE_VERSION` do not change.
 - Guard and projection: R6. `publicManualIncident` builds a new object (the validators keep
   returning the same object they were given, `AGENTS.md` "This repository").
+- The module file name `src/manual-incident-public.ts` is fixed by this spec: status serves
+  contract files to the browser by file name (`status/src/server.ts:189-205`) and allow-lists
+  exactly `manual-incident-public.js` (Repository: status). Its relative imports point only at
+  existing contract modules (for example `./schema.ts`, `./validate-core.ts`), so `dist/index.js`
+  imports exactly one new file. The module needs no `zod` import for the guard and projection.
 - Audit: the six actions; `kindOf` (`src/audit.ts:62`) maps each to `manual-incident`.
 
 Checks:
@@ -990,6 +1023,8 @@ Files:
 - `src/api-filter.ts`
 - `src/poller.ts`
 - `src/syndication.ts`
+- `src/server.ts`
+- `src/server.contract-modules.test.ts`
 - `src/manual-incidents.test.ts`
 - `src/api-filter.test.ts`
 - `src/server.privacy.test.ts`
@@ -1004,7 +1039,10 @@ Status drops upstream items marked private.
 
 What each file gets: `src/api-filter.ts` drops non-public manual incident items before cleaning;
 `src/poller.ts` filters, validates, projects; `src/syndication.ts` the manual incident reader of
-feed and badge skips non-public items; `src/manual-incidents.test.ts` poller, render and component
+feed and badge skips non-public items; `src/server.ts` adds `manual-incident-public.js` to the
+allow-list `contractModules` (`src/server.ts:189-205`); `src/server.contract-modules.test.ts`
+asserts that the new file is served and is part of the import graph;
+`src/manual-incidents.test.ts` poller, render and component
 state with private items; `src/api-filter.test.ts` filter cases; `src/server.privacy.test.ts` proxy,
 SSR page, feed and badge over HTTP with a fake api, entity tags and not-modified answers with and
 without private items (decision 16); `src/server.syndication.test.ts` feed entries, feed updated
@@ -1012,9 +1050,32 @@ time and badge state; `README.md` and `docs/operation.md` say where manual incid
 that private items are dropped and that this needs contract `2.1.0`; `package.json` contract pin
 from `7ce23aaf…` (`package.json:34`) to the merged `2.1.0` SHA; `bun.lock` updated by `bun install`.
 
-Behavior: R7. The poller is a browser module (`AGENTS.md` "This repository"); it imports
-`isPublicManualIncident` and `publicManualIncident` from the contract as runtime values, which the
-server already rewrites to `/pulse-contract/index.js`. No new browser module.
+Behavior: R7. The poller is a browser module (`AGENTS.md` "This repository", `tsModules` at
+`src/server.ts:177-185`); it imports `isPublicManualIncident` and `publicManualIncident` from the
+contract as runtime values. `browserModule` rewrites that import to `/pulse-contract/index.js`
+(`src/server.ts:285-290`). No new status browser module is added to `tsModules`.
+
+Served contract modules: the server serves a contract file under `/pulse-contract/` only when its
+name is in the allow-list `contractModules` (`src/server.ts:189-205`); `readContractModule`
+returns `undefined` for every other name (`src/server.ts:254`), so the asset route answers
+`404`. Contract `2.1.0` adds the module `src/manual-incident-public.ts`, built to
+`dist/manual-incident-public.js` (contract `dist/` holds one `.js` per `src/*.ts`, and
+`dist/index.js:1-10` re-exports each module with `from "./<name>.js"`), and its `index.js` imports
+it. With the new pin and the old allow-list the browser's request for
+`/pulse-contract/manual-incident-public.js` answers `404`, so the module graph of `index.js` fails
+to load, the poller does not start in the browser, and the existing test "every import of the
+served contract graph resolves to a served file" (`src/server.contract-modules.test.ts:92-118`)
+fails at `assert.equal(r.status, 200, path)` (`:101`). So:
+
+- `contractModules` gains exactly one entry, `"manual-incident-public.js"`. No other entry is
+  added or removed; the set stays an explicit allow-list (no directory listing, no pattern).
+- The zod rewrite in `readContractModule` (`src/server.ts:255`) applies to the new file like to
+  the others; if the module imports nothing from `zod`, the rewrite is a no-op.
+- Every other module that `dist/index.js` of the merged `2.1.0` imports is already in the list:
+  the `2.0.0` modules (`admin`, `audit`, `client`, `components`, `revision`, `schema`, `token-id`,
+  `tokens`, `validate`, `validate-admin`, `validate-audit`, `validate-core`, `validate-tokens`,
+  `version`) are all in `src/server.ts:189-205` today (compare `ls contract/dist` at `176fb6e…`).
+  If the merged contract imports any further module, it is added the same way and the PR names it.
 
 Pin move: the new pin crosses contract `2.0.0` (#565). Status imports no admin type (search in
 "Risks"), so no code change follows from it. **Shared finding:** whether any existing test fails
@@ -1058,12 +1119,27 @@ Checks:
   items (they are served, so the bytes and tags differ); passes on `main` for the `notes` and
   `draft` fields alone (regression guard). Both statuses use the same fake clock and settings,
   so the only input that differs is the upstream body.
+- Served contract modules (`src/server.contract-modules.test.ts`, with the new pin installed):
+  - `GET /pulse-contract/manual-incident-public.js` answers `200` (literal) with a
+    `content-type` matching `/javascript/` (literal; `JS_TYPE`, `src/server.ts:275`), its body
+    contains the literal text `isPublicManualIncident` and no bare `from "zod"`;
+  - the existing import-graph test (`:92-118`) passes and its `seen` set contains
+    `/pulse-contract/manual-incident-public.js` (new literal assertion);
+  - the allow-list stays closed: `/pulse-contract/other.js` still answers `404` (existing,
+    `:68`), and so does `/pulse-contract/manual-incident-public.d.ts` (new literal case; the
+    `.d.ts` file exists in the contract `dist/` but is not allow-listed).
+  The first two fail with the new pin and the old allow-list (status `404`), which is the
+  failure this entry prevents. The PR shows that failure: the pin moved and `src/server.ts`
+  unchanged, `bun test src/server.contract-modules.test.ts` fails.
+- Browser check: `bun run check:a11y` (`package.json:18`, Chromium in CI `ci.yml:64-68`) loads
+  the page with the new pin; it stays green.
 - Fail on current `main`: the draft and internal cases (current `main` serves both). The note and
   draft-update cases already pass on `main`, because the allow-list strips unknown fields; they
   are regression guards and the PR says so.
 
 Completion evidence: `bun run check` and `check:a11y` pass; PR shows the failing-on-main tests at
-the pre-change SHA.
+the pre-change SHA, and the `404` of `/pulse-contract/manual-incident-public.js` with the new pin
+before the allow-list entry was added.
 
 ## Repository: notify
 
