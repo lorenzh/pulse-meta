@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Store private drafts and notes with transactional publication and public-only reads",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/migrations.ts",
+        "src/manual-incidents.ts",
+        "src/manual-incidents.test.ts",
+        "src/db.migrations.test.ts",
+        "src/server.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, store and migration Behavior, R1-R5 storage portions, decisions 4-8, 10-11 and 15, and Checks 2-5/9 at the store boundary. Pin the merged contract 2.1.0 SHA on main from the #565 2.0.0 baseline. Append migration step 7 without editing steps 1-6 or rebuilding #565 check storage. Implement the complete store lifecycle: separate private list/detail, SQL-filtered public reads with the limit after filtering and publication-time ordering, draft create/edit/update/discard, publish, add/delete notes, cascade deletion/retention, legacy public-only mutations, resolve-clears-draft and draft-aware component blocking. Re-read state and commit each write with its audit entry under BEGIN IMMEDIATE; rollback leaves no mutation or event. Call created/resolved only after commit for public publications/resolutions. Keep the legacy store methods' public shapes and runtime behavior compatible; extend only emptyManualIncidents in server.ts in this task so the expanded store interface typechecks before routes exist. Test all transitions, fixed conflicts, limits, audit rollback, clock rollback and component revalidation. Keep #565 modules and start/token-scope wiring unchanged.",
+      "acceptance": [
+        {
+          "command": "bun test src/manual-incidents.test.ts src/db.migrations.test.ts src/server.manual-incidents.test.ts src/server.manual-incidents.audit.test.ts",
+          "expected": "0 fail; new store tests prove the R1 state table, one draft, publication time, update ordering at 1000 when now is 900, second publish conflict/no duplicate, append-only public updates, private notes, 100-draft/note/update limits, component revalidation and published-only blocking, cascading retention/delete and atomic audit rollback. Public-only callbacks count 0 for private-only actions and 1 per public publication/resolution after commit. Migration gives literal user_version 7 from a step-6 file, preserving public projections and #565 check_definitions/config_state rows; the step-6 opener refuses it. Existing legacy HTTP/audit tests pass. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; the extended server empty-store stub satisfies the store interface and existing callers compile without changing #565 modules."
+        },
+        {
+          "command": "bun run test",
+          "expected": "exit 0; the complete suite remains green at the 0.8 coverage threshold before private HTTP integration."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Serve authenticated private incidents without exposing their activity publicly",
+      "files": [
+        "src/manual-incident-routes.ts",
+        "src/server.ts",
+        "src/server.manual-incidents.test.ts",
+        "src/server.manual-incidents.private.test.ts",
+        "src/server.manual-incidents.audit.test.ts",
+        "src/server.manual-incidents.metrics.test.ts",
+        "src/db.migrations.test.ts",
+        "docs/rest-api.md",
+        "docs/operation.md",
+        "docs/concepts.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, HTTP integration, all Checks 1-9 and Completion evidence; R2-R4, Counterexamples, Security impact and Performance impact. Build the private handler and dispatch before /admin/* even without ops.admin. Reuse incident-write (admin + incidents), throttle and fixed error/log conventions, with R3 path/method/bootstrap/auth/body/existence/state order and every listed route/method/body bound. Reject visibility/draft on legacy create; legacy writes treat draft/internal ids as missing and keep public outputs unchanged. Skip request recording for the parsed private prefix for every method/status, including unmatched descendants, while retaining patterned auth-failure/throttle counters. Exercise private reads/writes/persistence, metrics, legacy compatibility and migration over HTTP with successful private-read and public controls. Document all routes, limits, audit/log actions, shared-id gaps, no internal notifications, accepted concurrency/config-conflict limits, upgrade order and backup-only downgrade. Complete whole-change checks, service smoke, performance and security evidence; do not redo #565 or console work.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.manual-incidents.test.ts src/server.manual-incidents.private.test.ts src/server.manual-incidents.audit.test.ts src/server.manual-incidents.metrics.test.ts src/db.migrations.test.ts",
+          "expected": "0 fail; Checks 1-9 and all R3 state/validation/limit/auth counterexamples pass. Draft create is 201, private read 200, public detail 404; publish is 200 then 409 with one initial update at publishedAt. Private draft/internal/deleted/999999 detail responses have identical 404 body {\"error\":\"manual incident not found\"} and headers apart from Date. Legacy private-id mutations give identical unknown-id 404 and leave private state unchanged. Draft update/notes survive reopen, never affect public bytes until publication, and auth still works without ops.admin. Failed audit writes roll back and logs/audit/labels contain no secret or private text. Step-6-to-7 migration preserves HTTP public JSON and #565 rows. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun test src/server.manual-incidents.metrics.test.ts",
+          "expected": "0 fail; anonymous counters are literally 0/0 before and after the specified private-only sequence, and no private route appears in the request counter or unmatched growth. All pulse_api_ lines stay equal except the /metrics scrape lines and legacy /updates code=404 count 1. Publishing the public control gives created_total 1 and resolving it gives resolved_total 1. An unauthenticated private read gives auth-failure route=/admin/manual-incidents/:id,status=401 count 1 while request recording stays absent. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite meet the 0.8 coverage threshold, including unchanged #565 database-check and existing manual incident/throttle tests."
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "exit 0; all existing benchmark selftests remain green."
+        },
+        {
+          "command": "bun start",
+          "expected": "With an isolated local database/checks and an admin token, the docs/rest-api.md curl examples complete: draft 201, private read/edit 200, publish 200 then 409, draft-update save/publish 200, note 201, internal publication 200 with public read 404. Stop the local service afterwards and report the commands and answers."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names the tests failing on pre-change main e8832af73295da66dd0891e3d1e576e472682f62, passing checks, curl commands/answers, and the bench comparison or before/after test_cpu_s measurements required by Performance impact. It records every applicable Security impact checklist result, including private state in anonymous metrics, auth order, limits, indistinguishable 404s, fixed texts and exact merged contract pin; known limits and #565 dependency are stated."
+        }
+      ]
+    }
+  ]
+}

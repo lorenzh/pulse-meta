@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Publish the additive 2.1.0 incident privacy contract",
+      "files": [
+        "src/schema.ts",
+        "src/validate.ts",
+        "src/manual-incident-public.ts",
+        "src/audit.ts",
+        "src/index.ts",
+        "test/manual-incidents.test.ts",
+        "test/audit.test.ts",
+        "test/smoke.test.ts",
+        "test/types.fixture.ts",
+        "docs/index.md",
+        "package.json",
+        "dist/"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Behavior bullets, Checks and Completion evidence; R1, R6 and Contract fields. Extend merged #565 contract 2.0.0 to 2.1.0 without changing its admin types, existing ManualIncident validators or WIRE_VERSION (1). Implement all six schemas and inferred types, four validators, limits, six audit actions, public guard and exact projection. Cover all five internal invariants, strict inputs and states. Privacy accessors fail closed without execution (getter count 0), inherited keys count as absent, and throwing/revoked proxies return false. Update the exact runtime-export smoke list, dist freshness coverage for the new module, every new type fixture and docs; build and commit dist. Complete the applicable Security impact checklist and report failing-on-main evidence and the merged SHA for consumers.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-incidents.test.ts test/audit.test.ts",
+          "expected": "0 fail; every R1 state has an accepted fixture and each invariant 1-5 has a rejected counterexample; strict draft/note inputs reject unknown fields. R6 legacy-public and explicit-public controls return true; private/invalid/accessor/proxy cases return false without throwing; getter calls are 0. Projection contains exactly the eight public fields and only at/status/message per update. manual-incident.publish accepts target kind manual-incident and rejects check. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck and the full suite pass with the 0.8 coverage threshold. Exact exports and rebuilt dist pass smoke checks, all new type fixtures compile, and existing #565 admin tests pass unchanged."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "exit 0 after the rebuilt dist has been staged/committed for handoff; committed dist matches the fresh build."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR reports the new tests failing at pre-change main 176fb6ed14b2f14b730a9fd1757239f210f97a29 and passing with the change, bun run check, committed dist, version 2.1.0, and applicable Security impact checklist results (including zero getter execution and exact dependency pins). The merge SHA is reported for consumers after merge."
+        }
+      ]
+    }
+  ]
+}

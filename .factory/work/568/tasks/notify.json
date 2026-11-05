@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Exclude private incidents before notification validation, seeding and metrics",
+      "files": [
+        "src/api.ts",
+        "test/manual-incidents.test.ts",
+        "test/api.test.ts",
+        "README.md",
+        "docs/channels.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, all Behavior, Checks 1-5 and Completion evidence; R6, R8, decision 9 and Security impact. Pin merged contract 2.1.0 and record/read the shared status/notify finding for crossing #565's 2.0.0. In fetchManualIncidents guard raw items before validation and project accepted public items, so private items never enter rejected/logging/skipped metrics, event derivation, seeding, payloads, ledger/pruning or any channel. Keep routing, keys, public first-start/restart behavior and config/ledger/metrics interfaces unchanged. Add fake-api/file-channel controls with both catch-all and component routing, a marker B after the draft-update/note body, draft publication after seeding and restart deduplication. Document suppress-all internal routing and contract requirement; complete checks, CPU, smoke and security evidence.",
+      "acceptance": [
+        {
+          "command": "bun test test/manual-incidents.test.ts test/api.test.ts",
+          "expected": "0 fail; after an empty seed, public A plus internal I and draft D produce exactly one manual:A:opened per eligible channel and no I/D line. After the awaited poll of A's notes/draft plus marker B and completed channel writes, each channel has exactly one manual:B:opened, no private sentinel and no A update event. A draft D in the first poll later published with the same id produces exactly one manual:D:opened; restart with the same ledger sends none twice. Private skips add no rejected item or log, skipped_items_total{feed=\"manual-incidents\"} stays literally 0, and a malformed public item missing title raises it to 1. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the complete suite meet the 0.8 coverage threshold, including existing manual incident/routing/upgrade/alert tests. Existing tests pass unchanged on the pin move, or any pin-only failure is recorded as the shared finding."
+        },
+        {
+          "command": "bun run start",
+          "expected": "With a local fake api and file-channel configuration, seed, then serve public/private fixtures and await delivery; public controls are delivered and private sentinels are absent. Stop the service and record commands/results."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR shows section Checks 1 and 3 failing at pre-change main f3bcfb9484b94c50168c41c06c6d7f41784b0335 and passing with the change, bun run check, before/after bun test CPU time, shared pin-move finding and smoke results. Applicable Security impact results include no private skipped-item metric/log, filtering before seeding/delivery, unchanged public deduplication and the exact merged contract pin."
+        }
+      ]
+    }
+  ]
+}

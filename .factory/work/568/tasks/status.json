@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Keep private upstream incidents out of every status surface and entity tag",
+      "files": [
+        "src/api-filter.ts",
+        "src/poller.ts",
+        "src/syndication.ts",
+        "src/manual-incidents.test.ts",
+        "src/api-filter.test.ts",
+        "src/server.privacy.test.ts",
+        "src/server.syndication.test.ts",
+        "README.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, all Behavior, Checks and Completion evidence; R6-R7, decision 16, Counterexamples and Security impact. Move the pin from 7ce23aaf to the merged contract 2.1.0 SHA, crossing #565's 2.0.0 without admin-type changes; record/read the shared status/notify pin-only-test finding. Apply the guard to raw items before proxy cleaning, poller validation/projection and feed/badge parsing, preserving malformed non-object proxy null behavior and older-api compatibility. Use the existing browser contract import rewrite; keep the allow-list unchanged. Cover SSR/browser refresh/resolved history/component state and all HTTP surfaces with both hide-details settings, exact projection, sentinel exclusion, feed IDs/updated and conditional-request privacy, including a second public incident as the ETag positive control. Update docs; complete checks, CPU comparison and security/failing-main evidence.",
+      "acceptance": [
+        {
+          "command": "bun test src/manual-incidents.test.ts src/api-filter.test.ts src/server.privacy.test.ts src/server.syndication.test.ts",
+          "expected": "0 fail; draft/internal sentinels are absent from proxy, SSR, poller/render/history, Atom and api badge with hide-details on and off. The public control appears, web is down, api retains its check-derived state, and feed IDs stay manual:<id>:0. Under identical clocks/settings U1 public-only and U2 public+private produce identical body bytes and ETags on /api/manual-incidents, /, /feed.atom and /badge/component/api.svg; the U1 tag gets 304 with no body on U2. U3's additional public incident changes all four tags and gets 200 with U1's tag. Private items with later timestamps cannot move feed updated. Draft/note fields are projected away. Focused coverage may fail the global gate; assess test results here."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both typechecks and the complete suite meet the 0.8 coverage threshold. Existing tests pass unchanged after the pin crosses contract 2.0.0, or any pin-only failure is recorded as the shared finding per the plan."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0 with the repository's Chromium setup; existing accessibility checks stay green."
+        },
+        {
+          "command": "bun start",
+          "expected": "With a local fake api serving the section's public/private fixtures, exercise the proxy, page, feed and component badge once; only the public control is shown. Stop the local service and record the commands/results."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR shows draft/internal tests failing at pre-change main d268b5b1b0afcf9bc94ce508934ddd879bb90df0 and passing with the change; notes/draft-update-only cases are explicitly regression guards that already pass on main. It reports full/a11y checks, before/after bun test CPU time, the shared pin-move finding, smoke results and applicable Security impact results, including ETag/304 privacy, no new allow-listed admin path and the exact contract pin."
+        }
+      ]
+    }
+  ]
+}
