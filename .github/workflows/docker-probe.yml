@@ -1,0 +1,150 @@
+name: Docker probe
+
+# Manual probe of a Docker-capable self-hosted runner. The daemon must run rootless as the job user,
+# containers and compose stacks must work, and the access token of the runner entrypoint (env of
+# PID 1, /run/secrets/github_token) must stay out of reach of the job, also through a privileged
+# container that mounts /. Token searches print counts only. The pattern brackets one letter of
+# each token form (ACCESS_TOKE[N]), so the pattern text on a process command line never matches
+# itself. The input is used only in runs-on, never in shell code.
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'JSON array of runs-on labels; for the production runners ["self-hosted","pulse-meta"]'
+        required: false
+        default: '["self-hosted","docker-test"]'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency: docker-probe
+
+jobs:
+  probe:
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: identity
+        name: Identity and rootless daemon
+        run: |
+          set -euo pipefail
+          id
+          echo "DOCKER_HOST=${DOCKER_HOST:-unset}"
+          uname -a
+          info="$(docker info --format '{{.ServerVersion}} {{.SecurityOptions}} {{.Driver}}')"
+          echo "$info"
+          grep -q rootless <<< "$info" || { echo "::error::the Docker daemon is not rootless"; exit 1; }
+          docker compose version
+
+      - id: containers
+        name: Run containers
+        run: |
+          set -euo pipefail
+          docker run --rm hello-world
+          docker run --rm alpine:3 id
+
+      - id: compose
+        name: Two compose stacks side by side
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/docker-probe"
+          mkdir -p "$dir"
+          cat > "$dir/compose.yml" <<'YAML'
+          services:
+            web:
+              image: nginx:alpine
+              ports:
+                - "127.0.0.1:${PORT}:80"
+          YAML
+          PORT=18080 docker compose -p probe-a -f "$dir/compose.yml" up -d --wait
+          PORT=18081 docker compose -p probe-b -f "$dir/compose.yml" up -d --wait
+          curl -fsS -o /dev/null http://127.0.0.1:18080/ && echo "port 18080 answers"
+          curl -fsS -o /dev/null http://127.0.0.1:18081/ && echo "port 18081 answers"
+
+      - name: Clean up compose stacks
+        if: always()
+        run: |
+          set +e -uo pipefail
+          dir="$RUNNER_TEMP/docker-probe"
+          for p in probe-a probe-b; do
+            [[ -f "$dir/compose.yml" ]] && PORT=0 docker compose -p "$p" -f "$dir/compose.yml" down -v --remove-orphans
+            docker ps -aq --filter "label=com.docker.compose.project=$p" | xargs -r docker rm -f
+          done
+          rm -rf "$dir"
+          true
+
+      - id: pid1
+        name: PID 1 environment is not readable
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if cat /proc/1/environ > /dev/null 2>&1; then
+            echo "::error::the job can read /proc/1/environ"; exit 1
+          fi
+          echo "/proc/1/environ is not readable"
+
+      - id: environ
+        name: No token in readable process environments
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          n="$({ cat /proc/[0-9]*/environ 2> /dev/null || true; } | tr '\0' '\n' \
+            | grep -cE 'ACCESS_TOKE[N]|gh[p]_[A-Za-z0-9]|github_pa[t]_' || true)"
+          echo "token-like strings in readable /proc/*/environ: $n"
+          [[ "$n" == 0 ]]
+
+      - id: secret
+        name: Token file is not readable
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if cat /run/secrets/github_token > /dev/null 2>&1; then
+            echo "::error::the job can read /run/secrets/github_token"; exit 1
+          fi
+          echo "/run/secrets/github_token is not readable"
+
+      - id: privileged
+        name: No token through a privileged container
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # $1 is the pattern; the container prints one count per source, nothing else.
+          out="$(docker run --rm --privileged -v /:/host alpine:3 sh -c '
+            e=$({ cat /host/proc/[0-9]*/environ 2>/dev/null; true; } | tr "\0" "\n" | grep -cE "$1")
+            c=$({ cat /host/proc/[0-9]*/cmdline 2>/dev/null; true; } | tr "\0" "\n" | grep -cE "$1")
+            s=$(grep -rhsE "$1" /host/run/secrets | wc -l)
+            r=0; cat /host/run/secrets/github_token >/dev/null 2>&1 && r=1
+            echo "$e $c $s $r"
+          ' sh 'ACCESS_TOKE[N]|gh[p]_[A-Za-z0-9]|github_pa[t]_')"
+          read -r e c s r <<< "$out"
+          echo "token-like strings: environ $e, cmdline $c, /run/secrets $s; token file readable: $r"
+          [[ "$e" == 0 && "$c" == 0 && "$s" == 0 && "$r" == 0 ]]
+
+      - name: Summary
+        if: always()
+        env:
+          IDENTITY: ${{ steps.identity.outcome }}
+          CONTAINERS: ${{ steps.containers.outcome }}
+          COMPOSE: ${{ steps.compose.outcome }}
+          PID1: ${{ steps.pid1.outcome }}
+          ENVIRON: ${{ steps.environ.outcome }}
+          SECRET: ${{ steps.secret.outcome }}
+          PRIVILEGED: ${{ steps.privileged.outcome }}
+        run: |
+          set -euo pipefail
+          res() { case "$1" in success) echo pass ;; failure) echo fail ;; *) echo "$1" ;; esac; }
+          {
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Rootless daemon, identity, compose plugin | $(res "$IDENTITY") |"
+            echo "| hello-world and alpine containers | $(res "$CONTAINERS") |"
+            echo "| Two compose stacks on 18080 and 18081 | $(res "$COMPOSE") |"
+            echo "| /proc/1/environ not readable | $(res "$PID1") |"
+            echo "| No token in readable /proc/*/environ | $(res "$ENVIRON") |"
+            echo "| /run/secrets/github_token not readable | $(res "$SECRET") |"
+            echo "| No token through a privileged container | $(res "$PRIVILEGED") |"
+          } >> "$GITHUB_STEP_SUMMARY"
