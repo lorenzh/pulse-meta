@@ -25,6 +25,14 @@ value and the whole URL, with literal and `/bin/sh` round-trip tests for apostro
 metacharacters (Decision 12); `GET /checks/:id/location-uptime` answers `405` with
 `Allow: GET` to `HEAD`, like the other reads, and the api checks pin that (Repository: api).
 
+Revision after the fourth plan-review (5 November): header rows are checked for duplicate
+names, case-insensitively and including the stored literal rows, before any header object is
+built (R4, R5); the typed-name confirmation trims the stored name as well as the typed one, so a
+stored name with outer spaces such as `" Checkout API "` can be confirmed (R6); the contract
+section lists `test/smoke.test.ts` with the literal additions to its export list; the create and
+edit forms state the fixed quorum rule with the heartbeat exception (R4), checked in the
+browser; every console task is a behavior change (Repository: console).
+
 ## Goal
 
 A signed-in person can find, inspect, create, edit, export and delete checks in the Console,
@@ -443,7 +451,21 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   is exactly `__proto__` is a field error on `header_<i>_name`: `422`, message `__proto__ is not
   an allowed header name.`, and nothing is sent. This matches the contract
   (`contract/src/validate-admin.ts:34-37,69`: `validateAdminCheckInput` rejects an own
-  `__proto__` header) and the api file parser (`api/src/config.ts:225-228`). Every other header
+  `__proto__` header) and the api file parser (`api/src/config.ts:225-228`).
+  **Duplicate names.** Before any header object is built, the handler lists the used rows in
+  index order: every stored literal row (R5, indexes `0` to `k - 1`) whose intent is `keep` or
+  `replace`, then every free row that is not ignored. A stored row with intent `remove` is not
+  used. If a used row's name, compared with `name.toLowerCase()` (the comparison of the
+  contract's header rule, `contract/src/schema.ts:149-160`), equals the name of an earlier used
+  row, that later row gets a field error on `header_<i>_name`. The later row is always a free
+  row: stored rows come first, and the names of a view are already unique without case
+  (`validateAdminConfigResponse` applies the same header rule to a view,
+  `contract/src/admin.ts:89-108`). The answer is `422`, message `This header is already set in another row (names are compared without
+  case).`, and nothing is sent. Without this check `Object.fromEntries` would keep only the last
+  of two rows with the same exact name, so a free `X-Api-Key` row would silently overwrite the
+  stored `{ "keep": true }` of `X-Api-Key` without the person choosing `Replace`; rows that
+  differ only in case would reach the contract, which refuses them without naming a row. The
+  `__proto__` check runs first, then this one. Every other header
   name keeps its case and becomes an own key (`Object.fromEntries`, never `obj[name] = value`),
   so the built input that `validateAdminCheckInput` sees is the one that is sent. For each env
   header the form and detail show the line to add on every probe:
@@ -457,6 +479,18 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   `none`|`exists`|`equals`, `assert_<i>_equals` JSON text). A row is used when its mode is not
   `none`; `equals` must parse with `JSON.parse`, else `Enter a JSON value, for example "ok",
   200 or true.`
+- Fixed quorum rule (#460 amendment, section 20: "the editor states the fixed rule"). Every
+  create and edit form of the types HTTP, TLS, TCP, DNS and domain shows, above the submit
+  button, the paragraph `Every probe runs this check. It is down when at least two locations
+  report down; with one reporting location, that location decides. Choosing locations or a
+  quorum per check is not available yet.` The heartbeat form shows instead `Heartbeat checks are
+  not run by probes and have no quorum; your job pings pulse-api. With no ping for longer than
+  the period plus the grace time, the check is down at once.` The rules are the api's
+  `quorumStatus` (`api/src/state.ts:38-48`: one location decides alone; with two or more, down
+  when at least two are down) and its heartbeat judge (`api/src/heartbeat.ts:23,55-70`,
+  `api/docs/concepts.md:21`: overdue after `period + grace`, one `down` result, incident at
+  once). No form has a quorum or location field (Non-goals). The detail page of R2 keeps its own
+  text.
 - Validation runs in the Console first with the contract (`validateAdminCheckInput`) plus the
   field rules above, and returns `422` with the form, an error summary and per-field messages.
   Only the fields of the chosen type are read; fields of other types in the POST are ignored and
@@ -492,7 +526,10 @@ shows real per-location uptime over the same 90-day window as the existing aggre
   name of row `i < k` from the trusted entry and reads only `header_<i>_intent` and
   `header_<i>_value` for it; a posted `header_<i>_name` or `header_<i>_kind` for such a row is
   ignored. Rows `k` to `19` are free rows (name, kind, value), env headers of the view filled
-  in first.
+  in first. The duplicate-name rule of R4 runs over the stored rows (intent `keep` or `replace`)
+  and the free rows together: a free row named `x-api-key` next to a kept stored `X-Api-Key` is
+  `422` and nothing is sent; with the stored row's intent `remove`, the free row is used and
+  the PUT carries only it (an explicit switch from a literal to, for example, an env value).
 - Commit order of a POST (the dispatcher has already checked Origin, size, CSRF, role and used
   the form token):
   1. Query id present once and non-empty, else `404`.
@@ -537,10 +574,26 @@ shows real per-location uptime over the same 90-day window as the existing aggre
      Decision 14 page. A posted `target` that differs from the derived one → `409` stale.
   4. Revision: form `revision` differs from the read → `409` `staleState` with `Reload`; no
      confirmation form is rendered.
-  5. Typed name: `confirm_name` checked with `typedNameError` / `isTypedNameConfirmed`
-     (`console/src/confirm.ts:35-46`: trimmed, NFC, case-sensitive) against the
-     `name` of the entry from step 2 → `422`, the confirmation re-rendered from that entry with
-     the same hidden `revision` and a fresh form token. Nothing is sent.
+  5. Typed name: `confirm_name` checked with `typedNameError` / `isTypedNameConfirmed` against
+     the `name` of the entry from step 2 → `422`, the confirmation re-rendered from that entry
+     with the same hidden `revision` and a fresh form token. Nothing is sent.
+     **Outer spaces of the stored name.** Today the helper trims only the typed value
+     (`console/src/confirm.ts:36-37`), while pulse-api stores a check name with outer spaces as
+     given: its rule only refuses a name that is blank after `trim()` and never trims the value
+     (`api/src/config.ts:58-60`, `:82`; database writes go through the same `parseCheck`,
+     `api/src/check-write.ts:149,159`; the contract name is any string,
+     `contract/src/schema.ts:18`, `:271`). So a check named `" Checkout API "` could never be
+     deleted. The helper changes to compare
+     `typed.trim().normalize("NFC") === expected.trim().normalize("NFC")`: both sides are
+     trimmed with `String.prototype.trim`, inner whitespace and case still count. The mismatch
+     text names `expected.trim()` (`The name does not match. Type Checkout API exactly.`), and the
+     check delete page passes `name.trim()` as `targetName`. For every name without outer
+     whitespace, which includes every team member name the team routes pass today
+     (`console/src/team-routes.ts:438`; names are stored trimmed by `checkName`,
+     `console/src/forms.ts:77-85`), the result is unchanged, so the existing rows of
+     `confirm.test.ts` keep their expected values. A stored name is never blank after `trim()`
+     (api rule above), so the blank-typed text `Type the name to confirm.` stays the only
+     answer to an empty input.
   6. Session and stored-role recheck (R8).
   7. `DELETE /admin/checks/<apiIdSegment(id)>` with `If-Match: "<form revision>"`.
   8. Outcome per R8; for `saved` the People-log row and `303` to `/checks?deleted=1`, whose page
@@ -683,6 +736,8 @@ Checklist items that apply:
   name such as `a';id;'b` (accepted by `new URL` and by the probe) never ends the quote.
 - Accessor execution: header names become own keys via `Object.fromEntries`; the name
   `__proto__` is refused with `422` before anything is sent (contract and api reject it too);
+  two used rows whose names are equal without case are refused with `422` before the object is
+  built, so no row can silently overwrite a stored keep marker (R4, R5);
   `requestJson`
   parses JSON and reads only own data properties of the error body.
 - SSRF and redirects: the Console calls only its saved pulse-api URL; every id goes through
@@ -765,7 +820,23 @@ Checklist items that apply:
   no PUT. A wrong implementation that tests the file source first answers the file page `This
   check comes from checks.json. Edit the file to change it.` instead. The same holds for
   `GET /checks/edit?id=web`.
-- **Delete.** Typed `checkout api` for the name `Checkout API` → `422`, no request. Delete of a
+- **Duplicate header names.** Edit of `web` with a stored literal `X-Api-Key` (row 0, intent
+  `keep`) and a free row 1 `X-Api-Key`, kind `plain`, value `new`: `422` with `This header is
+  already set in another row (names are compared without case).` on `header_1_name`, and the
+  fake api records no `PUT`. A wrong implementation that builds the object first sends
+  `{"X-Api-Key":"new"}`, replacing the stored value without `Replace`. The same with the free
+  row named `x-api-key` → the same `422` and no `PUT` (a wrong implementation leaves it to the
+  contract or the api, whose `422` names no row). Create with free rows `Accept` and `ACCEPT` →
+  `422` on `header_1_name`, no `POST`. Row 0 with intent `remove` and the free row
+  `X-Api-Key` = env `PULSE_HEADER_KEY` → one `PUT` whose headers are exactly
+  `{"X-Api-Key":{"env":"PULSE_HEADER_KEY"}}`.
+- **Delete.** Typed `checkout api` for the name `Checkout API` → `422`, no request. A database
+  check stored with the name `" Checkout API "` (leading and trailing space; pulse-api accepts
+  it) and typed `Checkout API` → `303` to `/checks?deleted=1` and exactly one
+  `DELETE /admin/checks/<id>`; typed ` Checkout API ` → the same; typed `Checkout  API` (two
+  spaces) → `422` with `The name does not match. Type Checkout API exactly.`, no `DELETE`. A
+  wrong implementation that keeps today's helper answers `422` to every input, so the check can
+  never be deleted. Delete of a
   shadowed `web` sends one `DELETE /admin/checks/web`; afterwards `/checks/check?id=web` still
   shows the file check with its results.
 - **Roles.** A Viewer `GET /checks/new`, `GET /checks/export` and `POST /checks/delete` → `403`;
@@ -898,6 +969,8 @@ Files:
 - `test/location-uptime.test.ts` (new)
 - `test/request-json.test.ts` (new)
 - `test/types.fixture.ts`
+- `test/smoke.test.ts` (the literal runtime export list of "package entry exports the
+  validators and the wire version", `test/smoke.test.ts:51-188`)
 - `dist/` (rebuilt and committed)
 - `package.json` (`version` 2.2.0)
 - `README.md`, `docs/index.md`
@@ -936,8 +1009,22 @@ Behavior:
   the `2xx`. `requestJson` never classifies an outcome as saved or not: that is the caller's
   rule (console Decision 10).
 - `fetchJson` is unchanged (its `http` error never has `message`).
+- Runtime exports of `src/index.ts`: exactly two new values, `requestJson` and
+  `validateCheckLocationUptime`. The schemas `locationUptimeSchema` and
+  `checkLocationUptimeSchema` stay module-internal, like `checkUptimeSchema` today (it is not
+  in the runtime export list, `test/smoke.test.ts:51-188`, while `validateCheckUptime` is).
+  The types `CheckLocationUptime`, `LocationUptime`, `RequestJsonOptions`, `RequestJsonResult`
+  and `RequestJsonResponse` are type-only exports, which `Object.keys(mod)` does not list.
 
 Checks:
+
+- `test/smoke.test.ts`: the expected array of "package entry exports the validators and the
+  wire version" gains exactly the two string literals `"requestJson"` and
+  `"validateCheckLocationUptime"` and nothing else; no entry is removed. The test sorts both
+  sides, so the position in the array does not matter. Without this edit the test fails as
+  soon as the two exports exist, and with a schema exported by mistake it fails too. The
+  `dist` freshness test of the same file needs no new module name: no new source module is
+  added (`client.ts`, `schema.ts`, `validate.ts` and `index.ts` already exist).
 
 - `test/location-uptime.test.ts`: accepts the Counterexamples' `eu`/`us` example; rejects
   duplicate and unsorted names, `uptime 50` with `results 0`, `uptime null` with `results 3`,
@@ -1089,6 +1176,8 @@ Files:
 - `src/styles.ts` (tables with their own horizontal scroll, filter bar, editor rows)
 - `src/console-script.ts` (copy buttons, Decision 12)
 - `src/shell-line.ts` (new: `shellQuote`, `hostBindingLine`, `heartbeatLine`, Decision 12)
+- `src/confirm.ts` (`isTypedNameConfirmed` trims the expected name too; the mismatch text names
+  the trimmed name, R6 step 5), `src/confirm.test.ts`
 - `src/check-form.test.ts`, `src/check-filters.test.ts`, `src/check-export.test.ts`,
   `src/check-format.test.ts`, `src/check-outcome.test.ts`, `src/api-path.test.ts`,
   `src/shell-line.test.ts`,
@@ -1105,10 +1194,15 @@ Files:
 - `e2e/run.ts`
 - `package.json`, `bun.lock` (contract pin to the merged contract SHA)
 - `README.md`, `docs/configuration.md`, `docs/checks.md` (new), `docs/team.md`, `docs/index.md`,
+  `docs/development.md` (the `confirm.ts` line, `docs/development.md:26`: both names trimmed),
   `AGENTS.md`
 
 Behavior change: yes
 New screens, api writes and People-log rows.
+
+Every task cut from this section carries `behaviorChange: true`, the final browser, stack and
+docs task included: it changes `e2e/run.ts` and ships the Checks navigation and pages as
+documented behavior, so none of its tasks is a pure test or docs change.
 
 Behavior: R1 to R9 and Decisions 4 to 14. Notes for the implementer:
 
@@ -1140,7 +1234,9 @@ Behavior: R1 to R9 and Decisions 4 to 14. Notes for the implementer:
 - People-log rows: `target_kind` `check`, `target_id` `NULL`, `target_name` the check id,
   `value` the revision or `unknown`.
 - Docs: `docs/checks.md` (screens, sources and shadowing, write-only fields and intents, CRLF
-  bodies, host-binding line and heartbeat usage (both single-quoted for a POSIX shell), export redaction, fixed quorum rule, old-api
+  bodies, host-binding line and heartbeat usage (both single-quoted for a POSIX shell), export
+  redaction, one row per header name (compared without case), the typed delete name (outer
+  spaces ignored), fixed quorum rule as the editor states it, old-api
   states, the three write outcome classes and the proxy limit of Risks, ids `.` and `..`, and
   that an expired edit or delete form keeps no input); `README.md` endpoint rows and "What works now"; `docs/configuration.md` routes,
   the editor form limit in the POST order, log lines, metric path labels; `docs/team.md`
@@ -1154,7 +1250,15 @@ Checks:
   of the Counterexamples section; wrong-type fields are not in the output; intents keep,
   replace, remove for headers and body; heartbeat secret rules; a `__proto__` header row is a
   field error with the literal message `__proto__ is not an allowed header name.` and no
-  built input, while `__Proto__` and `X-Proto` build own keys.
+  built input, while `__Proto__` and `X-Proto` build own keys; the "Duplicate header names"
+  counterexample with the literal message on the literal field name (`header_1_name`) and no
+  built input, for an exact-case and a different-case duplicate of a kept stored row and for
+  two free rows, plus the `remove` case with its literal expected `headers` object.
+- `src/confirm.test.ts`: the existing rows keep their expected values, and new rows
+  `["Checkout API", " Checkout API ", true]`, `[" Checkout API ", " Checkout API ", true]`,
+  `["Checkout  API", " Checkout API ", false]`, `["checkout api", " Checkout API ", false]`;
+  `typedNameError("x", " Checkout API ")` is exactly
+  `The name does not match. Type Checkout API exactly.` The first new row fails on `76dab43`.
 - `src/check-filters.test.ts`, `src/check-format.test.ts`, `src/check-export.test.ts`:
   Counterexamples for filters, `formatPercent`, budget sign, single and shadowed export (literal
   expected documents written in the test).
@@ -1190,8 +1294,13 @@ Checks:
   write-only value; shadowing during edit (GET and POST answer `409` with the shadowed text and
   its Delete and Export links, never the file page, and the recorded request list has no PUT);
   a `__proto__` header row on create and on edit answers `422` and the recorded request list
-  has no POST or PUT; delete of database and shadowed
-  checks; typed-name mismatch sends nothing; export bodies and headers; the R8 table row by row
+  has no POST or PUT; the "Duplicate header names" counterexample over HTTP (each `422` case
+  records no POST or PUT; the `remove` case records one PUT with the literal headers object);
+  delete of database and shadowed
+  checks; typed-name mismatch sends nothing; the "Delete" counterexample for the stored name
+  `" Checkout API "` (fixture check with that name; typed `Checkout API` → `303` and the
+  recorded request list ends with exactly one `DELETE`, typed `Checkout  API` → `422` and no
+  `DELETE`); export bodies and headers; the R8 table row by row
   through HTTP, including every "Outcome classes" counterexample with its literal Console status
   and People-log rows (`200` with an oversized body, `302`, `502` with and without the wire
   header, `200` with wire `2`, `428`, `422` with an oversized error body); the "Edit uses the
@@ -1211,7 +1320,16 @@ Checks:
   and disabled; axe `0` violations on list, detail, shadowed view, each editor, delete
   confirmation; keyboard focus through the editor; no CSP violation; list and detail fit 390 px
   (`assertFits`), the editor at 1280 px; the copy button copies the host-binding line with
-  JavaScript and is absent without it. For the `https://a';id;'b/` fixture the `<pre>`
+  JavaScript and is absent without it. Quorum text (R4, #460 amendment section 20): the create
+  and the edit form of each of HTTP, TLS, TCP, DNS and domain contain the literal paragraph
+  `Every probe runs this check. It is down when at least two locations report down; with one
+  reporting location, that location decides. Choosing locations or a quorum per check is not
+  available yet.`, and the heartbeat create and edit forms contain the literal
+  `Heartbeat checks are not run by probes and have no quorum; your job pings pulse-api. With no
+  ping for longer than the period plus the grace time, the check is down at once.` and not the
+  probe text; no editor has an input whose name contains `quorum` or `location`. The same
+  texts are asserted in `src/server.checks.test.ts` for the editor GET pages, so the check also
+  runs without a browser. For the `https://a';id;'b/` fixture the `<pre>`
   `textContent` and the text the copy button writes (read back from the clipboard, or from
   the stubbed `navigator.clipboard.writeText` argument if the headless browser has no
   clipboard) equal the literal
