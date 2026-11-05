@@ -108,13 +108,78 @@ item is later public again, its old events are not sent a second time.
 
 ## Performance impact
 
-The metrics of `api/bench/budgets.json` (`startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`,
-`peak_rss_mib`, `test_cpu_s`, and the reported `startup_wall_ms`, p95 latencies, requests per
-second, image size) measure pulse-api. This change touches only notify, so none expected. The
-api is not rebuilt or changed. Inside notify the extra work is one descriptor read per listed
-manual item per poll and one `Set<number>` of the same size. Both are bounded by the
-response cap `PULSE_NOTIFY_API_MAX_BYTES`, and the change adds no I/O. The implementer does not
-run an api bench.
+The bench measures notify too. `api/bench/budgets.json` has a `notify` block (`budgets.json:195`)
+with the gating `startup_cpu_ms` (455 ms), `load_cpu_s` (0.5 s), `idle_rss_mib` (86),
+`peak_rss_mib` (86) and `test_cpu_s` (budget 3.4 s, floor 1.5 s), and the reported
+`startup_wall_ms` and `image_mb` (`api/bench/README.md:9-13`, `:15`, `:21`). The api-only
+metrics (`p95_*`, `rps`, `cold_*`, `eod_*`, the api block) cannot move: notify sends the same
+requests on the same poll schedule, and the api does not change.
+
+Per metric, with direction and rough size:
+
+- `test_cpu_s` (notify): **goes up**, the only metric that moves in the bench. The new
+  `test/manual-flip.test.ts` adds about 5 notifier tests with a SQLite ledger and file channels,
+  plus some assertions in `test/api.test.ts`. They are the size of `test/prune.test.ts` and
+  `test/manual-incidents.test.ts`. Expected rise: +0.05 to +0.2 s CPU on a total of about 3.1 s
+  (README `:122`: B 3.095 s). The limit is +0.25 s, which keeps B under the budget 3.4 s. The
+  tests use the injected clock and never wait in real time for the retention or the 1 h prune
+  gate.
+- `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `startup_wall_ms` (notify):
+  **no change in the bench** (0 within the 10 ms CPU resolution, README `:36`, and well under the
+  3 MiB floor, README `:89`). The bench api has no admin bootstrap, so `/manual-incidents` reads
+  are empty (`api/src/server.ts:769`; `api/bench/compose.bench.yaml` sets no admin env). Notify
+  then builds an empty `listedIds` on both sides, and the ledger holds no `manual:` key to keep.
+  In production the cost per poll is one descriptor read and one `Set.add` per listed manual
+  item. The presence set holds one number per listed id, with no copy of item data. That is
+  under 1 ms and under 0.1 MiB for 1 000 items. The bound is the 5 MiB response cap
+  (`contract/src/client.ts:7`, `PULSE_NOTIFY_API_MAX_BYTES`), and notify already parses that much
+  JSON today.
+- **Longer retention of filtered items**: this is a production-only effect on idle and peak RSS
+  and on the ledger file. A listed private or invalid id keeps its settled `manual:<id>:` rows
+  (opened, each update, resolved) in every channel, instead of losing them at the first prune
+  past the retention. The ledger keeps every entry in memory (`notify/src/ledger.ts:590`
+  `#channels`). So the kept rows are RSS that `main` would free at that prune. They are never
+  more than what `main` holds just before that prune, so peak RSS does not rise above today's
+  peak for the same history. Only the drop after the prune is missing. Expected size: well under
+  1 MiB for 100 private ids x 3 keys x 2 channels (600 entries). This grows linearly and ends
+  when the api stops listing the id. No new rows are written (decision 3).
+- `image_mb`: **no change**. The image copies only `package.json`, production `node_modules` and
+  `src` (`notify/Dockerfile`), adds no dependency, and changes a few lines in `src`.
+
+How the implementer measures it (results go in the PR, as in acceptance 9 of the notify
+section):
+
+1. `test_cpu_s` local A/B. This is what the bench measures: CPU (user + sys) of `bun run test`
+   and its waited children (`api/bench/run.ts:165-166`, `api/bench/measure.ts:47-48`). Run it on
+   notify `f5007bf` (A) and on the branch (B), 5 runs each, alternating A, B. Take the median of
+   each side, for example with `/usr/bin/time -f '%U %S' bun run test` and summing the two
+   values. Report both medians and B - A. Check: B - A <= 0.25 s (literal from this spec).
+2. Filtered items across the retention. Write a throwaway local script outside the repository
+   (not committed) and run it with `bun <script> <notify worktree>`. `ledger.ts` does not
+   change, so one run on the branch covers both sides: the two cases differ only in the
+   presence set that each side's `notifier.ts` would pass. Each case gets a fresh temp dir. The
+   script opens `new Ledger(<tmp>/state.json, { now: () => clock })` with `clock = T0`. It then
+   marks N = 1 000 manual ids x 3 keys (`manual:<id>:opened`, `manual:<id>:update:x`,
+   `manual:<id>:resolved`) as handled in 2 channels with `ledger.seed(<channel>, keys)`
+   (`notify/src/ledger.ts:809`). Seeded keys are settled entries (status `seeded`) with
+   `at = T0`. They hold no stored notification, so the RSS value is a lower bound. Then it sets
+   `clock = T0 + 2 * 86_400_000`, runs `Bun.gc(true)`, and calls
+   `ledger.prune(86_400_000, new Set(), presence)` with:
+   (a) `presence = new Set()`: what `main` builds when the feed lists all N items as internal;
+   (b) `presence` = the N ids: what the branch builds from `listedIds`.
+   Report the count that `prune` returns. The expected literals are (a) 6 000 and (b) 0. Also
+   report the `process.cpuUsage()` delta of the call, and `process.memoryUsage().rss` in MiB
+   after a second `Bun.gc(true)`. The RSS difference (b) - (a) is the cost of the kept rows. Its
+   expected size (well under 1 MiB per 600 entries, so a few MiB for 6 000) is reported, not
+   gated. Separately, serve a JSON array of 1 000 internal items from `Bun.serve` on
+   `127.0.0.1:0`. Call `fetchManualIncidents` 20 times on A and on B and report the median CPU
+   per call. Expected: B - A is under 1 ms.
+3. Stack metrics (startup, load, RSS, image). Do not run `bun bench/run.ts` before merge: the
+   harness cannot select a notify branch. For notify it uses A = newest `v*` tag or
+   `bench/baseline.json`, and B = `main`. `--others-ref` pins every non-api repository to one
+   ref on both sides (`api/bench/refs.ts:48-65`, README `:79`). The nightly api bench
+   (`api/.github/workflows/bench.yml`, cron `17 2 * * *`) measures notify `main` after the merge.
+   Step 2 is the pre-merge evidence for the workload that the bench does not cover.
 
 ## Security impact
 
@@ -317,10 +382,20 @@ Acceptance (every expected value is a literal written in the test):
    manual incident and then the same id as internal. Report the command and that exactly one
    line is written. The retention expiry itself is shown only by the injected-clock test, not by
    waiting in real time.
+9. Performance (see `## Performance impact`, steps 1 and 2). The `test_cpu_s` A/B on `f5007bf`
+   vs the branch, 5 alternating runs per side, gives a median B - A of at most 0.25 s (literal
+   from this spec). The ledger script prints the prune counts 6 000 for case (a) and 0 for
+   case (b) (literals), and the CPU and RSS values of both cases. The `fetchManualIncidents`
+   median CPU per call over 1 000 internal items differs by under 1 ms between A and B. If
+   test CPU rises by more than 0.25 s, make the new tests cheaper (share one fake api and
+   ledger per file, no real-time waits) before asking for review. Do not raise a budget.
 
 Completion evidence: PR names #737, links the failing run of acceptance 1 on `f5007bf…` and the
-passing run, the `bun run check` output and the smoke command. It states the known limit: an
-item that the api omits from the feed is not protected.
+passing run, the `bun run check` output and the smoke command. It also gives the numbers of
+acceptance 9: both `test_cpu_s` medians and B - A, the prune counts, the CPU and RSS of cases
+(a) and (b), and the fetch medians. It states that the stack metrics are left to the nightly
+api bench. It states the known limit: an item that the api omits from the feed is not
+protected.
 
 ## Risks
 
@@ -331,5 +406,8 @@ item that the api omits from the feed is not protected.
   key alive. The worst effect is a ledger row kept longer, never a send. This is the same trust
   as today's public feed.
 - **Item omitted, not filtered:** not covered (non-goal). The docs say so.
+- **Test CPU budget:** notify `test_cpu_s` has about 0.3 s headroom (B 3.095 s, budget 3.4 s).
+  The new tests must use the injected clock and stay under +0.25 s (acceptance 9). Otherwise
+  the nightly bench fails on notify `main` after the merge.
 - **Test vacuity:** without the pruned control key, a test that never prunes would pass. The
   control is required in acceptance 1.
