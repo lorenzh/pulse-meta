@@ -21,7 +21,7 @@
       "acceptance": [
         {
           "command": "bun test test/manual-incidents.test.ts test/api.test.ts",
-          "expected": "0 fail; after an empty seed, public A plus internal I and draft D produce exactly one manual:A:opened per eligible channel and no I/D line. After the awaited poll of A's notes/draft plus marker B and completed channel writes, each channel has exactly one manual:B:opened, no private sentinel and no A update event. A draft D in the first poll later published with the same id produces exactly one manual:D:opened; restart with the same ledger sends none twice. Private skips add no rejected item or log, skipped_items_total{feed=\"manual-incidents\"} stays literally 0, and a malformed public item missing title raises it to 1. Focused coverage may fail the global gate; assess test results here."
+          "expected": "0 fail; after an empty seed, public A plus internal I and draft D produce exactly one manual:A:opened per eligible channel and no I/D line, in both the catch-all and component-filtered channels. After the awaited poll of A's notes/draft plus marker B and completed channel writes, each channel has exactly one manual:B:opened, no private sentinel and no A update event. A draft D in the first poll later published with the same id and createdAt equal to publishedAt produces exactly one manual:D:opened; restart with the same ledger sends none twice. Private skips add no rejected item or log, pulse_notify_skipped_items_total{feed=\"manual-incidents\"} stays literally 0, and a malformed public item missing title raises it to 1. Focused coverage may fail the global gate; assess test results here."
         },
         {
           "command": "bun run check",

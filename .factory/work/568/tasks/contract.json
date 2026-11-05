@@ -21,7 +21,7 @@
         "dist/"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all Behavior bullets, Checks and Completion evidence; R1, R6 and Contract fields. Extend merged #565 contract 2.0.0 to 2.1.0 without changing its admin types, existing ManualIncident validators or WIRE_VERSION (1). Implement all six schemas and inferred types, four validators, limits, six audit actions, public guard and exact projection. Cover all five internal invariants, strict inputs and states. Privacy accessors fail closed without execution (getter count 0), inherited keys count as absent, and throwing/revoked proxies return false. Update the exact runtime-export smoke list, dist freshness coverage for the new module, every new type fixture and docs; build and commit dist. Complete the applicable Security impact checklist and report failing-on-main evidence and the merged SHA for consumers.",
+      "spec": "## Repository: contract, all Behavior bullets, Checks and Completion evidence; R1, R6 and Contract fields. Extend merged #565 contract 2.0.0 to 2.1.0 without changing its admin types, existing ManualIncident validators or WIRE_VERSION (1). Implement all six schemas and inferred types, four validators, limits, six audit actions, public guard and exact projection. Keep the module name src/manual-incident-public.ts fixed for status's browser allow-list; use relative imports only to existing contract modules so index.js imports exactly one new file. Cover all five internal invariants, strict inputs and states. Privacy accessors fail closed without execution (getter count 0), inherited keys count as absent, and throwing/revoked proxies return false. Update the exact runtime-export smoke list, dist freshness coverage for the new module, every new type fixture and docs; build and commit dist. Complete the applicable Security impact checklist and report failing-on-main evidence and the merged SHA for consumers.",
       "acceptance": [
         {
           "command": "bun test test/manual-incidents.test.ts test/audit.test.ts",
@@ -29,7 +29,7 @@
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, build, typecheck and the full suite pass with the 0.8 coverage threshold. Exact exports and rebuilt dist pass smoke checks, all new type fixtures compile, and existing #565 admin tests pass unchanged."
+          "expected": "exit 0; lint, build, typecheck and the full suite pass with the 0.8 coverage threshold. Exact exports and rebuilt dist pass smoke checks, including manual-incident-public.js and manual-incident-public.d.ts freshness; all new type fixtures compile, and existing #565 admin tests pass unchanged."
         },
         {
           "command": "git diff --exit-code -- dist",

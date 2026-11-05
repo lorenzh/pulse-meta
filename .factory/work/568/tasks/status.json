@@ -5,11 +5,13 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Keep private upstream incidents out of every status surface and entity tag",
+      "title": "Load the privacy guard in the browser and exclude private incidents from all status surfaces",
       "files": [
         "src/api-filter.ts",
         "src/poller.ts",
         "src/syndication.ts",
+        "src/server.ts",
+        "src/server.contract-modules.test.ts",
         "src/manual-incidents.test.ts",
         "src/api-filter.test.ts",
         "src/server.privacy.test.ts",
@@ -20,8 +22,12 @@
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, all Behavior, Checks and Completion evidence; R6-R7, decision 16, Counterexamples and Security impact. Move the pin from 7ce23aaf to the merged contract 2.1.0 SHA, crossing #565's 2.0.0 without admin-type changes; record/read the shared status/notify pin-only-test finding. Apply the guard to raw items before proxy cleaning, poller validation/projection and feed/badge parsing, preserving malformed non-object proxy null behavior and older-api compatibility. Use the existing browser contract import rewrite; keep the allow-list unchanged. Cover SSR/browser refresh/resolved history/component state and all HTTP surfaces with both hide-details settings, exact projection, sentinel exclusion, feed IDs/updated and conditional-request privacy, including a second public incident as the ETag positive control. Update docs; complete checks, CPU comparison and security/failing-main evidence.",
+      "spec": "## Repository: status, all Behavior, Served contract modules, Checks and Completion evidence; R6-R7, decision 16, Counterexamples and Security impact. Move the pin from 7ce23aaf to the merged contract 2.1.0 SHA, crossing #565's 2.0.0 without admin-type changes; record/read the shared status/notify pin-only-test finding. In the same task and PR, add exactly manual-incident-public.js to server.ts contractModules, retain its explicit name allow-list and zod rewrite, and extend the HTTP/import-graph tests. If the merged contract imports any additional module, add it explicitly and name it in the PR as the plan requires. Keep tsModules and the API path allow-list unchanged. Apply the guard to raw items before proxy cleaning, poller validation/projection and feed/badge parsing, preserving malformed non-object proxy null behavior and older-api compatibility. Cover SSR/browser refresh/resolved history/component state and all HTTP surfaces with both hide-details settings, exact projection, sentinel exclusion, feed IDs/updated and conditional-request privacy, including a second public incident as the ETag positive control. Update docs; complete checks, CPU comparison and security/failing-main evidence, including the new-pin/old-module-list 404 reproduction.",
       "acceptance": [
+        {
+          "command": "bun test src/server.contract-modules.test.ts",
+          "expected": "0 fail with the merged contract 2.1.0 pin and the explicit module entry. GET /pulse-contract/manual-incident-public.js is 200 with content-type matching /javascript/; its body contains isPublicManualIncident and no bare from \"zod\". The complete served import graph resolves with 200 responses and its seen set includes /pulse-contract/manual-incident-public.js. GET /pulse-contract/manual-incident-public.d.ts and /pulse-contract/other.js are both 404. The new-module response and graph checks fail with 404 when only the pin is moved and server.ts keeps the old list. Focused coverage may fail the global gate; assess test results here."
+        },
         {
           "command": "bun test src/manual-incidents.test.ts src/api-filter.test.ts src/server.privacy.test.ts src/server.syndication.test.ts",
           "expected": "0 fail; draft/internal sentinels are absent from proxy, SSR, poller/render/history, Atom and api badge with hide-details on and off. The public control appears, web is down, api retains its check-derived state, and feed IDs stay manual:<id>:0. Under identical clocks/settings U1 public-only and U2 public+private produce identical body bytes and ETags on /api/manual-incidents, /, /feed.atom and /badge/component/api.svg; the U1 tag gets 304 with no body on U2. U3's additional public incident changes all four tags and gets 200 with U1's tag. Private items with later timestamps cannot move feed updated. Draft/note fields are projected away. Focused coverage may fail the global gate; assess test results here."
@@ -32,7 +38,7 @@
         },
         {
           "command": "bun run check:a11y",
-          "expected": "exit 0 with the repository's Chromium setup; existing accessibility checks stay green."
+          "expected": "exit 0 with the repository's Chromium setup; the page loads with the new pin and served manual-incident-public.js, and existing accessibility checks stay green."
         },
         {
           "command": "bun start",
@@ -40,7 +46,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "PR shows draft/internal tests failing at pre-change main d268b5b1b0afcf9bc94ce508934ddd879bb90df0 and passing with the change; notes/draft-update-only cases are explicitly regression guards that already pass on main. It reports full/a11y checks, before/after bun test CPU time, the shared pin-move finding, smoke results and applicable Security impact results, including ETag/304 privacy, no new allow-listed admin path and the exact contract pin."
+          "expected": "PR shows draft/internal tests failing at pre-change main d268b5b1b0afcf9bc94ce508934ddd879bb90df0 and passing with the change; notes/draft-update-only cases are explicitly regression guards that already pass on main. It also shows bun test src/server.contract-modules.test.ts failing with 404 for /pulse-contract/manual-incident-public.js after the new pin is installed but before server.ts gains its explicit entry, then passing after it. It reports full/a11y checks, before/after bun test CPU time, the shared pin-move finding, smoke results and applicable Security impact results, including ETag/304 privacy, refusal of declarations and unknown modules, no new allow-listed admin path and the exact contract pin."
         }
       ]
     }

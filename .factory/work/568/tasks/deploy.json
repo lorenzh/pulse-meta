@@ -36,7 +36,7 @@
         },
         {
           "command": "scripts/check-setup.sh",
-          "expected": "exit 0; existing setups and dev+e2e pass all static invariants. The latter publishes literal rows api 127.0.0.1 3000 3000, console 127.0.0.1 8082 8082, status - 8080 8080; no new image pin is placed in e2e."
+          "expected": "exit 0; existing setups and dev+e2e pass all static invariants, including allowing pulse-<svc>:dev tags for the dev+e2e combination. The latter publishes literal rows api 127.0.0.1 3000 3000, console 127.0.0.1 8082 8082, status - 8080 8080; no new image pin is placed in e2e."
         },
         {
           "command": "bash scripts/check-setup.test.sh",
