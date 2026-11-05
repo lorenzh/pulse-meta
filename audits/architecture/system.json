@@ -20,22 +20,145 @@
     {
       "item": "Pin drift: the commit that each repository pins for pulse-contract, pulse-kit and pulse-config (github:lorenzh/<name>#<sha>, and the check.yml@<sha> ref), against the newest main commit of that repository: how many commits behind, and which of them change the wire or shared behavior.",
       "status": "checked",
-      "evidence": "grep -rnoE 'github:lorenzh/pulse-[a-z]+#[0-9a-f]+' .repos/*/package.json; grep of check.yml@/release.yml@ refs; git rev-list --count <pin>..HEAD and merge-base --is-ancestor in full clones (all exit 0). package.json pins equal bun.lock (19/19) and the workflow refs. contract main 66818a2 (2.2.0): 9ab7e24 api/status/notify 2 behind (405353f additive: location uptime schema, requestJson), 176fb6e console 4 behind (also af94ed4 additive incident drafts), 7ce23aa probe 18 behind (1.7.0; includes feat! admin 5fed69b, 0ebab8c arrayProblem own data, validate-core fast path). No removed line in schema.ts/validate.ts after any pin; WIRE_VERSION 1 everywhere. probe on contract main: typecheck exit 0, bun test 419 pass 0 fail. kit main 536133f: console 0, api c6d2cba 4 behind (doc comment 7cec1f5 and docs ebc69c1 only; 66fb3d3 is already in the pin; kit main's limiter tests on c6d2cba 34 pass 0 fail), probe 739188a 7 behind (failure limiter, unused), status/notify 236df21 20 behind (guarded fetch, address guard, limiter: unused; index.ts adds exports only). kit version 0.1.0 at every pin. config main bc87049: 04108fa (api, probe, status, notify, console, deploy) 2 behind, test only; 51e95b0 (contract, kit) 11 behind and 86896e9 (website) 9 behind: pulse-workflows and release.yml; rule-file diff 0 lines for all pins. No pin misses a wire or shared-behavior change that its consumer uses. Findings 7, 8."
+      "evidence": "grep -rnoE 'github:lorenzh/pulse-[a-z]+#[0-9a-f]+' .repos/*/package.json; grep of check.yml@/release.yml@ refs; git rev-list --count <pin>..HEAD and merge-base --is-ancestor in full clones (all exit 0). package.json pins equal bun.lock (19/19) and the workflow refs. contract main 66818a2 (2.2.0): 9ab7e24 api/status/notify 2 behind (405353f additive: location uptime schema, requestJson), 176fb6e console 4 behind (also af94ed4 additive incident drafts), 7ce23aa probe 18 behind (1.7.0; includes feat! admin 5fed69b, 0ebab8c arrayProblem own data, validate-core fast path). No removed line in schema.ts/validate.ts after 9ab7e24 or 176fb6e; the diff after probe's 7ce23aa has one removed validate.ts line (arrayProblem now uses ownValue); WIRE_VERSION 1 everywhere. probe on contract main: typecheck exit 0, bun test 419 pass 0 fail. kit main 536133f: console 0, api c6d2cba 4 behind (doc comment 7cec1f5 and docs ebc69c1 only; 66fb3d3 is already in the pin; kit main's limiter tests on c6d2cba 34 pass 0 fail), probe 739188a 7 behind (failure limiter, unused), status/notify 236df21 20 behind (guarded fetch, address guard, limiter: unused; index.ts adds exports only). kit version 0.1.0 at every pin. config main bc87049: 04108fa (api, probe, status, notify, console, deploy) 2 behind, test only; 51e95b0 (contract, kit) 11 behind and 86896e9 (website) 9 behind: pulse-workflows and release.yml; rule-file diff 0 lines for all pins. No missing change was shown to break a consumer's supported JSON behavior; the probe typecheck and tests do not prove full behavioral equivalence. Findings 7, 8."
     },
     {
       "item": "Size: the largest files and functions: every file over 800 lines and every function over the complexity budget, with its size.",
       "status": "checked",
-      "evidence": "wc -l over git ls-files of every repository (exit 0): api/src/service.ts 1310, contract/src/schema.ts 1300, console/src/server.ts 1198, notify/src/ledger.ts 1197, deploy/e2e/compose-e2e.sh 1115, website/src/styles/components.css 1107, console/e2e/run.ts 1021, notify/src/notifier.ts 897, api/src/server.ts 897, status/src/server.ts 887; generated contract/dist/admin.d.ts 1163, dist/schema.js 951; tests api/src/config-admin.test.ts 1659, console/src/server.team.test.ts 1251, contract/test/admin.test.ts 1211, status/src/poller.test.ts 1200, status/src/server.privacy.test.ts 1194, notify/test/email-smtp.test.ts 1128, console/src/server.setup.test.ts 844, probe/src/client.test.ts 833; meta package-lock.json 2067, report/index.html 850, ten plan.md specs. Complexity: pulse-config bc87049 ESLint + sonarjs cognitive-complexity 15, noInlineConfig, 691 files of ten repositories: exit 1, one function over budget: deploy/scripts/secrets-init.mjs:107 filesMode 22 (39 lines). Longest function: api/src/service.ts:377 createService 934 lines. Findings 1, 9, 10."
+      "evidence": "wc -l over git ls-files of every repository (exit 0): api/src/service.ts 1310, contract/src/schema.ts 1300, console/src/server.ts 1198, notify/src/ledger.ts 1197, deploy/e2e/compose-e2e.sh 1115, website/src/styles/components.css 1107, console/e2e/run.ts 1021, notify/src/notifier.ts 897, api/src/server.ts 897, status/src/server.ts 887; generated contract/dist/admin.d.ts 1163, dist/schema.js 951; tests api/src/config-admin.test.ts 1659, console/src/server.team.test.ts 1251, contract/test/admin.test.ts 1211, status/src/poller.test.ts 1200, status/src/server.privacy.test.ts 1194, notify/test/email-smtp.test.ts 1128, console/src/server.setup.test.ts 844, probe/src/client.test.ts 833; meta package-lock.json 2067, report/index.html 850, ten plan.md specs. Complexity: pulse-config bc87049 ESLint + sonarjs cognitive-complexity 15, noInlineConfig, 691 files of ten repositories: exit 1, one function over budget: deploy/scripts/secrets-init.mjs:107 filesMode 22 (39 lines). Longest function: api/src/service.ts:377 createService 934 lines. Findings 1, 9, 10. Review scanned meta's 10 tracked JS/MJS files against reference threshold 15: 10 functions exceed it, listed in referenceComplexity. Meta does not adopt the target budget, so these are measurements, not policy violations.",
+      "referenceComplexity": {
+        "repo": "meta",
+        "commit": "1463761750cef5ffa446950e3e831073c9595a10",
+        "referenceBudget": 15,
+        "adoptedBudget": false,
+        "command": "node \"$T/../complexity.mjs\" \"$T\" --meta",
+        "exitCode": 1,
+        "excerpt": "701 files scanned; 11 rule errors (one deploy, ten meta); zero parse errors.",
+        "functions": [
+          {
+            "file": "report/check.mjs",
+            "line": 79,
+            "name": "checkShape",
+            "lines": 48,
+            "complexity": 17
+          },
+          {
+            "file": "report/check.mjs",
+            "line": 133,
+            "name": "check",
+            "lines": 56,
+            "complexity": 70
+          },
+          {
+            "file": "report/data.mjs",
+            "line": 86,
+            "name": "build",
+            "lines": 302,
+            "complexity": 45
+          },
+          {
+            "file": "report/data.mjs",
+            "line": 416,
+            "name": "mergeArchive",
+            "lines": 140,
+            "complexity": 20
+          },
+          {
+            "file": "scripts/factory-findings.mjs",
+            "line": 122,
+            "name": "validateOutbox",
+            "lines": 57,
+            "complexity": 45
+          },
+          {
+            "file": "scripts/factory-findings.mjs",
+            "line": 387,
+            "name": "publish",
+            "lines": 92,
+            "complexity": 36
+          },
+          {
+            "file": "scripts/factory-tasks.mjs",
+            "line": 39,
+            "name": "anonymous callback",
+            "lines": 17,
+            "complexity": 18
+          },
+          {
+            "file": "scripts/factory-tasks.mjs",
+            "line": 74,
+            "name": "checkDir",
+            "lines": 38,
+            "complexity": 20
+          },
+          {
+            "file": "scripts/factory-tasks.mjs",
+            "line": 114,
+            "name": "events",
+            "lines": 24,
+            "complexity": 22
+          },
+          {
+            "file": "scripts/factory-tasks.mjs",
+            "line": 153,
+            "name": "anonymous callback",
+            "lines": 27,
+            "complexity": 18
+          }
+        ]
+      },
+      "largeMetaSpecs": [
+        {
+          "file": ".factory/work/529/plan.md",
+          "lines": 890
+        },
+        {
+          "file": ".factory/work/552/plan.md",
+          "lines": 871
+        },
+        {
+          "file": ".factory/work/562/plan.md",
+          "lines": 1103
+        },
+        {
+          "file": ".factory/work/563/plan.md",
+          "lines": 1305
+        },
+        {
+          "file": ".factory/work/564/plan.md",
+          "lines": 1383
+        },
+        {
+          "file": ".factory/work/565/plan.md",
+          "lines": 1111
+        },
+        {
+          "file": ".factory/work/567/plan.md",
+          "lines": 1377
+        },
+        {
+          "file": ".factory/work/568/plan.md",
+          "lines": 1410
+        },
+        {
+          "file": ".factory/work/571/plan.md",
+          "lines": 958
+        },
+        {
+          "file": ".factory/work/718/plan.md",
+          "lines": 1172
+        }
+      ]
     },
     {
       "item": "Duplicated helpers: helpers that two or more repositories implement separately and that belong in pulse-kit.",
       "status": "checked",
-      "evidence": "functions.mjs listed 2969 named functions with normalized body hashes; equal hashes and shared names across repositories were read; the #501 greps were re-run. Found: atomic file write (api own copy next to kit writeFileAtomicSync; notify syncDir = api fsyncDir, hash e9b77cdce0; deploy CLI without fsync), PULSE_API_URL readers (four services, three rule sets), console auth-throttle next to kit failure-limiter, bounded body read (probe x2, contract), JSON config read (api, status, notify), messageOf x3, isHttpUrl x2, timer cap x2. Fixed since #501: isRecord copies (only deploy/cli/services.ts:67 and contract private), service timer caps. Findings 5, 6, 11, 12, 13, 14."
+      "evidence": "functions.mjs listed 2969 named functions with normalized body hashes; equal hashes and shared names across repositories were read; the #501 greps were re-run. Found: atomic file write (api own copy next to kit writeFileAtomicSync; notify syncDir = api fsyncDir, identical whitespace-normalized bodies; deploy CLI without fsync), PULSE_API_URL readers (four services, three rule sets), console auth-throttle next to kit failure-limiter, bounded body read (probe x2, contract), JSON config read (api, status, notify), messageOf x3, isHttpUrl x2, timer cap x2. Fixed since #501: isRecord copies (only deploy/cli/services.ts:67 and contract private), service timer caps. Findings 5, 6, 11, 12, 13, 14."
     },
     {
       "item": "Docs against code: claims in each README, docs/architecture.md and docs/development.md that the code no longer matches, each with the claim and the code that contradicts it.",
       "status": "checked",
-      "evidence": "Compared meta README.md and docs/architecture.md, the README.md of all ten code repositories, and docs/development.md of api, probe, status, notify and console, with grep -n, sed -n and ls against the code. Not applicable: meta docs/development.md, docs/architecture.md in code repositories, docs/development.md of contract, kit, config, deploy, website (files do not exist). Contradictions: meta admin-route file rewrite (3), console stub and contract consumers (4), CLI planned (15), pulse-api compose.yaml in status and console READMEs (16, ls exit 2), api development.md layout/SQL/bench (17), status development.md kit imports (18), contract 'depends on no other pulse repository' (19), architecture.md bench 'every service' (20). Fixed since #501: api CI job count, status validate.ts, status contract file list."
+      "evidence": "Compared meta README.md and docs/architecture.md, the README.md of all ten code repositories, and docs/development.md of api, probe, status, notify and console, with grep -n, sed -n and ls against the code. Not applicable: meta docs/development.md, docs/architecture.md in code repositories, docs/development.md of contract, kit, config, deploy, website (files do not exist). Contradictions: meta admin-route file rewrite (3), console stub (4), CLI planned (15), pulse-api compose.yaml in status and console READMEs (16, ls exit 2), api development.md layout/SQL/bench (17), status development.md kit imports (18), contract 'depends on no other pulse repository' (19), architecture.md bench 'every service' (20). Fixed since #501: api CI job count, status validate.ts, status contract file list. Review: finding 16 is P2 because the documented Compose startup cannot run in the named repository. Non-exclusive contract consumer lists are omissions, not contradictions."
     },
     {
       "item": "Earlier findings: open items of earlier architecture audits that are still true.",
@@ -45,46 +168,87 @@
     {
       "item": "Dependency direction: the dependencies between the repositories, against the intended direction in docs/architecture.md of pulse-meta; flag every cycle and every dependency in the wrong direction.",
       "status": "checked",
-      "evidence": "python3 -I deps.py .repos (exit 0) builds edges from package.json, workflow uses: and checkouts, Compose image/build, api bench, website docs.config.json and PULSE_API_URL reads. Cycles over library pins: 0; with runtime: 0; with CI checkouts: 1 (console -> deploy -> console); over all kinds: 4 (api -> notify|probe|status -> api through the documented bench, and console -> deploy -> console). The library layer matches the intended direction. Wrong direction: console (a service) depends on pulse-deploy main in CI while deploy depends on console (finding 2). Factory context: probe lacks api, console lacks deploy (finding 21)."
+      "evidence": "python3 -I deps.py .repos (exit 0) builds edges from package.json, workflow uses: and checkouts, Compose image/build, api bench, website docs.config.json and PULSE_API_URL reads. Cycles over library pins: 0; with runtime: 0; with CI checkouts: 1 (console -> deploy -> console); over all kinds: 4 (api -> notify|probe|status -> api through the documented bench, and console -> deploy -> console). The library layer matches the intended direction. The console/deploy CI cycle is intentional (console AGENTS.md:85); docs/architecture.md's SHA rule concerns library pins and its upstream statement concerns runtime HTTP. No forbidden library/runtime edge was demonstrated; finding 2 records the CI reproducibility risk. Factory context: probe lacks api, console lacks deploy (finding 21)."
     }
   ],
   "findings": [
     {
       "id": "architecture-system-2026-11-05-1",
-      "repos": ["config", "deploy", "website", "api"],
+      "repos": [
+        "config",
+        "deploy",
+        "website",
+        "api"
+      ],
       "location": "config/eslint.config.js:11",
       "severity": "P3",
       "candidate": true,
       "title": "The shared ESLint config lints only .ts and .js: 26 .mjs/.tsx files get no rule, and deploy's filesMode (cognitive complexity 22) passes lint",
-      "command": "complexity scan (pulse-config bc87049 ESLint + sonarjs cognitive-complexity 15, noInlineConfig, 691 files); in installed copies: deploy node_modules/.bin/eslint --print-config scripts/secrets-init.mjs; deploy eslint scripts/secrets-init.mjs; website eslint --print-config src/content/hosted.tsx; website eslint src/content/hosted.tsx src/content/home.tsx; git ls-files '*.mjs' '*.tsx' per repository",
-      "exitCode": 0,
+      "command": "node \"$T/../complexity.mjs\" \"$T\"",
+      "exitCode": 1,
       "excerpt": "scan (exit 1): deploy/scripts/secrets-init.mjs:107 Refactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed. | deploy --print-config secrets-init.mjs: \"rules\": {} | deploy eslint scripts/secrets-init.mjs: exit 0, no output | website --print-config hosted.tsx: undefined | website eslint: File ignored because no matching configuration was supplied (2 warnings, exit 0) | unlinted: api 1 .mjs (2 lines), deploy 5 .mjs (399 lines), website 20 .tsx (1872 lines)",
       "commits": {
         "config": "bc870498cc8e2539a132ce2aac35a09db1deabd8",
         "deploy": "770eae0d8e843823140b4b6660d6e716ac35db62",
         "website": "d5e725f576922a99dfe7d0520059cb432032e673",
         "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c"
-      }
+      },
+      "checks": [
+        {
+          "command": "(cd \"$T/deploy\" && node_modules/.bin/eslint --print-config scripts/secrets-init.mjs)",
+          "exitCode": 0,
+          "excerpt": "\"rules\": {}"
+        },
+        {
+          "command": "(cd \"$T/deploy\" && node_modules/.bin/eslint scripts/secrets-init.mjs)",
+          "exitCode": 0,
+          "excerpt": "no output"
+        },
+        {
+          "command": "(cd \"$T/website\" && node_modules/.bin/eslint --print-config src/content/hosted.tsx)",
+          "exitCode": 0,
+          "excerpt": "undefined"
+        },
+        {
+          "command": "(cd \"$T/website\" && node_modules/.bin/eslint src/content/hosted.tsx src/content/home.tsx)",
+          "exitCode": 0,
+          "excerpt": "2 warnings: File ignored because no matching configuration was supplied"
+        }
+      ]
     },
     {
       "id": "architecture-system-2026-11-05-2",
-      "repos": ["console", "deploy", "api", "probe", "status", "notify"],
+      "repos": [
+        "console",
+        "deploy",
+        "api",
+        "probe",
+        "status",
+        "notify"
+      ],
       "location": "console/.github/workflows/ci.yml:222",
       "severity": "P3",
-      "candidate": true,
-      "title": "console and deploy CI build each other from unpinned main: a repository cycle outside the SHA-pin rule, with a service depending on the deployment repository",
-      "command": "grep -nE '^\\s+repository: lorenzh/pulse-[a-z]+$|^\\s+ref: ' .repos/{console,deploy}/.github/workflows/ci.yml; python3 -I deps.py .repos",
+      "candidate": false,
+      "title": "console and deploy CI checkouts form a cycle on unpinned main; this is an explicitly required integration test, not a demonstrated runtime direction violation",
+      "command": "grep -nE '^\\s+repository: lorenzh/pulse-[a-z]+$|^\\s+ref: ' .repos/{console,deploy}/.github/workflows/ci.yml; sed -n 85p .repos/console/AGENTS.md",
       "exitCode": 0,
-      "excerpt": "console ci.yml:222: repository: lorenzh/pulse-deploy / 223: ref: main (also pulse-api :228, pulse-probe :234, pulse-status :240, pulse-notify :246, all ref: main) | deploy ci.yml:215: repository: lorenzh/pulse-console / 216: ref: main (and :284) | cycles over code+dev+ci+runtime+ci-checkout: 1 / console -> deploy -> console",
+      "excerpt": "console ci.yml:222: repository: lorenzh/pulse-deploy / 223: ref: main (also pulse-api :228, pulse-probe :234, pulse-status :240, pulse-notify :246, all ref: main) | deploy ci.yml:215: repository: lorenzh/pulse-console / 216: ref: main (and :284) | cycles over code+dev+ci+runtime+ci-checkout: 1 / console -> deploy -> console | console AGENTS.md:85 explicitly requires the deploy-dev job against deploy main. The SHA-pin paragraph governs shared libraries; these CI checkouts prove a non-reproducible integration graph, not a forbidden runtime import.",
       "commits": {
         "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
         "deploy": "770eae0d8e843823140b4b6660d6e716ac35db62",
-        "meta": "1463761750cef5ffa446950e3e831073c9595a10"
+        "meta": "1463761750cef5ffa446950e3e831073c9595a10",
+        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c",
+        "probe": "8fd19c81f939937631fb2763d8e1704750101d1e",
+        "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d",
+        "notify": "c79f0b7cb5e25ada96e6314220e69cf4f5279b32"
       }
     },
     {
       "id": "architecture-system-2026-11-05-3",
-      "repos": ["meta", "api"],
+      "repos": [
+        "meta",
+        "api"
+      ],
       "location": "docs/architecture.md:32",
       "severity": "P3",
       "candidate": true,
@@ -99,30 +263,37 @@
     },
     {
       "id": "architecture-system-2026-11-05-4",
-      "repos": ["meta", "console", "contract"],
+      "repos": [
+        "meta",
+        "console"
+      ],
       "location": "README.md:21",
       "severity": "P3",
       "candidate": true,
-      "title": "meta docs and the contract README describe console as a one-page stub without pulse-contract and with an unused admin token",
-      "command": "grep -noE 'Today it serves one (server-rendered )?page[^.]*|pulse-kit, pulse-config \\(dev\\); will talk to the pulse-api admin API|optional, validated, not used yet; set only one|Used by api, probe, status and notify' README.md docs/architecture.md; grep -n 'pulse-contract' .repos/console/package.json; sed -n 369p .repos/console/src/server.ts; sed -n 388,390p .repos/console/src/server.ts; grep -n 'It is consumed by' .repos/contract/README.md",
+      "title": "meta docs describe console as a one-page stub without pulse-contract and with an unused admin token",
+      "command": "grep -noE 'Today it serves one (server-rendered )?page[^.]*|pulse-kit, pulse-config \\(dev\\); will talk to the pulse-api admin API|optional, validated, not used yet; set only one' README.md docs/architecture.md; grep -n 'pulse-contract' .repos/console/package.json; sed -n 369p .repos/console/src/server.ts; sed -n 388,390p .repos/console/src/server.ts",
       "exitCode": 0,
-      "excerpt": "docs/architecture.md:11: Today it serves one server-rendered page and its ops routes, and validates PULSE_API_URL and an optional admin token | docs/architecture.md:13: Used by api, probe, status and notify | README.md:21: Today it serves one page ... / pulse-kit, pulse-config (dev); will talk to the pulse-api admin API | README.md:210: optional, validated, not used yet; set only one | console/package.json:32: \"@lorenzh/pulse-contract\": \"github:lorenzh/pulse-contract#176fb6e...\" | server.ts:369: token: deps.adminToken, | server.ts:388: // Without a token no setup can complete | contract README.md:7: It is consumed by pulse-api, pulse-probe, pulse-status and pulse-notify",
+      "excerpt": "docs/architecture.md:11: Today it serves one server-rendered page and its ops routes, and validates PULSE_API_URL and an optional admin token | README.md:21: Today it serves one page ... / pulse-kit, pulse-config (dev); will talk to the pulse-api admin API | README.md:210: optional, validated, not used yet; set only one | console/package.json:32: \"@lorenzh/pulse-contract\": \"github:lorenzh/pulse-contract#176fb6e...\" | server.ts:369: token: deps.adminToken, | server.ts:388: // Without a token no setup can complete",
       "commits": {
         "meta": "1463761750cef5ffa446950e3e831073c9595a10",
-        "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
-        "contract": "66818a24b81f5d0d86eee939dad64fa126617ba2"
+        "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e"
       }
     },
     {
       "id": "architecture-system-2026-11-05-5",
-      "repos": ["api", "kit", "notify", "deploy"],
+      "repos": [
+        "api",
+        "kit",
+        "notify",
+        "deploy"
+      ],
       "location": "api/src/config-fs.ts:50",
       "severity": "P3",
       "candidate": true,
       "title": "api keeps its own atomic file write next to kit's writeFileAtomicSync, although the closed #555 asked api to adopt the kit helper",
-      "command": "grep -rnE '\\b(writeFileSync|writeTemp)\\(|\\brename(Sync)?\\(|fsync(Sync)?\\(|\\.sync\\(\\)' api/src notify/src console/src status/src probe/src deploy/cli --include=*.ts | grep -v '\\.test\\.ts'; functions.mjs body hashes; kit import lists per service; gh issue view 555 --json body,state,closedAt",
+      "command": "rg -n 'writeFileAtomicSync|fsyncSync|renameSync|function writeTemp' .repos/api/src/config-fs.ts .repos/notify/src/ledger.ts .repos/deploy/cli/write-install.ts .repos/kit/src/atomic-write.ts; sed -n 69,76p .repos/api/src/config-fs.ts; sed -n 462,469p .repos/notify/src/ledger.ts; sed -n 164,184p .repos/kit/src/atomic-write.ts; gh issue view 555 --repo lorenzh/pulse-meta --json body,state,closedAt",
       "exitCode": 0,
-      "excerpt": "api/src/config-fs.ts:46: fsyncSync(fd); | :50: function writeTemp(temp: string, data: Buffer, like: string): void { | :87: rename: (from, to) => renameSync(from, to), | notify/src/ledger.ts:465: fsyncSync(fd); | :566: renameSync(building, path); | deploy/cli/write-install.ts:292: renameSync(tmp, full); | hash e9b77cdce0: api/src/config-fs.ts:69 fsyncDir = notify/src/ledger.ts:462 syncDir | notify imports writeFileAtomicSync from kit; api imports no atomic-write name | #555 CLOSED 2026-11-01: 'adopt the atomic-write helper (api, notify)'",
+      "excerpt": "api/src/config-fs.ts:46: fsyncSync(fd); | :50: function writeTemp(temp: string, data: Buffer, like: string): void { | :87: rename: (from, to) => renameSync(from, to), | notify/src/ledger.ts:465: fsyncSync(fd); | :566: renameSync(building, path); | deploy/cli/write-install.ts:292: renameSync(tmp, full); | whitespace-normalized bodies equal: api/src/config-fs.ts:69 fsyncDir = notify/src/ledger.ts:462 syncDir | notify imports writeFileAtomicSync from kit; api imports no atomic-write name | #555 CLOSED 2026-11-01: 'adopt the atomic-write helper (api, notify)' | kit/src/atomic-write.ts:175: f.fchown(fd, existing.uid, existing.gid); kit already preserves existing ownership, also at api's c6d2cba pin.",
       "commits": {
         "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c",
         "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
@@ -132,31 +303,46 @@
     },
     {
       "id": "architecture-system-2026-11-05-6",
-      "repos": ["status", "probe", "notify", "console", "kit"],
+      "repos": [
+        "status",
+        "probe",
+        "notify",
+        "console",
+        "kit"
+      ],
       "location": "status/src/settings.ts:50",
       "severity": "P3",
       "candidate": false,
       "title": "PULSE_API_URL is read with three rule sets in four services; status accepts an ftp: URL",
-      "command": "bun api-url.ts $T/wf (readSettings of status and console, loadSettings of probe and notify, in copies installed with bun install --frozen-lockfile)",
+      "command": "bun \"$T/../api-url.ts\"",
       "exitCode": 0,
       "excerpt": "ftp://api.example:21/ status accepted; probe rejected: PULSE_API_URL: must be an http(s) URL without credentials, query or fragment; notify rejected: PULSE_API_URL: must be a valid http(s) url; console rejected | http://<user>:<password>@api.example:3000 status accepted, notify accepted, probe and console rejected | http://api.example:3000/?q=1 status accepted, notify accepted, probe and console rejected",
       "commits": {
         "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d",
         "probe": "8fd19c81f939937631fb2763d8e1704750101d1e",
         "notify": "c79f0b7cb5e25ada96e6314220e69cf4f5279b32",
-        "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e"
+        "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
+        "kit": "536133f3e8b708179fa01feeb02395a0e1961e07"
       }
     },
     {
       "id": "architecture-system-2026-11-05-7",
-      "repos": ["api", "probe", "status", "notify", "console", "contract", "kit"],
+      "repos": [
+        "api",
+        "probe",
+        "status",
+        "notify",
+        "console",
+        "contract",
+        "kit"
+      ],
       "location": "probe/package.json:30",
       "severity": "P3",
       "candidate": false,
       "title": "Library pins spread: three contract pins (probe 18 commits and one major behind), four kit pins all with version 0.1.0, and no CI check that they agree",
-      "command": "grep -rnoE 'github:lorenzh/pulse-[a-z]+#[0-9a-f]+' .repos/*/package.json; git -C $T/<lib> rev-list --count <pin>..HEAD; probe copy with contract main: bun run typecheck; bun test; kit c6d2cba worktree with kit main's test/failure-limiter.test.ts: bun test test/failure-limiter.test.ts",
-      "exitCode": 0,
-      "excerpt": "contract 7ce23aa behind=18 (probe, 1.7.0), 176fb6e behind=4 (console, 2.0.0), 9ab7e24 behind=2 (api, status, notify, 2.1.0); main 2.2.0 | kit 236df21 behind=20 (status, notify), 739188a behind=7 (probe), c6d2cba behind=4 (api), 536133f behind=0 (console); version 0.1.0 at all | probe on contract main: typecheck exit 0; 419 pass 0 fail | kit main limiter tests on c6d2cba: 34 pass 0 fail",
+      "command": "grep -rnoE 'github:lorenzh/pulse-[a-z]+#[0-9a-f]+' .repos/*/package.json; for pair in contract:9ab7e24 contract:176fb6e contract:7ce23aa kit:236df21 kit:739188a kit:c6d2cba kit:536133f; do git -C \"$T/${pair%:*}\" rev-list --count \"${pair#*:}..HEAD\"; done; (cd \"$T/probe\" && bun run typecheck && bun test); (cd \"$T/../kit-pin\" && bun test test/failure-limiter.test.ts --dots)",
+      "exitCode": 1,
+      "excerpt": "contract 7ce23aa behind=18 (probe, 1.7.0), 176fb6e behind=4 (console, 2.0.0), 9ab7e24 behind=2 (api, status, notify, 2.1.0); main 2.2.0 | kit 236df21 behind=20 (status, notify), 739188a behind=7 (probe), c6d2cba behind=4 (api), 536133f behind=0 (console); version 0.1.0 at all | probe on contract main: typecheck exit 0; 419 pass 0 fail | kit main limiter tests on c6d2cba: 34 pass 0 fail | probe typecheck and full test exit 0; the isolated kit command exits 1 because aggregate line coverage is 38.23%, below 80%, despite 34 pass and 0 fail.",
       "commits": {
         "contract": "66818a24b81f5d0d86eee939dad64fa126617ba2",
         "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
@@ -169,12 +355,17 @@
     },
     {
       "id": "architecture-system-2026-11-05-8",
-      "repos": ["contract", "kit", "website", "config"],
+      "repos": [
+        "contract",
+        "kit",
+        "website",
+        "config"
+      ],
       "location": "contract/package.json:32",
       "severity": "P3",
       "candidate": false,
       "title": "contract, kit and website pin a config from before pulse-workflows, so their lint does not run the action policy check",
-      "command": "grep -n 'pulse-workflows' .repos/*/package.json; in copies of contract, kit, website: bun $T/config/bin/pulse-workflows.js (config main)",
+      "command": "grep -n 'pulse-workflows' .repos/*/package.json; for r in contract kit website; do (cd \"$T/$r\" && bun \"$T/config/bin/pulse-workflows.js\"); done",
       "exitCode": 0,
       "excerpt": "pulse-workflows in the lint script of api, notify, status, deploy, console, probe and config; no line for contract, kit, website | contract: pulse-workflows: ok (1 files, 1 uses) | kit: pulse-workflows: ok (1 files, 1 uses) | website: pulse-workflows: ok (1 files, 3 uses) | pins: contract and kit 51e95b0 (11 behind), website 86896e9 (9 behind)",
       "commits": {
@@ -186,19 +377,31 @@
     },
     {
       "id": "architecture-system-2026-11-05-9",
-      "repos": ["api"],
+      "repos": [
+        "api"
+      ],
       "location": "api/src/service.ts:377",
       "severity": "P3",
       "candidate": false,
       "title": "api/src/service.ts has 1310 lines; the closure createService spans 934 lines (771 on 2026-10-31)",
-      "command": "git ls-files -z | xargs -0 wc -l (per repository); bun functions.mjs <typescript.js> $T/scan functions.tsv",
+      "command": "wc -l .repos/api/src/service.ts; sed -n 377,1310p .repos/api/src/service.ts | wc -l",
       "exitCode": 0,
       "excerpt": "api/src/service.ts 1310 | api/src/service.ts:377 createService 934",
-      "commits": { "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c" }
+      "commits": {
+        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c"
+      }
     },
     {
       "id": "architecture-system-2026-11-05-10",
-      "repos": ["contract", "console", "notify", "deploy", "website", "api", "status"],
+      "repos": [
+        "contract",
+        "console",
+        "notify",
+        "deploy",
+        "website",
+        "api",
+        "status"
+      ],
       "location": "contract/src/schema.ts:1",
       "severity": "P3",
       "candidate": false,
@@ -218,7 +421,11 @@
     },
     {
       "id": "architecture-system-2026-11-05-11",
-      "repos": ["console", "kit", "api"],
+      "repos": [
+        "console",
+        "kit",
+        "api"
+      ],
       "location": "console/src/auth-throttle.ts:1",
       "severity": "P3",
       "candidate": false,
@@ -228,12 +435,16 @@
       "excerpt": "api/src/admin-auth-throttle.ts:1: import { clientKeyOf, createFailureLimiter, type FailureLimiter } from \"@lorenzh/pulse-kit\"; (no console line) | 194 console/src/auth-throttle.ts | 190 kit/src/failure-limiter.ts",
       "commits": {
         "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
-        "kit": "536133f3e8b708179fa01feeb02395a0e1961e07"
+        "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
+        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c"
       }
     },
     {
       "id": "architecture-system-2026-11-05-12",
-      "repos": ["probe", "contract"],
+      "repos": [
+        "probe",
+        "contract"
+      ],
       "location": "probe/src/check.ts:270",
       "severity": "P3",
       "candidate": false,
@@ -248,7 +459,11 @@
     },
     {
       "id": "architecture-system-2026-11-05-13",
-      "repos": ["api", "status", "notify"],
+      "repos": [
+        "api",
+        "status",
+        "notify"
+      ],
       "location": "status/src/theme-config.ts:107",
       "severity": "P3",
       "candidate": false,
@@ -264,7 +479,12 @@
     },
     {
       "id": "architecture-system-2026-11-05-14",
-      "repos": ["api", "notify", "kit", "contract"],
+      "repos": [
+        "api",
+        "notify",
+        "kit",
+        "contract"
+      ],
       "location": "notify/src/errors.ts:76",
       "severity": "P3",
       "candidate": false,
@@ -281,7 +501,10 @@
     },
     {
       "id": "architecture-system-2026-11-05-15",
-      "repos": ["meta", "deploy"],
+      "repos": [
+        "meta",
+        "deploy"
+      ],
       "location": "docs/architecture.md:12",
       "severity": "P3",
       "candidate": false,
@@ -296,14 +519,18 @@
     },
     {
       "id": "architecture-system-2026-11-05-16",
-      "repos": ["status", "console", "api"],
+      "repos": [
+        "status",
+        "console",
+        "api"
+      ],
       "location": "status/README.md:49",
-      "severity": "P3",
-      "candidate": false,
+      "severity": "P2",
+      "candidate": true,
       "title": "status and console READMEs point to a Compose file in pulse-api that no longer exists",
       "command": "sed -n 49p .repos/status/README.md; sed -n 70p .repos/console/README.md; ls .repos/api/compose.yaml .repos/api/compose.yml .repos/api/docker-compose.yml",
       "exitCode": 2,
-      "excerpt": "status README.md:49: pulse-api's repository has a Compose file that starts the whole stack with `docker compose up`. | console README.md:70: In the pulse Compose stack (pulse-api `compose.yaml`) the console is published on host loopback only. | ls: cannot access '.repos/api/compose.yaml': No such file or directory (also compose.yml, docker-compose.yml)",
+      "excerpt": "status README.md:49: pulse-api's repository has a Compose file that starts the whole stack with `docker compose up`. | console README.md:70: In the pulse Compose stack (pulse-api `compose.yaml`) the console is published on host loopback only. | ls: cannot access '.repos/api/compose.yaml': No such file or directory (also compose.yml, docker-compose.yml) | Following the status README's documented whole-stack startup in pulse-api has no Compose definition to run; no unusual input is needed.",
       "commits": {
         "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d",
         "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
@@ -312,7 +539,9 @@
     },
     {
       "id": "architecture-system-2026-11-05-17",
-      "repos": ["api"],
+      "repos": [
+        "api"
+      ],
       "location": "api/docs/development.md:24",
       "severity": "P3",
       "candidate": false,
@@ -320,11 +549,15 @@
       "command": "grep -nE 'readString\\(env, \"(PULSE_DB|PULSE_CHECKS_FILE|PULSE_TOKENS_FILE)\"|readPort\\(env' .repos/api/src/start.ts; grep -cE '\\.(query|prepare|run)\\(' .repos/api/src/{audit-log,manual-incidents,check-store,token-store}.ts; sed -n 4p .repos/api/src/db.ts; grep -n BUILD_REPOS .repos/api/bench/run.ts",
       "exitCode": 0,
       "excerpt": "start.ts:289: readPort(env, \"PORT\" ... :290 \"PULSE_DB\" :291 \"PULSE_CHECKS_FILE\" :292 \"PULSE_TOKENS_FILE\" | SQL calls: audit-log 9, manual-incidents 45, check-store 7, token-store 16 | db.ts:4: /** The schema at `user_version` 0, as the first release created it. Later changes are migrations. */ | run.ts:48: const BUILD_REPOS: readonly RepoName[] = [\"contract\", \"kit\"];",
-      "commits": { "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c" }
+      "commits": {
+        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c"
+      }
     },
     {
       "id": "architecture-system-2026-11-05-18",
-      "repos": ["status"],
+      "repos": [
+        "status"
+      ],
       "location": "status/docs/development.md:31",
       "severity": "P3",
       "candidate": false,
@@ -332,11 +565,15 @@
       "command": "sed -n 31p .repos/status/docs/development.md; grep -rn 'pulse-kit/is-record' .repos/status/src --include=*.ts | grep -v test; sed -n 261p .repos/status/src/server.ts",
       "exitCode": 0,
       "excerpt": "development.md:31: from the kit only `@lorenzh/pulse-kit/escape` and `@lorenzh/pulse-kit/format-duration` | src/poller.ts:25: import { isRecord } from \"@lorenzh/pulse-kit/is-record\"; | server.ts:261: const kitModules = new Set([\"escape.js\", \"format-duration.js\", \"is-record.js\"]);",
-      "commits": { "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d" }
+      "commits": {
+        "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d"
+      }
     },
     {
       "id": "architecture-system-2026-11-05-19",
-      "repos": ["contract"],
+      "repos": [
+        "contract"
+      ],
       "location": "contract/README.md:7",
       "severity": "P3",
       "candidate": false,
@@ -344,11 +581,17 @@
       "command": "grep -n 'depends on no other pulse repository' .repos/contract/README.md; grep -n 'pulse-config' .repos/contract/package.json .repos/contract/.github/workflows/ci.yml",
       "exitCode": 0,
       "excerpt": "7:pulse-contract depends on no other pulse repository. | package.json:32: \"@lorenzh/pulse-config\": \"github:lorenzh/pulse-config#51e95b0...\" | ci.yml:17: uses: lorenzh/pulse-config/.github/workflows/check.yml@51e95b0...",
-      "commits": { "contract": "66818a24b81f5d0d86eee939dad64fa126617ba2" }
+      "commits": {
+        "contract": "66818a24b81f5d0d86eee939dad64fa126617ba2"
+      }
     },
     {
       "id": "architecture-system-2026-11-05-20",
-      "repos": ["meta", "api", "console"],
+      "repos": [
+        "meta",
+        "api",
+        "console"
+      ],
       "location": "docs/architecture.md:39",
       "severity": "P3",
       "candidate": false,
@@ -358,12 +601,17 @@
       "excerpt": "architecture.md:39: ... measures CPU time and memory of every service, the test CPU time of all seven repositories ... | stack.ts:17: export const SERVICES = [\"api\", \"probe\", \"status\", \"notify\"] as const; | refs.ts:5: export const REPOS = [\"api\", \"probe\", \"status\", \"notify\", \"contract\", \"kit\", \"config\"] as const;",
       "commits": {
         "meta": "1463761750cef5ffa446950e3e831073c9595a10",
-        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c"
+        "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c",
+        "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e"
       }
     },
     {
       "id": "architecture-system-2026-11-05-21",
-      "repos": ["meta", "probe", "console"],
+      "repos": [
+        "meta",
+        "probe",
+        "console"
+      ],
       "location": ".factory/config.yaml:84",
       "severity": "P3",
       "candidate": false,
@@ -377,5 +625,143 @@
         "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e"
       }
     }
-  ]
+  ],
+  "review": {
+    "date": "2026-11-05",
+    "startedAt": "2026-11-05T15:13:21Z",
+    "commits": {
+      "meta": "1463761750cef5ffa446950e3e831073c9595a10",
+      "contract": "66818a24b81f5d0d86eee939dad64fa126617ba2",
+      "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
+      "config": "bc870498cc8e2539a132ce2aac35a09db1deabd8",
+      "api": "fb6f1a554055cc22f2f5036c8e7e2a321a62aa4c",
+      "probe": "8fd19c81f939937631fb2763d8e1704750101d1e",
+      "status": "8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d",
+      "notify": "c79f0b7cb5e25ada96e6314220e69cf4f5279b32",
+      "console": "9a3ef14fc8a0335f8bf70f56023868633a56525e",
+      "deploy": "770eae0d8e843823140b4b6660d6e716ac35db62",
+      "website": "d5e725f576922a99dfe7d0520059cb432032e673"
+    },
+    "snapshotNote": "All ten code repositories were reviewed at their reported commits. The fresh console clone was a1b4497ad42ecfc280ecc607469f45847816b675; a temporary copy was fetched and detached at reported 9a3ef14. Meta HEAD is the audit commit 3263e2c; its copy was detached at reported 1463761.",
+    "findingsRetained": 21,
+    "removedFindings": [],
+    "regradedFindings": [
+      {
+        "id": "architecture-system-2026-11-05-16",
+        "from": "P3",
+        "to": "P2",
+        "reason": "The documented whole-stack Compose startup points to a repository with no Compose definition; this is a realistic setup failure."
+      }
+    ],
+    "narrowedFindings": [
+      {
+        "id": "architecture-system-2026-11-05-2",
+        "reason": "The CI cycle is real, but console AGENTS.md explicitly requires the integration test. Shared-library SHA pins and runtime upstream direction do not prohibit these checkouts.",
+        "candidate": false
+      },
+      {
+        "id": "architecture-system-2026-11-05-4",
+        "reason": "Removed the non-exclusive contract consumer list as a claimed contradiction; kept the false meta console stub, dependency and unused-token claims."
+      }
+    ],
+    "correctedEvidence": [
+      {
+        "id": "architecture-system-2026-11-05-5",
+        "reason": "Kit already preserves existing ownership, including at api's pin; corrected the report explanation and command paths. Local duplication remains."
+      },
+      {
+        "id": "architecture-system-2026-11-05-7",
+        "reason": "The isolated limiter test has 34 pass and 0 fail, but exits 1 on aggregate coverage. Narrowed behavioral-equivalence claims and the zero-deletion statement."
+      }
+    ],
+    "p1Reproduced": [],
+    "p2Reproduced": [
+      "architecture-system-2026-11-05-16"
+    ],
+    "p3SpotChecked": [
+      "architecture-system-2026-11-05-1",
+      "architecture-system-2026-11-05-2",
+      "architecture-system-2026-11-05-3",
+      "architecture-system-2026-11-05-4",
+      "architecture-system-2026-11-05-5",
+      "architecture-system-2026-11-05-6",
+      "architecture-system-2026-11-05-7",
+      "architecture-system-2026-11-05-8",
+      "architecture-system-2026-11-05-9",
+      "architecture-system-2026-11-05-10",
+      "architecture-system-2026-11-05-11",
+      "architecture-system-2026-11-05-12",
+      "architecture-system-2026-11-05-13",
+      "architecture-system-2026-11-05-14",
+      "architecture-system-2026-11-05-15",
+      "architecture-system-2026-11-05-17",
+      "architecture-system-2026-11-05-18",
+      "architecture-system-2026-11-05-19",
+      "architecture-system-2026-11-05-20",
+      "architecture-system-2026-11-05-21"
+    ],
+    "checks": [
+      {
+        "command": "jq . audits/architecture/system.json; Markdown/JSON id, severity, candidate and checklist consistency; required fields; git rev-parse HEAD at each examined SHA",
+        "exitCode": 0,
+        "excerpt": "21 findings (1 P2, 20 P3), 5 candidates, 6 checked checklist items; all 11 examined commits resolved and checked in copies."
+      },
+      {
+        "command": "git ls-files and wc -l per repository; TypeScript AST named-function spans",
+        "exitCode": 0,
+        "excerpt": "All reported file sizes match; api createService is 934 lines; added every large meta spec path and size."
+      },
+      {
+        "command": "git rev-list --count <pin>..HEAD; git merge-base --is-ancestor <pin> HEAD; package, lock and workflow comparison",
+        "exitCode": 0,
+        "excerpt": "19 package/lock pairs and all config workflow refs match; behind counts match the pin table."
+      },
+      {
+        "command": "node \"$T/../complexity.mjs\" \"$T\" --meta",
+        "exitCode": 1,
+        "excerpt": "701 files, 11 cognitive-complexity errors, 0 parse errors. One deploy function exceeds the adopted budget; ten meta functions exceed only the reference threshold."
+      },
+      {
+        "command": "python3 -I \"$T/../deps.py\" \"$T\"",
+        "exitCode": 0,
+        "excerpt": "0 library cycles; 0 runtime cycles; 1 cycle with CI checkouts; 4 over all kinds, as listed."
+      },
+      {
+        "command": "bun \"$T/../api-url.ts\"",
+        "exitCode": 0,
+        "excerpt": "Three rule sets in four services reproduced; no network access."
+      },
+      {
+        "command": "bun run typecheck && bun test (probe copy with contract main substituted)",
+        "exitCode": 0,
+        "excerpt": "419 pass, 0 fail."
+      },
+      {
+        "command": "bun test test/failure-limiter.test.ts --dots (kit c6d2cba copy with main's limiter tests)",
+        "exitCode": 1,
+        "excerpt": "34 pass, 0 fail; aggregate line coverage 38.23%, below the 80% threshold."
+      },
+      {
+        "command": "for r in contract kit website; do (cd \"$T/$r\" && bun \"$T/config/bin/pulse-workflows.js\"); done",
+        "exitCode": 0,
+        "excerpt": "ok (1 files, 1 uses); ok (1 files, 1 uses); ok (1 files, 3 uses)."
+      },
+      {
+        "command": "sed -n 49p .repos/status/README.md; sed -n 70p .repos/console/README.md; ls .repos/api/compose.yaml .repos/api/compose.yml .repos/api/docker-compose.yml",
+        "exitCode": 2,
+        "excerpt": "Both stale README claims reproduced; all three Compose paths do not exist."
+      },
+      {
+        "command": "Finding commands for docs, duplicate helpers and Factory context (Bash); gh issue list and gh issue view 484, 501, 509, 529, 555",
+        "exitCode": 0,
+        "excerpt": "Remaining P3 evidence holds, subject to the narrowed claims recorded above."
+      }
+    ],
+    "limitations": [
+      "Architecture checks and targeted tests, not a full Docker integration or performance benchmark run.",
+      "Probe compatibility tests do not prove equivalence on every possible input.",
+      "Meta does not adopt pulse-config's cognitive-complexity budget; its extra measurements are not policy violations."
+    ],
+    "cleanup": "Only the two report files changed. Temporary repository copies and review scripts were removed; no separately started service remains. Tests used temporary local servers."
+  }
 }
