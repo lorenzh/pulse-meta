@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "The contract exports validated subscription messages and one email normalization rule",
+      "files": [
+        "src/subscriptions.ts",
+        "src/validate-subscriptions.ts",
+        "src/index.ts",
+        "dist/subscriptions.js",
+        "dist/subscriptions.d.ts",
+        "dist/validate-subscriptions.js",
+        "dist/validate-subscriptions.d.ts",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "test/subscriptions.test.ts",
+        "test/types.fixture.ts",
+        "docs/index.md",
+        "README.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, entire section: R1, D8, D13, Contract fields, Address rule counterexamples, Checks and Completion evidence; applicable Security impact items and Performance impact. Keep constants, normalization, schemas, validators, exports, fixtures and generated dist in one additive change. Validators never throw and return the original validated object; the wire email is already normalized, schemas are strict, and token patterns are anchored without flags. Keep WIRE_VERSION = 1 and use the next minor after contract main at merge (2.4.0 before #806 or 2.5.0 after its 2.4.0). Capture the starting-main SHA for the performance comparison. Document the full R1 shapes, limits and routes. No consumer pin changes occur here.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). Every Address rule row has its literal result, including space/tab trimming to sub-a@e2e.invalid, CR/LF and non-ASCII rejection, local lengths 64/65 and whole lengths 254/255. Each validator accepts a valid literal with original-object identity and rejects missing/extra keys and wrong types; token requests reject 129 characters and non-normalized wire email is rejected. Confirmation pattern accepts 43 characters and rejects 42, 44 and +; unsubscribe accepts 22.43 characters and rejects either segment one shorter/longer and +. Constants match R1 literals including 1024, 254 and the three routes/results; malformed values never throw."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 for lint, build, typecheck and the full suite; at least 80% line coverage. New exported types compile in test/types.fixture.ts and existing consumers' shapes and wire version 1 remain valid."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after generated dist is committed; rebuilding changes 0 committed dist files, including the four new subscription artifacts and index exports."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times on the branch and five times on its starting main in a writable scratch checkout; 0 failed tests in each run. Report both median user+sys CPU times and B minus A. Branch median is at most 9.0 s, the independent api/bench/budgets.json contract test_cpu_s budget; expected increase is up to 0.2 s."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run build",
+          "expected": "exit 0; measure on the branch and starting main and report build_cpu_s and the difference. Branch CPU is within the independent api/bench/budgets.json contract build_cpu_s budget (6.4 s in the inspected main); expected increase is up to 0.2 s."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "The PR names #573, the contract version and candidate SHA (record the merged full SHA at handoff for status/notify), full check and reproducible-dist output, CPU comparisons against the independent budgets, and the applicable Security impact results for strict validation, token patterns, accessor safety and dependency pins."
+        }
+      ]
+    }
+  ]
+}

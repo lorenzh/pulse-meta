@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Visitors can subscribe, confirm and unsubscribe through safe accessible forms",
+      "files": [
+        "src/subscribe-routes.ts",
+        "src/subscribe-client.ts",
+        "src/subscribe-pages.ts",
+        "src/server.ts",
+        "src/settings.ts",
+        "src/start.ts",
+        "public/index.html",
+        "public/page.css",
+        "src/subscribe-routes.test.ts",
+        "src/settings.test.ts",
+        "src/server.contract-modules.test.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, entire section: R2, R6, status parts of R7, D9-D10, D-R3/D-R4; Status routes and Feature off counterexamples; Checks and Completion evidence; Performance impact and applicable Security impact. Keep settings, the contract pin and served module graph, client, route dispatch, page templates/styles, HTTP tests and accessibility tests together so the feature is usable and default-off behavior stays green at the only task boundary. Pin the merged contract child's full SHA; add every module imported by its index to contractModules. Read the bearer secret once and require PUBLIC_URL when enabled. Implement every R2 route, check order, literal response text, no-JS form and origin rule, with 2048-byte form bodies and 4096-byte notify answers. Use requestJson with the configured timeout, wire validation and no redirects. Preserve metrics by status code, privacy-safe failure logs, no-store result pages, headers and form-action self only when enabled; never echo an address and echo tokens only in escaped hidden fields. Keep the subscribe section after Maintenance outside poller updates. Record the starting-main SHA before measurements. Read shared findings first and report any wire gap for the notify child.",
+      "acceptance": [
+        {
+          "command": "bun test src/subscribe-routes.test.ts src/settings.test.ts src/server.contract-modules.test.ts",
+          "expected": "0 fail (focused coverage exit status is not the gate). Cover every Status routes counterexample and R2 mapping: foreign/null Origin and cross-site fetch return 403 with 0 notify calls; wrong content types 415, 2049 bytes 413, duplicate/extra fields and invalid addresses/tokens 400. Valid subscribe forwards exactly {\"email\":\"sub-a@e2e.invalid\"} and the test-file bearer token to /subscriptions; confirm/unsubscribe forward exactly {\"token\":...} to their fixed paths. Preview GET/HEAD make 0 notify calls; duplicate preview token is 400. Notify 202 maps to public 200, subscribe 429 to 429, subscribe 400 to 400, invalid/expired confirmation 404 to 400, valid confirm/unsubscribe 200 to 200, other failures to 503. A 302 reaches 0 redirect-target requests; absent wire header is tolerated and wire header 2 yields 503. Test timeout, network error and invalid answer. Result pages have no-store, form-action 'self', no-referrer and current security headers, with no submitted address or hostile <script> text. PUT /subscribe and other POST routes remain 405 with allow GET, HEAD; GET /subscribe is 404. Off: POST /subscribe 405, confirmation GET 404, 0 subscribe sections, form-action 'none'. Missing token/public URL errors name their setting; a 31-character bearer secret is refused without echo. Served contract import-graph traversal has 0 missing modules."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 for lint, both TypeScript projects and the full test suite with at least 80% line coverage. Existing status, proxy, feed, headers and metrics tests stay green."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0; 0 axe violations on the subscription form and the five result pages, each at 360 and 1280 px in light/dark with and without JavaScript. Forms have accessible labels/buttons and usable keyboard/no-JS submit flows; the existing a11y scenarios still pass."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times per side on the branch and its starting main in a writable scratch checkout; all suites pass. Report median user+sys CPU on both sides and B minus A. Branch median is at most 3.4 s, the independent api/bench/budgets.json status test_cpu_s budget; expected increase is up to 0.4 s."
+        },
+        {
+          "command": "cd \"$PULSE_573_API_SCRATCH\" && if rg -q -- '--b-ref' bench; then bun bench/run.ts --a \"$PULSE_573_API_MAIN_SHA\" --b \"$PULSE_573_API_MAIN_SHA\" --others-ref main --b-ref \"status=$PULSE_573_STATUS_SHA\" --rounds 1; else printf '%s\\n' 'benchmark unavailable: api main has no --b-ref'; fi",
+          "expected": "When api main supports --b-ref, the benchmark passes independent api/bench/budgets.json gates and the PR includes the table and discloses --rounds 1. Otherwise report the missing capability and explain that subscriptions are off in the bench fixture, so runtime metrics are expected unchanged. Use a writable scratch api checkout, never modify read-only context repositories."
+        },
+        {
+          "command": "bun start",
+          "expected": "With subscriptions enabled and a local fake notify, manually submit subscribe, open the confirm link and press Confirm subscription. Record the exact non-secret configuration, commands and returned codes: subscribe 200, preview 200 with 0 confirm operations, confirmation POST 200. Exercise once without JavaScript."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "The PR records #573, the merged full contract SHA, check/a11y output, manual commands and codes, performance medians and runtime benchmark evidence or the specified fallback, and every applicable Security impact item (origin/auth order, size limits, escaping and hidden tokens, no secret/address leakage, fixed upstream/no redirects and pins). Docs list R6 settings/routes and D-R3/D-R4; feature remains off by default."
+        }
+      ]
+    }
+  ]
+}
