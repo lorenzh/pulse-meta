@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "API test CPU budget reflects current main measurements and passes branch confirmation",
+      "files": [
+        "bench/budgets.json",
+        "bench/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Task, Checks 1-5 and Completion evidence; Required behavior 1-6 and the PR handoff of Required behavior 7; Counterexamples and Security impact. Keep all measurement and calculation stages in this single task. Follow the specified needs-input holds for unexpected precision, an already-reset main budget, or a failing pre-merge confirmation. Post-merge execution belongs to lorenzh, not task completion.",
+      "acceptance": [
+        {
+          "command": "M=$(gh api repos/lorenzh/pulse-api/commits/main --jq .sha); for measurement in 1 2 3; do gh workflow run bench.yml -R lorenzh/pulse-api --ref main -f a=\"$M\" -f b=\"$M\" -f others=main || break; done",
+          "expected": "Required behavior 1: record one full main SHA M and three distinct completed measurement runs using a=b=M and others=main. Two counted runs are acceptable only if the third cannot complete and the PR explains why. Replace cancelled runs and harness exit 2; only harness exit 0 or 1 with bench-out/table.json counts. Do not use the confirmation run as a measurement."
+        },
+        {
+          "command": "gh run view \"$RUN_ID\" -R lorenzh/pulse-api --json status,conclusion,headBranch,headSha,jobs; gh run view \"$RUN_ID\" -R lorenzh/pulse-api --log; gh run download \"$RUN_ID\" -R lorenzh/pulse-api -n bench-out --dir \"$RUN_DIR\"",
+          "expected": "Repeat for each counted measurement run with a distinct RUN_DIR outside the repository. Logs prove harness exit 0 or 1 and others=main; the workflow ran on main. Each artifact contains table.json and samples.json. A workflow failure caused by budget or regression rows is allowed and its failing rows are retained for the PR."
+        },
+        {
+          "command": "jq -c '.[] | select(.service==\"api\" and .metric==\"test_cpu_s\") | {a,b}' \"$RUN_DIR/table.json\"; jq -e --arg M \"$M\" '.refs.a.api == $M and .refs.b.api == $M and ([.refs.a, .refs.b][] | del(.api) | all(.[]; . == \"main\"))' \"$RUN_DIR/samples.json\"",
+          "expected": "Repeat for every counted measurement run. One api test_cpu_s row provides full-precision A and B medians from table.json, never table.md; the refs check exits 0 and prints true. The SHA comes independently from the main lookup in Required behavior 1."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; const paths = JSON.parse(process.env.MEASUREMENT_TABLES); assert.ok(paths.length === 2 || paths.length === 3); let U = 0n; for (const path of paths) { const rows = (await Bun.file(path).json()).filter(r => r.service === \"api\" && r.metric === \"test_cpu_s\"); assert.equal(rows.length, 1); const b = rows[0].b; assert.ok(typeof b === \"number\" && Number.isFinite(b) && b >= 0); const u = Math.round(b * 1e6); assert.ok(Number.isSafeInteger(u) && Math.abs(b * 1e6 - u) < 1e-3, \"needs-input: non-integer microseconds\"); const value = BigInt(u); if (value > U) U = value; } const T = (11n * U + 999999n) / 1000000n; const expected = Number(T) / 10; console.log(JSON.stringify({microseconds: String(U), tenths: String(T), budget: expected})); assert.equal((await Bun.file(\"bench/budgets.json\").json()).api.test_cpu_s.budget, expected);'",
+          "expected": "Exit 0. MEASUREMENT_TABLES is a JSON array of paths to the separate counted runs' downloaded table.json files. The independent expected budget is the highest B median times 1.10, rounded upward only at the end to 0.1 s using integer microseconds and BigInt, as in Required behavior 2 and Check 3. A precision failure requires needs-input. Preserve full precision in the README and PR; do not average runs or take the largest raw sample."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; const cases = [[7.000001,7.8],[9.090910,10.1],[7,7.7],[8.674321,9.6]]; for (const [b, expected] of cases) { const u = BigInt(Math.round(b * 1e6)); assert.equal(Number((11n * u + 999999n) / 1000000n) / 10, expected); } const invalid = 8.6743215 * 1e6; assert.ok(Math.abs(invalid - Math.round(invalid)) >= 1e-3);'",
+          "expected": "Exit 0; the spec's literal precision counterexamples yield 7.8, 10.1, 7.7 and 9.6 s respectively, and 8.6743215 s fails the whole-microsecond check. Run this as an ephemeral calculation; add no test or calculation file to the repository."
+        },
+        {
+          "command": "bun run bench:selftest",
+          "expected": "Exit 0; check-budgets: ok is printed (Check 1)."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0; repository lint, typecheck and full test suite including the coverage gate pass (Check 1)."
+        },
+        {
+          "command": "docker compose -f bench/compose.bench.yaml config --quiet",
+          "expected": "Exit 0, matching the bench-selftest CI job described in Tool facts. The hosted measurement and confirmation runs supply the whole-stack bench evidence."
+        },
+        {
+          "command": "diff <(git show \"$B0:bench/budgets.json\" | jq -S 'del(.api.test_cpu_s.budget)') <(git show \"$H:bench/budgets.json\" | jq -S 'del(.api.test_cpu_s.budget)'); git show \"$B0:bench/budgets.json\" | jq .api.test_cpu_s.budget; git diff --name-only \"$B0\" \"$H\"; git diff --check \"$B0\" \"$H\"; git diff \"$B0\" \"$H\" -- bench/budgets.json",
+          "expected": "Check 2: B0 is the recorded base main and H is the implementation head. The normalized diff is empty (exit 0), the old budget is the literal 5.6, the changed-path list is exactly bench/README.md and bench/budgets.json, and diff --check exits 0. The raw JSON diff changes only api.test_cpu_s.budget with Biome formatting. Floor 1.6, unit, gating, thresholds, baseline, other metrics, workflows, dependencies and product code remain unchanged. If main already reset the budget to at least the computed value, hold with needs-input per the repository section. These checks also substantiate Security impact: no."
+        },
+        {
+          "command": "git diff \"$B0\" \"$H\" -- bench/README.md",
+          "expected": "Check 5 and Required behavior 4: only the api bullet of Temporary test floors changes. It preserves the floor's original derivation, 1.6 s and run ids 41508721559, 41517811504, 41525755478, 41578638886; records the former 5.6 s budget; cites the owner decision on meta #761 and every counted measurement run URL, M, others=main, full-precision B medians, maximum and exact calculation/result from those artifacts. It calls the budget temporary and an exception to the usual 30 percent rule. The introductory paragraph, notify/status bullets and closing release-tag paragraph stay unchanged."
+        },
+        {
+          "command": "git push -u origin \"$TASK_BRANCH\"; M1=$(gh api repos/lorenzh/pulse-api/commits/main --jq .sha); gh workflow run bench.yml -R lorenzh/pulse-api --ref \"$TASK_BRANCH\" -f a=\"$M1\" -f b=\"$M1\" -f others=main",
+          "expected": "Required behavior 6: after committing the two files and passing local checks, push the branch containing the computed budget and dispatch one separate pre-merge confirmation. Record the newly read full main SHA M1, task branch and head H. This confirmation does not contribute to the computed budget."
+        },
+        {
+          "command": "gh run view \"$CONFIRMATION_RUN_ID\" -R lorenzh/pulse-api --json status,conclusion,headBranch,headSha,jobs; gh run download \"$CONFIRMATION_RUN_ID\" -R lorenzh/pulse-api -n bench-out --dir \"$CONFIRMATION_DIR\"; jq -e --argjson expected \"$EXPECTED_BUDGET\" '[.[] | select(.service==\"api\" and .metric==\"test_cpu_s\")] | length == 1 and (.[0] | .verdict == \"ok\" and .budget.budget == $expected)' \"$CONFIRMATION_DIR/table.json\"; jq -e --arg M1 \"$M1\" '.refs.a.api == $M1 and .refs.b.api == $M1 and ([.refs.a, .refs.b][] | del(.api) | all(.[]; . == \"main\"))' \"$CONFIRMATION_DIR/samples.json\"",
+          "expected": "Check 4: completed confirmation run has headBranch equal to TASK_BRANCH and headSha equal to H (or a later head with identical budgets.json). Both jq checks exit 0 and print true. EXPECTED_BUDGET is the independently computed value from the measurement artifacts, not from the edited file or confirmation artifact. The literal required verdict is ok; the numeric budget is nested at .budget.budget in the actual Row schema. Other failing rows may make the workflow fail. If the api test_cpu_s verdict is not ok, hold with needs-input and the row/M/M1; do not increase the budget again or widen the floor."
+        },
+        {
+          "command": "gh pr view \"$PR_NUMBER\" -R lorenzh/pulse-api --json body --jq .body",
+          "expected": "Required behavior 5 and Completion evidence: PR body follows option (B) of meta #761 and retains Closes lorenzh/pulse-meta#<child> with the actual child number. It cites each measurement run URL, full a/b SHA M, others=main, full-precision A/B medians, maximum B, exact calculation and result from the downloaded artifacts; explains any two-run exception; cites the separate confirmation URL, head SHA, M1 and its api test_cpu_s row; lists other failing rows as out of scope and reports local checks and unchanged gates/security scope. A Post-merge acceptance section explicitly assigns lorenzh, the person merging, to read M2 with gh api repos/lorenzh/pulse-api/commits/main --jq .sha after merge, then run gh workflow run bench.yml -R lorenzh/pulse-api --ref main -f a=<M2> -f b=<M2> -f others=main and post its URL/row on meta #761. Expected post-merge verdict is the literal ok; a failure becomes a new issue. This acceptance checks the written handoff only; task completion does not wait for merge or the owner's run."
+        }
+      ]
+    }
+  ]
+}
