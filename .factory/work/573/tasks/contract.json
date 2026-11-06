@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Export the additive subscription contract and retention constants",
+      "files": [
+        "src/subscriptions.ts",
+        "src/validate-subscriptions.ts",
+        "src/index.ts",
+        "dist/subscriptions.js",
+        "dist/subscriptions.d.ts",
+        "dist/validate-subscriptions.js",
+        "dist/validate-subscriptions.d.ts",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "test/subscriptions.test.ts",
+        "test/types.fixture.ts",
+        "docs/index.md",
+        "README.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1, R8 wire answer, R10 time constants, D13, Contract fields, Address rule counterexamples, Performance impact and applicable Security impact checks. One cohesive additive module and its exports; WIRE_VERSION stays 1.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions.test.ts",
+          "expected": "0 failing tests. Every Address rule counterexample has its literal result; local lengths 64/65 and total lengths 254/255 are checked. Validators preserve input identity, never throw, and reject missing/extra keys, wrong types and a 129-character token. Anchored flag-free token patterns reject length +/-1 and '+'. Constants equal 1024, 254, 86400000 and 3600000, and route/result literals match R1. Focused coverage can fail its gate; this check requires the test results, not exit 0."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck (including SubscriptionRequest, SubscriptionTokenRequest, SubscriptionAnswer and SubscriptionResult in test/types.fixture.ts), full tests and the 80% line coverage gate pass. Existing exports remain compatible, WIRE_VERSION is 1, and the package takes the next minor after main (2.5.0 after 2.4.0 or 2.4.1). Docs describe the invariant 202 accepted response and both retention constants."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after the generated dist changes have been committed; every emitted file, including the six listed outputs, matches source. Run the pinned CI install/lint/typecheck/build/dist/test sequence as specified in the section."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Per Performance impact, run five times on the starting main and five on the branch; report median user+sys, B - A, and build_cpu_s in the PR. Branch test_cpu_s is no greater than the independent contract budget 9.0 s in api/bench/budgets.json; expected test/build increase is at most 0.2 s each."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body records the version and merged full SHA for consumer pins, bun run check and dist consistency output, performance measurements, and applicable Security impact evidence: strict input validation, no new dependency, unchanged WIRE_VERSION."
+        }
+      ]
+    }
+  ]
+}

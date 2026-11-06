@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Serve the complete private-by-default visitor subscription flow with a clear data notice",
+      "files": [
+        "src/subscribe-routes.ts",
+        "src/subscribe-client.ts",
+        "src/subscribe-pages.ts",
+        "src/server.ts",
+        "src/settings.ts",
+        "src/start.ts",
+        "public/index.html",
+        "public/page.css",
+        "src/subscribe-routes.test.ts",
+        "src/subscribe-enumeration.test.ts",
+        "src/settings.test.ts",
+        "src/server.contract-modules.test.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, all behavior, checks and completion evidence; R2, R6, R7 status parts including the Token exception, R8 status limits L0/L7/L8, R9 root hosting, R10 notice/contact, Status routes, No enumeration, Root hosting and Visitor notice counterexamples, Performance impact, Security impact and Acceptance evidence items 2, 6-8. Keep routes, renderer, settings and startup together so the public flow is complete in one task.",
+      "acceptance": [
+        {
+          "command": "bun test src/subscribe-routes.test.ts src/subscribe-enumeration.test.ts src/settings.test.ts src/server.contract-modules.test.ts",
+          "expected": "0 failing tests; focused coverage is not an exit-0 assertion. Real servers on 127.0.0.1:0 check every Status routes counterexample, exact status and call counts, normalized JSON/bearer forwarding and the three private routes. Off: POST 405, new GET routes 404, no form, form-action 'none'. On: origin 403 before body, type 415, size 2049 -> 413, strict fields/address 400, GET/HEAD link visits make 0 notify calls, POST alone mutates. Redirect target receives 0 calls; missing wire version is tolerated, version 2 is rejected. Successful link GETs hold only their own pattern-checked token exactly once in an escaped hidden field; invalid-link and every POST result hold no token. Pages are no-store/no-referrer, retain the theme and security headers, and never echo a submitted address."
+        },
+        {
+          "command": "bun test src/subscribe-enumeration.test.ts",
+          "expected": "0 failing tests, with a fresh fake notify and status server per case, both K/U orders, comparing status/headers except date/body byte for byte for sub-k@e2e.invalid and sub-u@e2e.invalid. All nine notify outcomes in No enumeration, L8 timeout at 200 ms and L0 with 8 held calls give the same 200 answer; the 9th call is skipped. L7 gives the same 413 before lookup. Literal R2 text includes 24 hours and the configured contact link; no location, retry-after, set-cookie or etag. Bounded call handling and skipped-request logging once per minute reveal no address. Focused test results, not focused coverage exit status, prove this check."
+        },
+        {
+          "command": "bun test src/settings.test.ts src/subscribe-routes.test.ts",
+          "expected": "0 failing tests. Every R9 status root/prefix case and R10 contact counterexample has its literal result: root with/without slash accepted; /pulse and /pulse/ with subscriptions on exit 2 with the fixed R9 line before token-file/listener I/O; subscriptions off preserves existing prefix tests. Missing public URL, token file or contact names only its variable; a 31-character token fails. Email contact normalizes, https contact is escaped (including the hostile contact fixture); bad schemes, credentials, 513 characters or empty contact fail without echoing values. GET / and invalid-email 400 show all literal R10 sentences with 24/25 hours, id='subscribe-notice' between input and button, aria-describedby, contact link and ordered headings. Mail and form URLs never derive from Host or X-Forwarded-*."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint, both TypeScript projects, all tests and 80% full-suite line coverage pass. Pin the merged contract full SHA, serve every runtime import from its new index.js, and pass the contract import-graph test. Document settings/routes, exact R9 sentence, notice/operator deletion duties and limits D-R3/D-R4/D-R9/D-R10. Applicable Security impact checklist covers auth/origin order, 2048/4096 byte limits, capped calls, escaped input, redirect refusal, token exception, secret-free logs/metrics and dependency pins."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0; axe reports 0 violations for the subscription form/notice and all five result pages at 360 and 1280 px, light and dark, with and without JavaScript. The mailto contact and keyboard-accessible form work without client poller changes."
+        },
+        {
+          "command": "bun start",
+          "expected": "With subscriptions configured and a local fake notify, exercise subscribe -> GET confirmation link -> POST confirmation button once. Record exact environment/setup and curl/browser commands and observed codes: subscribe 200, link 200 with 0 notify calls, confirm POST 200. Forged Host/X-Forwarded-* do not change configured origin use. Capture logs to verify no subscriber address/query token/secret or contact value is logged."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Per Performance impact, five runs on starting main and five on branch: PR reports median user+sys and B - A. Branch median does not exceed the independent status test_cpu_s budget 3.4 s in api/bench/budgets.json. Report runtime comparison table using api bench --b-ref if available, with --rounds 1 disclosed when used; otherwise report absence of --b-ref and the feature-off fixture reason for no runtime movement."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR includes merged contract SHA, bun run check/check:a11y outputs, manual commands/codes, performance evidence, root-hosting limitation, and completed applicable Security impact checklist. Cross-service mail-catcher/compose acceptance is assigned to deploy by the plan; no target checkout is edited."
+        }
+      ]
+    }
+  ]
+}

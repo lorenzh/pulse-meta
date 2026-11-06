@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Validate subscription settings and persist securely deletable subscriber state",
+      "files": [
+        "src/subscription-settings.ts",
+        "src/subscriber-store.ts",
+        "src/subscribers-cli.ts",
+        "test/subscriptions-settings.test.ts",
+        "test/subscriptions-store.test.ts",
+        "test/subscribers-cli.test.ts",
+        "package.json",
+        "bun.lock",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, R3 settings/store/cleanup and R9 validation, R10 stored inventory/retention and R5 subscribers delete implementation (dispatch comes in T4); D7/D18, store/cleanup/settings/operator-deletion checks and corresponding counterexamples. Pin the merged contract full SHA here. Supply independent injectable settings, store and CLI components; production service wiring waits for T4.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-settings.test.ts test/subscriptions-store.test.ts test/subscribers-cli.test.ts",
+          "expected": "0 failing tests; focused coverage may fail its threshold, so no focused exit-0 requirement. R3 settings default to off and ignore subscription settings then; on requires named variables, bounds MAX/MAX_PENDING with pending <= total, SMTP and secret rules, and 63/65-character or uppercase keys fail without values. R9 accepts an origin with/without slash and refuses /pulse and /pulse/ with the exact fixed line before secret/store/lock/listener I/O. Store uses version 1, WAL/FULL/secure_delete, mode 0600 and its own lease lock; refuses other versions; every mutation is transactional; persists passes and next_pass_at without changing the channel ledger."
+        },
+        {
+          "command": "bun test test/subscriptions-store.test.ts",
+          "expected": "0 failing tests; independent clock/timer and second SQLite connection verify Cleanup boundaries: expiry 86400001 after last mail at t=1; t=86400000 keeps row, t=90000000 removes it even if every API poll fails; confirmed row remains at 10 * 86400000. Startup cleanup precedes requests. Prune settled/seeded events only after the retention period and only if absent from last good listedIds; prune nothing before first good read and never prune pending events. Deletion cascades deliveries, deleted address bytes are absent from the live database, WAL size is 0 after checkpoint; busy checkpoints warn without addresses and retry on cleanup; shutdown checkpoints."
+        },
+        {
+          "command": "bun test test/subscribers-cli.test.ts",
+          "expected": "0 failing tests for the independently callable CLI: normalize Sub-A@Example.com, delete pending/confirmed rows and deliveries under the store lock, output exactly 'deleted 1' then 'deleted 0', exit 0, and never output the address; missing store returns 'deleted 0' without creating it; held lock exits 2 unchanged; invalid address exits 1 with the fixed invalid-address line; missing/extra args exit 1 with 'usage: pulse-notify subscribers delete <address>'. CLI reads only state-path and lock settings and works with subscriptions off. Executable dispatch is completed/tested in T4."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck, all tests and 80% full-suite line coverage pass with the new components independently testable. Existing main behavior/ledger suites remain green. README/configuration/operation document the new settings, exact R9 root-hosting sentence, data inventory, retention and stopped-service deletion. AGENTS names new components and corrects current ledger format 3 to 4 (preserve format 5 if #570 has merged); no ledger/config-file format changes."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Accept membership-free subscription requests and send bounded double-opt-in mail",
+      "files": [
+        "src/subscription-server.ts",
+        "src/subscription-requests.ts",
+        "src/subscriber-mail.ts",
+        "src/subscriber-fanout.ts",
+        "src/subscriber-store.ts",
+        "src/metrics.ts",
+        "test/subscriptions-server.test.ts",
+        "test/subscriptions-enumeration.test.ts",
+        "test/subscriptions-fanout.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/channels/email.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, R4 listener and R5 Subscribe/Confirm/Unsubscribe/Confirmation mail (worker 1 only), D8-D12, R7 subscription request/limit/confirmation metrics, R8 notify limits L1-L7, R9 configured-origin links and R10 confirmation text. Notify listener, Lifecycle and timing except cleanup already in T1, and No enumeration counterexamples/checks. Keep admission, bounded FIFO, tokens and listener answers together; worker 2 is T3.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-server.test.ts test/subscriptions-enumeration.test.ts test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests; focused coverage exit status is not the gate. Real 127.0.0.1:0 listener responses validate with the contract: path 404 -> method 405/allow POST -> auth 401 without reading even a 2 MiB body -> content-type 415 -> size >1024 gives 413 -> JSON/strict normalized shape 400 -> operation. Wrong bearer plus one character fails; no token/address is echoed. headersTimeout/requestTimeout are 10000 ms; JSON/no-store/x-pulse-contract:1 headers are invariant; closed-store requests give literal 503 unavailable."
+        },
+        {
+          "command": "bun test test/subscriptions-enumeration.test.ts",
+          "expected": "0 failing tests. Every notify No enumeration table case, fresh real store and HTTP fixture, both K/U orders: below limits and L1/L2/L3/L4/L5/L6 return byte-equal 202 {\"status\":\"accepted\"}, headers except date identical; closed store returns the same 503 for both. Assert independent literal row/mail counts from Must also hold, capacity=2 and pending=1 fixtures, known id/consent unchanged, L1/L2/L5/L6 fixed limit labels, full 100-job queue, and 1024-byte size enforcement before address lookup. No 429 membership leak. Subscribe commits its write/queue decision before answering and never waits for SMTP or incident fan-out."
+        },
+        {
+          "command": "bun test test/subscriptions-server.test.ts test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests. Injected times 0/599999/600000/1200000/1800000 give confirmation counts 1/1/2/3/3; rotation invalidates older token. Expiry boundary is 86399999 accepted versus 86400000 rejected from last mail. Repeat confirmation keeps first confirmed_at; unsubscribe twice is 200/200, wrong HMAC 404 preserves row, pending unsubscribe invalidates confirmation, and old id token cannot delete a resubscription. Sliding window=2 at 3599999 refuses work with invariant 202 and at 3600000 queues. Tokens are random 43 chars, stored hashed, unsubscribe is 22.43 HMAC with timingSafeEqual."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests for FIFO worker 1: at most 100 queued/in-flight jobs, one send at a time, up to 3 attempts with existing retryDelay; row/digest rechecked before every attempt; unsubscribe/rotation drops stale job. One recipient in To/envelope, exact R5 confirmation text includes 24 hours, deletion within 25 hours, configured-origin confirm/unsubscribe/notice links with one slash, stable Message-ID. Queued gauge stays 1 until final success/failure counted and becomes 0 afterwards, success counter +1 before gauge zero; shutdown aborts work and logs only dropped count, window/jobs reset on restart."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck, all tests and full coverage remain green. New metrics register only when explicitly enabled; feature-off metrics and existing channel behavior remain unchanged. README/configuration/email docs describe invariant accepted replies, bounds/cooldown/window/queue, token lifecycle, double opt-in and configured-origin mail. Production entry point still has no subscription listener until T4."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Fan out public manual events with durable retry and recovery budgets",
+      "files": [
+        "src/subscriber-fanout.ts",
+        "src/subscriber-mail.ts",
+        "src/subscriber-store.ts",
+        "src/metrics.ts",
+        "test/subscriptions-fanout.test.ts",
+        "README.md",
+        "docs/channels/email.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, complete R5 Detection/Fan-out worker 2 including durable pass algorithm and recovery, R7 detection/mail/pending metrics, D3-D6/D11-D12 and Eligibility and privacy/Fan-out failures counterexamples. Implements the whole detection and retry algorithm in one task; poll/startup integration is T4. Acceptance evidence item 1 and prior plan-review durable-budget defect.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests; focused coverage gate is not an exit-0 assertion. Fresh public manual baseline seeds three visible incidents quietly with 0 sends; next update gives 1 per confirmed row. Pending gets 0 incident messages while confirmed gets 3 for opened/update/resolved; confirmed_at=detected_at is eligible, confirmed_at=detected_at+1 is not. History is not replayed. Public projections only: drafts/private notes/internal incidents and leaked explicit private flags give 0 events/sends, later publication gives exactly 1 per eligible address, repeated content keys do not resend. No automatic incidents/reminders/warnings; reuses existing detector and notification projection, never ledger or /admin."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests for one-event-at-a-time ordering by detected_at then key, 250 rows read in 3 pages of 100 with 250 unique sends, row re-read with no await before send, and independent workers. Unsubscribe before retry prevents 0-to-be-sent recipient from further sends even across restart; in-flight send may finish; 550/refused recipient fails after 1 attempt without blocking other rows; temporary error leaves recipient for next pass. To/envelope contains only own address, bodies use exact cleaned public fields, no reason/check/component/other address, stable per-event/id Message-ID, unsubscribe link always present."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests for every Pass budget across restarts row with a real stop and NEW worker and store connection. For N=3: durable passes=2 survives stop before pass 3, exactly 3 total attempts and failed attempts=3, done E1, no fourth attempt, E2 starts. Restart after committed pass=3 while send awaits abort finalizes E1 with 0 recovery sends and starts E2 before any sleep. Stored next_pass_at=T+400 with restart T+100 asks for exactly 300 ms. Ten immediate restarts still allow at most 3 pass starts. RETRY_ATTEMPTS=0 uses 12 finite passes then advances. Restart of done event gives 0 sends. Pass increments commit before first send; terminal records and next_pass_at survive reopen; aborted send writes no delivery."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests: committed seed/empty/new detections increment pulse_notify_subscriber_detections_total exactly 1 only after rows are visible on a second SQLite connection; errors/404 increment 0. Pending-events gauge stays nonzero through sends and retry sleeps and becomes 0 only after settlement; incident success/failure counted before event leaves pending. These invariants support deploy S1-S5 barriers and never use pollDone as detection evidence."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck, complete tests and 80% coverage pass, including lifecycle/enumeration suites and unchanged channel/ledger tests. README/email docs state manual-only future-event delivery, first-enable seeding, at-least-once stable IDs, 100-row paging, finite durable retry/recovery semantics and unsubscribe race rule."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Run subscription workers and deletion commands safely in production and provide full evidence",
+      "files": [
+        "src/index.ts",
+        "src/notifier.ts",
+        "src/metrics.ts",
+        "src/subscription-settings.ts",
+        "src/subscriber-store.ts",
+        "src/subscribers-cli.ts",
+        "src/subscriber-fanout.ts",
+        "Dockerfile",
+        "test/subscriptions-security.test.ts",
+        "test/subscriptions-settings.test.ts",
+        "test/subscriptions-fanout.test.ts",
+        "test/subscribers-cli.test.ts",
+        "test/index.test.ts",
+        "test/metrics.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "docs/channels/email.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, production wiring and all remaining checks/completion evidence. Integrate R3-R5 components: validated settings before I/O, own lease/heartbeat, startup cleanup and independent hourly timer, listener before notifier, good manual reads/listedIds after channel processing, workers and shutdown; R5 CLI executable dispatch; R7 optional metrics; R8-R10; Docker host ENV; Security impact, Performance impact, Rollout order and all Acceptance evidence notify obligations. Final checks cover the whole change without changing channel ledger/config format or #570 reports.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-settings.test.ts test/subscribers-cli.test.ts test/subscriptions-fanout.test.ts test/subscriptions-security.test.ts test/index.test.ts test/metrics.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Real executable/production wiring rejects each missing/invalid required variable with exit 2 naming only variable; root-prefix refusal before any files/listeners; off opens no store/lock/worker/listener or metrics even with unwritable state directory. Separate store lease/heartbeat loss and bind/start failures unwind resources. Startup cleanup precedes listener, independent hourly cleanup deletes within 25 hours even when API polls fail, listener starts before notifier. Good non-404 manual reads and listedIds reach detection after channels; errors/404 do not seed/prune/increment detection. Stop closes listener, aborts workers/sleeps and cleanup timer, checkpoints/closes store and releases both locks; shutdown cannot reset durable retry budget."
+        },
+        {
+          "command": "bun test test/subscribers-cli.test.ts",
+          "expected": "0 failing executable-dispatch cases for subscribers delete alongside failed. With subscriptions off/no SMTP config, delete Sub-A@Example.com gives exactly 'deleted 1' then 'deleted 0', exit 0, no address in output; active service lock gives exit 2 unchanged; invalid address and wrong arity give exact fixed lines and exit 1; missing database creates no store. Second connection shows neither subscriber nor delivery rows and WAL size 0 after deletion."
+        },
+        {
+          "command": "bun test test/subscriptions-security.test.ts",
+          "expected": "0 failing tests; full flow with failing SMTP captures logs/metrics and all listener route/status answers and finds 0 subscriber addresses, confirmation/unsubscribe tokens, bearer/key/password values. Store and lock mode 0600. Each mail has exactly 1 To and no CR/LF Subject; only public incident fields used. Applicable Security impact checklist: auth-before-body, 1024-byte request cap, bounded rows/pending/window/100-job FIFO/paging, strict normalized inputs/token patterns/timing-safe comparisons, hashed confirmation storage, secure deletion/checkpoints, fixed configured-origin links, no redirects/secrets in errors, full-SHA pins and no new package. The R7 hidden-field exception exists only in status, never in notify JSON."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint/typecheck/full tests and 80% line coverage pass. Existing ledger*.test.ts, failed list/resend, health/readiness/channel suites remain green unchanged and feature-off metrics unchanged. All notify section and counterexample checks pass, including both-order membership comparisons, 0 unconfirmed sends versus 3 confirmed, 0 post-unsubscribe versus 1 other recipient, private fixtures 0 and published draft 1, retry restart counts, and detection/confirmation/pending metric ordering. README/configuration/operation/email docs cover all variables, exact R9 sentence, complete R10 inventory/retention, operator command/contact/backups, D-R1 through D-R11, no default enablement and #570 coexistence; AGENTS module descriptions and ledger-version text match current code."
+        },
+        {
+          "command": "docker build -t pulse-notify:subscriptions-check .",
+          "expected": "exit 0; the existing pinned CI Docker build succeeds. Only required image setting is PULSE_NOTIFY_SUBSCRIPTIONS_HOST=0.0.0.0; listener remains opt-in and bearer protected, and no service port is published by this change."
+        },
+        {
+          "command": "bun run start",
+          "expected": "Start once with subscriptions on, a local fake API and local SMTP stub; run curl subscribe, retrieve stub confirmation token, POST confirm, publish a public manual incident through the fake API. Record exact commands and literal result: 1 confirmation and 1 incident message at the stub. Exercise documented stopped-service subscribers delete and confirm no subsequent incident send; no address/token/secret enters logs."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Per Performance impact, five runs each on starting main and branch, report median user+sys and B - A; branch test_cpu_s <= independent notify budget 3.4 s in api/bench/budgets.json. Run api bench --b-ref notify=<branch SHA> if supported and report runtime table (disclose --rounds 1); otherwise document missing --b-ref and feature-off fixture explanation. Run uncommitted scratch benchmark outside repository: 2000 confirmed rows, one event, immediate fake sendMail, report process.cpuUsage and RSS before/after; expected <5 s CPU and <20 MiB growth, explain higher readings as non-gating."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names merged contract full SHA, bun run check and image build results, manual commands/results, both performance measurements, completed applicable Security impact evidence, documented root-hosting and other known limits. Whole-feature Compose/mail-catcher/security-log scan and real prefixed/root deployment checks are assigned to deploy in the plan; do not edit peer repositories."
+        }
+      ]
+    }
+  ]
+}
