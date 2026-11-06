@@ -5,16 +5,18 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Contract 2.4.0 defines runtime settings, channels, service reports and resend messages",
+      "title": "Contract 2.4.0 defines and validates runtime settings, channels and resend",
       "files": [
         "src/runtime-settings.ts",
         "src/notify-channels.ts",
+        "src/resend.ts",
         "src/validate-runtime.ts",
         "src/tokens.ts",
         "src/audit.ts",
         "src/index.ts",
         "test/runtime-settings.test.ts",
         "test/notify-channels.test.ts",
+        "test/resend.test.ts",
         "test/tokens.test.ts",
         "test/audit.test.ts",
         "test/smoke.test.ts",
@@ -25,27 +27,23 @@
         "docs/index.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all Files, Behavior, Checks, Tool facts and Completion evidence; R1; Contract fields; Decisions 9, 12, 14-15; Counterexamples (contract shapes); Security impact (validation and sole scopes). Implement the entire additive 2.4.0 contract publication as one task, with schemas, inferred types, nonthrowing validators that return the original object, all twelve named validators and eight named constants, exports, type fixtures, documentation and rebuilt committed dist. Keep WIRE_VERSION=1 and all old valid scopes and shapes. Define status settings and nested per-token themes, optional-key reset semantics, reports and locked dotted paths, admin/service views, database channel union and reference-only/file-channel views, bounded reports/failed lists, resend request/command/claim/result shapes and exact state vocabularies from R1. Enforce every stated bound, duplicate rule, unknown-key message and reference rule, including no literal url/password/secret in database definitions and no database file channel. Extend scopes in the stated order; probe/status/notify must each be alone and only probe accepts a location. Add the five audit actions and three kinds with action-kind agreement. Add exact literal runtime export and dist module lists, rather than deriving expectations from the exports being checked.",
+      "spec": "## Repository: contract, all Behavior, Checks, Tool facts and Completion evidence; Required behavior R1; Decisions 9, 12, 14-16; Contract fields; Counterexamples; Security impact; Performance impact (contract); Acceptance evidence 1 and 7. Ship the schemas, inferred types, never-throw same-object validators, exact constants/export inventory, sole scopes and audit enums as one coherent 2.4.0 release with committed dist. Include complete service-state shapes and never/null invariants, file-channel views without routing, report counts/totals and resend admission/final states. Export and document the aggregate definition-byte limit; its enforcement belongs to api. Keep WIRE_VERSION unchanged. Use independent literal key/export lists, including the 20 color keys from status 8b6d431.",
       "acceptance": [
         {
-          "command": "bun test test/runtime-settings.test.ts test/notify-channels.test.ts test/tokens.test.ts test/audit.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Assert valid round trips, no throws and object identity; duplicate order gives componentOrder[1]: must not repeat an id; name length 61, #12, 4pt, null settings, id Ops, PULSE_API_TOKEN refs, ../x refs, literal url and type file are rejected. Unknown url gives has an unknown field: url; database type file gives type: must be one of \"webhook\", \"slack\", \"teams\", \"email\". [\"status\",\"read\"] gives status must be the only scope; status with location is rejected; notify metadata and older scope lists pass. notify-channel.create with kind notify-channel passes and kind check fails. Bounds are name 60, order 500, channel count 100, failed list 200, claim 20, stale interval 180000, key 300 and requestId pattern ^[A-Za-z0-9_-]{16,64}$."
+          "command": "bun test test/runtime-settings.test.ts test/notify-channels.test.ts test/resend.test.ts test/tokens.test.ts test/audit.test.ts",
+          "expected": "0 fail (focused coverage is not the full-suite gate); validators preserve object identity and do not throw. Literal failures cover duplicate componentOrder, 61-character name, #12, 4pt, null setting, PULSE_API_TOKEN reference, ../x, literal url, database file channel, Ops id, status+read and status with location. File views accept file. Reports reject 201 failed entries, 201 file channels and 101 shadowed ids; never with non-null report is rejected; queued result is rejected. Notify metadata and older scope lists pass; notify-channel.create/check audit-kind mismatch fails."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, build, type fixtures and the complete test suite pass with at least 80% line coverage; smoke tests assert the literal additions from Contract fields and the runtime-settings, notify-channels and validate-runtime dist modules."
+          "expected": "exit 0; lint, build, typecheck, type fixtures, full tests and the 80% coverage gate pass; smoke tests compare the exact Contract fields export inventory and all four new dist modules to a fresh build."
         },
         {
           "command": "bun run build && git diff --exit-code -- dist",
-          "expected": "exit 0 after generated dist has been committed; a fresh build leaves no dist diff."
-        },
-        {
-          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=51e95b0eb463b27a196a33b428607bd92443e4f0' -H 'Accept: application/vnd.github.raw+json'",
-          "expected": "exit 0; inspect the pinned install/lint/typecheck/build/dist-diff/test workflow and state in the PR whether it differs from config clone bc87049."
+          "expected": "exit 0 after the rebuilt dist is committed; no dist difference remains."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR records bun run check and dist freshness results, new tests failing on ebf6bbc for missing exports and passing after, and the applicable Security impact checklist with validation and sole-scope evidence. No new runtime dependency is added."
+          "expected": "PR records check/dist output, new tests failing on ebf6bbc for missing exports then passing, applicable Security impact checklist, and the contract A/B command with full SHAs using the api harness --b-ref contract=<contract branch> from Performance impact (read/record its shared finding). Include contract test_cpu_s and build_cpu_s rows against budgets 9.0 s and 6.4 s; state rounds and any budget failure. No new runtime package."
         }
       ]
     }

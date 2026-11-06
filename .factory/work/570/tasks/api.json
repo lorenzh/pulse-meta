@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Status settings persist with an independent revision and authenticated live-service routes",
+      "title": "Status settings persist with independent revisions and service-only access",
       "files": [
         "src/migrations.ts",
         "src/runtime-store.ts",
@@ -14,115 +14,141 @@
         "src/admin-routes.ts",
         "src/admin-auth-failures.ts",
         "src/server.ts",
-        "src/main.ts",
         "src/start.ts",
-        "src/db.migrations.test.ts",
+        "src/main.ts",
         "src/runtime-store.test.ts",
         "src/server.status-settings.test.ts",
         "src/server.service-auth.test.ts",
+        "src/db.migrations.test.ts",
         "src/token-scopes.test.ts",
         "src/server.allow.test.ts",
+        "src/server.scopes.test.ts",
         "src/backup.test.ts",
         "package.json",
         "bun.lock",
         "README.md",
         "docs/rest-api.md",
-        "docs/operation.md",
         "docs/configuration.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, migration/store/status-route/auth/wiring files, status and migration portions of Behavior and Checks; Decisions 3-6 and 15; R2 status routes and shared auth/error order; Counterexamples (revisions and component order). Pin @lorenzh/pulse-contract to the full merged main SHA containing 2.4.0, regenerate bun.lock, and keep all other dependency pins and the runtime package set unchanged. Append step 9 with all five listed tables, without editing released steps. Implement status settings storage, independent status/notify generation revision infrastructure and service-report storage/validation in runtime-store.ts; channel and resend operations are completed in T2/T3. Wire GET/PUT /admin/status/settings and GET /service/status/settings, PUT /service/status/report through the real server. Add runtime-admin, status-service and notify-service permissions and canGrant aliases; share the existing throttle, reject service tokens on every admin route and admin tokens on service routes. Preserve the existing admin bootstrap rules. Enforce JSON/body/method/quoted revision rules, validate componentOrder against current applied components, and commit settings/generation/audit atomically under the existing write lock. Reports replace whole documents; freshness uses api receive time with 180 s threshold. Add bounded metric route labels and regression tests as each route is introduced. Add migration/backup preservation tests using the existing backup suite. Document the implemented routes and console-first token rollout here. Each step must leave existing consumers and the full check green.",
+      "spec": "## Repository: api, migration/storage/auth/status-route files and corresponding Checks; Decisions 3-5, 15-16; R2 status rows and common HTTP rules; Counterexamples (revisions, component order, tokens). Pin merged contract 2.4.0; append migration 9 with all five tables and both generations. Implement status settings/reports, runtime-admin/status-service/notify-service permissions, canGrant, shared auth throttle, admin/service dispatch and route labels. Keep reports outside configuration generations/audit; only configuration writes require quoted If-Match and atomically edit/bump/audit under the shared lock. Leave notify methods/routes to T2/T3. Status componentOrder uses current applied components. Document delivered routes and console-before-token rollout.",
       "acceptance": [
         {
-          "command": "bun test src/db.migrations.test.ts src/runtime-store.test.ts src/backup.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. A version-8 database opens at version 9 preserving checks, tokens, incidents and maintenance windows; the five new tables are in the backup. Status revisions equal sha256 of the literal fixture status\\n<generation> with sha256- prefix, and status saves do not change the check/config or notify revision. Reports at age 181000 ms are stale; no report is state never."
-        },
-        {
-          "command": "bun test src/server.status-settings.test.ts src/server.service-auth.test.ts src/token-scopes.test.ts src/server.allow.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Real server at 127.0.0.1:0 gives R2 literal allowed responses 200/204/304, 401 with www-authenticate: Bearer without credentials, 403 for read or service tokens on admin routes and admin tokens on service routes, and shared throttle 429 after 10 failures in 60000 ms. Wrong methods give 405 and Allow, bodies over 1048576 bytes give 413, malformed If-Match gives 400, missing gives 428, stale gives 412 with the settings changed: reload them and retry, invalid or unknown component ids give 422. A check write does not stale a status save; audits contain status-settings.replace, kind status-settings and no setting values."
+          "command": "bun test src/runtime-store.test.ts src/server.status-settings.test.ts src/server.service-auth.test.ts src/db.migrations.test.ts src/token-scopes.test.ts src/server.allow.test.ts src/server.scopes.test.ts src/backup.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Step-8 fixture keeps checks, tokens, incidents and windows at version 9; backup includes all five new tables. Real port-0 status HTTP tests cover GET/PUT/report, 405 Allow, 401 missing, 403 read/cross-service/admin-on-service/service-on-admin, shared throttle, 413 over 1048576 bytes, 400 malformed If-Match, 428 missing, 412 stale, 422 invalid or unknown component. Status save audits status-settings.replace without values; service reports audit 0 rows. 100 reports leave the status ETag equal; channel/check and status revisions remain independent. Admin GET is 200 with no-store even with If-None-Match; service GET returns 304 for matching ETag; fresh at 180000 ms, stale at 180001 ms, never without a report."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T2",
       "kind": "step",
-      "title": "Notify channel CRUD exposes file shadowing, validated reports and the failed list",
+      "title": "Notify channel edits, reports and failed views honor precedence and aggregate limits",
       "files": [
         "src/runtime-store.ts",
         "src/notify-channel-routes.ts",
         "src/admin-routes.ts",
         "src/server.ts",
-        "src/main.ts",
         "src/start.ts",
+        "src/main.ts",
         "src/runtime-store.test.ts",
         "src/server.notify-channels.test.ts",
         "src/server.service-auth.test.ts",
         "src/server.allow.test.ts",
+        "src/server.scopes.test.ts",
         "README.md",
         "docs/rest-api.md",
         "docs/configuration.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, notify-channel route and store portions of Behavior and Checks; Decisions 3-6, 12 and 15; R2 channel/report/failed routes; Counterexamples (whole-channel shadowing, create collisions, references, independent revisions and stale report). Build on T1's migration, shared lock/auth and report infrastructure. Complete database channel persistence and independent notify revision; implement GET/POST /admin/notify/channels, PUT/DELETE /admin/notify/channels/:id, GET /admin/notify/failed, GET /service/notify/channels and PUT /service/notify/report. Return all database definitions to notify, including shadowed copies. Admin views combine the reported file views and unshadowed database channels in the specified creation order; compute shadowing from last reported file ids even when stale, with [] and state never before any report. Replace reports only after full validation. The api validates reference patterns only and never resolves a reference or secret. CRUD/generation/audit are one locked transaction; extend route metrics, Allow and shared authorization coverage for every introduced R2 row. Document these routes and their limits.",
+      "spec": "## Repository: api, notify-channel/report/failed-view behavior and related Checks; Decisions 3-5, 12, 15-16; R1 notify views; R2 channel, report and failed rows; Counterexamples (whole channel, collisions, aggregate/report sizes, stale report, revisions). Extend T1 store/dispatch with channel CRUD, independent notify generation, service channel reads and observational reports, fresh/stale/never state and failed list. Shadowed ids come from the last report including a stale one; absent report means no shadowed ids. Enforce 100 records and 262144 UTF-8 bytes of JSON.stringify(definition) with the replacement candidate substituted, in the write transaction. Never resolve a secret. Preserve status/check revisions and no-store admin/304 service semantics.",
       "acceptance": [
         {
-          "command": "bun test src/runtime-store.test.ts src/server.notify-channels.test.ts src/server.service-auth.test.ts src/server.allow.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Real-server allowed cases give list/read 200, create 201 with location/etag, replace 200, delete/report 204 and conditional read 304; every row has denied 401/403 cases, including status on /admin/notify/channels -> 403. Missing/malformed/stale If-Match give 428/400/412. File-id create, shadowed PUT and file-only PUT/DELETE give 409; shadowed DELETE gives 204; unknown gives 404; body/path id mismatch gives 400. Id Ops, channel 101, literal url, wrong-prefix or traversal references give 422. Last file ids still shadow at report age 181000 ms; before a report shadowed=[] and service.state=never. A status save does not stale a channel write, and channel writes do not stale a status save. Each CRUD audit records the literal notify-channel action/kind/id with no PULSE_NOTIFY_SECRET_SENTINEL or value in audits/logs."
+          "command": "bun test src/runtime-store.test.ts src/server.notify-channels.test.ts src/server.service-auth.test.ts src/server.allow.test.ts src/server.scopes.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Real HTTP tests give create 201+location, replace 200, delete 204, body/path mismatch 400, duplicate/file collision and shadowed PUT 409, unknown/file-only PUT 404, shadowed DELETE 204. Invalid refs, literal url and database file are 422. Exactly 262144 definition bytes accepted, 262145 refused 422; 101st channel refused 422; the 7th roughly 41000-byte webhook is 422 and service snapshot stays below 1048576 bytes. Missing/stale/malformed If-Match give 428/412/400. Status save does not stale channel PUT. 100 reports do not change notify ETag or audit; admin GET stays 200 no-store with updated report; matching service GET is 304. Reports have fresh/stale/never boundary 180000/180001 ms, stale shadowedIds still hide DB copies, and trimmed 524288-byte report is accepted 204. Sentinel PULSE_NOTIFY_SECRET_SENTINEL appears in 0 audit rows/log lines."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T3",
-      "kind": "final",
-      "title": "Resend commands are idempotent, claimed safely and retained within their bounds",
+      "kind": "step",
+      "title": "Resend commands recover idempotently and expire without changing configuration revisions",
       "files": [
         "src/runtime-store.ts",
         "src/resend-routes.ts",
         "src/admin-routes.ts",
         "src/server.ts",
-        "src/retention.ts",
         "src/start.ts",
         "src/main.ts",
+        "src/retention.ts",
         "src/runtime-store.test.ts",
         "src/server.resend.test.ts",
         "src/server.service-auth.test.ts",
         "src/server.allow.test.ts",
+        "src/server.scopes.test.ts",
         "src/retention.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, resend and retention behavior and Checks; Decision 14 complete create/claim/result state machine and retention; Decision 16; R2 resend rows; Counterexamples (Resend and stale report). Implement creation step order, requestId/open-command reuse, status lookup, capacity, 20 oldest claims, 60000-ms requeue and all idempotent acknowledgement pairs in transactions under the shared lock. Only a new 202 writes notify-resend.create; no report, claim or result changes a generation or audits. Retention deletes commands older than 7 days in every state. Keep the state machine together; do not defer lost-response recovery.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.resend.test.ts src/runtime-store.test.ts src/server.service-auth.test.ts src/server.allow.test.ts src/server.scopes.test.ts src/retention.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. One requestId yields 202 then 200, one command and one audit row; different delivery with that requestId is 409. Each queued/claimed/admitted open command is reused with 200. Fresh at 180000 ms, stale at 180001 ms gives 503; absent failed item is 409. 1000 all-open rows give 503 'too many open resend commands' and retry-after 60; finished capacity is reclaimed oldest-first per Decision 14. Claim limit 20, requeue at 60000 not 59999 ms, admitted never requeued. All Decision 14 acknowledgement pairs have literal 204/409 expectations: repeat, requeued admission/final, final after lost admission and late admitted after final are accepted; contradictory final is 409; unknown id 404, queued/claimed result 422. 100 claims/reports leave notify ETag equal; service operations audit 0 rows. Seven-day retention includes open rows; expiry causes result 404. Every remaining R2 row has allowed/denied/method/body/metric-label checks."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Benchmarks exercise live settings loops and the API change has complete evidence",
+      "files": [
+        "bench/refs.ts",
+        "bench/run.ts",
+        "bench/stack.ts",
+        "bench/fixtures.ts",
+        "bench/compose.bench.yaml",
+        "bench/selftest/check-refs.ts",
+        "bench/README.md",
+        "bench/runtime-fixture.ts",
+        "bench/selftest/check-runtime-fixture.ts",
+        "package.json",
         "README.md",
         "docs/rest-api.md",
         "docs/operation.md",
         "docs/configuration.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, resend/retention files, remaining Checks and Completion evidence; Decision 14; R1 resend transitions; R2 resend admin/service rows; Counterexamples (resend and stale report); Performance impact (api); Security impact and Acceptance evidence. Complete the resend queue and admin create/get plus notify claim/result routes, using T1/T2 persistence, failed reports and auth. Implement requestId reuse, reuse of queued/claimed commands for a channel/key, fresh-report validation, at-most-20 claims, 60 s requeue, legal result transitions and 7-day/1000-row retention (oldest finished first). Command creation and its notify-resend.create audit commit atomically under the existing lock. Extend exact bounded metrics, auth/error order, size, Allow and response-schema tests to every remaining R2 row. Final verification covers the entire api section, rollback/no-secret assertions, all required CI checks, pinned workflow comparison, baseline red/green tests, Performance impact A/B evidence and manual bun start/admin-to-service status save/read evidence in the PR.",
+      "spec": "## Repository: api, all Bench behavior/self-tests/Files and Completion evidence; remaining whole-section Checks; Performance impact (harness, api, upgrade migration, shared finding); Security impact; Acceptance evidence 2, 6-7. Add repeatable --b-ref for non-api repositories without changing A or --others-ref semantics; reject unknown/api/duplicate repo with exit 2 usage. Add fixed >=32-character bench admin fixture, API admin-token file and read-only service-tokens mounts; after API readiness create service tokens and seed settings plus five reference-only webhooks before starting status/notify. On unavailable scopes leave both token variables empty and log the specified line; on 201 write readable 0644 token files. Add the fixture self-test to bench:selftest. Complete docs, whole-change checks, security and PR evidence without modifying budgets.",
       "acceptance": [
         {
-          "command": "bun test src/server.resend.test.ts src/runtime-store.test.ts src/retention.test.ts src/server.service-auth.test.ts src/server.allow.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. New requestId -> 202; repeat -> 200 with the same command id and one stored row; different requestId while queued/claimed -> 200 with the existing command. Fresh report without the key -> 409 not a failed delivery; missing or 181000-ms-old report -> 503 pulse-notify has not reported recently. Claim returns at most 20; a claim older than 60000 ms is requeued. Legal R1 results -> 204, illegal transition -> 409, absent command -> 404; admin on /service/notify/resends/claim -> 403. Retention keeps no expired finished commands beyond 7 days and at most 1000 rows under the specified policy. Audit uses notify-resend.create and command id, with zero setting values, reference names, keys or secret values."
+          "command": "bun run bench:selftest",
+          "expected": "exit 0; check-refs covers status=x only on B, unchanged other repos, --others-ref precedence and exit-2 refusals. Injected-fetch check-runtime-fixture covers 201 writing both token files and variables, seeded name/showLatency:false plus 5 channels, and 422 leaving both variables empty with 'service tokens: not available on <side>'."
+        },
+        {
+          "command": "docker compose -f bench/compose.bench.yaml config --quiet",
+          "expected": "exit 0 with defaults; benchmark stack defines the API admin tokens file, service token files/mount and PULSE_NOTIFY_SECRET_BENCH."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
-        },
-        {
-          "command": "bun run bench:selftest",
-          "expected": "exit 0; every existing benchmark self-test passes."
-        },
-        {
-          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
-          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR contains full-check output, new route tests failing with 404 on 4b3e9b1 then passing, the pinned-workflow comparison, applicable Security impact checklist with sentinel/body/auth/transaction evidence, and the Performance impact table from bun bench/run.ts --a <main sha> --b <branch sha>. Budget expectations are startup CPU/wall increase under 5 ms, idle RSS under 1 MiB, test CPU increase up to 0.5 s and unchanged load/image metrics. It records a real bun start run with an admin PUT /admin/status/settings followed by a status-token GET /service/status/settings yielding the saved literal setting and matching revision, without a restart."
+          "expected": "PR includes full check and bench:selftest outputs, new HTTP tests failing with 404 on 4b3e9b1 then passing, and all applicable Security impact checklist results (auth order, bounded bodies/aggregate size, audit/log sentinels, reference validation, pins and no new runtime package). Record a manual bun start run with local admin/status tokens: status PUT then service GET agrees. Include Performance impact api A/B command/table with full SHAs, actual rounds, old side loops off/new side loops on and budget outcomes; cold-read.ts --api <branch worktree> --seed-with <main worktree> output for migration 8->9. Publish the harness API ref and command as a shared finding for status/notify/contract."
         }
       ]
     }

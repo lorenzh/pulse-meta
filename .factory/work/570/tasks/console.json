@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Owners edit status-page settings and create status and notify service tokens",
+      "title": "Owners edit status settings and create compatible service tokens",
       "files": [
         "src/navigation.ts",
         "src/icons.ts",
@@ -18,14 +18,14 @@
         "src/token-view.ts",
         "src/token-pages.ts",
         "src/server.ts",
+        "src/server.status-page.test.ts",
+        "src/runtime-read.test.ts",
+        "src/runtime-write.test.ts",
         "src/navigation.test.ts",
         "src/icons.test.ts",
         "src/people-log.test.ts",
         "src/token-view.test.ts",
-        "src/server.status-page.test.ts",
-        "src/server.tokens.test.ts",
-        "src/runtime-read.test.ts",
-        "src/runtime-write.test.ts",
+        "src/token-read.test.ts",
         "test/fake-api.ts",
         "e2e/run.ts",
         "package.json",
@@ -36,41 +36,42 @@
         "docs/tokens.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, status-screen/shared read-write/token/People files, status and token portions of Behavior and Checks; R3 Status page and shared rules; Decisions 4, 5 and 15; Security impact (console); Counterexamples (status locks, stale report and order). Pin @lorenzh/pulse-contract to the full merged main SHA containing 2.4.0, regenerate bun.lock, and keep all other dependency pins and the runtime package set unchanged. Build the complete Owner-only /status-page feature using routeRole(settings.edit) and the existing ProtectedRoute/form pipeline, with an immediate pre-write live role/session guard. Add shared bounded runtime reads and metadata-based writes following check-write (5000 ms, Bearer, quoted If-Match where required, no retries or redirects), and all four named ApiCall values. Extend People actions/targets with all five actions now and log only identities/outcomes for saved and unknown writes, never values or reference names. Add Status service [status] and Notify service [notify] token presets, map both to admin in missingScope, render the new-scope token list, and test creation end to end. Add only the status-page nav entry here with its exhaustive icon; notifications nav/route registration arrives together in T2. Status form covers name, logo URL, all contract theme colours in both modes plus font/radius tokens, four three-way switches, unset/reset choices, and keyboard-only Move up/Move down/Reset order controls that post and preserve input without requiring script. Fresh locked fields are read-only with their via text; reject a forged change before any outbound write. Show stale/never origin-unknown, rejected, saved-not-yet-applied, old-api, token-rejected and 412 input-preserved states. Use 65536-byte status forms and escape every value. Add tests and fixture pages here, including keyboard reorder in e2e/run.ts; final T2 runs the browser gate for both families. Update settings.edit and token docs with the console-first rollout.",
+      "spec": "## Repository: console, Status page/shared read-write/token/navigation files and associated Checks; R3 Status page/shared rules; R2 status admin routes; Decisions 4-5, 15-16; Risks/Rollout (old token validator). Pin merged contract 2.4.0. Deliver Owner-only /status-page form, optional/three-way fields, 25 theme-token names with light/dark color tables, four flags and keyboard Move up/Move down/Reset component order. Fresh reports lock individual fields with origin; stale/never overrides unknown remain DB-editable; reject forged locked writes before forwarding. Implement shared HTTP reads/writes in the existing check pattern with contract 5-MiB read limit, metadata-only outcomes, no retries/redirects, 412 input retention, saved/unknown People log, role recheck at commit, form tokens and 65536-byte forms. Add both sole-scope service token presets/missingScope->admin and strict token-list compatibility. Register only delivered screen navigation; T2 adds Notifications. Update docs and browser fixtures with this screen.",
       "acceptance": [
         {
-          "command": "bun test src/server.status-page.test.ts src/runtime-read.test.ts src/runtime-write.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Owner saves via exactly 1 API write; Admin/Member/Viewer direct GET and POST /status-page give 403, as does a role change after a gated read and before write. Invalid Origin -> 403, invalid CSRF -> 403, form-token replay -> 409. Forged locked-field POST -> 422 and 0 writes. Form permits 65536 bytes and refuses larger bodies. A fresh lock shows Set by PULSE_STATUS_SHOW_CHECKS on pulse-status; at age 181000 ms report origins are unknown, database inputs editable and banner pulse-status has not reported; overrides are unknown is shown. Rejected apply, missing report, token failure, old-api 404, Saved, not yet applied and 412 input preservation are covered with literal fixture settings. Component order buttons keep edits and save literal [c,a,b], Reset yields no override; each theme/flag input maps to its R1 key and empty input removes it. Writes use timeout 5000 ms, 0 automatic retries, quoted revision and metadata outcomes; People rows are present for saved/unknown with 0 setting values."
+          "command": "bun test src/server.status-page.test.ts src/runtime-read.test.ts src/runtime-write.test.ts src/navigation.test.ts src/icons.test.ts src/people-log.test.ts src/token-view.test.ts src/token-read.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Owner saves status values; Admin/Member/Viewer receive literal 403 on direct GET/POST; role change before commit 403. Invalid Origin/CSRF 403, replay 409, oversized 65536-byte form 413. Locked fields have origin text and forged change 422 with 0 API calls. Three-way flags and clearing optional fields preserve intended absence. Stale/never keeps DB fields editable with overrides-unknown banner; rejected and appliedRevision mismatch show specified states. 412 retains input; rejected token/old API 404/invalid/timeout have states; saved and unknown outcomes write People log without values/references. Reads use contract 5-MiB limit; writes infer outcome from metadata, send Bearer and quoted If-Match once with 5000-ms timeout. Notify token list renders; Status service=[status], Notify service=[notify], both grant only through admin."
         },
         {
-          "command": "bun test src/navigation.test.ts src/icons.test.ts src/people-log.test.ts src/token-view.test.ts src/server.tokens.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Status page navigation is visible to Owner only. Status service preset sends scopes [status], Notify service sends [notify], both need admin to grant and neither sends location. A token list containing a notify token renders successfully. New People actions/target encodings round-trip with identities only and all existing token/probe flows still pass."
+          "command": "bun run check:browser",
+          "expected": "exit 0; keyboard-only Move up/Move down/Reset of 3 components saves the literal intended order, and existing browser/a11y fixtures pass."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T2",
       "kind": "final",
-      "title": "Owners manage notification channels and resend failed deliveries from protected forms",
+      "title": "Owners manage notification channels and resend failed events with stable request ids",
       "files": [
-        "src/navigation.ts",
-        "src/icons.ts",
         "src/notification-pages.ts",
         "src/notification-routes.ts",
         "src/runtime-read.ts",
         "src/runtime-write.ts",
+        "src/api-failure.ts",
         "src/people-log.ts",
+        "src/navigation.ts",
+        "src/icons.ts",
         "src/server.ts",
+        "src/server.notifications.test.ts",
+        "src/runtime-read.test.ts",
+        "src/runtime-write.test.ts",
         "src/navigation.test.ts",
         "src/icons.test.ts",
         "src/people-log.test.ts",
-        "src/runtime-read.test.ts",
-        "src/runtime-write.test.ts",
-        "src/server.notifications.test.ts",
         "test/fake-api.ts",
         "e2e/run.ts",
         "README.md",
@@ -79,27 +80,23 @@
         "docs/tokens.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, notifications files, remaining Behavior, Checks and Completion evidence; R3 Notifications/shared rules; Decision 14 (requestId/resend), Decision 15 (People log); Security impact; Acceptance evidence. Build on T1 shared runtime boundary to implement list/new/edit/delete/failed/resend pages and register the notifications nav/icon only with working routes. Protect direct GET and POST of every path with settings.edit Owner role and repeat live guard immediately before writes. Show file origin read-only, whole-channel shadowed copies with Delete only, failed newest-200 entries with hasPayload-only Resend, command-state page, first-use zero channels and every old-api/token/stale/rejected/412 outcome. Editor exposes only the allowed transport/routing fields and env/file references, never literal secret/destination values, and refuses or strips forged forbidden fields before forwarding. Delete/resend forms retain 8192-byte limit, editors use 65536 bytes and preserve the existing Origin/type/size/repeated-field/CSRF/form-token order. Generate 24 random base64url requestId characters when rendering Resend and retain that same id on a lost-answer retry while preserving form-token replay protection; follow the R2 revision requirements and metadata outcome policy. Record saved/unknown People rows without key, secret or reference text. Complete fixture/browser/accessibility tests for both screens and all token presets, screenshots/manual bun start evidence and final security/CI/pinned-workflow/baseline evidence.",
+      "spec": "## Repository: console, Notifications files/behavior, remaining Checks and Completion evidence; R3 Notifications/shared rules; R2 notify admin routes; Decisions 4-5, 12, 14-16; Security impact; Acceptance evidence 2. Extend T1 shared helpers with channel list/new/edit/delete, failed list and resend-state page plus Owner-only navigation/icons. File channels show only id/type/refs/origin and overflow total; shadowed DB copies allow only delete, stale origins stay unknown. Editors offer transport/routing fields and secret reference names only, env-prefix and secret-directory guidance, zero-channel state and channel-limit handling. Failed list shows newest <=200 plus total, Resend only with payload. Generate 24-char base64url requestId when rendering the form and preserve it after unknown/timeout so a deliberate retry sends the same id; respect replayed form token 409. Configuration writes need If-Match; resend does not. Limit delete/resend forms to 8192 bytes and status/channel forms to 65536. People log actions/targets, saved/unknown outcomes, all denial/stale/old-api/rejected/error states and docs must be complete.",
       "acceptance": [
         {
-          "command": "bun test src/server.notifications.test.ts src/runtime-read.test.ts src/runtime-write.test.ts src/navigation.test.ts src/people-log.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Owner can list/create/edit/delete/read failures/resend; Admin/Member/Viewer direct GET and POST of every /notifications path give 403, and demotion before write gives 403 with 0 writes. Invalid Origin/CSRF/replayed form token give 403/403/409. File rows cannot be edited, shadowed database rows permit only Delete, and forged locked changes give 422 with 0 writes. Editor limit is 65536 bytes; delete/resend limit 8192; over-limit forms are refused. Cover literal old-api 404, 412 with kept input, token rejected, stale/never report, rejected apply and channels:[] states. No form has a secret-value input, and a forged url field yields 0 forwarded url keys. Failed list renders at most 200 newest rows and Resend only for hasPayload=true. requestId matches ^[A-Za-z0-9_-]{24}$ and a lost-answer retry repeats the same literal id; one click creates 1 command and command state is reread on load. People rows for saved and unknown have the specified action/identity and 0 settings values, references or delivery keys."
+          "command": "bun test src/server.notifications.test.ts src/runtime-read.test.ts src/runtime-write.test.ts src/navigation.test.ts src/icons.test.ts src/people-log.test.ts src/server.status-page.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Owner creates/edits/deletes/resends and reads command state; Admin/Member/Viewer get 403 on GET/POST of every new path and role downgrade before write gives 403. Invalid Origin/CSRF 403 and replay token 409; body caps 8192/65536 yield 413 beyond. File views offer 0 edits; shadowed DB offers Delete only; overflow totals and stale/never/rejected/not-applied/zero-channel states render. 412 retains input, old-api 404/token rejection/422 limit/503 resend show states. No secret-value form exists and forged url is never forwarded. Two sends around a fake-API timeout use 2 equal requestIds of 24 base64url characters while form tokens stay single-use; only payload rows offer Resend. Configuration carries quoted If-Match, resend requires none; metadata determines outcomes; People log has prescribed actions/targets for saved/unknown and 0 settings/reference/secret values."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         },
         {
           "command": "bun run check:browser",
-          "expected": "exit 0; fixture pages for both screens pass axe and existing browser checks; keyboard-only reorder of three status components saves the literal requested order with accessible Move up, Move down and Reset order controls."
-        },
-        {
-          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
-          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+          "expected": "exit 0; all browser/a11y fixture pages including Status page and Notifications pass; keyboard-only reorder of 3 components and save still works."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR contains full-check and check:browser results, new tests failing on fc2c166 then passing, pinned-workflow comparison, applicable Security impact checklist for Owner/live guards, form order/tokens/limits, response validation, escaping and no secret forwarding. It records bun start against a local api and screenshots of both Status page and Notifications screens, plus the console-first service-token rollout warning."
+          "expected": "PR contains check/browser outputs, new tests failing on fc2c166 then passing, applicable Security impact checklist with Owner/commit guard, Origin/CSRF/replay and form-size checks, contract parsing/read bounds, unknown-outcome retry id, reference-only/no-secret assertions, redirects/pin evidence. Include manual bun start against local API with screenshots of both screens and observed save/delete/resend behavior. Document update-console-before-service-token rollout and full/dev showChecks lock."
         }
       ]
     }

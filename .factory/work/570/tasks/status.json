@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Status settings resolve field origins, theme tokens and defaults into one snapshot",
+      "title": "Status settings resolve into a validated snapshot with field origins",
       "files": [
         "src/settings.ts",
         "src/runtime-settings.ts",
@@ -20,51 +20,50 @@
         "docs/theming.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, settings/runtime-settings/theme files and precedence matrix portion of Checks; Decisions 2 and 7-10; Contract fields (status env); Counterexamples (precedence, reset, theme merge). Pin @lorenzh/pulse-contract to the full merged main SHA containing 2.4.0, regenerate bun.lock, and keep all other dependency pins and the runtime package set unchanged. Implement the settings resolution boundary before its live HTTP consumer: parse token or token-file and poll settings with kit readers, record whether every env field was actually set, validate the optional settings file and existing theme file, merge env > file > database > default per field and per theme token, and produce one effective immutable snapshot, canonical 16-hex SHA-256 fingerprint and locked fields with source/via/value. Keep a local logo file path out of reports. Move theme key authority to the contract constants and build CSS from a snapshot while preserving existing callers/default behavior. Add the two new flags with defaults true and preserve existing defaults, env-only behavior and all existing tests. With no token, database input is empty; config file and theme file still work. Startup rejects a settings-file theme together with PULSE_STATUS_THEME with exit 2. This task owns the complete pure resolution/validation model and tests; T2 owns polling and applying snapshots to the running server. Document settings, origins, defaults and token options here.",
+      "spec": "## Repository: status, settings/runtime-settings/theme-config files and corresponding Checks; Decisions 2, 7, 9-10; R1 status shapes/report trimming; Counterexamples (precedence, reset, theme). Pin merged contract 2.4.0 and use its theme constants. Record whether env fields were explicitly set, including false equal to a default and trimmed-empty unset. Resolve env > file > database > default per token/field into one snapshot with canonical-JSON SHA-256 first-16-hex fingerprint, CSS, CSP inputs, logo, component order, four switches and locked report. Validate local settings/theme files and the mutual-theme conflict; preserve env-only local logo support. Add service-token/file and settings-poll env validation without enabling live I/O until T2. Test pure resolution/report trimming locally with injected inputs; T2 owns polling/application.",
       "acceptance": [
         {
-          "command": "bun test src/settings.test.ts src/runtime-settings.test.ts src/theme-config.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. For name, logoUrl, light/dark colour tokens, one font, one radius, componentOrder and all four booleans, assert database -> file -> env precedence, locked origins, file-key removal returning to database and database-key removal returning to defaults. PULSE_STATUS_SHOW_CHECKS=false locks false despite database true; empty env does not lock. File accent #112233 beats database #445566 while database bg #ffffff survives. Reset name gives title pulse status; flags default showChecks=false, hideDetails=true, showLatency=true, showSlos=true. Fingerprints match hard-coded fixture hashes and are 16 lowercase hex characters; key order alone does not change them. Reject mixed theme files, invalid settings, URL credentials/non-https URLs and invalid poll intervals; poll default/min are 15000/1000 ms. Local logo paths do not occur in locked report values."
+          "command": "bun test src/runtime-settings.test.ts src/settings.test.ts src/theme-config.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Literal per-field precedence/reset matrix covers name, https logo without userinfo, color per mode, font, radius, componentOrder and all 4 flags in both directions. Explicit PULSE_STATUS_SHOW_CHECKS=false overrides database true and is locked; empty env is unset. File accent #112233 overrides database #445566 while database bg #ffffff remains. Removing file key restores DB, clearing DB restores defaults; absent settings retain today's defaults. Both theme sources conflict with startup exit 2; token+token-file and unreadable/empty file exit 2 without token text; empty token-file env is unset. Fingerprint is 16 hex, stable for identical canonical input and changes with effective settings. A 500-entry escaped componentOrder report is <=524288 bytes after lock values are omitted in R1 order."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T2",
       "kind": "final",
-      "title": "Running status pages apply polled settings with safe caches and browser convergence",
+      "title": "Live status changes update privacy, assets and open pages without stale answers",
       "files": [
         "src/settings-poll.ts",
-        "src/runtime-settings.ts",
-        "src/settings-poll.test.ts",
         "src/server.ts",
         "src/answer-cache.ts",
         "src/http-cache.ts",
         "src/api-filter.ts",
         "src/hidden-checks.ts",
+        "src/poller.ts",
+        "src/render.ts",
         "src/components-view.ts",
         "src/sections.ts",
-        "src/render.ts",
         "src/component-latency.ts",
-        "src/ssr.ts",
+        "public/client.js",
         "src/start.ts",
         "src/main.ts",
-        "public/client.js",
+        "src/runtime-settings.ts",
+        "src/runtime-settings.test.ts",
+        "src/settings-poll.test.ts",
         "src/server.runtime-settings.test.ts",
+        "src/poller.test.ts",
+        "src/render.test.ts",
+        "src/api-filter.test.ts",
         "src/server.privacy.test.ts",
         "src/server.cache.test.ts",
-        "src/components-view.test.ts",
         "src/answer-cache.test.ts",
         "src/http-cache.test.ts",
-        "src/api-filter.test.ts",
-        "src/hidden-checks.test.ts",
-        "src/sections.test.ts",
-        "src/render.test.ts",
-        "src/component-latency.test.ts",
-        "src/start.test.ts",
+        "src/components-view.test.ts",
+        "src/main.startup.test.ts",
         "e2e/run.ts",
         "README.md",
         "docs/configuration.md",
@@ -72,31 +71,27 @@
         "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, settings-poll/live-server/cache/filter/render/browser/wiring files, all remaining Behavior, Checks and Completion evidence; Decisions 5-10; Counterexamples (component order, visibility and in-flight response); Security impact; Performance impact (status); Acceptance evidence. Consume T1's resolution model in a 15 s nonoverlapping settings/file poll with conditional GET, 5000 ms timeout, 1 MiB bound, manual redirects and contract/wire validation. Send Bearer only to /service/status/*; send a validated report after each apply attempt and at least every 60 s. Re-read both local files on every settings poll even after 304 and with no token; no token means no database requests/reports. Bad reads/files retain the last good snapshot and report rejection, then recover. A token gates public readiness with 503 settings not loaded until the first accepted 200/304/404; old-api 404 supplies an empty database layer and logs once. Apply one snapshot atomically to branding, CSS, CSP, component order and all flags. Keep snapshot replacement, fingerprint cache/ETag keys and the in-flight response rule in this same task: reads begun with older settings must not populate a new settings key and filtering uses the snapshot current at response write. Implement all showLatency/showSlos omissions for SSR, browser and public JSON, preserving upstream calculations; order components before grouping and ignore removed ids. Wire flags/order through the existing SSR bridge src/ssr.ts as a necessary supporting path. Serve no-store /page-settings.json, data-settings and one browser reload on fingerprint change. Update accessibility/browser fixtures, runtime docs and full/dev showChecks lock documentation. Finish all per-field live tests and PR evidence, including the manual no-restart public JSON change and applicable security/performance evidence.",
+      "spec": "## Repository: status, remaining Files, live Behavior, all Checks and Completion evidence; Decisions 5-10; R1 report bounds; Counterexamples (order, visibility, in-flight and stale reports); Security impact; Performance impact (status); Acceptance evidence 2-3, 5 and 7. Poll every 15000 ms with 5000-ms timeout, wire validation, 1048576-byte limit and If-None-Match; reread local files even on 304 and with no token, retain last good on invalid data/file/outage and report attempts plus 60000-ms heartbeat only when token set. Startup with token gates public readiness until 200/304/404; 404 empties DB and logs once. Atomically apply T1 snapshots to server, CSS/ETag, CSP, logo, name, order, all flags and report origins. Keep fingerprint cache invalidation and in-flight filtering together. Withhold latency/SLO fields and rendering, add latencyMs:0 to the poller's validation copy only, preserve browser-safe imports. Serve no-store /page-settings.json, page data-settings and one reload on fingerprint change; shut down polling cleanly. Finish docs including full/dev showChecks lock.",
       "acceptance": [
         {
-          "command": "bun test src/settings-poll.test.ts src/server.runtime-settings.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Using a fake api on 127.0.0.1:0 and fake timers, every T1 field (including colour in both modes, font, radius and all booleans both directions) reaches the same running server after one poll; env/file wins with locked origin, removing a file key restores database, clearing database restores defaults. Polls use 15000 ms, timeout 5000 ms, bound 1048576 bytes and quoted conditional etag; reports follow every attempt and at most 60000 ms apart. Invalid/oversized/wire-mismatched answers, timeout and invalid/unreadable files retain literal last-good name Acme, report rejected and recover to Local on the next valid poll. Without token there are zero settings requests/reports; token before first success gives 503 with {\"error\":\"settings not loaded\"}; accepted old-api 404 makes the page ready with an empty database layer."
+          "command": "bun test src/runtime-settings.test.ts src/settings-poll.test.ts src/server.runtime-settings.test.ts src/main.startup.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Fake-clock, real port-0 server per-setting matrix applies DB changes after 1 poll with 0 restarts for name/logo/theme groups/order/all 4 flags in both directions; env/file wins with locked origin, file removal restores DB, DB clearing restores default. Poll interval 15000 ms, timeout 5000 ms, reports after every attempt and each 60000 ms; Bearer only on service paths, redirect manual. Invalid JSON, >1048576 bytes, wire mismatch, timeout or bad local file retains last good and next good poll recovers. Token before first read gives 503 settings not loaded; 404 becomes ready with empty DB. No token gives 0 reports/remote settings calls, local files still reload; token has 0 occurrences in reports/logs/errors."
         },
         {
-          "command": "bun test src/server.privacy.test.ts src/server.cache.test.ts src/components-view.test.ts src/answer-cache.test.ts src/http-cache.test.ts src/api-filter.test.ts src/hidden-checks.test.ts src/sections.test.ts src/render.test.ts src/component-latency.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. showLatency=false makes both latency endpoints [] and removes latencyObjectiveMs, latencyMs, labels/charts/daily latency from JSON, SSR and browser sections. showSlos=false removes slo and its rendered block. A hideDetails change during a gated upstream read yields reason:null and a different ETag; no old permissive entry is stored under the new fingerprint. Theme change updates CSS body and ETag; a new logo origin updates CSP img-src; /page-settings.json changes and has cache-control:no-store. [x(g1),y(g2),z(g1)] ordered by [y] renders y,x,z in groups g2:[y],g1:[x,z]; missing ids are ignored and no order preserves the original grouping. Tests compare literal bodies/omissions/order rather than deriving expected answers from the filter."
+          "command": "bun test src/poller.test.ts src/render.test.ts src/api-filter.test.ts src/server.privacy.test.ts src/server.cache.test.ts src/answer-cache.test.ts src/http-cache.test.ts src/components-view.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Populated result without latencyMs refreshes with no error kind and no placeholder in returned check; renderLatency returns ''. showLatency=false returns [] on both latency routes, removes latencyObjectiveMs/result.latencyMs and all SSR labels/charts/daily values; showSlos=false removes SLO blocks and fields. Components x(g1),y(g2),z(g1) ordered by [y] yield y,x,z and groups g2 then g1, removed ids ignored. Changing logo updates CSP origin; theme.css body/ETag and page-settings fingerprint change. Privacy change during upstream read returns reason:null with different ETag, stores 0 old-fingerprint answers under new fingerprint and filters using current snapshot at response write."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         },
         {
           "command": "bun run check:a11y",
-          "expected": "exit 0; existing axe/keyboard checks pass and one open page reloads exactly 1 time after the settings fingerprint changes, showing the new literal name and zero checks-list entries."
-        },
-        {
-          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
-          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+          "expected": "exit 0; Chromium/a11y checks pass, an open page reloads exactly 1 time on a new fingerprint and shows the new name with no checks list; showLatency:false with populated results continues successful browser refreshes with 0 latency labels."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR contains full-check and check:a11y output, new tests failing on 8b6d431 then passing, the pinned-workflow comparison and the applicable Security impact checklist (token/report redaction, 1 MiB, logo/CSP, manual redirects and stale/in-flight privacy). It records bun start against a local api with a status token, a database showChecks edit and the changed /api/checks on the same process. Record status performance evidence against the spec's under-1-MiB idle RSS, under-2% load CPU and under-10-ms startup increases, using the existing api benchmark and documenting its --others-ref behavior."
+          "expected": "PR includes check/a11y output, tests failing on 8b6d431 then passing (poller baseline fails at checks[0].locations[0].result.latencyMs), and applicable Security impact checklist evidence including cache privacy, https/logo CSP, request/report limits, sentinels, redirect manual and dependency pin. Manual bun start with local API/status token shows a DB showChecks change alters /api/checks with 0 process restarts. Read the shared API harness finding; paste Performance impact status A/B command with full SHAs and --b-ref status=<branch>, actual rounds, both independently built sides, remote loops enabled on B, table/budget outcomes and comparison to specified startup/load/RSS/test increases."
         }
       ]
     }

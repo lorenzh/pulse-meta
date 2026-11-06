@@ -5,23 +5,21 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Notify validates reference-only channels and preserves remote definitions in ledger format 5",
+      "title": "Notify accepts database-only configuration and durable format-5 state safely",
       "files": [
         "src/config.ts",
         "src/channel-schema.ts",
         "src/remote-channels.ts",
-        "src/channel-set.ts",
         "src/ledger.ts",
+        "src/failed-cli.ts",
         "src/index.ts",
-        "src/remote-channels.test.ts",
-        "src/channel-set.test.ts",
-        "src/ledger.test.ts",
-        "src/config.test.ts",
-        "src/index.test.ts",
-        "test/ledger.v4.test.ts",
-        "test/failed-cli.test.ts",
+        "test/remote-channels.test.ts",
+        "test/ledger.v5.test.ts",
         "test/config.test.ts",
         "test/index.test.ts",
+        "test/ledger.test.ts",
+        "test/failed-cli.test.ts",
+        "test/webhook.test.ts",
         "package.json",
         "bun.lock",
         "README.md",
@@ -31,26 +29,22 @@
         "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, config/schema/remote validation/channel-set/ledger files and related Checks; Decisions 2, 11-13 and format-5 portion of 14; Contract fields (notify env); Counterexamples (references and whole channel); Security impact (local reference boundary). Pin @lorenzh/pulse-contract to the full merged main SHA containing 2.4.0, regenerate bun.lock, and keep all other dependency pins and the runtime package set unchanged. Implement token/token-file, poll settings and secret-directory config, database-only startup with optional/empty file only when token exists, and file webhook urlEnv/urlFile while preserving literal file url and existing local secret rules. Expose per-channel resolution with the stricter contract shapes plus notify-local prefix/basename/realpath rules for database channels; no database file transport and no secret values in durable remote definitions. Keep api calls/poll scheduling for T2. Implement the pure whole-channel effective-set/per-id definition-and-resolved-secret-digest diff used by T2, with last-good-per-channel fallback. Migrate the ledger from 4 to 5, preserving every entry, alert state and recipient mark; create remote_channels and resend_commands tables now, complete their transactional read/write APIs and persist reference-only last-good remote definitions. No separate migrations in later tasks. Prepare durable command admission/result operations that T3 consumes without splitting Ledger.resend and command bookkeeping across non-atomic writes. Wire startup mode enough for zero-channel and cached-remote startup to work while the existing service remains green. Tests in the plan's new src paths coexist with the current test/ suites; update the existing format and CLI regression suites rather than assuming src tests already exist. Document ledger format 5, no downgrade and offline CLI behavior in AGENTS.md/operation docs.",
+      "spec": "## Repository: notify, configuration/reference validation and ledger-format files plus corresponding Checks; Decisions 11-12 and durable ledger parts of 13-14; R1 database definitions and resend outcomes; Counterexamples (References and durable Resend); Security impact (local references/atomic writes). Pin merged contract 2.4.0. Allow optional/empty file only with service token; add token/file, polling and secret-dir settings; keep old file-only mode. File webhook accepts exactly one literal url/urlEnv/urlFile while DB definitions require contract refs. In remote-channels implement per-channel validation/resolution with notify-local env prefix and basename/realpath confinement, no literal DB url/file transport. Migrate ledger 4->5 preserving older supported migration paths and all entries; persist reference-only remote definitions and durable command rows. Implement atomic first-command admission plus failed->pending, id dedup, terminal settlement updating admitted rows in the SAME ledger transaction, postedState tracking and safe 7-day prune here with unit tests. T2 consumes remote storage, T3 consumes command storage; no external polls in this task. Offline CLI uses format 5, still exit 2 under lock; docs/AGENTS state format 5 and unsupported downgrade.",
       "acceptance": [
         {
-          "command": "bun test src/config.test.ts src/remote-channels.test.ts src/channel-set.test.ts src/index.test.ts test/config.test.ts test/index.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Token permits no file or channels:[]; no token retains required-file/nonempty behavior. Defaults/minima are channel poll 15000/1000 ms and command poll 5000/1000 ms. Local literal webhook URL still works. Database PULSE_API_TOKEN/PULSE_NOTIFY_API_TOKEN env refs and ../api/token, a/b or . file refs fail; missing secret dir gives secret files are not enabled; an escaping symlink is refused. Missing/empty/unreadable refs retain the last good channel and report a fixed reason, never a value. File ops slack beats same-id database ops webhook as a whole; no routing/destination field mixing. Identical canonical definitions and secret digests are unchanged; changed secrets produce a replace; removed file ops reveals the database copy."
-        },
-        {
-          "command": "bun test src/ledger.test.ts test/ledger.v4.test.ts test/failed-cli.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. A version-4 fixture opens at user_version 5 with every entry, payload, recipient-progress and alert-state row preserved. Reopen recovers reference-only remote definitions and handled command ids/results; sentinel resolved secret values never enter remote_channels. Command admission and moving a failed key to pending commit or roll back together. Offline failed list/resend still works on format 5; service lock still gives CLI exit 2 and newer format is refused by the old version check."
+          "command": "bun test test/config.test.ts test/remote-channels.test.ts test/ledger.v5.test.ts test/ledger.test.ts test/index.test.ts test/failed-cli.test.ts test/webhook.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. With token, missing file/empty channels start; without token missing/empty file exits 2. Both token sources or unreadable/empty token file exit 2 without token value; trimmed-empty token-file env is unset. File webhook exactly-one url/ref enforced; DB PULSE_API_TOKEN, literal url, file transport, ../api/token, a/b, . and escaping symlink are refused; file ref without secret dir reports 'secret files are not enabled'. Format 4->5 preserves every entry, delivered/refused SMTP recipients and supported legacy loads; older notify refuses v5. Remote definitions retain 0 resolved secret values. Command row and failed->pending roll back together on failure; repeat id never re-executes; terminal settle updates admitted rows atomically. Prune keeps every unposted/open row and removes only posted finished rows older than 7 days. Offline failed CLI remains usable and lock refusal exits 2."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T2",
       "kind": "step",
-      "title": "Notify reloads channels without losing pending jobs or sending old incidents",
+      "title": "Notify reconciles live channels without duplicate ownership or historical floods",
       "files": [
         "src/remote-channels.ts",
         "src/channel-set.ts",
@@ -60,77 +54,80 @@
         "src/metrics.ts",
         "src/api.ts",
         "src/index.ts",
+        "src/config.ts",
         "src/ledger.ts",
-        "src/remote-channels.test.ts",
-        "src/channel-set.test.ts",
-        "src/notifier.reconcile.test.ts",
-        "src/index.test.ts",
-        "test/delivery.test.ts",
+        "test/remote-channels.test.ts",
+        "test/channel-set.test.ts",
+        "test/reconcile.test.ts",
+        "test/service-report.test.ts",
+        "test/support.ts",
+        "test/config.test.ts",
+        "test/index.test.ts",
         "test/metrics.test.ts",
         "test/routing-change.test.ts",
+        "test/delivery.test.ts",
         "README.md",
         "docs/configuration.md",
         "docs/channels.md",
         "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, remote polling/channel reconcile/report/metrics/client/wiring files, live-channel Behavior and Checks; Decisions 5-6 and 11-13; Counterexamples (whole-channel shadowing and references); Security impact (transport/redaction). Build on T1's ledger and resolution boundary: poll all database definitions every 15 s with conditional etags and re-read the local file by bytes hash at each poll; validate wire/body with manual redirects, timeout 5000 ms and 1 MiB limit. Send Bearer on /service/* only, keep public feeds unauthenticated, support old-api 404 fallback/log once and api-down cold startup from the persisted snapshot. Atomically reconcile the effective set by id and report file-channel views, rejections and newest-200 failed entries plus total after every apply attempt and at least each 60 s. Keep worker lifecycle and pending-job handoff in this one task: stop new jobs on replaced workers, let an in-flight attempt end/time out, transfer waiting/pending keys without double ownership; removals keep pending ledger state, re-additions resume it once, new/widened routes seed quietly, email progress survives type changes. A slow channel must not block other workers or the settings poll. Register metric series as channels are installed. Provide delivery final-result hooks for T3, including dropped outcomes and channel/key identity. Apply every routing field live and finish its matching/nonmatching tests. Document routes, polling, origins, last-good fallback and secret-rotation behavior.",
+      "spec": "## Repository: notify, live reload/reconcile/report/metrics behavior and matching Checks; Decisions 2, 5-6, 11-13; R1 report views/trimming; Counterexamples (whole channel, report sizes, references). Extend T1 with 15000-ms channel polling, fixed 5000-ms timeout/1048576-byte service-answer bound independent of feed limit, ETag/304, byte-hash local-file rereads, last-good DB persistence/cold restore, and 404 empty DB/log once. Public feeds keep no token; service calls alone use Bearer, redirect manual. Keep the complete worker handoff algorithm here: unchanged definition+secret digest kept, changed worker stops new work and finishes/times out in-flight work, waiting/pending keys move to one new owner; remove keeps pending, re-add resumes without reseed, wider routing seeds quietly, type changes retain recipient progress used only by email. Slow channel must not block others or polling. Install metric series dynamically; produce sanitized report after attempts and at least each 60000 ms with whole-id shadowing, rejected/failed lists and R1 size trimming. Stop loops before closing ledger. Tests of delivery/routing belong here; T3 adds live command polling.",
       "acceptance": [
         {
-          "command": "bun test src/remote-channels.test.ts src/channel-set.test.ts src/notifier.reconcile.test.ts src/index.test.ts test/delivery.test.ts test/metrics.test.ts test/routing-change.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. A zero-channel database-only process installs a webhook after 1 poll and delivers a new matching incident exactly 1 time while sending 0 historical incidents. checks, excludeChecks, components, excludeComponents, alerts, sendIncidents and remindEverySeconds each have matching/nonmatching live-change cases; wider routes send 0 backlog events. File ops overrides the whole database ops channel and hits only the file receiver; removing the file channel live unshadows its database copy. A pending retry after destination replacement reaches only the new receiver once; remove -> 0 sends, re-add -> 1 send. A slow worker does not block another worker or the 15000-ms poll. Same id never has a pending key in old and new workers simultaneously; recipient progress is retained through type changes."
+          "command": "bun test test/remote-channels.test.ts test/channel-set.test.ts test/reconcile.test.ts test/index.test.ts test/routing-change.test.ts test/delivery.test.ts test/metrics.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Zero-channel DB-only process installs next-poll webhook, sends exactly 1 new matching incident and 0 historical incidents. Each checks/excludeChecks/components/excludeComponents/alerts/sendIncidents/remindEverySeconds field has matching and nonmatching live-change cases; widening sends 0 backlog events. File ops wholly shadows DB ops and only file receiver is hit; live removal unshadows DB ops. Destination change hands a pending retry to new receiver exactly once with 0 double-owned keys. Removal sends 0, re-add sends 1 without reseeding; unchanged definition+secret digest retains worker, secret rotation replaces it, type change preserves recipient progress. Slow worker does not block another worker or 15000-ms poll; newly installed channel metrics exist."
         },
         {
-          "command": "bun test src/remote-channels.test.ts src/notifier.reconcile.test.ts src/index.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Bad JSON, wire mismatch, over-1048576-byte body, timeout or invalid local file keeps the last-good channel and valid next poll recovers. 304 still checks the local file; no token retains file-only behavior with zero service calls. 404 supplies empty remote settings and logs once; api outage at cold start restores the reference-only ledger snapshot. Reports occur after every attempt and each 60000 ms, include at most 200 failed entries newest first and correct literal total, and exclude payloads/destinations. Sentinel secret appears 0 times in report bodies, logs and metrics; public feeds carry 0 authorization headers and service calls use Bearer with redirect:manual."
+          "command": "bun test test/remote-channels.test.ts test/service-report.test.ts test/reconcile.test.ts test/index.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Polls use 5000-ms timeout, ETag/304 and service-only Bearer; feed calls carry 0 authorization headers. Invalid JSON/wire, >1048576-byte answer, timeout or bad local file retains last good and next good poll recovers; 304 still rereads file, 404 empties DB/logs once, tokenless mode makes 0 service calls, API-down cold start restores references from ledger. Missing/empty/unreadable secret retains last good version with rejection. Reports at apply attempts and <=60000-ms heartbeat include all shadowedIds even beyond first 200 file views; views hold no routing/payload/destination. 201+ file/failed entries retain literal totals; long file ids truncate to 199 chars+ellipsis and long failed ids are omitted/count toward total. Escaped report trims failed then fileChannels to <=524288 bytes. Sentinel resolved secret appears 0 times in report/log/metric."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         }
       ]
     },
     {
       "id": "T3",
       "kind": "final",
-      "title": "A claimed resend sends a failed event once and reports durable outcomes",
+      "title": "Live resend survives lost acknowledgements and sends one additional delivery",
       "files": [
         "src/resend-commands.ts",
-        "src/service-report.ts",
         "src/notifier.ts",
         "src/delivery.ts",
+        "src/ledger.ts",
         "src/api.ts",
         "src/index.ts",
-        "src/ledger.ts",
-        "src/resend-commands.test.ts",
-        "src/ledger.test.ts",
-        "src/index.test.ts",
+        "src/service-report.ts",
+        "test/resend-commands.test.ts",
+        "test/ledger.v5.test.ts",
+        "test/ledger.test.ts",
+        "test/index.test.ts",
+        "test/support.ts",
         "test/failed-cli.test.ts",
         "test/email-smtp.test.ts",
+        "test/service-report.test.ts",
         "README.md",
+        "AGENTS.md",
         "docs/configuration.md",
         "docs/channels.md",
-        "docs/operation.md",
-        "AGENTS.md"
+        "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, resend-command/live-enqueue/result-callback files, remaining Checks and Completion evidence; Decision 14; R1 resend states; R2 notify claim/result routes; Counterexamples (resend); Security impact; Performance impact (notify); Acceptance evidence. Consume the T1 durable command APIs and T2 mutable workers to poll claims every 5 s, admit only failed entries with payloads into the installed worker immediately and post admission then final results. Durable command-id bookkeeping makes a replay report the stored result without re-running Ledger.resend, even when the first resend failed again. Retain atomic admission plus ledger pending-state change and recover/repost after process restart; keep the event key, webhook idempotency-key and email Message-ID. Handle not-failed/no-payload/channel-unavailable and admitted -> delivered/failed/dropped, including stale reminders and partial SMTP recipient progress. Shut down all settings/command/report loops before closing the locked ledger. Recheck CLI offline operation and lock exit 2 on format 5. Finish all section tests, docs, full checks, security checklist, pinned workflow comparison, baseline red/green, performance and manual live-channel/resend evidence in the PR.",
+      "spec": "## Repository: notify, live resend/claim/result wiring, remaining Checks and Completion evidence; Decision 14 complete notify-side command protocol; R1/R2 claim/result shapes; Counterexamples (Resend); Security impact; Performance impact (notify); Acceptance evidence 2-4 and 7. Use T1 atomic ledger command/admission/settlement and T2 installed workers. Poll claims every 5000 ms and enqueue admitted pending payloads after transaction commit. Known command id only posts stored state; never rerun resend. Post oldest 20 unacknowledged states per poll, persist postedState on 204/404/409, log command/state once for refusals; retry timeout/network/5xx. Admission/final response loss, requeue and crash after commit must recover without another admission or send. Cover delivered/failed/dropped/not-failed/no-payload/channel-unavailable, unchanged idempotency-key/Message-ID and refused SMTP recipients only. Finish shutdown, CLI regression, docs, full/security/performance/manual evidence.",
       "acceptance": [
         {
-          "command": "bun test src/resend-commands.test.ts src/ledger.test.ts src/index.test.ts test/failed-cli.test.ts test/email-smtp.test.ts",
-          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Claim a failed payload-bearing key, get admitted then delivered, and count exactly 1 extra receiver request with the unchanged idempotency-key. Claiming the same command id again, including after reopen and after a resend fails again, sends 0 additional requests and posts the stored result. A simulated crash/requeue after 60000 ms does not admit it twice. Resending 42:opened in channel a leaves channel b failed; delivered key -> not-failed, legacy payloadless entry -> no-payload, absent installed channel -> channel-unavailable. Stale reminder ends dropped. Fake SMTP retries only refused recipients, with 0 requests for previously delivered recipients and unchanged Message-ID. Offline CLI works on version 5 and exits 2 under the running service lock."
+          "command": "bun test test/resend-commands.test.ts test/ledger.v5.test.ts test/ledger.test.ts test/index.test.ts test/failed-cli.test.ts test/email-smtp.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Claim failed payload key -> admitted -> delivered, exactly 1 extra receiver request with the same idempotency-key. Repeat id after reopen or re-failure sends 0 additional requests and posts stored state. Lost admission and 60000-ms requeue, lost final response, final replay from queued/claimed and crash between commit/enqueue recover with 1 send; same-state and late admitted acknowledgements accept 204. 404/409 stop reposting with 1 sanitized log; timeout/network/5xx retries; at most 20 oldest pending results per poll. Channel a resend leaves channel b failed; delivered -> not-failed, no payload -> no-payload, absent channel -> channel-unavailable; stale reminder ends dropped. Partial SMTP retries only refused recipients, 0 repeats to delivered recipients, same Message-ID. All loops stop before ledger close; offline CLI works on format 5 and exits 2 while locked."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
-        },
-        {
-          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
-          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "The PR contains full-check output, the specified new tests failing on c79f0b7 then passing, pinned-workflow comparison, ledger migration/downgrade/CLI notes and applicable Security impact checklist with prefix/directory/symlink/body/redirect/secret-sentinel evidence. A manual bun run start against local api and fake receiver with a notify token shows a database channel installed and a failed delivery resent without process restart, exactly 1 extra hit with the same key. Record notify performance evidence against the spec's under-20-ms migration startup CPU and under-1-MiB idle RSS increases using the existing api benchmark and its documented ref behavior."
+          "expected": "PR includes check output, new tests failing on c79f0b7 then passing, applicable Security impact checklist (scope/bearer boundaries, 1-MiB answers, prefix/directory/symlink rules, report trimming, sentinels, transactions, redirect manual, pins), and downgrade/CLI limitations. Manual bun run start with local API/notify token/fake receiver shows DB channel install and failed resend without restart and exactly 1 extra hit. Read shared API harness finding; paste Performance impact notify A/B command with full SHAs and --b-ref notify=<branch>, rounds, loops on B, table/budget outcomes; explicitly report test_cpu_s against 3.4-s budget and any FAIL budget for owner decision without changing budgets. Include non-gating timing of format-4 ledger with 10000 entries opened as format 5."
         }
       ]
     }
