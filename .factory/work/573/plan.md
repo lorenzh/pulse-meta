@@ -25,7 +25,7 @@ notifies its operator channels exactly as before.
 - Issue #573, its comments and the "Added requirements (manager decision after the spec review)"
   in the issue body: no address enumeration under every limit, a consistent URL prefix or a
   stated and checked root-hosting rule, and visitor information with an operator contact
-  setting. R8, R9 and R10 implement them; D15-D18 record the choices.
+  setting. R8, R9 and R10 implement them; D15-D19 record the choices.
 - The first spec of this feature (closed PR #814, head `55f1da0d`) passed `spec/plan-review`
   before the manager added these requirements. This spec is that version, revised. Its two
   rules that broke the new requirements are changed: notify no longer answers `429` to an
@@ -35,7 +35,7 @@ notifies its operator channels exactly as before.
   this spec PR.
 - The issue review (`.factory/work/573/issue-review.md`, the second one, written for the added
   requirements). It has no blocking question and lists open points 1-6 and derived checks 1-9.
-  Decisions D1-D18 below settle the open points; "Acceptance evidence" maps the checks.
+  Decisions D1-D19 below settle the open points; "Acceptance evidence" maps the checks.
 - #460, section 12 (as quoted in the issue review): subscriber mail belongs to pulse-notify with
   its own settings, never to the console. This spec follows it. The console does not change.
 - #568 (closed, complete): drafts, notes and internal incidents. Its public projection is on
@@ -60,6 +60,16 @@ notifies its operator channels exactly as before.
   fan-out (deploy step "Barriers"); the fan-out pass budget is stored and survives restarts (R3
   `events.passes`, R5 "Pass budget"); and the one place where a token appears in an HTTP answer
   is defined once (R7 "Token exception") and used the same way in R2 and the security checks.
+- The `spec/plan-review` of this version named two more gaps, fixed here:
+  - The notice promised immediate deletion and deletion of unconfirmed data within 25 hours,
+    but a confirmation job in notify's memory kept the address until a FIFO worker reached it,
+    also behind a blocked send. D19 and R5 "Confirmation mail" now cancel queued jobs in the
+    same step that deletes or replaces their row, drop expired jobs, bound the one attempt in
+    flight, and the notice (R10) states that bound. The fan-out reads only ids per page (R5).
+  - The `full` override needed `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` through a secrets
+    volume, but `secrets-init` had no path for it. D14 and the deploy section now give it one:
+    an optional host file `secrets/subscriptions-smtp-password` that `secrets-init` copies to
+    the notify secrets volume, with tests for its modes, its secret-free output and its absence.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` is
   answered `HTTP 404` in this run. So there are no findings yet, which is normal for a feature
   without children.
@@ -122,7 +132,10 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
   (`deploy/e2e/notify.json`). Mailpit is pinned in `deploy/common/services.yaml` and used only by
   the demo. Secrets reach containers only through `secrets-init` (`deploy/AGENTS.md`, "Rules").
   `secrets-init.mjs` writes probe, admin and console secrets only
-  (`deploy/scripts/secrets-init.mjs:1-14`). CI job `e2e-dev` requires two `ok:` lines
+  (`deploy/scripts/secrets-init.mjs:1-14`); notify gets no secrets volume in `full`
+  (`deploy/full/compose.yaml:73-80`), and no setup provisions an SMTP password today. A host
+  input file must be regular, not a symlink, without group or other bits
+  (`readHostFile`, `secrets-init.mjs:42-56`). CI job `e2e-dev` requires two `ok:` lines
   (`deploy/.github/workflows/ci.yml:304-306`).
 - **meta**: `docs/approved-packages.md:58` approves mailpit for the `demo` setup only.
 
@@ -189,13 +202,24 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
   its `Message-ID` is the same, so a receiver can drop the copy. Exactly once is not promised.
 - **D12 An unsubscribe answered before a send starts stops that send.** Notify re-reads the row
   right before each SMTP send, in the same process and without an `await` between the read and
-  the start of the send. A send that already started finishes.
+  the start of the send. A send attempt that already started finishes or times out; it is not
+  aborted, because the message may already be with the mail server. Every subscriber send
+  attempt (confirmation and incident) has the timeout `min(PULSE_NOTIFY_TIMEOUT_MS, 60000)`
+  (the whole-attempt timer of `sendMail`, `notify/src/channels/smtp-send.ts:207-211`), so an
+  attempt in flight holds an address for at most 60 s after a delete.
 - **D13 Contract version.** The contract change is additive: a new minor version, `WIRE_VERSION`
   stays `1`. Its version is the next minor after the version on contract `main` when it merges:
   `2.5.0` on today's `main` (`2.4.0`, #806 merged), also when #815's `2.4.1` merges first.
 - **D14 Secrets through `secrets-init`.** The bearer token between status and notify and the HMAC
   key are two new host secrets. `scripts/init-secrets.sh` creates them, and `secrets-init` copies
   them into new status and notify secret volumes only when `PULSE_SECRETS_SUBSCRIPTIONS=on`.
+  The SMTP password of the subscriber mail is a third, optional host secret,
+  `secrets/subscriptions-smtp-password`, that the operator writes (it comes from the mail
+  provider, so `init-secrets.sh` never creates it). With `PULSE_SECRETS_SUBSCRIPTIONS=on`,
+  `secrets-init` checks it when it exists and copies it to the notify secrets volume as
+  `subscriptions-smtp-password`; when it does not exist, it writes no password and removes a
+  copy left by an earlier run. This is the only supported way to give notify that password in
+  the deploy setups (deploy `AGENTS.md`, "Rules": secrets only through `secrets-init`).
 - **D15 One public answer for every valid address.** Status answers every `POST /subscribe` whose
   address passes the address rule with the same `200` page, whatever notify answered (`202`,
   `503`, a timeout, a network error, a bad body) and whether status called notify at all (its
@@ -220,6 +244,14 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
   resend` (`notify/src/index.ts:350-380`). The visitor asks the contact; the operator runs the
   command. Deleted rows are overwritten in the live database (`secure_delete`, a WAL checkpoint);
   copies in backups, in mailboxes and at mail providers are outside Pulse and the notice says so.
+- **D19 A delete reaches the confirmation queue at once.** Worker 1's queue lives in notify's
+  memory and holds the address and the raw tokens of each job. Every transaction that deletes a
+  `subscriptions` row (unsubscribe, cleanup, the expired-row step of subscribe) or replaces its
+  confirmation digest (a new confirmation mail) removes that row's queued jobs from the queue in
+  the same synchronous step after the commit, before the operation answers. This does not wait
+  for the worker: a job behind a blocked send is removed while that send stays blocked. A job
+  whose link expired is dropped too (R5 "Confirmation mail"). The one attempt already in flight
+  is the only exception (D12); the notice says that one email can still arrive (R10).
 
 ## Scope
 
@@ -231,7 +263,8 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
 - notify: settings with the root hosting rule, the subscription store, the private listener,
   confirmation mail, detection and fan-out of manual events to confirmed subscribers, cleanup,
   the `subscribers delete` command, metrics and docs.
-- deploy: `secrets-init` and `init-secrets.sh` for the two secrets, a test-only overlay with
+- deploy: `secrets-init` and `init-secrets.sh` for the two secrets, `secrets-init` for the
+  optional SMTP password, an operator override for `full`, a test-only overlay with
   mailpit, an e2e scenario that reads real mail and compares known and unknown addresses below
   and at capacity, CI and docs.
 - meta (this spec PR): `docs/approved-packages.md` allows the pinned mailpit in the test-only e2e
@@ -384,8 +417,8 @@ When on:
 | `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_HOST` | required | the `smtp.host` rule (`channel-schema.ts:88-93`). |
 | `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PORT` | `587` | 1..65535. |
 | `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_TLS` | `starttls` | `starttls`, `tls` or `none`. |
-| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_USERNAME` | unset | single line. |
-| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` | unset | a file read once at startup; only with a username. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_USERNAME` | unset | single line. With a username, `SMTP_TLS=none` is refused unless the host is loopback (the channel rule, `notify/src/config.ts:139-142`), and the password file is required. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` | unset | read once at startup with `readSecretFile` (one line, trimmed, not empty; `kit/src/secret-file.ts:21-41`, equal at the pin `236df214`); set only together with a username, else exit `2` (the channel rule, `notify/src/config.ts:133-136`). The deploy setups point it at `/run/pulse/subscriptions-smtp-password` (D14). |
 | `PULSE_NOTIFY_SUBSCRIPTIONS_TOKEN_FILE` | required | the bearer token of status; one line, at least 32 printable ASCII characters. |
 | `PULSE_NOTIFY_SUBSCRIPTIONS_KEY_FILE` | required | the HMAC key; exactly 64 lowercase hex characters (32 bytes). |
 | `PULSE_NOTIFY_SUBSCRIPTIONS_HOST` | `127.0.0.1` | listener address. The image sets `0.0.0.0`. |
@@ -399,8 +432,10 @@ When on:
   or a file's content. Every setting is read and checked before any file is opened, so a refused
   start creates no store, lock or listener. With `off`, no listener, store, lock or worker
   starts.
-- `PULSE_NOTIFY_SMTP_CLIENT_NAME` and the retry and timeout settings
-  (`PULSE_NOTIFY_RETRY_*`, `PULSE_NOTIFY_TIMEOUT_MS`) also apply to subscriber mail.
+- `PULSE_NOTIFY_SMTP_CLIENT_NAME` and the retry settings (`PULSE_NOTIFY_RETRY_*`) also apply to
+  subscriber mail. `PULSE_NOTIFY_TIMEOUT_MS` (default `5000`, `notify/src/config.ts:402`) applies
+  capped at 60000 ms: a subscriber send attempt has the timeout
+  `min(PULSE_NOTIFY_TIMEOUT_MS, 60000)` (D12).
 - **Store**: a SQLite file (`bun:sqlite`, WAL, `synchronous = FULL`, `secure_delete = ON`),
   created with mode `0600` under its own lease lock `<store>.lock` (the existing `acquireLock`,
   `notify/src/ledger-lock.ts`). After every transaction that deletes a `subscriptions` row
@@ -431,10 +466,13 @@ When on:
   SUBSCRIPTION_CONFIRM_TTL_MS`); delete `seeded` and `done` events (with their deliveries) whose
   `settled_at` (or `detected_at` for `seeded`) is older than `PULSE_NOTIFY_STATE_RETENTION_DAYS`
   (`notify/src/config.ts:434`, default 30) and whose `manual_id` is not in the `listedIds` of the
-  last good manual read (before the first good read no event is pruned). An expired `pending` row
-  is treated as absent also before cleanup removes it. So while notify runs, an unconfirmed row is
-  gone at most `SUBSCRIPTION_CONFIRM_TTL_MS + SUBSCRIPTION_CLEANUP_INTERVAL_MS` (25 hours) after
-  its last confirmation mail; a stopped notify deletes it at its next start, before it answers
+  last good manual read (before the first good read no event is pruned). For each `pending` row
+  it deletes, cleanup cancels that row's queued confirmation jobs (D19, R5 "Queue
+  cancellation") right after the delete committed. An expired `pending` row is treated as absent
+  also before cleanup removes it, and its job is never sent (R5 "Job expiry"). So while notify
+  runs, an unconfirmed row and its queued job are gone at most `SUBSCRIPTION_CONFIRM_TTL_MS +
+  SUBSCRIPTION_CLEANUP_INTERVAL_MS` (25 hours) after its last confirmation mail; a stopped notify
+  holds no job (the queue is in memory) and deletes the row at its next start, before it answers
   any request.
 
 ### R4 Notify: the listener
@@ -464,8 +502,8 @@ Times come from the injected `now`.
   decision is made, and its write and queue entry are committed, before the answer is sent. No
   path waits for SMTP. Each path is one transaction. The outcome (a label of
   `pulse_notify_subscription_requests_total`, R7) is noted in brackets:
-  1. delete the row of `email` if it is `pending` and `confirm_expires_at <= now` (it is then
-     absent for the steps below);
+  1. delete the row of `email` if it is `pending` and `confirm_expires_at <= now`, and cancel its
+     queued jobs (D19); it is then absent for the steps below;
   2. a `confirmed` row: nothing changes, no mail (`known`). Its consent and its unsubscribe link
      stay as they were;
   3. a `pending` row with `now - last_sent_at < 600000` (10 min, L3) or `confirm_sends >= 3` (L4):
@@ -473,7 +511,8 @@ Times come from the injected `now`.
   4. a `pending` row otherwise: when the global window (L5) is full or the confirmation queue (L6)
      holds 100 jobs, nothing changes, no mail (`limited`). Else new token, new digest,
      `confirm_expires_at = now + SUBSCRIPTION_CONFIRM_TTL_MS`, `confirm_sends + 1`,
-     `last_sent_at = now`, and the mail is queued (`queued`);
+     `last_sent_at = now`; after the commit the row's older queued job is cancelled (D19) and the
+     new mail is queued (`queued`). So the queue never holds two jobs of one row;
   5. no row: when the store holds `PULSE_NOTIFY_SUBSCRIPTIONS_MAX` rows (L1), or
      `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING` `pending` rows (L2), or the window (L5) is full, or
      the queue (L6) holds 100 jobs: nothing is stored, no mail (`limited`). Else insert a
@@ -488,10 +527,29 @@ Times come from the injected `now`.
   {"error":"invalid token"}`. A `pending` row → set `state = 'confirmed'`, `confirmed_at = now`
   → `200`. A `confirmed` row → `200`, nothing changes.
 - **Unsubscribe** `{token}`: the token must match the unsubscribe pattern, else `400`. A wrong
-  `mac` → `404`. A right `mac`: delete the row with that id and its delivery rows, if any →
-  `200`. A right `mac` whose row is gone (already cancelled, or pruned) → `200`.
+  `mac` → `404`. A right `mac`: delete the row with that id and its delivery rows, if any, cancel
+  the row's queued confirmation jobs (D19), then answer `200`. A right `mac` whose row is gone
+  (already cancelled, or pruned) → `200`.
 - **Confirmation mail** (worker 1, in memory, FIFO, at most 100 jobs, one send at a time, up to 3
-  attempts with the `retryDelay` of `notify/src/delivery.ts:41-43`):
+  attempts with the `retryDelay` of `notify/src/delivery.ts:41-43`, each attempt with the timeout
+  of D12):
+  - A job holds the row id, the digest it was queued for, `expiresAt` (the row's
+    `confirm_expires_at`), the address, the raw confirmation token and the unsubscribe token.
+    Nothing else in notify holds the address of a queued job.
+  - **Queue cancellation** (D19). `cancel(id)` is synchronous: it removes every job of that id
+    that has no attempt in flight from the queue (so no reference to its address or tokens
+    stays in the queue), and, when the job at the head has that id and waits in its retry
+    sleep, it aborts that sleep and drops the job. It does not wait for, resolve or abort an
+    attempt of another job that is in flight. An attempt of the cancelled job itself that is
+    already in flight ends by its own result or timeout (D12); that outcome is counted as usual
+    (the mail may have been delivered), and the job then makes no further attempt. The callers run `cancel(id)` after their transaction committed and
+    before they answer or return: unsubscribe, cleanup (per deleted id), subscribe steps 1 and
+    4. `subscribers delete` runs with the service stopped, when no queue exists.
+  - **Job expiry.** Before each attempt the worker drops the job when `now >= expiresAt`, when
+    the row is gone, or when the row's digest differs from the job's. A dropped or cancelled job
+    is counted in neither mail counter; it leaves the gauge
+    `pulse_notify_subscriber_confirmations_queued` at once (an in-flight one when its attempt
+    ended).
   - `From` = the setting, `To` and envelope = the address only, `Subject` =
     `<prefix> Confirm your subscription`, `Message-ID` = `<sha256("confirm:" + id + ":" +
     confirm_sends) first 32 hex>@<from domain>`;
@@ -511,13 +569,12 @@ Times come from the injected `now`.
     `<origin>/<route>` with exactly one `/` between them. "24 hours" and "25 hours" are rendered
     from the contract constants (`SUBSCRIPTION_CONFIRM_TTL_MS`, plus
     `SUBSCRIPTION_CLEANUP_INTERVAL_MS`).
-  - before each attempt the job checks that the row still exists with the same digest; else it
-    is dropped. Jobs are lost at shutdown (the count is logged); the visitor asks again.
+  - Jobs are lost at shutdown (the count is logged, no address); the visitor asks again.
   - `pulse_notify_subscriber_confirmations_queued` (R7) is the number of jobs queued or in flight.
     A job leaves it only after its final outcome was counted in
-    `pulse_notify_subscriber_mails_total{kind="confirmation"}` (or it was dropped, counted in
-    neither). So the gauge at `0` and the success counter at a value `n` mean that exactly `n`
-    confirmation mails were accepted by SMTP and none is still due.
+    `pulse_notify_subscriber_mails_total{kind="confirmation"}`, or when it was cancelled or
+    dropped (counted in neither). So the gauge at `0` and the success counter at a value `n`
+    mean that exactly `n` confirmation mails were accepted by SMTP and none is still due.
 - **Detection** (in each poll of `Notifier`, after the channels, only when the manual read
   answered and is not a 404):
   - no `manual_baseline_at`: store every key of `seedManualKeys(incidents)` as `seeded` with
@@ -538,10 +595,11 @@ Times come from the injected `now`.
 - **Fan-out** (worker 2, one event at a time, ordered by `detected_at` and then `key`, also the
   `pending` events found at start; the e2e scenario does not rely on this order, see deploy
   "Barriers"):
-  - A pass reads the eligible subscriptions in pages of 100 by `id`: `state = 'confirmed'`,
-    `confirmed_at <= detected_at`, and no delivery row for this event. For each one, right before
-    the send, it reads the row again by id; if the row is gone or not `confirmed`, it skips it
-    (D12).
+  - A pass reads the ids (only the ids, no address) of the eligible subscriptions in pages of
+    100 by `id`: `state = 'confirmed'`, `confirmed_at <= detected_at`, and no delivery row for
+    this event. For each id, right before the send, it reads the row (address and state) by id;
+    if the row is gone or not `confirmed`, it skips it (D12). So worker 2 holds at most one
+    address, the one of its current send.
   - One message per subscription:
     - `From` = the setting; `To` and envelope = that address only;
     - `Subject` = `<prefix> <State>: <title>`, State is `New incident`, `Update` or `Resolved`;
@@ -712,13 +770,18 @@ cannot pass on a difference by mistake.
   in the store, per subscription: the address, the state (pending or confirmed), `created_at`,
   `last_sent_at`, `confirm_sends`, `confirmed_at`, the SHA-256 digest of the current confirmation
   token and its expiry; per incident email: a delivery row with the subscription id (not the
-  address), sent or failed, attempts and time. In memory only: the address in a queued
-  confirmation job (at most 100 jobs, gone at restart) and the queue times of the global window
-  (no address). Nothing in logs or metrics. Events hold public incident content only.
-- **Retention**: pending rows as R3 "Cleanup" (gone within 25 hours of the last confirmation mail
-  while notify runs); confirmed rows until unsubscribe or `subscribers delete`; delivery rows
-  with their subscription or with their event after `PULSE_NOTIFY_STATE_RETENTION_DAYS`,
-  whichever is first.
+  address), sent or failed, attempts and time. In memory only: the address and tokens in a queued
+  confirmation job (at most 100 jobs; removed with its row, when its link is replaced or
+  expires, and at restart, R5 "Confirmation mail"), the address of the one send attempt in
+  flight per worker (at most 60 s, D12), and the queue times of the global window (no address).
+  Nothing in logs or metrics. Events hold public incident content only.
+- **Retention**: pending rows and their queued jobs as R3 "Cleanup" (gone within 25 hours of the
+  last confirmation mail while notify runs); confirmed rows until unsubscribe or `subscribers
+  delete`; queued jobs of a deleted row at the delete (D19); delivery rows with their
+  subscription or with their event after `PULSE_NOTIFY_STATE_RETENTION_DAYS`, whichever is
+  first. **In-flight boundary**: one send attempt that already started when the delete was
+  answered is not aborted; it ends within 60 s and its email can still arrive. The notice says
+  so.
 - **Notice** (status renders it under the input, R2; `<contact>` is the R6 contact as a link:
   `<a href="mailto:<address>">address</a>` for an address in its normalized form, `<a
   href="<url>">url</a>` for an `https` URL, both through `escapeHtml`; "24 hours", "25 hours"
@@ -729,7 +792,7 @@ cannot pass on a difference by mistake.
   <h3>About your data</h3>
   <p>We store your email address, whether and when you confirmed it, when you subscribed, how many confirmation emails we sent, a fingerprint of your current confirmation link, and a record of each incident email to you (sent or failed, and when). We use them only to send you incident updates of this status page. We do not log your address.</p>
   <p>If you do not confirm, we delete all of it within 25 hours of the last confirmation email. The confirmation link works for 24 hours. After you confirm, we keep it until you unsubscribe.</p>
-  <p>Every email has an unsubscribe link. It deletes your address and these records at once. It does not remove emails already sent, or copies in the operator's backups.</p>
+  <p>Every email has an unsubscribe link. It deletes your address and these records at once, also from emails that are waiting to be sent. One email that is being sent at that moment can still arrive. Deleting does not remove emails already sent, or copies in the operator's backups.</p>
   <p>To ask about your data, or to have it deleted without a link, contact <contact>.</p>
   </div>
   ```
@@ -779,7 +842,9 @@ cannot pass on a difference by mistake.
   and at capacity.
 - **A notice that is not true.** Mitigation: R10's inventory names the columns of R3; the times
   come from the contract constants that notify's cleanup uses; notify tests check cleanup at the
-  literal boundaries 25 hours minus 1 ms and 25 hours.
+  literal boundaries 25 hours minus 1 ms and 25 hours. The in-memory confirmation queue follows
+  the same deletes (D19), and notify tests delete jobs behind a send that the fake keeps
+  blocked; the one attempt in flight is bounded (D12) and named in the notice.
 - **Prefix hosting misconfigured.** Mitigation: R9 refuses a path at startup in both services,
   before any file is opened; the e2e scenario checks both refusals.
 - **Two notify processes on one store.** Mitigation: the lease lock of the store.
@@ -840,7 +905,13 @@ Checklist items that apply:
   `GET`/`HEAD` page of the confirm and unsubscribe links, in its hidden form field (R7 "Token
   exception"), which is `no-store` and `no-referrer`; every other status page and every notify
   answer holds no token (status checks and notify security test); the e2e scenario scans logs
-  for addresses, tokens and secrets.
+  for addresses, tokens and secrets. The SMTP password: notify reads it with `readSecretFile`
+  and its errors name the variable and path only; secrets-init's rule lines name the file and
+  the rule only, checked with the password literal (deploy checks); the password is never in the
+  override, `.env` or an environment value (deploy `config` check).
+- **Personal data in memory**: a delete removes the row's queued confirmation jobs at once (D19),
+  checked behind a send that the test keeps blocked; fan-out holds one address at a time; the one
+  attempt in flight ends within 60 s (D12).
 - **Auth order and status codes**: notify R4 (path, method, then auth before any body read);
   status R2 (origin before body); exact codes in R1 and R2; one public subscribe answer for
   every valid address under every limit L0-L8 (R8), checked byte for byte with known and unknown
@@ -860,8 +931,10 @@ Checklist items that apply:
   request, and treats `3xx` as an error; links in mail use only the configured base (D10).
 - **Atomic, path-safe writes**: the store is a SQLite file at a configured path, created `0600`
   with its lock; deletes run with `secure_delete` and a WAL checkpoint (R3); `subscribers
-  delete` takes the store lock; secrets-init writes the new secrets through its temp-and-rename
-  path, `0400`.
+  delete` takes the store lock; secrets-init writes the new secrets and the optional SMTP
+  password through its temp-and-rename path, `0400` `1000:1000`, refuses a symlinked or
+  group-readable host file (`readHostFile`), and removes a stale password copy only inside its
+  own `/out/notify` volume.
 - **Dependency pins**: status and notify bump the contract pin to the merged full SHA. No new
   package. Mailpit stays on its pinned digest in `common/services.yaml`.
 - **CI**: deploy adds a CI requirement and test steps; no new action, no secret in CI.
@@ -999,6 +1072,46 @@ Checklist items that apply:
   address afterwards. A wrong implementation that runs cleanup only on polls keeps the row when
   the fake api fails every poll; the test makes every poll fail. A
   confirmed row is never deleted by cleanup (still there at `t=10 * 86400000`).
+
+### Confirmation queue (D19), behind a blocked send
+
+Fixture for each case (injected clock `t` in ms, fake cleanup timer, test key and token
+files): A subscribes at `t=0`, B at `t=1`, C at `t=2`. A fake `sendMail` returns, for its first
+call (A's attempt 1), a promise that the test holds unresolved. So the queue holds A (in flight),
+B and C, and the gauge `pulse_notify_subscriber_confirmations_queued` reads `3`. Each check below
+runs while A's promise is still unresolved (except where a case says otherwise), and asserts that
+the fake was called exactly once (for A) at that point: the deletion neither waited for nor
+advanced A's send. The test builds B's unsubscribe token itself, from B's row id (read through a
+second connection to the store file) and the test key, with its own `node:crypto` HMAC. Every
+expected value is a literal in the test.
+
+- Unsubscribe behind the blocked send: unsubscribe B at `t=10` → `200` while A is unresolved; the
+  gauge reads `2` right after the answer. Then resolve A: over the rest of the case the fake gets
+  exactly one more call, for C (`To` = C), and none for B; the confirmation success counter is
+  `2` (A, C).
+- Cleanup behind the blocked send: the clock moves to `t=90000000` and the cleanup timer runs →
+  the rows of A, B and C are deleted (`confirm_expires_at` `86400000`, `86400001`, `86400002`), and
+  the gauge reads `1` at once (B and C removed; A's attempt is in flight and is not aborted, D12).
+  Resolve A: the gauge reads `0`, and the fake gets no call for B or C. A wrong implementation
+  that only drops jobs when the worker reaches them keeps the gauge at `3` while A is blocked and
+  fails here.
+- Rotation: B subscribes again at `t=600001` (L3 passed: `600001 - 1 >= 600000`) while A is
+  blocked → `202`, and the gauge stays `3` (B's old job is replaced, not added). Resolve A: B gets
+  exactly one mail; the SHA-256 of the token in its confirm link equals B's `confirm_digest`
+  after the rotation and differs from the digest read before it (both read through the second
+  connection).
+- Expiry without cleanup: the clock moves to `t=86400001` with the cleanup timer held (not run).
+  Resolve A: B's job is dropped before its attempt (`now >= expiresAt = 86400001`), the fake gets
+  no call for B, and C (`expiresAt = 86400002`) gets its mail. The literal boundary catches an
+  off-by-one (`>` instead of `>=`).
+- Head job in its retry sleep: in this case the fake rejects A's attempt 1 with a temporary
+  error, so A waits in the injected sleep before attempt 2. Unsubscribe A → the sleep is aborted,
+  A makes no attempt 2 (the fake's calls for A stay `1`), the gauge reads `2` at once, and B's
+  attempt is the fake's next call.
+- In-flight boundary: unsubscribe A while A's attempt 1 is in flight → `200`; the `signal` passed
+  to the fake for A is not aborted. Resolve A: A gets no further attempt. Timeouts: with
+  `PULSE_NOTIFY_TIMEOUT_MS = 120000` the fake receives `timeoutMs = 60000`; with the default it
+  receives `5000`.
 
 ### No enumeration (R8), at every limit and below it
 
@@ -1141,7 +1254,9 @@ Services and deploy (searched with `grep -rn -- '<name>' .repos/status/src .repo
 other new notify variable), `PULSE_STATUS_SUBSCRIPTIONS` (covers `_CONTACT`), `PULSE_SECRETS_SUBSCRIPTIONS`,
 `subscriptions-token`, `subscriptions-key`, `E2E_SUBSCRIPTIONS`, `pulse_notify_subscri` (covers
 `_confirmations_queued` and `_limited_total`), `subscribers delete`, `subscribe-notice`,
-`secure_delete`, `/subscribe`, `9300`: no match. `subscription`, `subscriber` and
+`secure_delete`, `/subscribe`, `9300`, `subscriptions-smtp-password`, `subscriptions.example`,
+`full-subs`: no match (the last three also with `grep -rn` over `.repos/deploy` and
+`.repos/config`). `subscription`, `subscriber` and
 `unsubscribe` appear only as unrelated words: a comment in `notify/src/metrics.ts:5`,
 `notify/src/alert-poll.ts:19-34` (`isSubscribed`, channel alert opt-in; the new notify modules do
 not reuse that name) and local `unsubscribe` variables in `deploy/cli/*.ts`. #570's spec uses
@@ -1319,9 +1434,12 @@ Shared finding: as in the status section, the wire texts are fixed by R1 and R4;
 either child is a shared finding that the other reads first.
 
 Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkdtemp` stores):
-- Every "Notify listener", "Lifecycle and timing", "Eligibility and privacy", "Fan-out failures"
-  and "`subscribers delete`" counterexample, with the literal expected codes, outputs and send
-  counts written in the test.
+- Every "Notify listener", "Lifecycle and timing", "Confirmation queue (D19)", "Eligibility and
+  privacy", "Fan-out failures" and "`subscribers delete`" counterexample, with the literal
+  expected codes, outputs and send counts written in the test.
+- Fan-out holds one address at a time: with 250 confirmed rows and a fake `sendMail` held on the
+  first send, the test unsubscribes row 2 (by id order) and then resolves the send; row 2 gets no
+  send (the row is read by id right before each send, R5 "Fan-out").
 - `test/subscriptions-enumeration.test.ts`: every notify row of "No enumeration (R8)" (below
   every limit, L1, L2, L3/L4, L5, L6, store error), each with a fresh `mkdtemp` store, real HTTP to
   the listener, both orders, comparing the two answers byte for byte (status, headers except
@@ -1358,8 +1476,15 @@ Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkd
 - Settings: `PULSE_NOTIFY_SUBSCRIPTIONS_MAX=5` with `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING`
   unset (default `1000`) → exit `2` naming `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING`; `MAX=5`
   with `MAX_PENDING=6` → the same; `MAX=5` with `MAX_PENDING=5` (the e2e overlay values) →
-  accepted. Each required variable missing → exit `2` naming it; a key of 63 or 65 hex
-  characters, or with upper case → error; `off` opens no file (the test passes a state directory
+  accepted. SMTP login (literal values in the test): `SMTP_PASSWORD_FILE` without
+  `SMTP_USERNAME` → exit `2` naming `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE`;
+  `SMTP_USERNAME` without the file → exit `2` naming the same variable; a username with
+  `SMTP_TLS=none` and host `mailpit` → exit `2` naming `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_TLS`, and
+  with host `127.0.0.1` → accepted; a password file holding `s3cret-pw\n` with a username →
+  accepted and the fake `sendMail` receives `password: "s3cret-pw"`; an empty file or one with two
+  lines → exit `2`, and no error line holds `s3cret-pw` or the file's content. Each required
+  variable missing → exit `2` naming it; a key of 63 or 65 hex characters, or with upper case →
+  error; `off` opens no file (the test passes a state directory
   without write permission).
 - Existing suites stay green unchanged, also `test/ledger*.test.ts` (the ledger is not touched).
 - `bun run check` (`package.json:17`: lint, typecheck, test); lint `biome check . && pulse-eslint .
@@ -1381,22 +1506,29 @@ Files:
 - `scripts/init-secrets.sh` (changed: `make_token subscriptions-token` and `make_token
   subscriptions-key`, same format as today: 64 lowercase hex and a newline)
 - `scripts/init-secrets.test.sh` (changed: both files exist, mode `0600`, 64 hex, differ from
-  every other secret, are kept on a rerun, are never printed)
-- `scripts/secrets-init.mjs` (changed: `PULSE_SECRETS_SUBSCRIPTIONS`)
-- `scripts/secrets-init.test.sh` (changed)
+  every other secret, are kept on a rerun, are never printed; no `subscriptions-smtp-password` is
+  created)
+- `scripts/secrets-init.mjs` (changed: `PULSE_SECRETS_SUBSCRIPTIONS`, the two secrets and the
+  optional SMTP password, D14)
+- `scripts/secrets-init.test.sh` (changed: the subscription cases, also for the password)
+- `full/subscriptions.example.yaml` (new: the operator override for subscriptions on `full`,
+  copied to the gitignored `full/compose.override.yaml`, `.gitignore:7`)
+- `full/.env.example` (changed: `# PULSE_STATUS_PUBLIC_URL=`, read only by that override)
 - `e2e/compose.subscriptions.yaml` (new, test only)
 - `e2e/subscriptions.sh` (new: the scenario)
 - `e2e/subscriptions.test.sh` (new: the scenario's parsing helpers on fixed mailpit answers, and
-  `docker compose ... config --quiet` of the overlay with both base files)
+  `docker compose ... config --quiet` of the overlay with both base files, and the `config` checks
+  of `full/subscriptions.example.yaml`)
 - `e2e/compose-e2e.sh` (changed: the step "Email subscriptions" after "Console probe locations"
   and before "Persistence across down and up", `e2e/compose-e2e.sh:1097-1121`)
-- `scripts/check-setup.sh`, `scripts/check-setup.test.sh` (changed: the overlay combinations
-  `e2e-subs` and `e2e-dev-subs` with their published ports, rule 5 at `check-setup.sh:74-91`)
+- `scripts/check-setup.sh`, `scripts/check-setup.test.sh` (changed: the combinations
+  `e2e-subs`, `e2e-dev-subs` and `full-subs` with their published ports, rule 5 at
+  `check-setup.sh:74-91`)
 - `.github/workflows/ci.yml` (changed: a `lint` step `bash e2e/subscriptions.test.sh` after
   `:55`; in `e2e-dev`, `grep -qx 'ok: email subscriptions' e2e-dev.log` after `:306`)
 - `README.md` (changed: secrets model, port table, e2e test)
-- `full/README.md` (changed: how to turn subscriptions on with an override file; root hosting;
-  the contact; deletion requests and backups)
+- `full/README.md` (changed: how to turn subscriptions on with `full/subscriptions.example.yaml`;
+  the SMTP password file; root hosting; the contact; deletion requests and backups)
 
 Behavior change: yes. New secrets handling, a new CI requirement and test scenario.
 
@@ -1410,12 +1542,34 @@ Behavior:
     fail `/out/status: is not mounted`. All inputs are checked before the first write. Then write
     `/out/status/subscriptions-token`, `/out/notify/subscriptions-token` and
     `/out/notify/subscriptions-key` with `writeSecret` (`0400`, `1000:1000`);
+  - `on`, the optional SMTP password `/in/subscriptions-smtp-password` (D14). `lstat` first:
+    - missing (`ENOENT`): no password is written, and after every other write of the run
+      `/out/notify/subscriptions-smtp-password` is removed if an earlier run left one (so
+      deleting the host file removes the copy at the next `up`). Any other `lstat` error fails
+      `/in/subscriptions-smtp-password: cannot be read`;
+    - present: read with `readHostFile` (`secrets-init.mjs:42-56`: a symlink, a non-regular file
+      and a mode with group or other bits fail with its existing rule lines). Then one trailing
+      newline is dropped, and the value must be 1..512 characters with no CR, LF or NUL and no
+      leading or trailing space or tab, else fail `/in/subscriptions-smtp-password: must be one
+      line of 1 to 512 characters without leading or trailing spaces` (notify's `readSecretFile`
+      trims, `kit/src/secret-file.ts:35`, the same at the pin `236df214`, so a padded value
+      would not be the password the operator meant). It must differ from every token and key
+      of the run, else fail `/in/subscriptions-smtp-password: must differ from every token and
+      key`. It is checked with
+      the other inputs before the first write, and written as
+      `/out/notify/subscriptions-smtp-password` with `writeSecret` (`0400`, `1000:1000`): the
+      value and one newline;
+    - no message names the value or a part of it;
+  - `off` or unset: `/in/subscriptions-smtp-password` is neither read nor written, also when it
+    exists;
   - any other value: fail `PULSE_SECRETS_SUBSCRIPTIONS: must be on or off`;
   - generate mode with `on`: fail `PULSE_SECRETS_SUBSCRIPTIONS: files mode only`.
 - `e2e/compose.subscriptions.yaml` (merged after the base file and `e2e/compose.e2e.yaml`, test
   only, comment header like `e2e/compose.e2e.yaml:1-5`):
   - `secrets-init`: `PULSE_SECRETS_SUBSCRIPTIONS: "on"` and the volumes
-    `status-secrets:/out/status`, `notify-secrets:/out/notify`;
+    `status-secrets:/out/status`, `notify-secrets:/out/notify`. The e2e secrets directory has no
+    `subscriptions-smtp-password` and notify has no login settings (mailpit takes mail without
+    login), so the scenario runs the "absent" path of the password;
   - `mailpit`: `extends: { file: ../common/services.yaml, service: mailpit }`, port
     `127.0.0.1:${PULSE_MAILPIT_PORT:-8025}:8025`, no other change;
   - `status`: `PULSE_STATUS_SUBSCRIPTIONS_URL: http://notify:9300`,
@@ -1439,15 +1593,38 @@ Behavior:
     volume `notify-secrets:/run/pulse:ro`, `depends_on`
     `secrets-init` completed and `mailpit` started;
   - top-level volumes `status-secrets`, `notify-secrets`.
-- `full/README.md` documents the same keys as an operator override, with a real SMTP server, TLS
-  `starttls` or `tls`, `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` through a secrets volume,
-  and one `.env` variable `PULSE_STATUS_PUBLIC_URL` that the override passes to both
-  `PULSE_STATUS_PUBLIC_URL` (status) and `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` (notify), so the
-  two cannot differ. It states the root rule of R9 with the sentence of R9, the contact setting
-  `PULSE_STATUS_SUBSCRIPTIONS_CONTACT`, the operator duties of R10 (answer the contact; delete
-  on request with `docker compose -f full/compose.yaml stop notify`, then `docker compose -f
-  full/compose.yaml run --rm --no-deps notify bun --no-env-file src/index.ts subscribers delete
-  <address>`, then `start notify`; keep backups of the notify volume for a stated time, D-R7,
+- `full/subscriptions.example.yaml` (comment header: copy to `full/compose.override.yaml`, edit
+  the lines marked `edit`, start with `docker compose -f full/compose.yaml -f
+  full/compose.override.yaml up -d`; for a server without login, delete the two lines marked
+  `login` and do not create the password file). It sets the keys of the e2e overlay for `full`,
+  with these differences: no mailpit; `PULSE_STATUS_PUBLIC_URL` (status) and
+  `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` (notify) are both
+  `${PULSE_STATUS_PUBLIC_URL:?set PULSE_STATUS_PUBLIC_URL in full/.env}`, so the two cannot
+  differ; `PULSE_STATUS_SUBSCRIPTIONS_CONTACT: privacy@example.com`,
+  `PULSE_NOTIFY_SUBSCRIPTIONS_FROM: pulse <status@example.com>`,
+  `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_HOST: smtp.example.com`, `..._SMTP_PORT: "587"` and
+  `..._SMTP_TLS: starttls` (each marked `edit`); the `login` lines
+  `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_USERNAME: status@example.com` (also `edit`) and
+  `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE: /run/pulse/subscriptions-smtp-password`;
+  `secrets-init` with `PULSE_SECRETS_SUBSCRIPTIONS: "on"` and the volumes
+  `status-secrets:/out/status`, `notify-secrets:/out/notify`; status and notify mount their
+  secrets volume at `/run/pulse` read-only and depend on `secrets-init` completed; top-level
+  volumes `status-secrets` and `notify-secrets`; no port, no `image:` line, no literal secret.
+  With the `login` lines set and no host password file, `secrets-init` writes no password and
+  notify exits `2` naming `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` (R3): a missing password
+  never becomes a silent send without login.
+- `full/README.md` documents that file: a real SMTP server with TLS `starttls` or `tls`; the
+  password goes into `secrets/subscriptions-smtp-password`, written by the operator with mode
+  `0600` (for example `(umask 077; cat > secrets/subscriptions-smtp-password)` with the password
+  on standard input, so it is not in the shell history), never into the override or `.env`;
+  `scripts/init-secrets.sh` creates the token and the key but never the password; deleting the
+  file and the `login` lines turns login off at the next `up`; and the one `.env` variable
+  `PULSE_STATUS_PUBLIC_URL`. It states the root rule of R9 with the sentence of R9, the contact
+  setting `PULSE_STATUS_SUBSCRIPTIONS_CONTACT`, the operator duties of R10 (answer the contact;
+  delete on request with `docker compose -f full/compose.yaml -f full/compose.override.yaml stop
+  notify`, then `docker compose -f full/compose.yaml -f full/compose.override.yaml run --rm
+  --no-deps notify bun --no-env-file src/index.ts subscribers delete <address>`, then `start
+  notify` with the same two files; keep backups of the notify volume for a stated time, D-R7,
   D-R11), and that the console does not show subscribers.
 - The step "Email subscriptions" in `e2e/compose-e2e.sh`:
   - `E2E_SETUP=full`: prints `skip: email subscriptions (published images)`;
@@ -1465,7 +1642,8 @@ Behavior:
      `form-action 'self'`. It holds `id="subscribe-notice"`, the literal sentences `If you do not
      confirm, we delete all of it within 25 hours of the last confirmation email.`, `After you
      confirm, we keep it until you unsubscribe.`, `Every email has an unsubscribe link. It deletes
-     your address and these records at once.`, and
+     your address and these records at once, also from emails that are waiting to be sent.`,
+     `One email that is being sent at that moment can still arrive.`, and
      `<a href="mailto:privacy@e2e.invalid">privacy@e2e.invalid</a>` (all literals in the script,
      from R10 and the overlay's contact).
   3. `POST /subscribe` for A (sent as `Sub-A@E2E.invalid`), B and C (form bodies) → `200` each.
@@ -1597,13 +1775,19 @@ Behavior:
   every negative mail check of an incident step runs only after that step's `settle` (S1-S5)
   passed, never after another recipient's or a later incident's mail alone. A `settle` that
   times out fails the scenario with the metric values it read (no address or token in them).
-- `README.md`: the two new secrets, the `PULSE_SECRETS_SUBSCRIPTIONS` switch, the mailpit port of
-  the subscription overlay in the port table, and the new scenario.
+- `README.md`: the two new secrets, the optional `subscriptions-smtp-password` (written by the
+  operator, copied only with the switch on, removed from the volume when the host file is gone),
+  the `PULSE_SECRETS_SUBSCRIPTIONS` switch, the mailpit port of the subscription overlay in the
+  port table, and the new scenario.
 - `scripts/check-setup.sh`: `compose_args` gets `e2e-subs` (`-f full/compose.yaml -f
   e2e/compose.e2e.yaml -f e2e/compose.subscriptions.yaml`) and `e2e-dev-subs` (the same with
   `dev/compose.yaml`). `expected_ports` for both is the `e2e` list plus
-  `mailpit 127.0.0.1 8025 8025`, written literally. The loop of `:92` runs over them too, so rule 8
-  (only a `*-secrets` volume at `/run/pulse`) covers the new status and notify mounts.
+  `mailpit 127.0.0.1 8025 8025`, written literally. `full-subs` is `-f full/compose.yaml -f
+  full/subscriptions.example.yaml`, resolved with
+  `PULSE_STATUS_PUBLIC_URL=https://status.example.com` set for that call only; its
+  `expected_ports` is the `full` list, written literally (the override publishes nothing). The
+  loop of `:92` runs over all three, so rule 8 (only a `*-secrets` volume at `/run/pulse`) covers
+  the new status and notify mounts, also the password file's.
   `check-setup.test.sh` gets one broken copy of the overlay with mailpit on `0.0.0.0` and expects
   the rule 5 failure.
 
@@ -1612,6 +1796,36 @@ Checks:
   `0400` `1000:1000`; a missing input, a 63-character value, an upper-case value, equal values, a
   value equal to the probe token, a missing `/out/status` each fail with the literal rule line and
   write nothing; no output holds a value; `off` writes none of the files.
+- The SMTP password in the same script (`run_init` gets `/out/status` and `/out/notify` for these
+  cases; the password literal `pw-e2e-Secret 42!` has an inner space, which is allowed):
+  - present, mode `0600` → `/out/notify/subscriptions-smtp-password` exists with mode `0400`,
+    owner `1000:1000` and the content `pw-e2e-Secret 42!` and one newline (`stat -c '%a %u:%g'`
+    prints `400 1000:1000`; the bytes are compared with `cmp` against a file the test writes
+    itself);
+  - absent → no such file; then absent after a run that wrote it (same output volume) → the file is
+    gone, and the token and key files are still there;
+  - mode `0640`, mode `0604`, a symlink, a directory, an empty file, only a newline, two lines,
+    a CR inside, a leading space, a trailing tab, 513 characters, and a value equal to the
+    subscriptions token → each fails with exit `1` and its literal rule line (the lines of
+    `readHostFile` for mode, symlink and non-regular file; the two new lines above for the rest),
+    and writes none of the subscription files (also not the token and key);
+  - 512 characters → accepted;
+  - `PULSE_SECRETS_SUBSCRIPTIONS=off` with a present password file (also one with mode `0644`) →
+    succeeds, and no subscription file is written;
+  - every case's stdout and stderr hold neither the password literal nor its part `Secret 42`
+    (the secret check of `expect_refused`, `secrets-init.test.sh:62-74`, run for both strings),
+    and a passing run prints only `secrets-init: files mode done`.
+- `e2e/subscriptions.test.sh` runs `docker compose -f full/compose.yaml -f
+  full/subscriptions.example.yaml config --format json` with
+  `PULSE_STATUS_PUBLIC_URL=https://status.example.com` and checks with `jq`: notify's
+  `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` is `/run/pulse/subscriptions-smtp-password`;
+  notify mounts `pulse_notify-secrets` (a volume) at `/run/pulse` read-only; secrets-init has
+  `PULSE_SECRETS_SUBSCRIPTIONS` `on` and the `/out/notify` volume; status's
+  `PULSE_STATUS_PUBLIC_URL` and notify's `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` are both
+  `https://status.example.com`; no environment value of any service in the override matches
+  `[0-9a-f]{64}` or holds `password` other than in the `_FILE` key name. Without
+  `PULSE_STATUS_PUBLIC_URL` the same `config` fails and its error holds `set
+  PULSE_STATUS_PUBLIC_URL in full/.env` (literals in the test).
 - `bash scripts/init-secrets.test.sh`, `bash e2e/subscriptions.test.sh`,
   `scripts/check-setup.sh`, `bash scripts/check-setup.test.sh`.
 - `e2e/subscriptions.test.sh` also drives `settle` with a fake metrics reader that replays fixed
@@ -1627,8 +1841,9 @@ Checks:
   holds the contact link and also `other@e2e.invalid`. It passes for equal bodies that hold
   `<a href="mailto:privacy@e2e.invalid">privacy@e2e.invalid</a>` and no other address.
 - `e2e/subscriptions.test.sh` checks the notice matcher of step 2 against a fixed page text: it
-  fails when `25 hours` is replaced by `24 hours` in the deletion sentence, and when the contact
-  link is missing.
+  fails when `25 hours` is replaced by `24 hours` in the deletion sentence, when the sentence
+  `One email that is being sent at that moment can still arrive.` is missing, and when the
+  contact link is missing.
 - Shell lint, helper syntax and JSON syntax of the `lint` job (`ci.yml:34-40`, commands in
   `deploy/AGENTS.md`, "Commands"), run from the repository root.
 - `E2E_SETUP=dev bash e2e/compose-e2e.sh` with sibling checkouts of the merged status and notify
@@ -1675,7 +1890,17 @@ The feature is done when all of these hold. Every expected value is a literal in
    sentence of the R10 notice and the configured contact link on the form; startup without a
    contact fails naming `PULSE_STATUS_SUBSCRIPTIONS_CONTACT`; notify's cleanup test deletes an
    unconfirmed row by the literal 25-hour bound that the notice states; e2e step 11a deletes an
-   address through the documented operator command, and no later incident mail reaches it.
+   address through the documented operator command, and no later incident mail reaches it;
+   notify's "Confirmation queue (D19)" tests remove the queued jobs of an unsubscribed or expired
+   row while the fake keeps another send blocked (gauge literals `2` and `1`, and no send to the
+   deleted address afterwards), so "at once" and "within 25 hours" in the notice hold for the
+   queue too, with the in-flight email that the notice names as the only exception.
+9. **SMTP password through `secrets-init`.** Deploy's `secrets-init.test.sh` writes the password
+   `0400` `1000:1000` with the literal content, refuses each bad input with its literal rule line
+   and writes nothing then, removes a stale copy when the host file is gone, ignores the file
+   with `off`, and never prints the password; `e2e/subscriptions.test.sh` shows that the `full`
+   override points notify at `/run/pulse/subscriptions-smtp-password` on its secrets volume; the
+   notify settings tests give the literal results for the username and password rules.
 
 Issue review checks 1-9 map to: 1 → item 4 (steps 3-6); 2 → item 6; 3 → items 1 and 4 (steps 9,
 11a) and the notify "Fan-out failures"; 4 → item 4 (steps 7-8) and item 1; 5 → item 7; 6 → item 8;
