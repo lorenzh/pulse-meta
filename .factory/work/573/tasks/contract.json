@@ -23,7 +23,7 @@
         "package.json"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1, R8 wire answer, R10 time constants, D13, Contract fields, Address rule counterexamples, Performance impact, applicable Security impact checks and Acceptance evidence items 3 and 5. One cohesive additive module and its exports; WIRE_VERSION stays 1.",
+      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1, R8 invariant wire answer, R10 shared link-life and cleanup constants, D13, Contract fields, Address rule counterexamples, Performance impact, applicable Security impact checks and Acceptance evidence items 3 and 5. Keep schemas, identity-preserving validators, exports, generated outputs and version in one cohesive additive change; WIRE_VERSION stays 1.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions.test.ts",

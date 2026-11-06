@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Serve the complete private-by-default visitor subscription flow with a clear data notice",
+      "title": "Serve the complete opt-in visitor subscription flow and accurate deletion notice",
       "files": [
         "src/subscribe-routes.ts",
         "src/subscribe-client.ts",
@@ -27,7 +27,7 @@
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, all behavior, checks and completion evidence; R2, R6, R7 status parts including the Token exception, R8 status limits L0/L7/L8, R9 root hosting, R10 notice/contact, Status routes, No enumeration, Root hosting and Visitor notice counterexamples, Performance impact, Security impact and Acceptance evidence items 2, 6-8. Keep routes, renderer, settings and startup together so the public flow is complete in one task.",
+      "spec": "## Repository: status, all behavior, checks and completion evidence; R2, R6, R7 status parts including the Token exception, R8 status limits L0/L7/L8, R9 root hosting, R10 notice/contact with D12/D19 queued-job deletion and the in-flight email boundary, Status routes, No enumeration, Root hosting and Visitor notice counterexamples, Performance impact, Security impact and Acceptance evidence items 2, 6-8. Keep routes, renderer, settings and startup together so the public flow is complete in one task.",
       "acceptance": [
         {
           "command": "bun test src/subscribe-routes.test.ts src/subscribe-enumeration.test.ts src/settings.test.ts src/server.contract-modules.test.ts",
@@ -39,7 +39,7 @@
         },
         {
           "command": "bun test src/settings.test.ts src/subscribe-routes.test.ts",
-          "expected": "0 failing tests. Every R9 status root/prefix case and R10 contact counterexample has its literal result: root with/without slash accepted; /pulse and /pulse/ with subscriptions on exit 2 with the fixed R9 line before token-file/listener I/O; subscriptions off preserves existing prefix tests. Missing public URL, token file or contact names only its variable; a 31-character token fails. Email contact normalizes, https contact is escaped (including the hostile contact fixture); bad schemes, credentials, 513 characters or empty contact fail without echoing values. GET / and invalid-email 400 show all literal R10 sentences with 24/25 hours, id='subscribe-notice' between input and button, aria-describedby, contact link and ordered headings. Mail and form URLs never derive from Host or X-Forwarded-*."
+          "expected": "0 failing tests. Every R9 status root/prefix case and R10 contact counterexample has its literal result: root with/without slash accepted; /pulse and /pulse/ with subscriptions on exit 2 with the fixed R9 line before token-file/listener I/O; subscriptions off preserves existing prefix tests. Missing public URL, token file or contact names only its variable; a 31-character token fails. Email contact normalizes, https contact is escaped (including the hostile contact fixture); bad schemes, credentials, 513 characters or empty contact fail without echoing values. GET / and invalid-email 400 show every literal R10 notice sentence with 24/25 hours, id='subscribe-notice' between input and button, aria-describedby, contact link and ordered headings. In particular require 'It deletes your address and these records at once, also from emails that are waiting to be sent.' and 'One email that is being sent at that moment can still arrive.' and the sentence about sent emails and operator backups. Mail and form URLs never derive from Host or X-Forwarded-*."
         },
         {
           "command": "bun run check",
