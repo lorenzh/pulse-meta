@@ -759,19 +759,24 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
     over 300 code units is left out of `failed` and counted in `failedTotal`. Notify's own keys
     are shorter (the longest, `manual:<id>:update:<32 hex>` or `budget:<kind>:<ms>:<32 hex>`, is
     under 80), so only a hand-edited or legacy JSON ledger can hold such a key.
-  - **Event mapping** of a failed entry, first rule that matches:
-    1. it has a payload whose `event` is one of the seven: `event` = that value, `isManual` =
-       the payload has a `manual` object (`types.ts:29`). The ledger checks only that a payload
-       is an object (`ledger.ts:268-269`, `:328`), so a payload with another `event` falls
-       through to the key rules;
-    2. no payload, key `manual:<id>:<e>` or `manual:<id>:<e>:<rest>`: `event` = `<e>` when `<e>`
-       is `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: true`;
-    3. no payload, key `budget:<rest>`: `budget-low`, `isManual: false`;
-    4. no payload, key `<n>:<e>` or `<n>:<e>:<rest>` with `<n>` decimal digits: `<e>` when it is
-       `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: false`;
-    5. anything else, `expiry:<rest>` included (TLS and domain expiry keys have the same shape,
-       `expiry-alerts.ts:90`, so the key alone cannot tell them apart): `unknown`, `isManual:
-       false`.
+  - **Event mapping** of a failed entry. A payload is *recognized* when it is an object whose
+    `event` is one of the seven values above. The ledger checks only that a payload is an object
+    (`ledger.ts:268-269`, `:328`), so a stored payload can lack `event` or hold another value.
+    1. Recognized payload: `event` = the payload's `event`, `isManual` = the payload has a
+       `manual` object (`types.ts:29`). The key is not read.
+    2. Otherwise the **key fallback** decides, with the same rules for each of the three cases
+       "no payload", "payload without `event`" and "payload with an `event` that is not one of
+       the seven"; the first key rule that matches wins:
+       - 2a. key `manual:<id>:<e>` or `manual:<id>:<e>:<rest>`: `event` = `<e>` when `<e>` is
+         `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: true`;
+       - 2b. key `budget:<rest>`: `budget-low`, `isManual: false`;
+       - 2c. key `<n>:<e>` or `<n>:<e>:<rest>` with `<n>` decimal digits: `<e>` when it is
+         `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: false`;
+       - 2d. anything else, `expiry:<rest>` included (TLS and domain expiry keys have the same
+         shape, `expiry-alerts.ts:90`, so the key alone cannot tell them apart): `unknown`,
+         `isManual: false`.
+    - `hasPayload` is `true` whenever a payload is stored, recognized or not; the key fallback
+      changes only `event` and `isManual`.
     - The failed CLI keeps its own text column (`failed-cli.ts:16-20`) unchanged; its tests
       (`test/failed-cli.test.ts:287-307`, `:85-89`) stay as they are.
 - **`NotifyServiceReport`**: `{at, startedAt, appliedRevision: Revision|null, fileChannels:
@@ -886,6 +891,29 @@ carries the new `etag`.
     three radii), the four switches, and component order.
   - Component order is a list with "Move up" and "Move down" buttons and a "Reset order" control.
     Each button posts the form; no drag and no script are needed.
+  - **Component order encoding.** The console's form parser refuses a repeated known field
+    (`parseForm`, console `src/forms.ts:24-33`, "A repeated known field fails"), and
+    `readFormFields` answers `400` "repeated form field" (`src/http-context.ts:187-190`). So the
+    order is never sent as repeated `order=<id>` fields, and the parser stays unchanged:
+    - The form carries exactly one hidden field `order` whose value is the ids in display order
+      joined by `,`. A comma cannot occur in a component id (`^[a-z0-9][a-z0-9._-]*$`, contract
+      `src/schema.ts:776-797`), so the split is unambiguous.
+    - Each move button is a `<button name="action" value="up:<i>">` or `value="down:<i>">`
+      (`<i>` the 0-based position); "Reset order" is `value="reset-order"`. A browser submits
+      only the pressed button, so `action` is never repeated either. "Save" is
+      `value="save"`; the form has no hidden `action` input (as the existing setup form,
+      `src/pages.ts:71-72`, uses only buttons), which would repeat the field. Enter in a text
+      field submits the first submit button in tree order (HTML implicit submission), so the
+      first submit button of the form is a "Save" button, ahead of the order list.
+    - Reading: an absent `order` field or an empty value means "not set" (the database document
+      gets no `componentOrder`). Otherwise the value is split on `,`; an empty item (`a,,b`, a
+      leading or trailing comma), an item that breaks the id rule, or more than 500 items shows
+      the inline error "The component order is invalid." with the input kept and calls no api.
+      Duplicates and unknown ids go to the api, whose `422` is shown with the input kept.
+    - `up:<i>` and `down:<i>` move the item and re-render the form unsaved; `<i>` outside the
+      list is ignored. "Save" sends `componentOrder` as the split list.
+    - Bytes: `order=` (6) plus 500 ids of at most 64 bytes (32 000) plus 499 separators encoded
+      as `%2C` (1 497) plus the `&` (1): at most 33 504 bytes.
   - A boolean is a three-way select: "Not set (default: …)", "On", "Off". Every other field has
     an empty choice that means "not set".
   - A field in `report.locked` is shown read-only with "Set by `<via>` on pulse-status".
@@ -925,10 +953,10 @@ carries the new `etag`.
     - status form 65 536 bytes (`MAX_STATUS_FORM_BYTES`). The largest form of a valid
       `StatusSettings` is below 47 000 bytes: name 60 characters of at most 4 UTF-8 bytes, each
       encoded as `%XX` (720); logo URL 2 048 × 3 (6 144); 40 colour fields of about 31 bytes
-      (1 240); two fonts of 200 × 3 + 20 (1 240); three radii (150); four switches (100); 500
-      order fields `order=<id>&` of at most 71 bytes, because component ids use only characters
-      that form encoding leaves as they are (35 500); form token, CSRF token, revision and action
-      (1 000). The order control lists at most 500 ids; further components follow in upstream
+      (1 240); two fonts of 200 × 3 + 20 (1 240); three radii (150); four switches (100); one
+      `order` field (33 504, see "Component order encoding"); form token, CSRF token, revision
+      and action (1 000); in total about 44 100, below 47 000 with margin for the estimated
+      parts. The order control lists at most 500 ids; further components follow in upstream
       order (Decision 9);
     - channel form 65 536 bytes (`MAX_CHANNEL_FORM_BYTES`), which carries every definition of at
       most 16 384 bytes (Decision 12: at most 57 344);
@@ -1249,7 +1277,8 @@ Checklist items that apply:
     file still does.
   - The largest valid `StatusSettings` (every field at its limit, 500 order ids of 64
     characters): below 40 000 bytes, accepted; its service answer below 65 656 bytes; its console
-    form below 47 000 bytes. The expected limits are the literals of R1 and R3.
+    form below 47 000 bytes with one comma-joined `order` field. The expected limits are the
+    literals of R1 and R3.
   - A `componentOrder` id of 65 characters, or one with an upper-case letter: `422`
     (`MAX_COMPONENT_ID`, `COMPONENT_ID`).
   - A `logoUrl` with a space or a non-ASCII character: `422`.
@@ -1275,7 +1304,9 @@ Checklist items that apply:
   does not tell TLS from domain). Payloadless `budget:check:1:<32 hex>`: `budget-low`, not
   `check` (which the failed CLI prints, `failed-cli.ts:19`). Payloadless `manual:3:resolved`:
   `resolved` with `isManual: true`. A payload `{event: "update", manual: {…}}`: `update`, `true`;
-  a wrong enum without `update` refuses the report.
+  a wrong enum without `update` refuses the report. A payload `{"event": "zzz"}` with key
+  `9:opened`: `opened` by the key fallback; an implementation that applies the key rules only
+  when there is no payload gives `unknown`, and one that copies `"zzz"` refuses the report.
 - **Ledger format 5:**
   - A format-4 file with two `alert_state` rows: after the migration both rows are there. A
     wrong migration that reuses today's `publish` unchanged loses them (it writes only the
@@ -1311,6 +1342,10 @@ Checklist items that apply:
   - `GET /admin/status/settings` twice with an unchanged revision but a new report: both `200`
     with the new `service`; neither is `304`.
 - **Component order:** `["a","a"]`: `422` duplicate. `["zzz"]` with no component `zzz`: `422`.
+- **Component order form:** a console form that sends one `order=<id>` field per component gets
+  `400` "repeated form field" from the existing parser for any order of two or more components;
+  the single comma-joined `order` field saves. A trailing comma (`web,db,`) is an empty item and
+  is refused in the console, not sent as `["web","db",""]`.
   - Components `[x(g1), y(g2), z(g1)]` with order `["y"]` give the list `y, x, z` and the groups
     `g2:[y]`, then `g1:[x, z]`. Without an order, `g1:[x, z]`, then `g2:[y]`, as today.
 - **Visibility:**
@@ -1466,6 +1501,12 @@ New names in one list:
   - `/notifications`, `/notifications/new`, `/notifications/edit`, `/notifications/delete`,
     `/notifications/failed`, `/notifications/resend`.
 - Console `NavId`s: `status-page`, `notifications`.
+- Console status form (R3, "Component order encoding"): field `order`; `action` values `save`,
+  `up:<i>`, `down:<i>`, `reset-order`. Searches over `.repos/console/src`,
+  `.repos/contract/src` and `.repos/config`: `grep -rn 'name="order"\|"order"'` and
+  `grep -rn 'value="up\|value="down\|value="save\|reset-order'`, 0 hits each. The field name `action` exists already for buttons
+  (`console/src/pages.ts:71-72`); it is per form, so a new value does not collide. Bare `up:` and
+  `down:` match only check-status object keys (`console/src/overview.ts:13`), not form values.
 - Bench options (api): `--b-ref`, `--simulate-services`, `--service-tokens`, `--expect-report`.
 
 ## Repository: contract
@@ -1482,11 +1523,17 @@ Files:
 - `src/tokens.ts` (changed: scopes `status`, `notify`, sole-scope rule)
 - `src/audit.ts` (changed: actions, kinds)
 - `src/index.ts` (changed: exports)
-- `test/runtime-settings.test.ts`, `test/notify-channels.test.ts`, `test/resend.test.ts` (new)
-- `test/tokens.test.ts`, `test/audit.test.ts`, `test/smoke.test.ts`, `test/types.fixture.ts`
-  (changed)
+- `test/runtime-settings.test.ts` (new)
+- `test/notify-channels.test.ts` (new)
+- `test/resend.test.ts` (new)
+- `test/tokens.test.ts` (changed)
+- `test/audit.test.ts` (changed)
+- `test/smoke.test.ts` (changed)
+- `test/types.fixture.ts` (changed)
 - `dist/` (changed: rebuilt and committed)
-- `package.json` (changed: `version` `2.4.0`), `README.md`, `docs/index.md` (changed)
+- `package.json` (changed: `version` 2.4.0)
+- `README.md` (changed)
+- `docs/index.md` (changed)
 
 Behavior change: yes. New shapes and validators, wider scope and audit enums.
 
@@ -1577,36 +1624,52 @@ Files:
   results, requeue)
 - `src/token-scopes.ts` (changed: permissions `runtime-admin`, `status-service`,
   `notify-service`; `canGrant` for `status`/`notify`)
-- `src/admin-routes.ts`, `src/admin-auth-failures.ts` (changed: dispatch of the new admin
-  sections; a service token on `/admin/*` is `403`)
+- `src/admin-routes.ts` (changed: dispatch of the new admin sections)
+- `src/admin-auth-failures.ts` (changed: a service token on an admin route is `403`)
 - `src/server.ts` (changed: `/service/*` dispatch before the read paths, `routeOf` labels,
   `ADMIN_ROUTE`)
-- `src/retention.ts`, `src/start.ts`, `src/main.ts` (changed: retention of resend commands and
-  resend requests, wiring)
-- tests, new: `src/runtime-store.test.ts`, `src/server.status-settings.test.ts`,
-  `src/server.notify-channels.test.ts`, `src/server.resend.test.ts`,
-  `src/server.service-auth.test.ts`
-- tests, changed: `src/db.migrations.test.ts` (step 9), `src/token-scopes.test.ts`,
-  `src/server.allow.test.ts`, `src/server.scopes.test.ts`, `src/retention.test.ts`,
-  `src/backup.test.ts`
-- bench, changed: `bench/refs.ts` (`--b-ref`; the same-SHA rule and the checkout comparison of
-  "Controlled refs", as pure functions), `bench/run.ts` (`--b-ref`, `--simulate-services`,
-  `--service-tokens`, `--expect-report`; refs resolved to SHAs once before the first round,
-  `checkout` (`:106-118`) by SHA, the `git rev-parse HEAD` comparison after each checkout, the
-  `ref <repo> a=<sha> b=<sha>` log lines), `bench/stack.ts` (admin tokens
-  file; fixture between the api start and the other services; traffic during the window; report
-  check after it), `bench/fixtures.ts` (admin tokens file), `bench/compose.bench.yaml` (api
-  `PULSE_API_ADMIN_TOKENS_FILE`; status `PULSE_STATUS_API_TOKEN_FILE:
-  ${BENCH_STATUS_TOKEN_FILE:-}`; notify `PULSE_NOTIFY_API_TOKEN_FILE:
-  ${BENCH_NOTIFY_TOKEN_FILE:-}` and `PULSE_NOTIFY_SECRET_BENCH`; a read-only `service-tokens`
-  mount), `bench/selftest/check-refs.ts`, `bench/README.md`
-- bench, new: `bench/runtime-fixture.ts` (token creation with the per-side answer rules, the
-  settings and channel fixture, the report check; injected `fetch`), `bench/runtime-traffic.ts`
-  (the simulated service traffic and its counts; injected `fetch` and timers),
-  `bench/selftest/check-runtime-fixture.ts`, `bench/selftest/check-runtime-traffic.ts`
-- `package.json` (changed: contract pin to the merged `2.4.0` SHA; `bench:selftest`
-  (`package.json:18`) gains the two new self-tests), `bun.lock` (changed)
-- `README.md`, `docs/rest-api.md`, `docs/operation.md`, `docs/configuration.md` (changed)
+- `src/retention.ts` (changed: retention of resend commands and resend requests)
+- `src/start.ts` (changed: wiring)
+- `src/main.ts` (changed: wiring)
+- `src/runtime-store.test.ts` (new)
+- `src/server.status-settings.test.ts` (new)
+- `src/server.notify-channels.test.ts` (new)
+- `src/server.resend.test.ts` (new)
+- `src/server.service-auth.test.ts` (new)
+- `src/db.migrations.test.ts` (changed: step 9)
+- `src/token-scopes.test.ts` (changed)
+- `src/server.allow.test.ts` (changed)
+- `src/server.scopes.test.ts` (changed)
+- `src/retention.test.ts` (changed)
+- `src/backup.test.ts` (changed)
+- `bench/refs.ts` (changed: `--b-ref`; the same-SHA rule and the checkout comparison of
+  "Controlled refs", as pure functions)
+- `bench/run.ts` (changed: `--b-ref`, `--simulate-services`, `--service-tokens`,
+  `--expect-report`; refs resolved to SHAs once before the first round, `checkout` (lines
+  106-118) by SHA, the `git rev-parse HEAD` comparison after each checkout, the
+  `ref <repo> a=<sha> b=<sha>` log lines)
+- `bench/stack.ts` (changed: admin tokens file; fixture between the api start and the other
+  services; traffic during the window; report check after it)
+- `bench/fixtures.ts` (changed: admin tokens file)
+- `bench/compose.bench.yaml` (changed: api `PULSE_API_ADMIN_TOKENS_FILE`; status
+  `PULSE_STATUS_API_TOKEN_FILE: ${BENCH_STATUS_TOKEN_FILE:-}`; notify
+  `PULSE_NOTIFY_API_TOKEN_FILE: ${BENCH_NOTIFY_TOKEN_FILE:-}` and `PULSE_NOTIFY_SECRET_BENCH`; a
+  read-only `service-tokens` mount)
+- `bench/selftest/check-refs.ts` (changed)
+- `bench/README.md` (changed)
+- `bench/runtime-fixture.ts` (new: token creation with the per-side answer rules, the settings
+  and channel fixture, the report check; injected `fetch`)
+- `bench/runtime-traffic.ts` (new: the simulated service traffic and its counts; injected
+  `fetch` and timers)
+- `bench/selftest/check-runtime-fixture.ts` (new)
+- `bench/selftest/check-runtime-traffic.ts` (new)
+- `package.json` (changed: contract pin to the merged 2.4.0 SHA; the `bench:selftest` script at
+  line 18 gains the two new self-tests)
+- `bun.lock` (changed: same pin)
+- `README.md` (changed)
+- `docs/rest-api.md` (changed)
+- `docs/operation.md` (changed)
+- `docs/configuration.md` (changed)
 
 Behavior change: yes. New tables, routes, scopes, audit actions and bench options.
 
@@ -1745,26 +1808,39 @@ from api `main` at their start: they start only after the api merged.
 ## Repository: console
 
 Files:
-- `src/navigation.ts`, `src/icons.ts` (changed: ids `status-page`, `notifications`)
-- `src/status-page-pages.ts`, `src/status-page-routes.ts` (new)
-- `src/notification-pages.ts`, `src/notification-routes.ts` (new: list, new, edit, delete,
-  failed, resend)
-- `src/runtime-read.ts`, `src/runtime-write.ts` (new: reads and writes of the R2 admin routes, in
-  the check write pattern)
+- `src/navigation.ts` (changed: ids `status-page`, `notifications`)
+- `src/icons.ts` (changed: icons of the two new ids)
+- `src/status-page-pages.ts` (new)
+- `src/status-page-routes.ts` (new: includes the comma-joined `order` field reading of R3)
+- `src/notification-pages.ts` (new: list, new, edit, delete, failed, resend)
+- `src/notification-routes.ts` (new: same screens)
+- `src/runtime-read.ts` (new: reads of the R2 admin routes)
+- `src/runtime-write.ts` (new: writes of the R2 admin routes, in the check write pattern)
 - `src/api-failure.ts` (changed: `ApiCall` values `status-settings`, `notify-channels`,
   `notify-failed`, `notify-resend`)
 - `src/people-log.ts` (changed: actions and targets of Decision 15)
-- `src/token-view.ts`, `src/token-pages.ts` (changed: presets "Status service" `["status"]` and
-  "Notify service" `["notify"]`; `missingScope` maps both to `admin`)
+- `src/token-view.ts` (changed: presets "Status service" `["status"]` and "Notify service"
+  `["notify"]`; `missingScope` maps both to `admin`)
+- `src/token-pages.ts` (changed: same presets)
 - `src/server.ts` (changed: route registration)
-- tests, new: `src/server.status-page.test.ts`, `src/server.notifications.test.ts`,
-  `src/runtime-read.test.ts`, `src/runtime-write.test.ts`
-- tests, changed: `src/navigation.test.ts`, `src/icons.test.ts`, `src/people-log.test.ts`,
-  `src/token-view.test.ts`, `src/token-read.test.ts`, `test/fake-api.ts`
+- `src/server.status-page.test.ts` (new: includes the component-order route checks and the
+  `parseForm` pin)
+- `src/server.notifications.test.ts` (new)
+- `src/runtime-read.test.ts` (new)
+- `src/runtime-write.test.ts` (new)
+- `src/navigation.test.ts` (changed)
+- `src/icons.test.ts` (changed)
+- `src/people-log.test.ts` (changed)
+- `src/token-view.test.ts` (changed)
+- `src/token-read.test.ts` (changed)
+- `test/fake-api.ts` (changed)
 - `e2e/run.ts` (changed: fixture pages, keyboard move controls)
-- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md`, `docs/configuration.md`, `docs/team.md` (`settings.edit` is now built),
-  `docs/tokens.md` (changed)
+- `package.json` (changed: contract pin to the merged 2.4.0 SHA)
+- `bun.lock` (changed: same pin)
+- `README.md` (changed)
+- `docs/configuration.md` (changed)
+- `docs/team.md` (changed: `settings.edit` is now built)
+- `docs/tokens.md` (changed)
 
 Behavior change: yes. New screens, routes and token presets.
 
@@ -1788,9 +1864,23 @@ Checks (real console server, fake api on `127.0.0.1:0`):
 - Invalid Origin, CSRF and replayed form tokens are refused (`403`, `403`, `409`).
 - Locked fields are read-only, and a forged POST of a locked field is refused by the console with
   `422`, and nothing is sent.
+- Component order through the real protected route (`POST /status-page` on the real console
+  server, with origin, CSRF and form token, body built with `URLSearchParams`):
+  - `order=web,db,cdn` (encoded `order=web%2Cdb%2Ccdn`) with `action=save` saves: the response
+    is the saved state (not `400`), and the fake api receives `componentOrder` deep equal to the
+    literal `["web", "db", "cdn"]`;
+  - `action=up:2` with `order=web,db,cdn` re-renders unsaved with the hidden value `web,cdn,db`
+    and sends nothing to the fake api;
+  - `order=web&order=db` gets `400` "repeated form field" (the unchanged parser) and sends
+    nothing;
+  - `order=web,,db` and `order=Web` show "The component order is invalid." and send nothing;
+  - an empty `order` value with `action=save` sends a document without `componentOrder`.
+  - A `parseForm` unit check pins the unchanged parser: `parseForm("order=a&order=b", ["order"])`
+    deep equals `{ isOk: false, repeated: "order" }`.
 - Form sizes, built in the test with `Buffer.byteLength` of the encoded body:
   - the status form of the largest valid settings (500 order ids of 64 characters, every field
-    at its limit, 4-byte characters in the name) is below 47 000 bytes and is accepted; a body
+    at its limit, 4-byte characters in the name, one comma-joined `order` field) is below
+    47 000 bytes and is accepted; a body
     of 65 537 bytes is refused with `413`, as for check forms;
   - the channel form of a 16 384-byte definition made of 3-byte characters is at most 57 344
     bytes and is accepted, and the fake api receives the same definition (deep equal);
@@ -1837,25 +1927,40 @@ Files:
 - `src/server.ts` (changed: snapshot in place of fixed options: CSS, CSP, logo, wordmark, flags;
   readiness `settings not loaded`; `/page-settings.json`; the four new contract modules in
   `contractModules`, `:189-206`)
-- `src/answer-cache.ts`, `src/http-cache.ts` (changed: fingerprint in the key and the ETag;
-  in-flight rule)
-- `src/api-filter.ts`, `src/hidden-checks.ts` (changed: `showLatency`, `showSlos` filtering)
+- `src/answer-cache.ts` (changed: fingerprint in the key; in-flight rule)
+- `src/http-cache.ts` (changed: fingerprint in the ETag)
+- `src/api-filter.ts` (changed: `showLatency`, `showSlos` filtering)
+- `src/hidden-checks.ts` (changed: same filtering)
 - `src/poller.ts` (changed: `latencyMs: 0` placeholder in `fillLocations`, validated copy only)
 - `src/render.ts` (changed: no latency label for a result without `latencyMs`)
 - `src/components-view.ts` (changed: order)
-- `src/sections.ts`, `src/component-latency.ts` (changed: latency and SLO switches)
+- `src/sections.ts` (changed: latency and SLO switches)
+- `src/component-latency.ts` (changed: same switches)
 - `public/client.js` (changed: fingerprint poll and one reload)
-- `src/start.ts`, `src/main.ts` (changed: wiring)
-- tests, new: `src/runtime-settings.test.ts`, `src/settings-poll.test.ts`,
-  `src/server.runtime-settings.test.ts`
-- tests, changed: `src/server.contract-modules.test.ts` (the four new modules are served),
-  `src/poller.test.ts`, `src/render.test.ts`, `src/api-filter.test.ts`,
-  `src/server.privacy.test.ts`, `src/server.cache.test.ts`, `src/answer-cache.test.ts`,
-  `src/http-cache.test.ts`, `src/components-view.test.ts`, `src/settings.test.ts`,
-  `src/theme-config.test.ts`, `src/main.startup.test.ts`
+- `src/start.ts` (changed: wiring)
+- `src/main.ts` (changed: wiring)
+- `src/runtime-settings.test.ts` (new)
+- `src/settings-poll.test.ts` (new)
+- `src/server.runtime-settings.test.ts` (new)
+- `src/server.contract-modules.test.ts` (changed: the four new modules are served)
+- `src/poller.test.ts` (changed)
+- `src/render.test.ts` (changed)
+- `src/api-filter.test.ts` (changed)
+- `src/server.privacy.test.ts` (changed)
+- `src/server.cache.test.ts` (changed)
+- `src/answer-cache.test.ts` (changed)
+- `src/http-cache.test.ts` (changed)
+- `src/components-view.test.ts` (changed)
+- `src/settings.test.ts` (changed)
+- `src/theme-config.test.ts` (changed)
+- `src/main.startup.test.ts` (changed)
 - `e2e/run.ts` (changed: browser convergence and the `showLatency:false` refresh)
-- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md`, `docs/configuration.md`, `docs/theming.md`, `docs/operation.md` (changed)
+- `package.json` (changed: contract pin to the merged 2.4.0 SHA)
+- `bun.lock` (changed: same pin)
+- `README.md` (changed)
+- `docs/configuration.md` (changed)
+- `docs/theming.md` (changed)
+- `docs/operation.md` (changed)
 
 Behavior change: yes. New settings, live apply and new routes.
 
@@ -1956,8 +2061,10 @@ Files:
 - `src/remote-channels.ts` (new: poll of `/service/notify/channels`, database channel validation
   with the notify-local reference rules, secret directory resolution)
 - `src/channel-set.ts` (new: effective set, shadowing, per-id diff)
-- `src/notifier.ts`, `src/delivery.ts` (changed: reconcile: install, replace, remove workers;
-  live enqueue of a resent key; final outcome hook)
+- `src/notifier.ts` (changed: reconcile: install, replace, remove workers; live enqueue of a
+  resent key)
+- `src/delivery.ts` (changed: final outcome hook of `ChannelDelivery`; stopping one channel's
+  worker when the reconcile removes or replaces it)
 - `src/resend-commands.ts` (new: claim, execute in one transaction, post results with the
   acknowledgement rules)
 - `src/service-report.ts` (new: report with file channel views, shadowed ids, rejected list,
@@ -1967,37 +2074,65 @@ Files:
   `resend_commands` tables; migration from 3 and from 4; prune of finished command rows)
 - `src/failed-cli.ts` (changed: opens format 5)
 - `src/metrics.ts` (changed: series per installed channel)
-- `src/api.ts`, `src/index.ts` (changed: Bearer on `/service/*` only; wiring)
-- tests, new (in `test/`, the repository's test directory, `AGENTS.md:108`):
-  `test/remote-channels.test.ts`, `test/channel-set.test.ts`, `test/reconcile.test.ts`,
-  `test/resend-commands.test.ts`, `test/service-report.test.ts`, `test/ledger.v5.test.ts`,
-  `test/channel-fields.test.ts` (the per-field matrix below)
-- tests, changed: `test/support.ts` (fake api `/service/notify/*` routes), `test/config.test.ts`,
-  `test/index.test.ts`, `test/failed-cli.test.ts`, `test/webhook.test.ts`, `test/metrics.test.ts`,
-  and the three suites that assert format 4 today, updated in the same change as `LEDGER_VERSION`
-  (they belong to the ledger part of this section, so a task split puts them with format 5):
-  - `test/ledger.test.ts:95-113`: the exact-schema test becomes "format 5 has the exact schema,
-    user_version 5 and WAL mode", with the five tables of Decision 17 written out as literal SQL
-    and `{ user_version: 5 }`;
-  - `test/ledger.v4.test.ts`: `:159-185` "a valid format-3 file migrates to format 5 …" with
-    `inspect(file).version` `5` (`:163`) and the `.v3.bak` still version `3`; `:188-197` "a JSON
-    ledger migrates directly to format 5" (`:196`: `5`); the WAL crash and publish tests keep
-    every step and expect `{ version: 3, entries: THREE }` after the crash (`:245-246`,
-    unchanged) and `{ version: 5, entries: THREE }` after the next open (`:255`, `:266`); the
-    refusal tables (`:200-220`, `:539-557`) keep every case, rename `"user_version 5"` to
-    `"format 5 without its new tables"` (still refused) and add `"user_version 6"`
-    (`${SCHEMA_V3} PRAGMA user_version = 6;`), and also assert that no `.v4.bak` appears;
-  - `test/reminders.test.ts:149`: `assert.equal(state.version, 5)`.
-  - `test/ledger.v2.test.ts:211-212` and `test/index.test.ts:188` need no change: their files
-    (`user_version` 4 or 5 on a format-3 schema) lack the tables of their format and stay
-    refused. They must pass unchanged.
-- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md` (format 5), `AGENTS.md` (ledger format; `:105` still says format 3),
-  `docs/configuration.md`, `docs/channels.md`, `docs/operation.md` (format 5, migration from 4,
-  `<state>.v4.bak` downgrade, `:7-9`, `:184-194`), `docs/troubleshooting.md` (`:31`: "other than
-  3, 4 or 5"), `docs/development.md` (`:28`) (changed)
+- `src/api.ts` (changed: Bearer on `/service/*` only)
+- `src/index.ts` (changed: wiring)
+- `test/remote-channels.test.ts` (new; notify's tests live in the test directory, AGENTS.md
+  line 108)
+- `test/channel-set.test.ts` (new)
+- `test/reconcile.test.ts` (new)
+- `test/resend-commands.test.ts` (new)
+- `test/service-report.test.ts` (new; includes the event-mapping table of R1, see the notify
+  checks)
+- `test/ledger.v5.test.ts` (new)
+- `test/channel-fields.test.ts` (new: the per-field matrix below)
+- `test/support.ts` (changed: fake api routes under /service/notify/)
+- `test/config.test.ts` (changed)
+- `test/index.test.ts` (changed: startup wiring with the api token and the remote loops; the
+  existing test "a hostile SQLite state file stops startup and keeps its bytes", lines 174-210,
+  keeps every case unchanged, including the user_version 4 file at line 188)
+- `test/failed-cli.test.ts` (changed)
+- `test/webhook.test.ts` (changed)
+- `test/metrics.test.ts` (changed)
+- `test/ledger.test.ts` (changed; asserts format 4 today, so it changes in the same task as the
+  ledger version, see "Format-4 test updates" below)
+- `test/ledger.v4.test.ts` (changed; same rule)
+- `test/reminders.test.ts` (changed; same rule)
+- `package.json` (changed: contract pin to the merged 2.4.0 SHA)
+- `bun.lock` (changed: same pin)
+- `README.md` (changed: format 5)
+- `AGENTS.md` (changed: ledger format; line 105 still says format 3)
+- `docs/configuration.md` (changed)
+- `docs/channels.md` (changed)
+- `docs/operation.md` (changed: format 5, migration from 4, downgrade by restoring the v4 backup;
+  lines 7-9 and 184-194)
+- `docs/troubleshooting.md` (changed: line 31 becomes "other than 3, 4 or 5")
+- `docs/development.md` (changed: line 28)
 
 Behavior change: yes. Live reload, database channels, live resend and a new ledger format.
+
+Format-4 test updates (the ledger part of this section; a task split puts them in the same task
+as `LEDGER_VERSION` = 5, so the suite stays green):
+- `test/ledger.test.ts`, the test at lines 95-113: "format 4 has the exact schema, user_version 4
+  and WAL mode" becomes "format 5 has the exact schema, user_version 5 and WAL mode", with the
+  five tables of Decision 17 written out as literal SQL and `{ user_version: 5 }`.
+- `test/ledger.v4.test.ts`: lines 159-185 "a valid format-3 file migrates to format 5 …" with
+  `inspect(file).version` equal to `5` (line 163) and the `.v3.bak` still version `3`; lines
+  188-197 "a JSON ledger migrates directly to format 5" (line 196: `5`); the WAL crash and publish
+  tests keep every step and expect `{ version: 3, entries: THREE }` after the crash (lines
+  245-246, unchanged) and `{ version: 5, entries: THREE }` after the next open (lines 255 and
+  266); the refusal tables (lines 200-220 and 539-557) keep every case, rename
+  `"user_version 5"` to `"format 5 without its new tables"` (still refused) and add
+  `"user_version 6"` (`${SCHEMA_V3} PRAGMA user_version = 6;`), and also assert that no
+  `.v4.bak` appears.
+- `test/reminders.test.ts`, line 149: `assert.equal(state.version, 5)`.
+
+Tests that must pass unchanged (not in Files): `test/ledger.v2.test.ts`, whose refusal table at
+lines 211-212 builds user_version 4 and 5 files on a format-3 schema without the alert_state
+table. Those files lack the tables of their claimed format and stay refused under format 5. The
+same holds for the user_version 4 case of `test/index.test.ts` line 188 (that file changes only
+by added wiring tests). The completion evidence of notify includes
+`git diff --exit-code <base> -- test/ledger.v2.test.ts` with exit 0 (base: the main SHA the child
+branched from) and the passing hostile-file test of `test/index.test.ts`.
 
 Behavior: Decisions 2, 5, 6, 11–14 and 17, and the report normalization and size rules of R1.
 - The public reads stay without a token.
@@ -2104,8 +2239,15 @@ Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mk
     `5:resolved` → `resolved`, `false` (the legacy JSON case of `test/failed-cli.test.ts:85-89`);
     no payload `7:reminder:2` → `reminder`; no payload `manual:3:update:<32 hex>` → `update`,
     `true`; no payload `budget:check:1:<32 hex>` → `budget-low`; no payload
-    `expiry:1:14:<32 hex>` → `unknown`; no payload `x` → `unknown`; a payload with `event:
-    "zzz"` and key `9:opened` → `opened`;
+    `expiry:1:14:<32 hex>` → `unknown`; no payload `x` → `unknown`;
+  - key fallback for payloads that are not recognized (each row also expects
+    `hasPayload: true`): payload `{"event": "zzz"}` with key `9:opened` → `opened`, `false`;
+    payload `{"event": "zzz", "manual": {}}` with key `manual:3:resolved` → `resolved`, `true`
+    (the key decides `isManual`, not the payload); payload `{}` (no `event`) with key
+    `budget:check:1:<32 hex>` → `budget-low`, `false`; payload `{"event": "zzz"}` with key `x` →
+    `unknown`, `false`; and the recognized case for contrast: payload `{"event": "update"}`
+    without `manual` and key `manual:3:opened` → `update`, `false` (rule 1 does not read the
+    key);
   - every report of these tests passes `validateNotifyServiceReport` of contract `2.4.0`.
 - The tests fail on `c79f0b7` and pass after.
 
@@ -2147,13 +2289,16 @@ Files:
   `{"status":200}` sets the answer for all later webhook requests; `GET /counts?key=<key>`
   answers `{"seen":n,"accepted":m}`. The scenario reaches it through `published_port e2e-hook
   8080` (`e2e/compose-e2e.sh:303-306`).)
-- `e2e/runtime-settings.sh` (new: the scenario), `e2e/runtime-settings.test.sh` (new: its parsing
-  helpers on fixed fixture answers, and `docker compose ... config --quiet` of the overlay)
+- `e2e/runtime-settings.sh` (new: the scenario)
+- `e2e/runtime-settings.test.sh` (new: the scenario's parsing helpers on fixed fixture answers,
+  and `docker compose ... config --quiet` of the overlay)
 - `e2e/compose-e2e.sh` (changed: a "Runtime settings" step after "Console probe locations",
   in the pattern of `:1097-1120`)
 - `.github/workflows/ci.yml` (changed: a `lint` step `bash e2e/runtime-settings.test.sh` after
   `:67`; in `e2e-dev`, `grep -qx 'ok: runtime settings' e2e-dev.log` after `:306`)
-- `README.md`, `full/README.md`, `dev/README.md` (changed)
+- `README.md` (changed)
+- `full/README.md` (changed)
+- `dev/README.md` (changed)
 
 Behavior change: yes. A new CI scenario and CI steps.
 
