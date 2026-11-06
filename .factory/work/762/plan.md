@@ -19,7 +19,8 @@ This builds on the merged check screens (#751, Console PR #12) and the later lay
 
 - `console` only: the pointer parse in `src/check-form.ts`, a regression test at the parser and
   at the HTTP edit route, two browser checks in `e2e/run.ts`, a guide in `AGENTS.md`, one sentence
-  in `docs/checks.md`, and the coverage labels in the PR body.
+  in `docs/checks.md`, and the coverage labels in the PR body. `src/styles.ts` changes only on
+  the conditions in Non-goals.
 
 ## Non-goals
 
@@ -30,8 +31,11 @@ This builds on the merged check screens (#751, Console PR #12) and the later lay
 - No migration of stored checks; no change of how `src/check-editor-page.ts` maps a stored view
   to form values (it already copies the pointer unchanged, `src/check-editor-page.ts:166-177`).
 - No coverage threshold, tooling, Biome, ESLint, TypeScript or CI change.
-- No redesign of the editor and no change of `src/styles.ts`, unless the new keyboard check
-  exposes a missing outline (then fix only that rule and say so in the PR).
+- No redesign of the editor. `src/styles.ts` changes only if a new browser check fails on the
+  current styles: Task 2 finds a stop without the `2px solid` focus outline (then fix only that
+  focus rule), or Task 3 finds an editor wider than 1280 px (then fix only that editor's layout
+  rule, never by hiding overflow). Each such change is named in the PR body with the failing
+  check that caused it. Without such a failure `src/styles.ts` stays unchanged.
 - No new runtime dependency.
 
 ## Current behavior (verified at Console `fc2c166`)
@@ -195,6 +199,9 @@ Files:
 - `e2e/run.ts` (new keyboard traversal check and 1,280 px editor fit assertion)
 - `AGENTS.md` (check-module guide under "This repository")
 - `docs/checks.md` (one sentence under "Editor fields")
+- `src/styles.ts` (conditional: only if Task 2 finds a missing focus outline or Task 3 finds an
+  editor that does not fit 1280 px; see Non-goals. At `fc2c166` the outline rule exists,
+  `src/styles.ts:53`, and no rule removes an outline, so no change is expected)
 
 Behavior change: yes. A posted JSON pointer is no longer trimmed: a stored trailing space
 survives an edit, and a leading or spaces-only pointer is now rejected.
@@ -286,8 +293,9 @@ default):
 The list may be built in the test from these literal patterns (for example a loop over row
 numbers) but never from a DOM query of focusable elements. If Chromium shows a different order
 than this spec, do not adapt the list to the observed order: request a hold with status
-`needs-input` and report the observed sequence, unless the difference is a missing outline,
-which is fixed in `src/styles.ts` and reported.
+`needs-input` and report the observed sequence. A stop that is in the right order but lacks the
+`2px solid` outline is not an order difference: fix only the focus rule in `src/styles.ts` and
+name it in the PR body (see Non-goals).
 
 The `ok(...)` line of `checkScreensWith` names the new check, for example "Tab through the HTTP
 create and edit editors reaches each control with a 2px solid outline and leaves the form after
@@ -301,8 +309,8 @@ In `checkScreensWith`, after `page.setViewportSize({ width: 1280, height: 800 })
 `form.check-editor` has `left >= 0` and `right <= 1280`. Both script modes run, because
 `checkScreensWith` runs twice. Keep `assertQuorumText`, axe, the design-matrix checks
 (`assertEditorWidths`) and the 390 px list and detail checks unchanged. Extend the `ok(...)`
-line with "12 editors fit 1280 px". If an editor does not fit, fix its layout in
-`src/styles.ts` without hiding overflow and report it.
+line with "12 editors fit 1280 px". If an editor does not fit, fix only that editor's layout
+rule in `src/styles.ts` without hiding overflow, and name it in the PR body (see Non-goals).
 
 ### Task 4: check-module guide in `AGENTS.md`
 
@@ -320,8 +328,11 @@ jobs; check every name against the tree before writing it:
 - Helpers: `src/check-format.ts` (display formats), `src/check-filters.ts` (list filters),
   `src/check-export.ts` (export), and the shell lines with `shellQuote` in `src/shell-line.ts`.
 - Gates: check routes use the same `ProtectedRoute` role gate (`routeRole`) and form tokens as
-  the other pages; write-only values (literal headers, body, heartbeat secret) are never
-  rendered and use Keep / Replace / Remove.
+  the other pages; write-only values are never rendered. Stored literal headers and the stored
+  body offer Keep / Replace / Remove (`header_<i>_intent`, `body_intent`,
+  `src/check-editor-page.ts:324,429`); the stored heartbeat secret offers only Keep / Replace
+  (`secret_intent`, `secretField`, `src/check-editor-page.ts:452-466`). The guide must not say
+  that the heartbeat secret can be removed.
 - Tests: unit tests beside each module, `src/server.checks.test.ts`,
   `src/server.checks-write.test.ts` and `src/server.checks-change.test.ts` against the fake api
   of `test/fake-api.ts` with `test/check-fixtures.ts`; the browser checks are
@@ -351,8 +362,12 @@ Task 1, the `bun run check:browser` result with its new `ok` lines, and the manu
 - `git diff main -- package.json bun.lock src/permissions.ts src/form-tokens.ts src/server.ts`
   is empty (the contract pin, roles, form tokens and dispatcher order are unchanged; expected
   value: an empty diff).
-- `git diff main --stat` lists only the files of the `Files:` list, plus `src/styles.ts` only if
-  Task 2 or Task 3 found a layout or outline defect, said in the PR.
+- `git diff main --stat` lists only the files of the `Files:` list; `src/styles.ts` appears only
+  if Task 2 found a missing focus outline or Task 3 found an editor wider than 1280 px, and the
+  PR body names that failing check.
+- The guide's heartbeat-secret sentence names Keep / Replace only, and its header and body
+  sentence names Keep / Replace / Remove (expected values: the literal choice lists of
+  `src/check-editor-page.ts:324,429,466` at `fc2c166`, cited above).
 
 ## Risks
 
