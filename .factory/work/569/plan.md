@@ -35,6 +35,11 @@ through the existing pulse-api routes: this feature adds no API, contract or sta
   from `src/html.ts` helpers, so `confirm.ts` stays unchanged; deploy step 7 uses a second
   unused resolve token kept from step 6 and checks the later GET `409` separately; the
   performance bound is four pulse-api requests per console request.
+- Second plan-review (two changes, applied): the maintenance edit POST reads `/admin/maintenance`
+  as well, so the stored epochs (milliseconds included) come from the stored database window, not
+  from `/admin/config` (whose `maintenance` holds no database window identities, api
+  `src/config-write.ts:183,583-588`); and every count in this spec now says whether it counts all
+  pulse-api requests or only writes (section "Request counting"), with each route's reads listed.
 
 ### What this spec builds on (do not redo)
 
@@ -87,6 +92,43 @@ All pages are signed-in shell pages. Routes compare the raw path byte for byte (
 for POST, as on the Checks pages. Every time is shown with `utcTime` from
 `src/check-format.ts:24-28` (`YYYY-MM-DD HH:MM:SS UTC`) inside `<time datetime="<ISO>">`.
 
+### Request counting
+
+Every count in this spec uses one of three words, and every test asserts the word it names:
+- **API requests**: all requests the console sends to pulse-api while answering one console
+  request (reads and writes).
+- **reads**: `GET` requests to pulse-api. They change nothing.
+- **writes**: `POST`, `PUT` or `DELETE` requests to pulse-api.
+
+"Zero API requests" is used only for refusals that happen in the dispatcher before the handler
+runs (method, Host, session, Origin, content type, body size, repeated or list fields, CSRF, role,
+form token): the handler, and so every read, never starts. A refusal inside a handler (a contract
+validation, a typed-title mismatch, a stale revision, an already resolved incident, a role or
+session change seen by `writeGuardProblem`) comes after that handler's reads and is stated as
+"zero writes" with the exact number of reads of the table below. A read never undoes and never
+needs undoing.
+
+| Console request | Reads, in order | Writes |
+| --- | --- | --- |
+| `GET /incidents` | `/manual-incidents?status=all`, `/incidents?since=…&limit=1000`, `/admin/config` | 0 |
+| `GET /incidents/manual` | `/manual-incidents/<id>`, `/admin/config` | 0 |
+| `GET /incidents/automatic` | `/incidents?…`, `/admin/config`, `/checks/<checkId>/results?…` (only when the id is found) | 0 |
+| `GET /incidents/new` | `/admin/config`; with `from`: `/incidents?…` first | 0 |
+| `POST /incidents/new` | `/admin/config` | 0 (preview, refusal) or 1 `POST /manual-incidents` |
+| `GET /incidents/resolve`, `GET /incidents/delete` | `/manual-incidents/<id>`, `/admin/config` (resolve only) | 0 |
+| `POST /incidents/update`, `POST /incidents/resolve` | `/manual-incidents/<id>`, `/admin/config` | 0 or 1 (`…/updates`, `…/resolve`) |
+| `POST /incidents/delete` | `/manual-incidents/<id>` (title for the typed check) | 0 or 1 `DELETE /manual-incidents/<id>` |
+| `GET /maintenance` | `/admin/maintenance`, `/admin/config` | 0 |
+| `GET /maintenance/new`, `GET /maintenance/edit` | `/admin/maintenance`, `/admin/config`; both once more when their revisions differ | 0 |
+| `POST /maintenance/new` | `/admin/config` | 0 or 1 `POST /admin/maintenance` |
+| `POST /maintenance/edit` | `/admin/maintenance`, `/admin/config` | 0 or 1 `PUT /admin/maintenance/<target>` |
+| `GET /maintenance/delete` | `/admin/maintenance` | 0 |
+| `POST /maintenance/delete` | none | 0 or 1 `DELETE /admin/maintenance/<target>` |
+
+A read that fails ends the handler with the failure state of section 3 and zero writes. No
+handler makes a read that is not in this table; the HTTP tests assert the reads and writes per
+route from the fake api's per-route, per-method counters.
+
 ### 1. Routes and roles
 
 | Path | Methods | Role (`routeRole`) | Purpose |
@@ -109,10 +151,12 @@ for POST, as on the Checks pages. Every time is shown with `utcTime` from
 - The dispatcher order stays as documented (console `docs/configuration.md:115,121`): route and
   method, phase, Host, session, then for POST Origin, content type, body size, repeated/list
   fields, CSRF, then role, then form token, then the handler. Navigation visibility is never
-  authorization: a Viewer's forged POST answers `403` with zero API requests.
+  authorization: a Viewer's forged POST answers `403` with zero API requests (the dispatcher
+  refuses it before the handler).
 - Every write handler calls `writeGuardProblem` (`src/check-write.ts:46-66`) immediately before
-  its outbound API request, with the route's required role: a session deleted or a role lowered
-  after the form token was accepted gives `409 Not saved` or `403`, with zero API requests.
+  its write, with the route's required role: a session deleted or a role lowered after the form
+  token was accepted gives `409 Not saved` or `403` with **zero writes**. The handler's reads of
+  the "Request counting" table may already have been sent; they change nothing.
 - A detail or confirmation `id` query must be present once and non-empty (as
   `queryIdOf`, `src/check-routes.ts:108-113`). A manual or automatic id must match
   `^[1-9][0-9]{0,14}$`; a maintenance id must match the contract `MAINTENANCE_WINDOW_ID` with at
@@ -136,10 +180,11 @@ for POST, as on the Checks pages. Every time is shown with `utcTime` from
   (`src/forms.ts:4`). 32768 holds the largest valid incident form: title 200 and message 2000
   UTF-16 units at 9 URL-encoded bytes each (19800), 50 component ids of 64 ASCII characters
   with their names (≈3.6 KiB) and the hidden fields.
-- Before an outbound write the console checks the built JSON with the contract limit of its
+- Before a write the console checks the built JSON with the contract limit of its
   route (`MANUAL_INCIDENT_MAX_BODY_BYTES` 16384, contract `src/schema.ts:854`;
   `ADMIN_MAX_BODY_BYTES` for maintenance, `isWithinApiBodyLimit`, `src/check-write.ts:25-27`).
-  Over the limit: the form again with `422`, zero API requests.
+  Over the limit: the form again with `422`, zero writes (the route's reads already happened).
+  A form over `maxFormBytes` is refused by the dispatcher with `413` and zero API requests.
 
 ### 3. Reads
 
@@ -292,7 +337,8 @@ once and sends notifications. Sent notifications cannot be recalled.`
 **Post update (`POST /incidents/update`).** Hidden `incident`; `status` radio
 `investigating|identified|monitoring` (default: the incident's current status); `message`;
 `action` `preview|publish` (`Post update`). `status=resolved` (forged) answers `422` `Use
-Resolve to resolve an incident.` with zero API requests.
+Resolve to resolve an incident.` with zero writes; the form is re-rendered from the route's two
+reads (`/manual-incidents/<id>`, `/admin/config`), so the answer costs exactly 2 API requests.
 
 **Resolve (`/incidents/resolve`).** **Decision:** the resolve page is an incident form built in
 `src/incident-pages.ts`, the same composition as the post-update form, not `plainConfirmPage`:
@@ -312,9 +358,10 @@ A resolved incident cannot be reopened.`
 - POST (update and resolve alike) first reads `GET /manual-incidents/<id>` and `/admin/config`
   (the preview head and the re-rendered form need them). If that read shows `status:
   "resolved"`: `409` `This incident is already resolved.` with the posted message kept as
-  text and **zero** writes (the form token was already used by the dispatcher). Otherwise `action=publish`
-  sends `POST /manual-incidents/<id>/resolve` `{"message": ...}`. If the incident is resolved
-  between that read and the write, pulse-api's `409` is shown (section 10), input kept.
+  text and **zero** writes (2 reads; the form token was already used by the dispatcher).
+  Otherwise `action=publish` sends `POST /manual-incidents/<id>/resolve` `{"message": ...}`
+  (3 API requests in total, 1 write). If the incident is resolved between that read and the
+  write, pulse-api's `409` is shown (section 10), input kept: exactly 1 write.
 
 **Delete (`/incidents/delete`, Admin+).** `typedConfirmPage` (`src/confirm.ts:92-104`) with
 `consequence` `Deleting removes the incident from the status page and feeds. Notifications
@@ -325,10 +372,12 @@ the delete sends no `If-Match`), `targetName` the title with `.trim()` (as check
 `src/check-routes.ts:686`), `submitLabel` `Delete incident`, `busyLabel` `Deleting…`,
 `cancelHref` the detail page. The typed text is checked with the shipped `typedNameError` and
 `isTypedNameConfirmed` (`src/confirm.ts:47-57`, "Decision 7" in its doc comment, unchanged): both values
-trimmed and NFC-normalized, case-sensitive, inner whitespace counts. A mismatch or blank: `422`
-with the `typedNameError` text, the typed value kept, zero API requests. POST sends
-`DELETE /manual-incidents/<id>`; success redirects to `/incidents?deleted=1`. Works without
-JavaScript.
+trimmed and NFC-normalized, case-sensitive, inner whitespace counts. The POST takes the title
+from its one read, `GET /manual-incidents/<id>` (never from a posted field); that read answering
+`404` gives the shell `404` `This incident does not exist or is not public.` with zero writes. A
+mismatch or blank: `422` with the `typedNameError` text, the typed value kept, **zero writes**
+(exactly 1 API request: that read). A match sends `DELETE /manual-incidents/<id>` (2 API
+requests, 1 write); success redirects to `/incidents?deleted=1`. Works without JavaScript.
 
 **Input handling (all incident forms).**
 - `message`: every `\r\n` and every remaining `\r` become `\n` before validation (browsers send
@@ -340,10 +389,10 @@ JavaScript.
   from the contract message, and **all input kept** (title, impact, status, components,
   message). No browser-only length check replaces the contract check (no `maxlength`).
 - A posted `component` id that is not in the current `/admin/config` components: `422`
-  `Component <id> is not configured any more.`, input kept.
+  `Component <id> is not configured any more.`, input kept, zero writes.
 - `action=preview`: re-render the same form with the server preview of the posted input and a
-  fresh form token; **zero** pulse-api requests other than the reads the form needs, no People
-  row, no notification.
+  fresh form token; **zero writes** (only the reads of the "Request counting" table: 1 for the
+  composer, 2 for update and resolve), no People row, no notification.
 
 **Preview markup.** The server and the script render the same structure inside
 `<section aria-labelledby="preview-heading">` with heading `Status page preview` and
@@ -377,7 +426,8 @@ Without JavaScript the `Update preview` button gives the same preview from the s
 
 ### 10. Incident writes and their outcomes
 
-One outbound request per accepted POST, never retried, never redirected, 5000 ms timeout
+At most one write per accepted POST, after the reads of the "Request counting" table; the write is
+never retried, never redirected, 5000 ms timeout
 (`requestJson`, as `src/check-write.ts:126-141`), `Authorization: Bearer <admin token>`, no
 `If-Match`. The outcome class comes from `checkOutcome` (`src/check-outcome.ts:23-46`). Mapping:
 
@@ -394,8 +444,9 @@ One outbound request per accepted POST, never retried, never redirected, 5000 ms
 | other refused | `502` `pulse-api refused the request (<status>): <message> Nothing was changed.` / `pulse-api could not save the change (<status>). Nothing was changed.` |
 | unknown (timeout, network, redirect, foreign answer) | `504`/`502` `The result is unknown. Open the incident list to see whether the change was published before you send it again.`, input shown as text; no retry |
 
-The consumed form token makes a reload of the POST answer `409 Already submitted`; an unknown
-outcome never triggers a second request.
+The consumed form token makes a reload of the POST answer `409 Already submitted` (zero API
+requests: the dispatcher refuses it); an unknown outcome never triggers a second write or any
+read after the write.
 
 ### 11. People log
 
@@ -451,15 +502,31 @@ Fields:
   as **UTC**, never as the browser's or server's local time. Accepted:
   `^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$`; the parts must round-trip through
   `Date.UTC` (so `2026-02-30T10:00` is refused). Epoch ms = `Date.UTC(...)`. Edit prefill: the
-  stored value as `YYYY-MM-DDTHH:MM:SS` UTC; when the posted text equals the prefill text of
-  the stored value, the stored epoch is kept exactly (milliseconds included).
+  stored value as `YYYY-MM-DDTHH:MM:SS` UTC (milliseconds dropped). **Time keep:** on the edit
+  POST, the stored `start` and `end` come from the POST's own `GET /admin/maintenance` read (step
+  1 below): the database row whose `id` equals `target`. When a posted text equals the prefill
+  text of that stored value, the stored epoch is sent exactly (milliseconds included); otherwise
+  the parsed text is sent (milliseconds 0). The stored epochs never come from a posted or hidden
+  field, and never from `/admin/config`: its `maintenance` holds only the checks file's windows,
+  by index and without window ids (api `src/config-write.ts:182-183,583-588`), so it has no
+  database window at all.
 - `note`: one-line text. Validated only by the contract (`validateAdminMaintenanceWindowInput`):
   1–500 UTF-16 units, no control characters, no leading or trailing whitespace. No trimming.
 
 POST:
-1. Read `/admin/config`. If its revision differs from the posted `revision`: the stale page with
-   all input kept (shown as text, plus `Open the form again`) and zero writes. Component
-   membership is never re-expanded silently from a changed configuration.
+1. Reads. Create: `/admin/config` (1 read). Edit: `/admin/maintenance`, then `/admin/config`
+   (2 reads, both always sent before any comparison; both carry the shared admin revision, api
+   `docs/rest-api.md:426`). If any read
+   revision differs from the posted `revision`: the stale page with all input kept (shown as
+   text, plus `Open the form again`) and zero writes; the POST does not read again. Component
+   membership is never re-expanded silently from a changed configuration. Edit only, after the
+   revision check, the `target` lookup in the `/admin/maintenance` read:
+   - an unshadowed database row (`windows[]`, `source: "database"`, `id === target`): its `start`
+     and `end` are the stored epochs of the time-keep rule;
+   - a row only in `shadowed[]`, or only a file row with that id: `409` `This window comes from
+     the checks file or is shadowed by it; it cannot be edited here.`, input kept, zero writes
+     (2 reads);
+   - no row with that id: `404` `This maintenance window no longer exists.`, zero writes.
 2. `checkIds` = the posted `check` values in posted order, then for each posted `component` (in
    posted order) its `checkIds` in component order, skipping ids already present. An unknown
    component id: `422`, input kept.
@@ -469,7 +536,8 @@ POST:
    other contract errors map to their field. Input kept.
 4. `POST /admin/maintenance` (create) or `PUT /admin/maintenance/<target>` (edit; body `id` =
    `target`) with `If-Match: "<revision>"`, through the check-write sender (`If-Match`, 5000 ms,
-   no retry). Saved: `303` `/maintenance?saved=1`. Outcomes as `refusedAnswer`
+   no retry): 1 write, so a create POST makes 2 API requests and an edit POST 3. Saved: `303`
+   `/maintenance?saved=1`. Outcomes as `refusedAnswer`
    (`src/check-write.ts:89-115`) with maintenance texts: `403` `The console token lacks the
    admin or checks scope. Saving maintenance windows needs both.`, `404` `This maintenance
    window no longer exists.`, `409` (id exists, shadowed, capacity) the form with the API
@@ -477,8 +545,9 @@ POST:
    reference), unknown outcome `The result is unknown. Open Maintenance to see whether the
    window was saved.`
 - Edit of a shadowed or file id: GET answers `409` `This window comes from the checks file or is
-  shadowed by it; it cannot be edited here.` with no form; a forged POST is sent and the API's
-  `409` is shown, input kept.
+  shadowed by it; it cannot be edited here.` with no form; a forged POST gets the same `409`
+  from step 1 with zero writes. A refused `409` from pulse-api (section 10 mapping) still applies
+  to creates (id exists, capacity).
 - Current and past database windows can be edited like planned ones (the API has no
   future-only rule).
 
@@ -487,8 +556,10 @@ unshadowed or shadowed database id (`Delete maintenance window <id>?`; for a sha
 `Delete the database copy of <id>? The file window stays in force.`), hidden `target` and
 `revision` (from `/admin/maintenance`). It uses only the fields `plainConfirmPage` supports today
 (`consequence`, `action`, `revision`, `hidden`, labels, `tone`, `cancelHref`, `notice`;
-`src/confirm.ts:13-34`); `confirm.ts` does not change. A file id or unknown id: `404`. POST sends
-`DELETE /admin/maintenance/<target>` with `If-Match`; `303` `/maintenance?deleted=1`.
+`src/confirm.ts:13-34`); `confirm.ts` does not change. A file id or unknown id: `404`. POST makes
+no read: it sends `DELETE /admin/maintenance/<target>` with `If-Match: "<posted revision>"` (1 API
+request, 1 write); `303` `/maintenance?deleted=1`; pulse-api's `404`, `409` and `412` map as in
+step 4.
 
 ### 14. Layout and accessibility
 
@@ -512,10 +583,12 @@ maintenance form GET (section 13): `/admin/maintenance` and `/admin/config`, and
 revisions differ both once more (4 reads). The incident list and the automatic detail make 3
 reads (the list: `/manual-incidents`, `/incidents?since=…&limit=1000`, `/admin/config`; the
 automatic detail: `/incidents?…`, `/admin/config`, `/checks/<id>/results`); every other GET
-makes 1 or 2. A POST makes at most two reads and one write (update and resolve:
-`/manual-incidents/<id>`, `/admin/config`, then the write; composer and maintenance:
-`/admin/config`, then the write; incident delete: `/manual-incidents/<id>` for the typed title, then the write; maintenance delete: the write only); a refused form is re-rendered from
-those reads and the posted input, with no further read. The budgets file
+makes 1 or 2. A POST makes at most two reads and one write, 3 API requests (update, resolve and
+maintenance edit: two reads, then the write; composer and maintenance create: `/admin/config`,
+then the write; incident delete: `/manual-incidents/<id>` for the typed title, then the write;
+maintenance delete: the write only). The per-route table is "Request counting" in Required
+behavior. A refused form is re-rendered from those reads and the posted input, with no further
+read. The budgets file
 has no console entry (keys: api, config, contract, kit, notify, probe, status). No A/B run is
 needed.
 
@@ -530,8 +603,9 @@ Checklist items that apply:
   or note in a log line or People row. API error messages are shown escaped and cut to 1000
   characters. Deploy: the owner credentials file is mode 600 in a mode-700 directory, never
   printed, removed by the trap.
-- **Auth order and status codes:** the fixed dispatcher order (section 1); `403` before any
-  outbound request; `writeGuardProblem` right before the write; navigation is not
+- **Auth order and status codes:** the fixed dispatcher order (section 1); the dispatcher's
+  role `403` comes before any API request; `writeGuardProblem` right before the write (its
+  `403`/`409` come after the handler's reads, with zero writes); navigation is not
   authorization; `405` for automatic-incident writes.
 - **Body and size limits:** `maxFormBytes` 32768 / 131072; list field limits; JSON size checked
   against the contract limits before sending.
@@ -576,28 +650,32 @@ redirects, as today); file writes (none); Dockerfiles (unchanged).
 | No trim | title ` Slow` | sent as ` Slow`; preview shows ` Slow` |
 | Contract length | message of 2001 UTF-16 units; 1000 `😀` (2000 units) | 422 with input kept; accepted |
 | HTML input | title `<script>alert(1)</script>` | preview and pages show the text; no `<script>` element; status shows the same text |
-| Forged resolve via update | `POST /incidents/update` `status=resolved` | `422`, zero API requests |
-| Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes; GET resolve page `409` without form; detail page has no forms |
-| Resolve race | the fake api resolves the incident between the console's read and its write | one write; pulse-api `409` shown with input kept |
-| Delete typed title | for title `Slow checkout`: typed `slow checkout`; `Slow  checkout` (two inner spaces); blank `   ` | `422` (`The name does not match. Type Slow checkout exactly.` / same / `Type the name to confirm.`), zero writes |
+| Forged resolve via update | `POST /incidents/update` `status=resolved` | `422`, zero writes, exactly 2 reads (`/manual-incidents/<id>`, `/admin/config`) |
+| Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes (2 reads); GET resolve page `409` without form; detail page has no forms |
+| Resolve race | the fake api resolves the incident between the console's read and its write | 2 reads, exactly 1 write; pulse-api `409` shown with input kept |
+| Delete typed title | for title `Slow checkout`: typed `slow checkout`; `Slow  checkout` (two inner spaces); blank `   ` | `422` (`The name does not match. Type Slow checkout exactly.` / same / `Type the name to confirm.`), zero writes, exactly 1 API request (the title read `GET /manual-incidents/<id>`); a wrong implementation that takes the title from a posted field makes 0 reads and is caught by the read count |
 | Delete typed title, trim | typed `Slow checkout ` (trailing space) or `Café` typed decomposed (`Cafe` + U+0301) for title `Café` | accepted: `isTypedNameConfirmed` trims and NFC-normalizes both (`src/confirm.ts:47-50`); a wrong implementation that compares raw strings refuses it |
-| Roles | Member `POST /incidents/delete` or `/maintenance/delete`; Viewer `POST /incidents/new`, `/incidents/update`, `/maintenance/new` | `403`, zero API requests |
-| Role lowered mid-request | Member's role set to Viewer after the form token was accepted, before the write | `403`, zero API requests |
+| Roles | Member `POST /incidents/delete` or `/maintenance/delete`; Viewer `POST /incidents/new`, `/incidents/update`, `/maintenance/new` | `403` from the dispatcher, zero API requests (0 reads, 0 writes) |
+| Role lowered mid-request | Member's role set to Viewer after the form token was accepted, before the write (the fake api holds the handler's last read open with a gate and the test
+lowers `users.role` while it waits, as console `src/server.checks-write.test.ts:478-492`; no
+production hook), on `POST /incidents/new` `action=publish` and on `POST /maintenance/edit` | `403`, zero writes; the reads already sent stay as they are: exactly 1 read (`/admin/config`) for the composer, exactly 2 (`/admin/maintenance`, `/admin/config`) for the edit. A wrong implementation that checks the role only in the dispatcher sends the write |
 | List field | `component=web&component=web` | `400` |
 | List field limit | 1001 `check` values | `400` |
-| Body limit | 32769-byte incident form | `413` |
-| Unknown write outcome | API times out on create | `504` unknown text; exactly one API request; a People row with value `unknown` |
+| Body limit | 32769-byte incident form | `413` from the dispatcher, zero API requests |
+| Unknown write outcome | API times out on `POST /manual-incidents` (composer publish) | `504` unknown text; exactly 2 API requests: 1 read (`/admin/config`, before the write) and exactly 1 write, no retry and no read after the write; a People row with value `unknown` |
 | Private filtering | public read answers one item with `visibility: "internal"` and one with an accessor `publishedAt` | neither shown, not counted in MTTR |
 | Time parse | `2026-11-06T10:00` | start `1793959200000` (not shifted by the browser time zone) |
 | Time parse | `2026-02-30T10:00`; `10000-01-01T00:00` | `422` |
-| Time keep | stored start `1793959200123`, field unchanged on edit | PUT start `1793959200123` |
+| Time keep | database window `db-upgrade` stored with start `1793959200123` (`2026-11-06T10:00:00.123Z`) in the fake api's `/admin/maintenance`; edit POST with `start` `2026-11-06T10:00:00` (the prefill) | PUT start `1793959200123`; the edit POST made exactly 2 reads, `/admin/maintenance` among them. A wrong implementation that looks the window up in `/admin/config` (which has no database window) or re-parses the text sends `1793959200000` |
+| Time keep, changed | the same window, `start` posted as `2026-11-06T10:00:01` | PUT start `1793959201000` |
+| Time keep, edit raced | another write changes the revision between the edit GET and POST | stale page from the POST's `/admin/maintenance` read, zero writes, no third read |
 | Span | end equal to start | `422` `End must be after start.` |
 | Selection | checks `e2e-tcp`, `e2e-post` and component `web` (`status-page`, `e2e-post`) | `checkIds` `["e2e-tcp","e2e-post","status-page"]` |
 | Selection size | nothing selected; 51 checks | `422` `… this selection has 0.` / `… has 51.` |
 | Window id | `1window`, `Window`, 65 characters | `422`; `db-upgrade` accepted |
 | Collision | create `db-upgrade` twice | second answers `409` with the API message, input kept |
-| Stale | a check write between form GET and POST | console precheck or API `412`: stale page, input kept, zero window writes |
-| Shadowed | edit of a shadowed id | GET `409` without form; delete removes only the database copy |
+| Stale | a check write between form GET and POST | console precheck (posted revision differs from a POST read: zero writes) or API `412` (exactly 1 write sent): stale page, input kept, the window unchanged |
+| Shadowed | edit of a shadowed id | GET `409` without form; forged POST `409` with zero writes (2 reads); delete removes only the database copy |
 | Missing check | stored id not effective | listed checked as `<id> (not configured)`; submitting it gives the API `422` |
 | Phase boundary | `now = start` | `current`; `now = end` → `past` (API phase, half-open) |
 
@@ -657,9 +735,13 @@ public manual incidents (ids from 1, own counter), validates bodies with
 (resolved → `409`, 100 updates → `409`), keeps database windows with the shared revision
 (`If-Match` missing `428`, stale `412`, `*` `400`; duplicate id, shadowed replace, file id `409`;
 unknown `404`), computes `phase` from an injected `now`, serves file and shadowed rows from
-fixtures, and counts every write per route. A switch makes the public list also return a
-private-looking item (section 3 filtering test); another resolves an incident after its next
-read, so the console's following write meets pulse-api's `409` (resolve race).
+fixtures (a database window can be seeded with any epoch, for example start `1793959200123`), and
+records every request it receives as `{method, path}` so a test can count reads and writes per
+route separately. A reply can be held open with a gate (as the existing `test/fake-api.ts`
+`replyTo(..., {gate})`), for the role-lowered and session-removed cases. A switch makes the
+public list also return a private-looking item (section 3 filtering test); another resolves an
+incident after its next read, so the console's following write meets pulse-api's `409`
+(resolve race).
 
 **Checks.**
 - Unit: `incident-list.test.ts` (every MTTR, duration, order, filter and bound counterexample),
@@ -676,9 +758,12 @@ read, so the console's following write meets pulse-api's `409` (resolve race).
   `<b>`. With no component, `affects` has `hidden`.
 - HTTP (`server.incidents*.test.ts`, `server.maintenance.test.ts`, real server on port 0 against
   the fake api): routes, roles and `405`; Viewer/Member/Admin/Owner views and forged POSTs with
-  zero writes; CSRF failure, form-token replay (`409 Already submitted`, one write), role and
-  session removed before the write (`writeGuardProblem`); `action=preview` makes zero writes and
-  no People row; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; every outcome
+  zero API requests; CSRF failure, form-token replay (`409 Already submitted`, one write in
+  total, zero API requests for the replay), role and session removed before the write
+  (`writeGuardProblem`: zero writes and the exact read count of the "Request counting" table);
+  for every route of that table one test asserts its reads and writes on the success path;
+  `action=preview` makes zero writes and no People row; maintenance edit time keep (stored
+  `1793959200123` sent back unchanged, 2 reads, 1 write) and its changed and raced rows; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; every outcome
   row of section 10 and the maintenance outcomes (`409`, `412`, `422`, `404`, timeout, unknown)
   with input kept; private items never rendered; old-api Maintenance state; a scan of every
   response, log line and the test database for the sentinel admin token and the test titles,
@@ -862,7 +947,11 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
    not rebuild them and changes no api code.
 4. MTTR: console unit tests with the literal values of the counterexamples (20 min / 2; 18 min;
    `—`; truncation).
-5. Roles and confirmations: console HTTP tests (zero writes on every refusal).
+5. Roles and confirmations: console HTTP tests: zero API requests on every dispatcher refusal;
+   zero writes and exactly the reads of the "Request counting" table on every handler refusal
+   (literal counts in the Counterexamples).
+8. Request counts: one console HTTP test per row of the "Request counting" table asserts its
+   literal read and write counts from the fake api's request record.
 6. Mobile: console browser check at 390 px (no sideways scroll, axe).
 7. Secrets: console HTTP scan and deploy step 12 (0 hits).
 
