@@ -94,7 +94,7 @@
       "unit": "s CPU (bun run test, nightly median of side B; local 0.713 s)",
       "repetitions": "nightly: 5 rounds per side in run 42195136982, 7 runs read; local: 2 series of 5 runs on B, 5 runs on A, 3 /usr/bin/time runs",
       "baseline": "bench side A 6a06ec2: 0.524 s nightly, 0.492 s local (B/A 1.47 nightly, 1.45 local; 1.44-1.47 in each of the 4 nightly runs with A 6a06ec2). Without the dist test B costs 0.251 s.",
-      "budget": "pulse-api bench/budgets.json kit.test_cpu_s 0.7 s, gating, no floor (bench/compare.ts:185-186: FAIL regression when B - A > max(10 % of A, 0.2 s), FAIL budget when B > 0.7 s)",
+      "budget": "pulse-api bench/budgets.json kit.test_cpu_s 0.7 s, gating, no per-metric floor override; default regression floor 0.2 s (bench/compare.ts:185-186: FAIL regression when B - A > max(10 % of A, 0.2 s), FAIL budget when B > 0.7 s)",
       "fixDirection": "Measure the dist freshness check outside test_cpu_s (for example a separate CI step that compares a fresh build with dist) or make it cheaper; otherwise re-set the budget by the bench README rule on the current main.",
       "commits": {
         "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
@@ -117,7 +117,7 @@
       "repetitions": "100 new keys per phase (median); 4 runs at 9,800 keys, 1 run each at 100, 1,000 and 5,000 keys; growth.ts 5 reps x 200 keys (1,000 keys 174.38 us, 9,000 keys 936.75 us)",
       "baseline": "the same new key with a forward clock 0.32-1.83 us, and 0.35-0.70 us after the clock passes the newest window start again; cost while behind grows with the live keys: 77, 192, 749, 1174 us at 100, 1,000, 5,000, 9,800 keys",
       "budget": "none: kit has no limiter metric and pulse-api has no budget for its admin routes",
-      "impact": "pulse-api runs check and recordFailure synchronously for each failed admin authentication (src/admin-auth-throttle.ts:79-94); during a backward step of the wall clock each failing client with a new key blocks the event loop for up to about 1.2 ms, for as long as the step lasts, with up to 9,999 keys in the table. Needs a backward clock step plus many distinct failing clients.",
+      "impact": "pulse-api runs check and recordFailure synchronously for each failed admin authentication (src/admin-auth-throttle.ts:79-94); during a backward step of the wall clock a failing client that opens an own window at 9,800 live keys blocks the event loop for a measured median of about 1.2 ms, not an upper bound. The sort repeats while the clock is behind and an own window can be opened; at maxKeys, new keys use overflow without a sort. Needs a backward clock step plus many distinct failing clients.",
       "fixDirection": "Keep the start order without a full sort per insert, for example insert the new window at its position or re-sort once per step instead of once per key.",
       "commits": {
         "kit": "536133f3e8b708179fa01feeb02395a0e1961e07",
@@ -125,6 +125,87 @@
       }
     }
   ],
+  "review": {
+    "date": "2026-11-06",
+    "startedAt": "2026-11-06T14:49:59Z",
+    "metaCommit": "2f9ba6c284d369686ec487d102b0a37ac8053327",
+    "consistency": "All 6 checklist statuses, both finding ids, severities and candidate flags agree between Markdown and JSON; all required fields are present. The six target clone HEADs match the examined commits. The meta audit base remains in branch history.",
+    "removed": [],
+    "regraded": [],
+    "findings": [
+      {
+        "id": "performance-kit-2026-11-06-1",
+        "result": "reproduced",
+        "severityReason": "The documented performance gate fails on a realistic hosted runner.",
+        "artifact": {
+          "run": 42195136982,
+          "id": 13494150601,
+          "name": "bench-out",
+          "sha256": "9d1867fe2453346cfbb82f8d2ed940af6ed91de0dde104f2477bbc9629aaf53a",
+          "retrieval": "GitHub artifact download API succeeded; unzip -q <bench.zip> -d <nightly> and sha256sum <bench.zip> exited 0; digest matches GitHub."
+        },
+        "commands": [
+          {
+            "command": "gh run list --repo lorenzh/pulse-api --workflow bench.yml --branch main --status completed --limit 1 --json databaseId,event,createdAt,headSha,conclusion",
+            "exitCode": 0,
+            "excerpt": "42195136982, schedule, 2026-11-06T09:27:02Z, api 4b3e9b1dcce5f4e362c6bc1f529375181fb49f9a, failure"
+          },
+          {
+            "command": "jq '[.[] | select(.service == \"kit\")]' <nightly>/table.json",
+            "exitCode": 0,
+            "excerpt": "test_cpu_s A 0.524268 s, B 0.767716 s, budget 0.7 s: FAIL regression; build_cpu_s B 0.516846 s, budget 0.6 s: ok. All 5 raw rounds agree with the report's rounded values."
+          },
+          {
+            "command": "timeout 120 bun cpu-review.ts <kit copy> bun run test",
+            "exitCode": 0,
+            "excerpt": "0.724851 s CPU; 174 pass, 0 fail, 18 files"
+          },
+          {
+            "command": "timeout 120 bun cpu-review.ts <kit copy> bun test test/smoke.test.ts --test-name-pattern 'dist matches'",
+            "exitCode": 0,
+            "excerpt": "0.526957 s CPU; 1 pass, 0 fail"
+          },
+          {
+            "command": "timeout 120 bun cpu-review.ts <kit copy> bun test --test-name-pattern '^(?!dist matches)'",
+            "exitCode": 0,
+            "excerpt": "0.251456 s CPU; 173 pass, 0 fail, 18 files"
+          }
+        ],
+        "localMethod": "One run per command in an rsync -a copy of kit 536133f, installed with timeout 300 bun install --frozen-lockfile (exit 0). Temporary cpu-review.ts uses Bun.spawn().resourceUsage() for child user + system CPU, including waited descendants. The original 68 % attribution remains based on the audit's repeated measurements; no new A/B comparison was needed."
+      },
+      {
+        "id": "performance-kit-2026-11-06-2",
+        "result": "spot-check reproduced",
+        "severityReason": "Needs a backward clock step plus many distinct failing clients, supporting P3.",
+        "command": "timeout 120 bun limiter-review.ts <kit copy> <live keys at step> 1100",
+        "exitCode": 0,
+        "method": "Import dist/failure-limiter.js from kit 536133f; API policy, injected clock. Seed live keys - 100, then time 100 distinct new keys per phase (check + recordFailure), clock 100000 -> 98900 -> 100001 ms. At 9800 keys, the last phase ends at 10000 keys, so no measured request uses overflow. One run at each key count.",
+        "excerpt": "1000 keys: before 1.477 us, behind 185.354 us, after catch-up 0.581 us; 9800 keys: before 0.596 us, behind 1278.910 us, after catch-up 0.371 us (medians). GitHub file API confirms the same sort branch in API's pinned kit c6d2cba7d90c981b884dcac2a9288dd9eccad8b5."
+      }
+    ],
+    "checks": [
+      {
+        "command": "jq . audits/performance/kit.json",
+        "exitCode": 0,
+        "excerpt": "Valid JSON."
+      },
+      {
+        "command": "rg -ni 'sqlite|SELECT |INSERT |prepare\\(|\\.query\\(' src/ (in kit copy)",
+        "exitCode": 1,
+        "excerpt": "No matches; no SQL. Website item also does not apply to this library."
+      }
+    ],
+    "corrections": [
+      "Distinguished no per-metric floor override from the effective default regression floor of 0.2 s; the absolute budget remains 0.7 s.",
+      "Described the limiter's measured median rather than claiming a 1.2 ms upper bound."
+    ],
+    "limitations": [
+      "Startup profiles, five-minute memory run, per-file timings and other helper growth measurements retain the audit's evidence and were not independently repeated.",
+      "No Docker A/B or fresh A-side measurement ran: the cited nightly reproduces P2.",
+      "Limiter spot-check uses an injected clock in a local microbenchmark, not an API load test."
+    ],
+    "cleanup": "Temporary copies, downloaded artifacts and review helpers removed; no review process or service remains running."
+  },
   "notes": [
     "Intl.DurationFormat is built at import (src/format-duration.ts:14): about 2 ms CPU per process (8 ms against 6 ms for an empty script, 20 runs), paid by every service that imports the kit entry; only status and notify call formatDuration.",
     "The kit entry import grew from 37 ms (A 6a06ec2) to 44 ms (B) of CPU; about 5 ms are the built-ins of the new helpers (node:dns/promises, node:crypto, node:fs). Services pin older kit commits (api c6d2cba, probe 739188a, notify and status 236df21, console 536133f).",
@@ -132,7 +213,7 @@
     "Logger: 8.3 us per line with 10 fields against 0.93 us for plain JSON.stringify of the same line (one replacer-based stringify per field, src/logger.ts:39-56); the faster-than-linear growth with nesting depth is the runtime's replacer path.",
     "bun test test/<name>.test.ts exits 1 for 10 of 18 files with 0 failing tests because of the 80 % line threshold of bunfig.toml.",
     "build_cpu_s is ok: nightly B 0.52 s against 0.6 s (87 %); B medians 0.302-0.517 s across 7 runs; local B 0.465 s, A 0.390 s.",
-    "Bench calibration (pulse-api scope): the same kit commit gave test_cpu_s B medians 0.465-0.768 s across 7 hosted runs; the kit budget has no floor.",
+    "Bench calibration (pulse-api scope): the same kit commit gave test_cpu_s B medians 0.465-0.768 s across 7 hosted runs; the kit budget has no per-metric floor override, so the default regression floor is 0.2 s; that floor does not relax the absolute 0.7 s budget.",
     "The Docker A/B (timeout 30m bun bench/run.ts --a 6a06ec2 --b 536133f --rounds 2) was not run: for kit it measures the same bun run test and bun run build that were measured locally on both sides, and the nightly side B is the examined commit."
   ]
 }

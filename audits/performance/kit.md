@@ -15,7 +15,7 @@
 | pulse-notify | `c79f0b7cb5e25ada96e6314220e69cf4f5279b32` | kit call sites (`grep`), read only |
 | pulse-status | `8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d` | kit call sites (`grep`), read only |
 | pulse-console | `fc2c166de8237a841b5253cef99bb3fd17f85f2f` | kit pin in `package.json`, read only |
-| pulse-meta | `eb740148dd23557f610c903dce2ba0dc0825e04e` | this repository |
+| pulse-meta | `eb740148dd23557f610c903dce2ba0dc0825e04e` | audit base; independent review at `2f9ba6c284d369686ec487d102b0a37ac8053327` |
 
 - Nightly bench that was read: run [42195136982](https://github.com/lorenzh/pulse-api/actions/runs/42195136982). It is the newest completed `bench.yml` run on `main` (`schedule`, 2026-11-06T09:27Z, api head `4b3e9b1`, conclusion `failure`). Side A of kit is `6a06ec2`. Side B is kit `main`, which was `536133f` at that time, so side B is the examined commit. Kit table of artifact `bench-out` (medians of 5 rounds):
 
@@ -231,7 +231,7 @@ local A {"label":"A full suite (bun run test)","exit":[0,0,0,0,0],"cpuMedianS":0
 
 - Value: 0.768 s (nightly median of B). Locally 0.713 s and 0.719 s (two series of 5 runs).
 - Baseline: A `6a06ec2` 0.524 s (nightly) and 0.492 s (local). B/A is 1.47 in the nightly and 1.45 locally.
-- Budget: `test_cpu_s` 0.7 s, gating, no floor. `bench/compare.ts:185-186` marks `FAIL regression` when B - A > max(10 % of A, 0.2 s), and `FAIL budget` when B > 0.7 s.
+- Budget: `test_cpu_s` 0.7 s, gating, no per-metric floor override (the default regression floor is 0.2 s). `bench/compare.ts:185-186` marks `FAIL regression` when B - A > max(10 % of A, 0.2 s), and `FAIL budget` when B > 0.7 s.
 - Runner dependence. Kit `main` was `536133f` in each of the 7 runs with an artifact among the 8 newest completed `bench.yml` runs on `main` (2026-11-05T06:27Z to 2026-11-06T09:27Z; run 42173147402 has no `bench-out`). The B median was 0.768, 0.747, 0.738, 0.676, 0.564, 0.532 and 0.465 s (runs 42195136982, 42173433280, 41986370639, 41980510751, 42056398988, 42003046407, 41993793776). B/A was 1.44 to 1.47 in each of the 4 runs where A was `6a06ec2`. So B is over the budget whenever the runner is slow enough that A is above about 0.48 s. That happened in 3 of the 7 runs. In run 42173433280 both sides are `main` (0.758 and 0.747 s), and the table gives `FAIL budget`.
 - Why it matters: the gate in `bench/budgets.json` fails for the current kit `main` on realistic hosted runners: in 3 of 7 runs B was over 0.7 s, and in the newest scheduled run the gate failed. The documented `test_cpu_s` budget therefore does not hold for the current code. Most of the cost is not tests of kit behavior. The suite repeats the `bun run build` compile (0.488 s against 0.465 s for `bun run build`). The other 173 tests cost 0.251 s, 36 % of the budget. `bun run check` compiles the sources three times: `build`, `typecheck` and this test.
 - Direction (for the owner): measure the dist check outside `test_cpu_s`, for example as its own CI step that compares a fresh build with `dist`, or make it cheaper. Otherwise set the budget again with the bench README rule (A median + 30 %) on the current `main`.
@@ -254,7 +254,7 @@ local A {"label":"A full suite (bun run test)","exit":[0,0,0,0,0],"cpuMedianS":0
 - Repetitions: 100 new keys per phase, median; 4 runs at 9,800 keys, 1 run each at 100, 1,000 and 5,000 keys; `growth.ts` 5 repetitions x 200 keys (1,000 keys 174.38 µs, 9,000 keys 936.75 µs).
 - Baseline: the same new key with a forward clock, 0.32-1.83 µs, and after the clock passes the newest start again, 0.35-0.70 µs. A step back is about 1,000 times slower at 9,800 keys. It grows with the live keys: 77, 192, 749 and 1,174 µs at 100, 1,000, 5,000 and 9,800 keys.
 - Budget: none. Kit has no limiter metric, and pulse-api has no budget for its admin routes.
-- Impact: pulse-api calls `check` and then `recordFailure` synchronously for every failed admin authentication (`src/admin-auth-throttle.ts:79-94`; the comment at `:34` says "Synchronous on purpose"). During a backward clock step, each failing client with a new key blocks the event loop for up to about 1.2 ms. That lasts as long as the step, and the table holds up to 9,999 keys (at `maxKeys` a new key goes to the overflow window and no sort runs). It needs a backward step of the wall clock (`now: Date.now`) together with many distinct failing clients, so it is a corner case. The sort exists for correctness: commit `66fb3d3` keeps the windows in start order after a backward jump, and the doc comment (`:21-24`) describes that case.
+- Impact: pulse-api calls `check` and then `recordFailure` synchronously for every failed admin authentication (`src/admin-auth-throttle.ts:79-94`; the comment at `:34` says "Synchronous on purpose"). During a backward clock step, a failing client that opens an own window at 9,800 live keys blocks the event loop for a measured median of about 1.2 ms; this is not an upper bound. The sort repeats while the clock is behind and an own window can be opened (at `maxKeys` a new key goes to the overflow window and no sort runs). It needs a backward step of the wall clock (`now: Date.now`) together with many distinct failing clients, so it is a corner case. The sort exists for correctness: commit `66fb3d3` keeps the windows in start order after a backward jump, and the doc comment (`:21-24`) describes that case.
 - Direction (for the owner): keep the start order without a full sort per insert. For example, insert the one new window at its position, or re-sort once per step instead of once per key.
 
 ## Notes
@@ -265,6 +265,37 @@ local A {"label":"A full suite (bun run test)","exit":[0,0,0,0,0],"cpuMedianS":0
 4. **Logger per line**: 8.3 µs for 10 fields against 0.93 µs for a plain `JSON.stringify` of the same line (`logcmp.ts`). Each field is serialized on its own with a replacer function, for BigInt, cycles and throwing getters (`src/logger.ts:39-56`). At the api request rate that is negligible. The faster-than-linear growth with nesting depth comes from the runtime's replacer path, not from kit.
 5. **Single test files exit 1.** `bun test test/<name>.test.ts`, the "One test file" command of `AGENTS.md`, exits with code 1 for 10 of the 18 files although every test passes. The reason is the 80 % line threshold of `bunfig.toml`, applied to the files loaded by that run. This is not a performance item. It is noted because it can be mistaken for a failure when timing single files.
 6. **`build_cpu_s`** is `ok`: B 0.52 s against the 0.6 s budget in the nightly (87 %), and the highest B median of the 7 runs was 0.517 s. Locally B takes 0.465 s and A 0.390 s. It grows with the number of modules, and like `test_cpu_s` it varies by runner (B medians 0.302 to 0.517 s across the 7 runs).
-7. **Bench calibration (pulse-api scope).** The same kit commit gave a `test_cpu_s` B median from 0.465 to 0.768 s across 7 hosted runs, a spread of 1.65 times. The kit budget has no `floor`. The README rule sets the budget from one local A run plus 30 % (`bench/README.md:114`). With a spread like this, kit can fail the gate without a code change. Finding 1 is still a real cost increase: B/A is 1.44 to 1.47 in each of the 4 runs with A `6a06ec2`, and locally it is 1.45.
+7. **Bench calibration (pulse-api scope).** The same kit commit gave a `test_cpu_s` B median from 0.465 to 0.768 s across 7 hosted runs, a spread of 1.65 times. The kit budget has no per-metric `floor` override, so the default regression floor is 0.2 s; that floor does not relax the absolute 0.7 s budget. The README rule sets the budget from one local A run plus 30 % (`bench/README.md:114`). With a spread like this, kit can fail the gate without a code change. Finding 1 is still a real cost increase: B/A is 1.44 to 1.47 in each of the 4 runs with A `6a06ec2`, and locally it is 1.45.
 8. **Docker A/B not run.** `timeout 30m bun bench/run.ts --a 6a06ec2... --b 536133f... --rounds 2` would rebuild all seven repositories. For kit it measures the same `bun run test` and `bun run build` that item 5 measured locally on both sides. The nightly side B is already the examined commit.
 9. Cleanup: the copies of A and B, the profiles and the helpers were in temporary directories outside the repository and were removed at the end. The harness was stopped with `SIGTERM` (exit code 0), and no process was left running.
+
+## Independent review (2026-11-06)
+
+Review started at 14:49:59 UTC on meta `2f9ba6c284d369686ec487d102b0a37ac8053327`. The six target clone HEADs match the examined commits above. The meta audit base remains in this branch's history. Both report files agree on all 6 checklist statuses and both finding ids, severities and candidate flags; all required fields are present. No finding was removed or regraded: P1 0, P2 1, P3 1, 2 candidates.
+
+**Finding 1 (`P2`): reproduced.** `gh run list --repo lorenzh/pulse-api --workflow bench.yml --branch main --status completed --limit 1 --json databaseId,event,createdAt,headSha,conclusion` exited 0 and returned scheduled run 42195136982 (failure, api head `4b3e9b1`). The GitHub artifact download API returned `bench-out` artifact 13494150601 successfully; `unzip -q <bench.zip> -d <nightly>` and `sha256sum <bench.zip>` exited 0. The ZIP SHA-256 is `9d1867fe2453346cfbb82f8d2ed940af6ed91de0dde104f2477bbc9629aaf53a`, matching GitHub's artifact digest.
+
+`jq '[.[] | select(.service == "kit")]' <nightly>/table.json` exited 0 and reports `test_cpu_s`: A **0.524268 s**, B **0.767716 s**, budget **0.7 s**, `FAIL regression`; `build_cpu_s`: B **0.516846 s**, budget **0.6 s**, `ok`. The 5 raw rounds match the report's rounded values. The documented performance gate fails on a hosted runner, supporting P2.
+
+Local checks ran only in an `rsync -a` copy of kit `536133f`, installed with `timeout 300 bun install --frozen-lockfile` (exit 0). Each command below ran once through `timeout 120 bun cpu-review.ts <kit copy> <command>`. The temporary helper uses `Bun.spawn().resourceUsage()` to report child user + system CPU, including waited descendants.
+
+| Command | Exit code | CPU | Output |
+| --- | --- | --- | --- |
+| `bun run test` | 0 | 0.724851 s | 174 pass, 0 fail, 18 files |
+| `bun test test/smoke.test.ts --test-name-pattern 'dist matches'` | 0 | 0.526957 s | 1 pass, 0 fail |
+| `bun test --test-name-pattern '^(?!dist matches)'` | 0 | 0.251456 s | 173 pass, 0 fail, 18 files |
+
+These single runs corroborate the nightly and the dist build cost; the original 68 % attribution comes from the audit's repeated measurements. No new A/B comparison was needed because the cited nightly reproduces the finding.
+
+**Finding 2 (`P3`): spot-check reproduced.** `timeout 120 bun limiter-review.ts <kit copy> <live keys at step> 1100` exited 0 at both 1,000 and 9,800 keys. The temporary helper imports `dist/failure-limiter.js`, uses the API policy and an injected clock, seeds `live keys - 100`, then times 100 distinct new keys in each phase (`check` + `recordFailure`). It steps from 100,000 to 98,900 ms and then to 100,001 ms. The last phase ends at 10,000 keys, so the measured requests do not use overflow.
+
+| Live keys at step | Before (median) | While behind (median) | After catch-up (median) |
+| --- | --- | --- | --- |
+| 1,000 | 1.477 µs | 185.354 µs | 0.581 µs |
+| 9,800 | 0.596 µs | 1,278.910 µs | 0.371 µs |
+
+The API's pinned kit commit `c6d2cba7d90c981b884dcac2a9288dd9eccad8b5` also contains the same sort branch (checked with GitHub's file API). The backward clock step plus many distinct failing clients supports P3. The impact now describes a measured median rather than an upper bound.
+
+`jq . audits/performance/kit.json` exited 0. `rg -ni 'sqlite|SELECT |INSERT |prepare\(|\.query\(' src/` in the kit copy exited 1 with no matches, confirming the SQL item is not applicable. The website item is also not applicable to this library. The budget wording now distinguishes the missing per-metric floor override from the effective default of 0.2 s.
+
+Review limitations: startup profiles, the five-minute memory run, per-file timings and other helper growth measurements retain the audit's evidence; they were not independently repeated. No Docker A/B or fresh A-side measurement ran. The limiter spot-check is a local microbenchmark with an injected clock, not an API load test. Temporary copies, downloaded artifacts and review helpers were removed; no review process or service remains running.
