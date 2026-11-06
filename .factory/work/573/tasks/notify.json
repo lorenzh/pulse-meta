@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Provide validated subscription settings, durable storage and stopped-service deletion",
+      "title": "Validate subscription settings and persist consent with complete deletion",
       "files": [
         "src/subscription-settings.ts",
         "src/subscriber-store.ts",
@@ -44,7 +44,7 @@
     {
       "id": "T2",
       "kind": "step",
-      "title": "Accept private subscription operations and cancel confirmation work immediately",
+      "title": "Accept private subscription operations and run cancellable confirmation work without spinning",
       "files": [
         "src/subscription-server.ts",
         "src/subscription-requests.ts",
@@ -66,7 +66,7 @@
         "docs/channels/email.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, private listener, synchronous subscribe/confirm/unsubscribe, token/message builders and the complete confirmation worker; R4; R5 Subscribe, Confirm, Unsubscribe, Confirmation mail and One send per mailbox (guard and worker 1); R7 optional metrics; R8 L1-L7 and immediate class of D22; D8-D12, D19, D20 guard. Counterexamples: Notify listener, Lifecycle and timing, Confirmation queue, No enumeration and guard unit cases of One send per mailbox. T3 adds the incident worker, the two-worker sequence tests and held-fan-out timing variants; T4 wires the modules into main. Do not create an incident-worker placeholder or split its algorithm across tasks. The entire confirmation selection/cancel/expiry/retry algorithm belongs here; do not split its stages into later tasks.",
+      "spec": "## Repository: notify, private listener, synchronous subscribe/confirm/unsubscribe, token/message builders and the complete confirmation worker; R4; R5 Subscribe, Confirm, Unsubscribe, Confirmation mail and One send per mailbox (guard and worker 1); R7 optional metrics; R8 L1-L7 and immediate class of D22; D8-D12, D19, D20 guard. Counterexamples: Notify listener, Lifecycle and timing, Confirmation queue, No enumeration and guard unit cases of One send per mailbox. T3 adds the incident worker, the two-worker sequence tests and held-fan-out timing variants; T4 wires the modules into main. Do not create an incident-worker placeholder or split its algorithm across tasks. The entire confirmation selection/cancel/expiry/retry algorithm belongs here; do not split its stages into later tasks. R5 Wake rule is part of this complete worker-1 algorithm: classify timed jobs by notBefore > now and held jobs by notBefore <= now plus busy guard; sleep only for the earliest future deadline, await distinct held keys/queue wake/stop, and abort the previous round's sleep and waits before selecting again. Expose read-only selections for the specified tests. T3 runs the exact held-incident counterexample against both real workers.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions-server.test.ts test/subscriptions-store.test.ts",
@@ -81,6 +81,10 @@
           "expected": "0 failing tests. Entire D19 Confirmation queue block runs behind held A attempt (exactly 1 call while blocked): unsubscribe B changes gauge 3 to 2 immediately and only C sends next; cleanup at 90000000 changes gauge to 1 before A resolves; rotating B keeps gauge 3 and sends only the current digest; at exact expiry 86400001 B is dropped while C sends; retry notBefore=1003 does not block B at t=3, and cancelling A gives 0 second attempts. Confirm cancels queued/retry jobs; worker drops confirmed/gone/rotated/expired rows. In-flight unsubscribe does not abort that attempt; timeouts passed to mailer are literal 60000 and 5000. Worker 1 writes nothing on completion and all guard entries are released. Guard unit cases use keyed normalized addresses, fresh per-process salt, owner 1 then 2, late release(1) cannot free owner 2, stop forbids acquire, and no key contains address/local part. Deferred retry/busy jobs preserve order while other ready mailboxes progress."
         },
         {
+          "command": "bun test test/subscriptions-fanout.test.ts test/subscriptions-mailbox.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Exercise the complete R5 Selection and Wake rule with injected clock/sleep and a held guard entry, without needing the production incident worker yet. An elapsed notBefore of 0 on a busy mailbox registers 0 sleeps and gives selections growth 0 across two 100-setImmediate-turn observations. Only notBefore > now supplies a sleep; all recorded delays are at least literal 1. New jobs, cancel, distinct held-key release and stop wake selection; ready jobs of other mailboxes progress in queue order. Every round has a stop-linked AbortController; whichever wake wins aborts its old sleep and guard waits before the next round. At most 1 sleep remains pending, and 0 remain after stop. Keep these worker-1 checks green in this task; T3 adds the exact two-worker Held mailbox sequence and its faulty-worker self-check."
+        },
+        {
           "command": "bun test test/subscriptions-server.test.ts test/subscriptions-fanout.test.ts test/metrics.test.ts",
           "expected": "0 failing tests. Confirmation messages have exactly one To/envelope address, configured-origin confirmation/unsubscribe/notice links (one slash), literal 24/25 hours, specified subject and independently computed stable Message-ID. Token digest only is persisted; unsubscribe HMAC comparison is timing-safe. R7 metrics register only on opt-in; all literal names/help/labels render, including capacity 2, and the existing off exact-text test stays unchanged. A held confirmation gives gauge 1, then success grows exactly 1 before gauge 0; cancelled jobs increment neither mail counter. Queue holds at most 100 jobs, worker makes at most 3 attempts per job, and stop drops waiting jobs and aborts its send without retaining addresses."
         },
@@ -93,7 +97,7 @@
     {
       "id": "T3",
       "kind": "step",
-      "title": "Fan out public incident events with durable recovery and one send per mailbox",
+      "title": "Deliver public incident events with durable recovery and mailbox coordination",
       "files": [
         "src/subscriber-fanout.ts",
         "src/subscriber-store.ts",
@@ -110,7 +114,7 @@
         "docs/channels/email.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, complete incident detection/fan-out/recovery algorithm and its regression checks; R5 Detection, Fan-out, Pass budget, Recovery, Completion write and One send per mailbox; D5/D6/D11/D12/D20/D21; R3 event retention; R7 detection/events/mail metrics; D22 notify timing with both workers held. All Counterexamples: One send per mailbox, Late completion after delete, Eligibility and privacy, Fan-out failures. Add an optional notifier hook for each successful non-404 manual projection and listedIds, after channel work; production main opts in only in T4. Retain unchanged operator-channel and ledger behavior. This task implements every stage of the incident algorithm together. Keep immediate-class response checks separate from worker scheduler timers: only the subscribe response path must register 0 timers.",
+      "spec": "## Repository: notify, complete incident detection/fan-out/recovery algorithm and its regression checks; R5 Detection, Fan-out, Pass budget, Recovery, Completion write and One send per mailbox; D5/D6/D11/D12/D20/D21; R3 event retention; R7 detection/events/mail metrics; D22 notify timing with both workers held. All Counterexamples: One send per mailbox, Late completion after delete, Eligibility and privacy, Fan-out failures. Add an optional notifier hook for each successful non-404 manual projection and listedIds, after channel work; production main opts in only in T4. Retain unchanged operator-channel and ledger behavior. This task implements every stage of the incident algorithm together. Keep immediate-class response checks separate from worker scheduler timers: only the subscribe response path must register 0 timers. Include the exact R5 Wake rule regression case Held mailbox: no elapsed wake, other mailboxes progress, with both real workers, recording sleep and selections, plus both D20 self-checks. This verifies the complete worker-1 selection algorithm from T2 against worker 2 holding the mailbox.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions-fanout.test.ts",
@@ -123,6 +127,10 @@
         {
           "command": "bun test test/subscriptions-mailbox.test.ts",
           "expected": "0 failing tests. Every deterministic D20 two-worker case and all mirrored outcomes run: normalize literal ' SUB-M@Example.COM ' to sub-m@example.com; subscribe M1, hold confirmation, confirm/detect/unsubscribe/re-subscribe as M2; then mirror with old incident held and new confirmation queued. Mailer-observed maximum in flight is at most literal 1 for M and N after every step. M2 send starts only after old attempt settles, while N sends immediately despite M's busy guard. Cover success, 550, temporary failure, timeout and stop; old row is re-read, no stale consent borrowed, 0 old/new delivery rows, E1 done after pass 1 with 0 sleeps when M1 is deleted, and stop sends no M2. Also confirm without delete, confirm during retry, other-mailbox progress and stop during wait. Owner checks and map hygiene leave size 0 after every case. The row-keyed wrong-guard self-check reaches literal 2, proving the regression check can fail."
+        },
+        {
+          "command": "bun test test/subscriptions-mailbox.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Run every literal step of Held mailbox: no elapsed wake, other mailboxes progress. Hold M1's incident at t=20, unsubscribe at 30, re-subscribe M2 at 40 (notBefore=0): after two runs of 100 setImmediate turns selections grows by 0, sleep record is [] and M2 has 0 calls. N subscribes at 41 and sends next; temporary failure at 42 yields notBefore=1042 and sleep record [1000], with exactly 1 pending sleep and no selection growth while held. Resolve sleep at t=500: record [1000, 542], 0 N attempt-2 calls and 0 M2 calls. Resolve at t=1042: N attempt 2 starts and record stays [1000, 542], with no 0 ms sleep. Resolve N, then settle M1 at t=1100: guard release starts M2 next without any additional sleep; maximum M sends in flight is 1. Every delay is at least 1, at most 1 sleep is pending throughout and 0 after stop; guard size and orphan deliveries are 0 after cleanup. A test-written faulty worker that uses the earliest notBefore of all jobs is bounded to 1000 selections and produces a non-empty record containing a value below 1, proving the check can fail."
         },
         {
           "command": "bun test test/subscriptions-fanout.test.ts",
@@ -145,7 +153,7 @@
     {
       "id": "T4",
       "kind": "final",
-      "title": "Wire the opt-in service lifecycle and publish security and performance evidence",
+      "title": "Integrate the opt-in subscription service and record whole-change evidence",
       "files": [
         "src/index.ts",
         "src/notifier.ts",
@@ -171,7 +179,7 @@
         },
         {
           "command": "bun test test/subscriptions-security.test.ts test/subscriptions-fanout.test.ts test/subscriptions-mailbox.test.ts test/subscriptions-enumeration.test.ts",
-          "expected": "0 failing tests. Complete Security impact checklist for notify: real store/lock 0600; full flow plus SMTP failure leaves no subscriber address, confirmation/unsubscribe token, HMAC key, bearer or SMTP password in captured logs/errors/metrics or any listener answer for every R1 status. Both message kinds have exactly one To/envelope recipient and no subject CR/LF. Atomic deletion/checkpoints and late-completion guards leave 0 orphans; maximum subscriber sends per normalized mailbox is 1 across both generations/workers with size 0 after stop. Every-limit response bytes and immediate timing checks pass with mail/fan-out held; startup/auth/body/URL/pin rules hold."
+          "expected": "0 failing tests. Complete Security impact checklist for notify: real store/lock 0600; full flow plus SMTP failure leaves no subscriber address, confirmation/unsubscribe token, HMAC key, bearer or SMTP password in captured logs/errors/metrics or any listener answer for every R1 status. Both message kinds have exactly one To/envelope recipient and no subject CR/LF. Atomic deletion/checkpoints and late-completion guards leave 0 orphans; maximum subscriber sends per normalized mailbox is 1 across both generations/workers with size 0 after stop. Every-limit response bytes and immediate timing checks pass with mail/fan-out held; startup/auth/body/URL/pin rules hold. The held-mailbox regression records [] then [1000] then [1000, 542], never a nonpositive sleep; no selection growth while all jobs are held, and stop leaves 0 pending round sleeps or guard waits."
         },
         {
           "command": "bun run check",

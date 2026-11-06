@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "step",
-      "title": "Provision subscription credentials and an optional SMTP password through secrets-init",
+      "title": "Provision subscription secrets and optional SMTP credentials with verified permissions",
       "files": [
         "scripts/init-secrets.sh",
         "scripts/init-secrets.test.sh",
@@ -41,7 +41,7 @@
     {
       "id": "T2",
       "kind": "final",
-      "title": "Verify the complete subscription flow in Compose and require its CI evidence",
+      "title": "Exercise real subscription mail in Compose and require the scenario in CI",
       "files": [
         "full/subscriptions.example.yaml",
         "full/.env.example",

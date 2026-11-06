@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Export the additive subscription contract and address rule",
+      "title": "Publish the additive subscription schemas, validators and normalized address rule",
       "files": [
         "src/subscriptions.ts",
         "src/validate-subscriptions.ts",
