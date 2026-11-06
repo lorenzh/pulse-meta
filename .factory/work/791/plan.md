@@ -57,7 +57,15 @@ Overview shows the overall-state sentence and then six linked tiles, in this ord
   Total is the number of entries in that answer (`summarizeChecks`, `src/overview.ts:12-19`).
   They do not count shadowed definitions. The unfiltered Checks list can also show shadowed
   definitions, so its row count can be higher than Total. A state filter never matches a
-  shadowed row (`src/check-filters.ts:84`).
+  shadowed row (`src/check-filters.ts:84-90`).
+- Tile counts and filtered list rows can differ. The Checks list builds its rows from
+  `GET <api>/admin/config` (`src/check-pages.ts:111-122,285-287`). A configured check that has
+  no entry in the `/checks` answer of pulse-api (for example a check with no result yet) is a
+  list row with state Unknown (`states.get(check.id) ?? "unknown"`, `src/check-pages.ts:117`).
+  The Overview does not count it, because it counts only the `/checks` answer. So
+  `/checks?state=unknown` can have more rows than the Unknown tile shows, and the unfiltered
+  list can have more rows than Total. `docs/configuration.md` must say this in one or two
+  sentences. It must not promise that a tile count equals the row count of its list.
 - With zero checks the page shows `No checks yet` and a `Reload` link, with no tiles
   (`src/overview.ts:57-62`). No token, a rejected token and a failed read show no tiles either
   (`src/overview.ts:83-93`).
@@ -152,6 +160,8 @@ From `src/token-view.ts:7-27` and `src/token-pages.ts:46-47,140-155`:
 
 - Overclaiming: "six tiles linking to the filtered Checks list" in the issue is loose; Total is
   unfiltered and the tiles are missing on an empty or failed Overview. The docs must say so.
+- Promising that a tile count equals the row count of its list. The list reads
+  `/admin/config` and the tiles read `/checks`, so they can differ (see "Overview").
 - Copying stale text from older specs or from `docs/*.md` without checking `main`.
 - Scope creep into other docs or into code to "match" the docs. Either one fails the acceptance
   check.
@@ -194,6 +204,10 @@ Every check below must reject the draft that does what is described.
   `No checks yet` and `Reload`; no token, a rejected token or a failed read shows no tiles.
 - Total equals the Checks rows: reject. With 2 active checks and 1 shadowed definition, Total is
   `2` and the unfiltered list has 3 rows. A `?state=up` list never holds the shadowed row.
+- Tile equals its list: "each tile shows how many rows its link opens". Reject. In the
+  `bun e2e/run.ts --serve` fixture the Unknown tile shows `1` and `/checks?state=unknown` has
+  4 rows, because three configured checks have no `/checks` entry and the list shows them as
+  Unknown (`src/check-pages.ts:117`).
 - Count definition: each count is a plain count of the entries in one `/checks` answer of
   pulse-api, read on this page visit. There is no time window, no sampling, no percentile, no
   rounding. A doc that calls it an average, an uptime figure or a count over a time span is
@@ -208,7 +222,38 @@ Every check below must reject the draft that does what is described.
   Reject: the route's role check refuses it with `403`; the hidden link is not the control.
 - E-mail: keeping "wraps inside only when it is wider than the line" without a mobile exception
   is wrong at 390 px, where the identity is cut with an ellipsis.
+- Checks columns: a doc that lists the columns as `Name`, `Type`, `Target`, `Source`, `State`,
+  `Last result` (six columns), or that leaves out `Actions`, is wrong. Reject. The headers are
+  exactly `Check`, `Target`, `State`, `Actions`. Type is the first line of Target, the id and
+  source tag are under the name in Check, and the last-result time is under the state in State.
+  A shadowed row with a time under its state is also wrong.
+- Table scrolling: "the Checks page scrolls sideways" or "the table never scrolls" is wrong.
+  Reject. The table scrolls sideways inside its own `Checks table` region. "The hint
+  `Scroll sideways to see all columns.` is always shown" is wrong too: it shows only at 719 px
+  or less (`display: none`, then `display: block` in the media query, `src/styles.ts:210,266`).
+- Clipping: "every target and name is shown in full in the list" is wrong. Reject. The fixture
+  check `long-url` (`https://example.com/` plus 100 `p`, `e2e/run.ts:2357`) is cut off with an
+  ellipsis in the Target cell. "The console shortens long values to N characters" is wrong too:
+  the full value stays in the markup and on the detail page; only CSS cuts it.
+- Team 2FA: `Yes`/`No`, `Enabled`/`Disabled` or a check mark in the `2FA` column is wrong.
+  Reject. The values are `On` and `Off` (`src/team-pages.ts:71`). "A row without actions has an
+  empty cell" is wrong too: it shows a dash, read as `No actions` (`src/team-pages.ts:55`).
 - Presets: "Read is selected by default" is wrong; no card is selected at first.
+- Preset scopes: "Manage checks sends `read` and `checks`" is wrong; it also sends `admin`. Same
+  for Post incidents (`read`, `incidents`, `admin`). "Read can create tokens" is wrong: Read sends
+  only `read`, and the note names only the other three presets. "Full access sends every scope"
+  is wrong unless it names exactly `read`, `checks`, `incidents`, `admin`.
+- Disabled preset: "a preset the console token cannot grant is hidden" or "is refused only after
+  sending" is wrong. Reject. With a console token that holds only `read` and `admin`, the cards
+  Manage checks, Post incidents and Full access are shown, disabled, each with
+  `The console token lacks <scope>.` naming the first missing scope in the preset order (`checks`, `incidents`, `checks`; `src/token-view.ts:98-104`), and Read stays enabled
+  (`src/token-pages.ts:146-152`).
+- Form widths: "fields fill the whole form width" or "a number field is 12rem wide" is wrong.
+  Reject. The limits are maximums: 40rem for a text field, select or text area, 12rem for a
+  short field (`.input-narrow`), 24rem for a name or id field (`.input-medium`); on a narrow
+  screen a field is the available width (`width: 100%`, `src/styles.ts:74-77`). Copy buttons
+  that "stretch to the full width" or "work without JavaScript" are wrong. A recovery code that
+  "may wrap onto two lines" is wrong (`src/styles.ts:226-227`).
 - Diff scope: a diff that also touches `src/styles.ts`, `docs/tokens.md`, `bun.lock` or
   `AGENTS.md` fails, even if the docs are right.
 
@@ -239,8 +284,8 @@ Docs only: the code on `main` already has the behavior; this task describes it.
    file, and link to `docs/configuration.md` for detail. Do not change the settings table or the
    endpoints table. Neither one changes.
 3. `docs/configuration.md`:
-   - Overview paragraph (now line 131): the tiles, their links, the count definition, the
-     exceptions.
+   - Overview paragraph (now line 131): the tiles, their links, the count definition, why a
+     count can differ from the row count of its list, the exceptions.
    - Shell paragraph (now line 185): desktop sidebar, mobile header and navigation row, the
      compact account row, and the qualified e-mail sentence.
    - Checks list: the four columns, the scroll region and hint, the ellipsis limit. Put it beside
@@ -283,19 +328,54 @@ Docs only: the code on `main` already has the behavior; this task describes it.
    - Overview: the six tiles in the order Down, Degraded, Unknown, Maintenance, Up, Total. Their
      `href`s are the six literals of the table under "Overview" in this spec. Follow each link.
      The Checks state filter shows the chosen state, and Total opens `/checks` without a filter.
-     Each state tile's count equals the row count of its filtered list (two separate pages, read
-     independently). Note any tile with count `0`.
+     The expected numbers are the literals in the table below. They come from the fixture, which
+     the implementer does not change: `serve()` calls `replyChecks(env.api, [])`
+     (`e2e/run.ts:2847-2850`). Its `/checks` answer has five entries, one per state
+     (`test/check-fixtures.ts:96-102`, web replaced by `webState`, also `up`). Its
+     `/admin/config` answer has eight checks: the six of `checkConfig`
+     (`test/check-fixtures.ts:69-76`) plus the database copies `db-port-db` and `dns-db`
+     (`e2e/run.ts:1308-1315`), and one shadowed definition, `DNS record (old)`.
+     `nightly-backup`, `db-port-db` and `dns-db` have no `/checks` entry, so the list shows them
+     as Unknown and the Overview does not count them.
+
+     | Page                         | Expected                                                        |
+     | ---------------------------- | --------------------------------------------------------------- |
+     | `/` sentence                 | `Overall state: Down. At least one check is down.`              |
+     | `/` tiles                    | Down `1`, Degraded `1`, Unknown `1`, Maintenance `1`, Up `1`, Total `5` |
+     | `/checks?state=down`         | 1 row: `db-port`                                                |
+     | `/checks?state=degraded`     | 1 row: `cert`                                                   |
+     | `/checks?state=unknown`      | 4 rows: `domain-exp`, `nightly-backup`, `db-port-db`, `dns-db`  |
+     | `/checks?state=maintenance`  | 1 row: `dns-a`                                                  |
+     | `/checks?state=up`           | 1 row: `web`                                                    |
+     | `/checks`                    | 9 rows: the 8 checks and the shadowed `DNS record (old)`        |
+
+     The Unknown tile (`1`) and its list (4 rows), and Total (`5`) and the unfiltered list
+     (9 rows), differ on purpose. That difference is the behavior that the new text must explain
+     (see "Overview"). If the running console shows other numbers, compare the fixture files
+     named above. If they changed on `main`, record the new literals in the PR. If they did not
+     change and the console still differs, request a hold. No tile has count `0` in this
+     fixture. The zero-count rule is checked from source in check 4.
    - Navigation at 390 px: one horizontal row, scrolls sideways, keyboard focus brings a hidden
      link into view, no Incidents entry. Account row: no avatar, identity cut with an ellipsis,
      role, `Account security` and `Sign out` visible.
    - Checks at 390 px: the hint `Scroll sideways to see all columns.` is visible and the table
      scrolls inside its region. At 1280 px the headers are `Check`, `Target`, `State`, `Actions`.
-   - `/tokens/new`: four cards, none checked, the note above them.
-   - `/team`: the `2FA` column shows `On` or `Off`.
+   - `/tokens/new`: four cards, in the order Read, Manage checks, Post incidents, Full access,
+     none checked, the note above them. None is disabled here, because the fixture console
+     token holds `read`, `checks`, `incidents` and `admin` (`e2e/run.ts:1742-1747`). The
+     disabled case is checked from source in check 4.
+   - `/team`: the headers include `2FA`, and that column shows `On` or `Off`, never `Yes`, `No`
+     or a check mark.
    Compare each observation with the new text. A mismatch is fixed in the docs if the doc is
    wrong, or reported as a hold if the console contradicts this spec.
 4. Exceptions from source. The zero-check text (`No checks yet`, `Reload`) and the failure views
-   match `src/overview.ts:57-62,83-93` and the assertions in `src/overview.test.ts`.
+   match `src/overview.ts:57-62,83-93` and the assertions in `src/overview.test.ts`. The
+   zero-count tile: `COUNT_ROWS` (`src/overview.ts:46-53`) is mapped without a filter, so a
+   count of `0` still renders a tile. The browser matrix asserts the literals Down 2,
+   Degraded 1, Unknown 0, Maintenance 0, Up 3, Total 6 for its own six-entry answer
+   (`e2e/run.ts:2412-2426`); `bun run check:browser` may be run to see it pass. The disabled
+   preset: a card whose scopes the console token lacks gets `disabled` and the text
+   `The console token lacks <scope>.` (`src/token-pages.ts:46-47,146-152`).
 5. Content review. Every counterexample in this spec is false for the new text. Every label,
    link, breakpoint and scope that the docs name appears literally in the cited `src/` line.
 
