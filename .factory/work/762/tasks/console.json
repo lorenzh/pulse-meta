@@ -16,7 +16,7 @@
         "src/styles.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, Tasks 1-5, Completion evidence and Acceptance evidence 1-6; Required behavior 1-7 and Counterexamples; Security impact checklist. Implement the pointer regression test before removing only the pointer read's .trim(); keep its red/green output. Add both browser checks together in checkScreensWith, using the literal create/edit Tab sequences of Task 2, both JavaScript modes and all twelve EDITORS at 1280 x 800. A different Chromium Tab order requires needs-input with the observed sequence, as specified; do not change the expected sequence to match it. Add the module guide and exact-pointer sentence. src/styles.ts is conditional: change it only if the browser checks expose an outline or layout defect permitted by Tasks 2-3, without hiding overflow, and report that fix. Finish the security checklist, manual exercise, whole-repository checks, existing Compose CI check and final PR evidence, including correctly labelled coverage from the final bun run check run.",
+      "spec": "## Repository: console, Tasks 1-5, Completion evidence and Acceptance evidence 1-6; Required behavior 1-7 and Counterexamples; Security impact checklist and Non-goals. Implement the pointer regression test before removing only the pointer read's .trim(); keep its red/green output. Add both browser checks together in checkScreensWith, using the literal create/edit Tab sequences of Task 2, both JavaScript modes and all twelve EDITORS at 1280 x 800. A different Chromium Tab order requires needs-input with the observed sequence, as specified; do not change the expected sequence to match it. Add the module guide and exact-pointer sentence. In the guide, stored literal headers and the stored body offer Keep / Replace / Remove; the stored heartbeat secret offers only Keep / Replace. src/styles.ts is conditional: only when a new browser check fails on the current styles, fix only the focus rule for a missing 2px solid outline (Task 2) or only the affected editor's layout rule for an editor wider than 1280 px (Task 3), never by hiding overflow. Otherwise leave src/styles.ts unchanged. Name each such failing check and fix in the PR body. Finish the security checklist, manual exercise, whole-repository checks, existing Compose CI check and final PR evidence, including correctly labelled coverage from the final bun run check run.",
       "acceptance": [
         {
           "command": "bun test src/check-form.test.ts",
@@ -36,7 +36,7 @@
         },
         {
           "command": "bun run check:browser",
-          "expected": "Exit 0. For JavaScript on and JavaScript off, the committed check reaches every stop in Task 2's independent literal HTTP create/edit sequences by successive Tab presses, verifies outlineStyle === 'solid' and outlineWidth === '2px', and leaves form.check-editor one Tab after Submit. The check measures all 12 EDITORS at 1280 x 800 with assertFits(page, 1280, ...) and form bounds left >= 0 and right <= 1280. The ok output names the editor Tab check and '12 editors fit 1280 px' in both modes; existing quorum text, axe, design-matrix and 390 px list/detail checks still pass."
+          "expected": "Exit 0. For JavaScript on and JavaScript off, the committed check reaches every stop in Task 2's independent literal HTTP create/edit sequences by successive Tab presses, verifies outlineStyle === 'solid' and outlineWidth === '2px', and leaves form.check-editor one Tab after Submit. The check measures all 12 EDITORS at 1280 x 800 with assertFits(page, 1280, ...) and form bounds left >= 0 and right <= 1280. The ok output names the editor Tab check and '12 editors fit 1280 px' in both modes; existing quorum text, axe, design-matrix and 390 px list/detail checks still pass. A Chromium Tab-order mismatch requires a needs-input hold with the observed sequence. A stop in the specified order missing the outline instead permits only the focus-rule fix; a width failure permits only that editor's layout-rule fix, never hiding overflow. Record the failing check and any such src/styles.ts change in the PR body."
         },
         {
           "command": "bun e2e/run.ts --serve",
@@ -48,7 +48,7 @@
         },
         {
           "command": "git diff main -- AGENTS.md docs/checks.md",
-          "expected": "AGENTS.md under This repository contains Task 4's complete guide with verified route/page/parser/read/write/outcome/helper/test module paths, editInputOf, exact pointer semantics, If-Match writes, role/form-token gates and write-only Keep/Replace/Remove handling. docs/checks.md under Editor fields states that pointers are used exactly as entered and a space is part of a key name and is never removed."
+          "expected": "AGENTS.md under This repository contains Task 4's complete guide with verified route/page/parser/read/write/outcome/helper/test module paths, editInputOf, exact pointer semantics, If-Match writes, role/form-token gates and write-only values never rendered. It explicitly names Keep / Replace / Remove for stored literal headers and the stored body (header_<i>_intent and body_intent), and only Keep / Replace for the stored heartbeat secret (secret_intent); it never says the heartbeat secret can be removed. These choice lists match the independently cited template at fc2c166, src/check-editor-page.ts:324,429,466. docs/checks.md under Editor fields states that pointers are used exactly as entered and a space is part of a key name and is never removed."
         },
         {
           "command": "git diff main -- package.json bun.lock src/permissions.ts src/form-tokens.ts src/server.ts",
@@ -56,7 +56,7 @@
         },
         {
           "command": "git diff main --stat",
-          "expected": "Only src/check-form.ts, src/check-form.test.ts, src/server.checks-change.test.ts, e2e/run.ts, AGENTS.md and docs/checks.md change; src/styles.ts may additionally change only for an outline or layout defect exposed by the new checks and described in the PR. No routes, dependencies, tooling or CI change."
+          "expected": "Only src/check-form.ts, src/check-form.test.ts, src/server.checks-change.test.ts, e2e/run.ts, AGENTS.md and docs/checks.md change. src/styles.ts may additionally change only after a new browser check fails on the current styles: only the focus rule for a missing 2px solid outline in Task 2, or only the affected editor's layout rule for a width over 1280 px in Task 3, never by hiding overflow. The PR body names the failing check and fix; without such a failure src/styles.ts stays unchanged. No routes, dependencies, tooling or CI change."
         },
         {
           "command": "gh pr checks",
