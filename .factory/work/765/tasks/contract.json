@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 2.3.0 validates database maintenance windows without widening existing shapes",
+      "files": [
+        "src/admin.ts",
+        "src/schema.ts",
+        "src/validate-admin.ts",
+        "src/index.ts",
+        "test/admin.test.ts",
+        "test/security-adversarial.test.ts",
+        "test/smoke.test.ts",
+        "test/types.fixture.ts",
+        "docs/index.md",
+        "README.md",
+        "package.json",
+        "dist/**"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Behavior bullets, all seven Checks (including the revised time boundary and export proof) and Completion evidence; Contract fields; D1-D3; Security impact; Performance impact (contract). Implement the additive schemas, validators, inferred types and constants together, including MAX_MAINTENANCE_TIME = 253402300799999, AdminWriteResponse and the two ADMIN_STATUS_ORDER descriptions. Database input uses integer epoch milliseconds with 0 <= start < end <= 253402300799999; preserve the lenient view/file rules and all existing maintenance/config/export validation behavior and WIRE_VERSION 1. Write the specified failing checks first against 66818a2; cover source/index/checkIds refinements, strict database input, path errors, same-object verdicts, unknown keys and non-execution of accessors. Test the literal time limit, both refused values above it and the unchanged export validator with four-digit and expanded-year ISO strings. Rebuild and commit dist, update the exact export smoke list (including MAX_MAINTENANCE_TIME) and every new type fixture, document the new exports and bump to 2.3.0. src/schema.ts is conditional on sharing constants/plainText as allowed by the section; README.md is conditional on its export documentation. Complete the applicable security checklist (strict input, prototype keys, accessors, safe errors, no new runtime dependency). Record the new exports, required checks and before/after test/build CPU measurements in the PR; this library has no service or Compose end-to-end stack.",
+      "acceptance": [
+        {
+          "command": "bun test test/admin.test.ts test/security-adversarial.test.ts test/smoke.test.ts",
+          "expected": "0 fail after rebuilding dist; {id:'a',checkIds:['web'],start:0,end:1,note:'x'} is accepted; the D2 invalid inputs are refused with field paths; invalid source/index/checkIds combinations and file entries in shadowed are refused; new validators return the identical input on success, never throw, and execute 0 accessors. Both old config validators return ok:false for a maintenance entry with id. The status sequence is exactly [404,401,403,413,400,428,503,412,422,409,404]. Focused coverage is not the acceptance gate."
+        },
+        {
+          "command": "bun test test/admin.test.ts",
+          "expected": "0 fail; MAX_MAINTENANCE_TIME equals literal 253402300799999. Input {id:'a',checkIds:['web'],start:253402300799998,end:253402300799999,note:'x'} is accepted. End 253402300800000 and end 8640000000000000 are refused with path end. An export using new Date(253402300799998).toISOString() and new Date(253402300799999).toISOString() has literal end '9999-12-31T23:59:59.999Z' and validateAdminConfigExport returns ok:true; replacing end with literal '+275760-09-13T00:00:00.000Z' returns ok:false. These expectations come from the spec's ECMAScript toISOString rule and unchanged contract 66818a2 export behavior. Focused coverage is not the acceptance gate."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck (including every new type fixture), the full test suite and the 80% line coverage gate pass; source and package-entry exports agree and dist matches a fresh build."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after the generated artifacts have been committed; a repeat build changes no dist file."
+        },
+        {
+          "command": "bun -e 'import assert from \"node:assert/strict\"; import pkg from \"./package.json\"; import { WIRE_VERSION } from \"./src/version.ts\"; assert.equal(pkg.version, \"2.3.0\"); assert.equal(WIRE_VERSION, 1);'",
+          "expected": "exit 0; package version is literally 2.3.0 and wire version is literally 1."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "exit 0 on baseline 66818a24b81f5d0d86eee939dad64fa126617ba2 and the final branch in separate checkouts on the same machine; record both user/system CPU measurements in the PR and compare with the spec's contract test_cpu_s budget of 9.0 s."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run build",
+          "expected": "exit 0 on baseline 66818a24b81f5d0d86eee939dad64fa126617ba2 and the final branch in separate checkouts on the same machine; record both user/system CPU measurements in the PR and compare with the spec's contract build_cpu_s budget of 6.4 s."
+        }
+      ]
+    }
+  ]
+}

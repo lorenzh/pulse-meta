@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "The dev Console prefills probe settings and e2e scripts share the existing setup flow",
+      "files": [
+        "dev/compose.yaml",
+        "dev/README.md",
+        "e2e/console-lib.sh",
+        "e2e/console-setup.sh"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Task cut and Behavior items 1-2: add the three literal dev-only probe prefills and their dev README documentation together with the setup-helper extraction. Extract req/location/csrf/form_token_args/expect/expect_location, TOTP wait/password helpers and reusable setup-to-signed-in-owner two-factor flow into e2e/console-lib.sh, sourced from the repository root with the specified shellcheck directive. Preserve console-setup.sh auto/legacy/two-factor behavior, output, action-bound form tokens and secret handling; its existing stub test is unchanged. The new dev settings make this task behaviorChange true, in agreement with the section; do not split off the pure helper move. T2 consumes this shared setup interface.",
+      "acceptance": [
+        {
+          "command": "bash e2e/console-setup.test.sh",
+          "expected": "exit 0 with the existing test unchanged; legacy/two-factor flows and all four form layouts retain action-specific form tokens, replay behavior and 0 fixture-secret occurrences in output."
+        },
+        {
+          "command": "shellcheck -x e2e/console-lib.sh e2e/console-setup.sh && bash -n e2e/console-lib.sh && bash -n e2e/console-setup.sh",
+          "expected": "exit 0 from the repository root; the library is sourced without executing a scenario on import."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; dev console prefills PULSE_CONSOLE_PROBE_API_URL=http://api:3000, PULSE_CONSOLE_PROBE_IMAGE=pulse-probe:dev and PULSE_CONSOLE_PROBE_NETWORK=pulse-dev_default are documented in dev/README.md. Rules 3 and 4 pass, no new image pin or registry path is introduced, and full/minimal/demo stay unchanged."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint/workflow validation, CLI typecheck and the full CLI test/coverage gate remain green. The changed shell files are checked by shellcheck and bash -n rather than Biome."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Compose e2e runs the rendered probe snippets within 10000 ms and CI requires the result",
+      "files": [
+        "e2e/console-probes.sh",
+        "e2e/snippet.mjs",
+        "e2e/snippet.test.sh",
+        "e2e/compose-e2e.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, Task cut, Behavior item 3 (all ten scenario steps, Isolation of the snippets, all three One-interval waits, and parent cleanup) and item 4; all Checks and Completion evidence; Acceptance evidence 3, Counterexamples Compose project, No private-range switch, Rotation baseline (deploy) and One interval (deploy), Rollout order and Security impact CI/secret handling. Use T1 library/prefills and merged api/console main. Add exact pre-id HTML decoding and literal entity tests, the console-probes scenario before persistence, published-image skip, CI gate and root docs. Stack commands retain caller COMPOSE_FILE/COMPOSE_PROJECT_NAME; every rendered snippet command including rotation and cleanup runs through snippet_run in the mktemp directory with the five specified COMPOSE_* variables removed, plus explicit -p/-f on Compose commands. Observe independent GET /locations results by the literal t0+10000 deadline with bounded requests for docker launch, Compose launch and rotation; a poll begun in time but completed late never passes. Rotation order is normative: rewrite env, remove the old run container and require it gone, take t0, require a bounded baseline /locations response with lastResultAt < t0, relaunch, then accept only a replacement observation finished by t0+10000 with lastResultAt >= t0. A result from only the old container must never pass.",
+      "acceptance": [
+        {
+          "command": "bash e2e/snippet.test.sh && bash e2e/console-setup.test.sh",
+          "expected": "exit 0; snippet decoding selects the requested pre id and matches literal decoded strings for &amp;, &lt;, &gt;, &quot; and &#39;. Existing setup regression suite still passes unchanged with 0 secret occurrences in output."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root, including the newly added/tracked scripts and sourced library."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0 for every shell script, including the new files."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0 for every helper, including e2e/snippet.mjs."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0 for every tracked JSON file."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; dev prefills are literal http://api:3000, pulse-probe:dev and pulse-dev_default. All setup rules still pass, especially rules 3/4; full/minimal/demo and common image pins retain their existing configuration."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; the remaining checks of the touched CI lint job pass. Docker Compose version is at least 2.23 as required by that job."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint/workflow validation, CLI typecheck and full CLI tests remain green."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with sibling main revisions including this spec's merged api/console changes. Output contains ==> All checks passed, the three prefixes ok: docker run probe e2e-run reported within 10 s (, ok: compose probe e2e-compose reported within 10 s (, ok: rotated probe e2e-run reported within 10 s ( (each ending with measured <n> ms)), and exact ok: console probe locations; existing ok: manual incident privacy remains. Fresh TOTP-owner setup uses T1 library; add-location POSTs use only the five operator fields, with 0 private-range fields and default false in the rendered snippets; actual rendered commands run on pulse-e2e_default via snippet_run, removing COMPOSE_PROJECT_NAME, COMPOSE_FILE, COMPOSE_PROFILES, COMPOSE_ENV_FILES and COMPOSE_PATH_SEPARATOR in a temporary directory without .env. e2e-run first shows Awaiting first result, then Reporting. All 3 timed waits use host now_ms from LC_ALL=C EPOCHREALTIME, deadline=t0+10000, each curl --connect-timeout and --max-time=min(2000,left) ms in fractional seconds, and require the independent /locations answer to hold lastResultAt>=t0 AND finish with t_done<=deadline; sleeps are at most min(1000,remaining) ms. A poll starting at t0+9500 and finishing at t0+10300 fails, including for Compose and rotation; a hung poll is bounded by the deadline. After each launch, rotation restart and cleanup the stack probe id equals the pre-launch docker compose ps -q probe reading, or FAIL: the snippet touched the pulse-e2e probe. Exactly 1 running container has the snippet Compose project label. Rotation checks both old/new /probe/checks=200, rewrites the env file via snippet_run, executes the shown docker rm -f '<run base>' via snippet_run and requires docker ps -aq --filter name=^<run base>$ to return 0 ids. Only then take t0; a bounded baseline GET /locations must contain e2e-run with lastResultAt<t0, else FAIL: e2e-run reported after the old probe was removed. Relaunch the rendered docker-run line and compare the new container env without printing it. Baseline and launch time count against t0+10000. The Rotation baseline counterexample (only the old container reports at t+200 ms and the replacement never reports) fails the wait; the old timestamp cannot satisfy lastResultAt>=t0 after removal. No baseline from token lastUsedAt or credential metadata is accepted, since api aggregates result timestamps by location without credential attribution; revoke gives /probe/checks=401 and keeps location history. Both created secrets and the rotated secret have 0 hits in output, API/console logs and console DB files. Success and failure traps remove snippet containers/project via snippet_run and explicit -p/-f, then the work directory, before parent network teardown; bases are recorded as soon as shown."
+        },
+        {
+          "command": "export COMPOSE_PROJECT_NAME=pulse-e2e; snippet_run \"docker compose -p '$COMPOSE_BASE' -f '$COMPOSE_BASE.compose.yaml' config\"; (cd \"$work\" && docker compose -f \"$COMPOSE_BASE.compose.yaml\" config)",
+          "expected": "Run before CI in the scenario shell with snippet_run/work initialized and COMPOSE_BASE set to the base read from the rendered page. The isolated explicit-project config prints name: <that base>; the second config, without -p and without snippet_run, prints the literal name: pulse-e2e. Record both secret-free outputs in the PR. These are config-only calls, never launches; every actual snippet launch/restart/cleanup uses snippet_run and explicit -p/-f."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the unchanged full published-image setup; literal skip: console probe locations (published images) and ==> All checks passed are printed, and the skipped scenario performs 0 console token mutations or snippet launches."
+        },
+        {
+          "command": "gh pr checks && gh pr view --json body --jq .body",
+          "expected": "CI lint and e2e-dev pass; lint includes bash e2e/snippet.test.sh and e2e-dev greps the exact ok: console probe locations line. PR lists all 4 new ok lines with elapsed ms for all 3 waits, independent service revision SHAs printed by CI, both Compose config isolation outputs, full compatibility and check results, with 0 secrets. Security checklist cites evidence for executing rendered commands only via snippet_run in the throwaway directory, explicit Compose project/file selection, unchanged stack probe id and exactly 1 snippet-project container, bounded requests and completed observations within 10000 ms, rotation's old-container removal before t0 and baseline lastResultAt<t0, the old-only-result counterexample failing, shell/YAML decoding, token/log/database secrecy and cleanup on success and failure before parent teardown. README and AGENTS describe the scenario, decoder test command and CI gate; T1 dev README describes the prefills."
+        }
+      ]
+    }
+  ]
+}
