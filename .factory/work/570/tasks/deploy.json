@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Compose supports service-token files and CI proves console settings and resend end to end",
+      "files": [
+        "full/compose.yaml",
+        "dev/compose.yaml",
+        "full/.env.example",
+        "dev/.env.example",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "e2e/compose.e2e.yaml",
+        "e2e/compose-e2e.sh",
+        "e2e/runtime-settings.sh",
+        "e2e/runtime-settings.test.sh",
+        "e2e/runtime-settings-receiver.mjs",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "full/README.md",
+        "dev/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, entire section, Checks and Completion evidence; Rollout order; Security impact (secrets/dependency boundary); Acceptance evidence 5. Keep this small integrated section in one final task. Add optional PULSE_STATUS_API_TOKEN_FILE, PULSE_NOTIFY_API_TOKEN_FILE and PULSE_NOTIFY_SECRET_DIR plumbing in full/dev with read-only named secret volumes and no default token creation; keep PULSE_STATUS_SHOW_CHECKS=true and document it as a lock. Extend the existing secrets-init copy path and tests only as needed to move user-provided files into these volumes, preserving its permissions/validation and never generating these tokens by default. Add the corresponding .env.example entries for any new Compose interpolation variables, per deploy AGENTS.md. These helper files are necessary supporting paths beyond the section's Files list. Document the exact console-first/create-two-tokens/write-secret-files/one-restart sequence. Implement the feature-detected E2E script with fixture-tested parsing and a test-only fake receiver using the existing approved bun-tools service rather than a new image pin. Wire invocation through the current compose-e2e runner and e2e-dev CI before teardown; require its ok line on dev built from merged main, while current published pins print skip: runtime settings and keep existing scenarios green. Test steps: admin feature GET must be 200 to run; create sole-scope tokens, install them/start services, sign in as Owner, save name/showLatency=false through actual forms, observe public page within 30 s with no further restart, add reference-only database webhook and deliver a new incident once, induce 500 until failed then switch receiver to 200 and press Resend once, assert exactly one extra hit with same idempotency-key and showChecks lock text, then print ok: runtime settings. Preserve existing forms/CSRF/form-token handling and capture process/container identity and restart count across edits. Keep token/destination/payload values out of logs and failure dumps; clean up throwaway settings/channels/tokens/receiver state. Finish the repository's touched-job checks, compose tests, security checklist and CI evidence in the PR.",
+      "acceptance": [
+        {
+          "command": "bash e2e/runtime-settings.test.sh",
+          "expected": "exit 0; fixed independent fixtures cover feature 200, older-api 404/non-200 skip, form-specific CSRF/form_token extraction, saved revision, failed key/request id, exact extra delivery count 1 and idempotency-key equality. Invalid fixture answers fail closed and no fixture token appears in output."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0; all tracked shell scripts, including the new scenario and fixture tests, pass shellcheck from the repository root."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0; every tracked shell script parses."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; existing helpers and the new test receiver parse."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0; all tracked JSON is valid."
+        },
+        {
+          "command": "for script in e2e/*.test.sh; do bash \"$script\" || exit; done",
+          "expected": "exit 0; the entire e2e helper-test job passes with the new fixture tests included."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; all remaining touched lint-job checks pass. Optional service tokens are absent by default, explicit provided files are copied with safe permissions into secret volumes, and service mounts are read-only. Existing pin, port and secret-mount rules remain satisfied."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on the current published pins; existing full scenarios stay green and feature detection prints exactly skip: runtime settings for an api without the new routes."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 after api/status/notify/console merge; output includes exactly ok: runtime settings and all existing required ok lines. The public page changes within 30 s to the literal test name and hides latency without a status restart; a new incident delivers once and Resend adds exactly 1 receiver request with the same key. The locked field says Set by PULSE_STATUS_SHOW_CHECKS."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
+          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR includes bun run check and touched lint-job results, full/current-pin skip evidence, e2e-dev CI log with ok: runtime settings after the four service merges, optional-token rollout instructions and the applicable Security impact checklist with no secrets in output and read-only named secret-volume evidence."
+        }
+      ]
+    }
+  ]
+}

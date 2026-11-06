@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 2.4.0 defines runtime settings, channels, service reports and resend messages",
+      "files": [
+        "src/runtime-settings.ts",
+        "src/notify-channels.ts",
+        "src/validate-runtime.ts",
+        "src/tokens.ts",
+        "src/audit.ts",
+        "src/index.ts",
+        "test/runtime-settings.test.ts",
+        "test/notify-channels.test.ts",
+        "test/tokens.test.ts",
+        "test/audit.test.ts",
+        "test/smoke.test.ts",
+        "test/types.fixture.ts",
+        "dist/",
+        "package.json",
+        "README.md",
+        "docs/index.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Files, Behavior, Checks, Tool facts and Completion evidence; R1; Contract fields; Decisions 9, 12, 14-15; Counterexamples (contract shapes); Security impact (validation and sole scopes). Implement the entire additive 2.4.0 contract publication as one task, with schemas, inferred types, nonthrowing validators that return the original object, all twelve named validators and eight named constants, exports, type fixtures, documentation and rebuilt committed dist. Keep WIRE_VERSION=1 and all old valid scopes and shapes. Define status settings and nested per-token themes, optional-key reset semantics, reports and locked dotted paths, admin/service views, database channel union and reference-only/file-channel views, bounded reports/failed lists, resend request/command/claim/result shapes and exact state vocabularies from R1. Enforce every stated bound, duplicate rule, unknown-key message and reference rule, including no literal url/password/secret in database definitions and no database file channel. Extend scopes in the stated order; probe/status/notify must each be alone and only probe accepts a location. Add the five audit actions and three kinds with action-kind agreement. Add exact literal runtime export and dist module lists, rather than deriving expectations from the exports being checked.",
+      "acceptance": [
+        {
+          "command": "bun test test/runtime-settings.test.ts test/notify-channels.test.ts test/tokens.test.ts test/audit.test.ts",
+          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Assert valid round trips, no throws and object identity; duplicate order gives componentOrder[1]: must not repeat an id; name length 61, #12, 4pt, null settings, id Ops, PULSE_API_TOKEN refs, ../x refs, literal url and type file are rejected. Unknown url gives has an unknown field: url; database type file gives type: must be one of \"webhook\", \"slack\", \"teams\", \"email\". [\"status\",\"read\"] gives status must be the only scope; status with location is rejected; notify metadata and older scope lists pass. notify-channel.create with kind notify-channel passes and kind check fails. Bounds are name 60, order 500, channel count 100, failed list 200, claim 20, stale interval 180000, key 300 and requestId pattern ^[A-Za-z0-9_-]{16,64}$."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, type fixtures and the complete test suite pass with at least 80% line coverage; smoke tests assert the literal additions from Contract fields and the runtime-settings, notify-channels and validate-runtime dist modules."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after generated dist has been committed; a fresh build leaves no dist diff."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=51e95b0eb463b27a196a33b428607bd92443e4f0' -H 'Accept: application/vnd.github.raw+json'",
+          "expected": "exit 0; inspect the pinned install/lint/typecheck/build/dist-diff/test workflow and state in the PR whether it differs from config clone bc87049."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR records bun run check and dist freshness results, new tests failing on ebf6bbc for missing exports and passing after, and the applicable Security impact checklist with validation and sole-scope evidence. No new runtime dependency is added."
+        }
+      ]
+    }
+  ]
+}

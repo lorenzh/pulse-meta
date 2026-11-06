@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Status settings resolve field origins, theme tokens and defaults into one snapshot",
+      "files": [
+        "src/settings.ts",
+        "src/runtime-settings.ts",
+        "src/theme-config.ts",
+        "src/runtime-settings.test.ts",
+        "src/settings.test.ts",
+        "src/theme-config.test.ts",
+        "package.json",
+        "bun.lock",
+        "README.md",
+        "docs/configuration.md",
+        "docs/theming.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, settings/runtime-settings/theme files and precedence matrix portion of Checks; Decisions 2 and 7-10; Contract fields (status env); Counterexamples (precedence, reset, theme merge). Pin @lorenzh/pulse-contract to the full merged main SHA containing 2.4.0, regenerate bun.lock, and keep all other dependency pins and the runtime package set unchanged. Implement the settings resolution boundary before its live HTTP consumer: parse token or token-file and poll settings with kit readers, record whether every env field was actually set, validate the optional settings file and existing theme file, merge env > file > database > default per field and per theme token, and produce one effective immutable snapshot, canonical 16-hex SHA-256 fingerprint and locked fields with source/via/value. Keep a local logo file path out of reports. Move theme key authority to the contract constants and build CSS from a snapshot while preserving existing callers/default behavior. Add the two new flags with defaults true and preserve existing defaults, env-only behavior and all existing tests. With no token, database input is empty; config file and theme file still work. Startup rejects a settings-file theme together with PULSE_STATUS_THEME with exit 2. This task owns the complete pure resolution/validation model and tests; T2 owns polling and applying snapshots to the running server. Document settings, origins, defaults and token options here.",
+      "acceptance": [
+        {
+          "command": "bun test src/settings.test.ts src/runtime-settings.test.ts src/theme-config.test.ts",
+          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. For name, logoUrl, light/dark colour tokens, one font, one radius, componentOrder and all four booleans, assert database -> file -> env precedence, locked origins, file-key removal returning to database and database-key removal returning to defaults. PULSE_STATUS_SHOW_CHECKS=false locks false despite database true; empty env does not lock. File accent #112233 beats database #445566 while database bg #ffffff survives. Reset name gives title pulse status; flags default showChecks=false, hideDetails=true, showLatency=true, showSlos=true. Fingerprints match hard-coded fixture hashes and are 16 lowercase hex characters; key order alone does not change them. Reject mixed theme files, invalid settings, URL credentials/non-https URLs and invalid poll intervals; poll default/min are 15000/1000 ms. Local logo paths do not occur in locked report values."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Running status pages apply polled settings with safe caches and browser convergence",
+      "files": [
+        "src/settings-poll.ts",
+        "src/runtime-settings.ts",
+        "src/settings-poll.test.ts",
+        "src/server.ts",
+        "src/answer-cache.ts",
+        "src/http-cache.ts",
+        "src/api-filter.ts",
+        "src/hidden-checks.ts",
+        "src/components-view.ts",
+        "src/sections.ts",
+        "src/render.ts",
+        "src/component-latency.ts",
+        "src/ssr.ts",
+        "src/start.ts",
+        "src/main.ts",
+        "public/client.js",
+        "src/server.runtime-settings.test.ts",
+        "src/server.privacy.test.ts",
+        "src/server.cache.test.ts",
+        "src/components-view.test.ts",
+        "src/answer-cache.test.ts",
+        "src/http-cache.test.ts",
+        "src/api-filter.test.ts",
+        "src/hidden-checks.test.ts",
+        "src/sections.test.ts",
+        "src/render.test.ts",
+        "src/component-latency.test.ts",
+        "src/start.test.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/theming.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, settings-poll/live-server/cache/filter/render/browser/wiring files, all remaining Behavior, Checks and Completion evidence; Decisions 5-10; Counterexamples (component order, visibility and in-flight response); Security impact; Performance impact (status); Acceptance evidence. Consume T1's resolution model in a 15 s nonoverlapping settings/file poll with conditional GET, 5000 ms timeout, 1 MiB bound, manual redirects and contract/wire validation. Send Bearer only to /service/status/*; send a validated report after each apply attempt and at least every 60 s. Re-read both local files on every settings poll even after 304 and with no token; no token means no database requests/reports. Bad reads/files retain the last good snapshot and report rejection, then recover. A token gates public readiness with 503 settings not loaded until the first accepted 200/304/404; old-api 404 supplies an empty database layer and logs once. Apply one snapshot atomically to branding, CSS, CSP, component order and all flags. Keep snapshot replacement, fingerprint cache/ETag keys and the in-flight response rule in this same task: reads begun with older settings must not populate a new settings key and filtering uses the snapshot current at response write. Implement all showLatency/showSlos omissions for SSR, browser and public JSON, preserving upstream calculations; order components before grouping and ignore removed ids. Wire flags/order through the existing SSR bridge src/ssr.ts as a necessary supporting path. Serve no-store /page-settings.json, data-settings and one browser reload on fingerprint change. Update accessibility/browser fixtures, runtime docs and full/dev showChecks lock documentation. Finish all per-field live tests and PR evidence, including the manual no-restart public JSON change and applicable security/performance evidence.",
+      "acceptance": [
+        {
+          "command": "bun test src/settings-poll.test.ts src/server.runtime-settings.test.ts",
+          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. Using a fake api on 127.0.0.1:0 and fake timers, every T1 field (including colour in both modes, font, radius and all booleans both directions) reaches the same running server after one poll; env/file wins with locked origin, removing a file key restores database, clearing database restores defaults. Polls use 15000 ms, timeout 5000 ms, bound 1048576 bytes and quoted conditional etag; reports follow every attempt and at most 60000 ms apart. Invalid/oversized/wire-mismatched answers, timeout and invalid/unreadable files retain literal last-good name Acme, report rejected and recover to Local on the next valid poll. Without token there are zero settings requests/reports; token before first success gives 503 with {\"error\":\"settings not loaded\"}; accepted old-api 404 makes the page ready with an empty database layer."
+        },
+        {
+          "command": "bun test src/server.privacy.test.ts src/server.cache.test.ts src/components-view.test.ts src/answer-cache.test.ts src/http-cache.test.ts src/api-filter.test.ts src/hidden-checks.test.ts src/sections.test.ts src/render.test.ts src/component-latency.test.ts",
+          "expected": "0 fail; a focused run may fail only the global 80% line coverage gate, which is enforced by the full suite. showLatency=false makes both latency endpoints [] and removes latencyObjectiveMs, latencyMs, labels/charts/daily latency from JSON, SSR and browser sections. showSlos=false removes slo and its rendered block. A hideDetails change during a gated upstream read yields reason:null and a different ETag; no old permissive entry is stored under the new fingerprint. Theme change updates CSS body and ETag; a new logo origin updates CSP img-src; /page-settings.json changes and has cache-control:no-store. [x(g1),y(g2),z(g1)] ordered by [y] renders y,x,z in groups g2:[y],g1:[x,z]; missing ids are ignored and no order preserves the original grouping. Tests compare literal bodies/omissions/order rather than deriving expected answers from the filter."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0; existing axe/keyboard checks pass and one open page reloads exactly 1 time after the settings fingerprint changes, showing the new literal name and zero checks-list entries."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-config/contents/.github/workflows/check.yml?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7' -H 'Accept: application/vnd.github.raw+json'",
+          "expected": "exit 0; inspect the pinned shared check workflow; the PR states whether its install, lint, typecheck and test steps differ from the config clone bc87049, as required by Tool facts."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR contains full-check and check:a11y output, new tests failing on 8b6d431 then passing, the pinned-workflow comparison and the applicable Security impact checklist (token/report redaction, 1 MiB, logo/CSP, manual redirects and stale/in-flight privacy). It records bun start against a local api with a status token, a database showChecks edit and the changed /api/checks on the same process. Record status performance evidence against the spec's under-1-MiB idle RSS, under-2% load CPU and under-10-ms startup increases, using the existing api benchmark and documenting its --others-ref behavior."
+        }
+      ]
+    }
+  ]
+}
