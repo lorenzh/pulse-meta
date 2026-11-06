@@ -25,7 +25,7 @@ notifies its operator channels exactly as before.
 - Issue #573, its comments and the "Added requirements (manager decision after the spec review)"
   in the issue body: no address enumeration under every limit, a consistent URL prefix or a
   stated and checked root-hosting rule, and visitor information with an operator contact
-  setting. R8, R9 and R10 implement them; D15-D20 record the choices.
+  setting. R8, R9 and R10 implement them; D15-D21 record the choices.
 - The first spec of this feature (closed PR #814, head `55f1da0d`) passed `spec/plan-review`
   before the manager added these requirements. This spec is that version, revised. Its two
   rules that broke the new requirements are changed: notify no longer answers `429` to an
@@ -35,7 +35,7 @@ notifies its operator channels exactly as before.
   this spec PR.
 - The issue review (`.factory/work/573/issue-review.md`, the second one, written for the added
   requirements). It has no blocking question and lists open points 1-6 and derived checks 1-9.
-  Decisions D1-D20 below settle the open points; "Acceptance evidence" maps the checks.
+  Decisions D1-D21 below settle the open points; "Acceptance evidence" maps the checks.
 - #460, section 12 (as quoted in the issue review): subscriber mail belongs to pulse-notify with
   its own settings, never to the console. This spec follows it. The console does not change.
 - #568 (closed, complete): drafts, notes and internal incidents. Its public projection is on
@@ -81,6 +81,16 @@ notifies its operator channels exactly as before.
     across both workers, a confirm cancels the row's confirmation jobs, and the new
     counterexample block "Concurrent workers (D20)" tests the review's sequence. The notice text
     is unchanged, because its bound is now true; its literal checks stay as they are.
+- The next `spec/plan-review` named one more defect, fixed here: an incident send that settles
+  after an unsubscribe wrote its delivery row (`sent` or `failed`) without checking that the
+  subscription still exists, and the schema has no foreign key, so the late write left a delivery
+  row of a deleted subscription behind, against R10. New decision D21 and R5 "Completion write"
+  make every delivery write one guarded statement that inserts nothing when the subscription row
+  is gone; the event still settles, because a deleted row is never eligible. Worker 1 writes
+  nothing at the end of an attempt. The new counterexample block "Late completion after delete
+  (D21)" holds an incident send, unsubscribes, and then settles the send with success, a
+  permanent failure, a temporary failure and a timeout; each case asserts literal zero row
+  counts, no retry and a `done` event.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` is
   answered `HTTP 404` in this run. So there are no findings yet, which is normal for a feature
   without children.
@@ -281,6 +291,19 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
   a subscription is in flight, and a delete leaves at most one email that can still arrive. This
   is the bound the notice states; the review's alternative, a wider notice ("two emails"), is not
   taken, because one bound is simpler to state and to test.
+- **D21 A send that settles after a delete writes nothing.** A send attempt in flight is not
+  aborted (D12), so it can settle after the unsubscribe (or `subscribers delete`, cleanup) has
+  committed. Its outcome must not bring back data of the deleted row. Every delivery write is one
+  `INSERT … SELECT … WHERE EXISTS (SELECT 1 FROM subscriptions WHERE id = ?)` statement (R5
+  "Completion write"): the existence check and the insert are one atomic statement on the store's
+  one connection (`bun:sqlite` is synchronous, so no unsubscribe transaction can run between
+  them). When the row is gone, nothing is inserted, and the event still settles: a deleted row is
+  never eligible, so step 4 of the pass budget finds no subscription left and no further pass or
+  sleep is started for it. Row ids are 16 random bytes and never reused (D7), so a new row of the
+  same address (a later subscribe) is not matched by the old send. Worker 1 writes nothing to the
+  store when an attempt settles (only counters and the gauge change), so a late confirmation
+  attempt cannot recreate data either. A foreign key is not added: the guard covers every writer,
+  and a foreign key would turn a late write into a constraint error instead of a skip.
 
 ## Scope
 
@@ -485,7 +508,9 @@ When on:
     budget (R5 "Pass budget");
   - `deliveries(event_key TEXT NOT NULL, subscription_id TEXT NOT NULL, status TEXT NOT NULL CHECK
     (status IN ('sent','failed')), attempts INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY
-    (event_key, subscription_id))`;
+    (event_key, subscription_id))`. No foreign key; every insert is guarded by the existence of
+    its subscription row (D21, R5 "Completion write"), so no delivery row ever refers to a
+    deleted subscription;
   - `meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)` with `manual_baseline_at`.
   A file with another `user_version` is refused at startup (exit `2`). Each mutation is one
   transaction.
@@ -602,6 +627,9 @@ Times come from the injected `now`.
     `<origin>/<route>` with exactly one `/` between them. "24 hours" and "25 hours" are rendered
     from the contract constants (`SUBSCRIPTION_CONFIRM_TTL_MS`, plus
     `SUBSCRIPTION_CLEANUP_INTERVAL_MS`).
+  - When an attempt settles, worker 1 writes nothing to the store (D21): it only updates the
+    mail counter and the gauge and, after a temporary error, keeps the job for its retry (which
+    Job expiry drops when the row is gone).
   - Jobs are lost at shutdown (the count is logged, no address); the visitor asks again.
   - `pulse_notify_subscriber_confirmations_queued` (R7) is the number of jobs queued or in flight.
     A job leaves it only after its final outcome was counted in
@@ -658,7 +686,25 @@ Times come from the injected `now`.
     - no reason, check name, component id or other subscriber.
   - Outcome per send: success → delivery `sent` with `attempts` = the event's `passes`;
     `PermanentDeliveryError` or a refused recipient → delivery `failed` with the same
-    `attempts`; another error → no delivery row, the subscription stays for the next pass.
+    `attempts`; another error or the D12 timeout → no delivery row, the subscription stays for
+    the next pass if it still exists. The mail counter
+    `pulse_notify_subscriber_mails_total{kind="incident"}` counts the outcome as usual (success:
+    SMTP accepted the message), whether or not a row is written.
+  - **Completion write** (D21). The `sent` and `failed` writes of an outcome are each this one
+    statement, in its own transaction:
+
+    ```sql
+    INSERT INTO deliveries (event_key, subscription_id, status, attempts, at)
+    SELECT ?1, ?2, ?3, ?4, ?5
+    WHERE EXISTS (SELECT 1 FROM subscriptions WHERE id = ?2)
+    ```
+    When it inserts no row (the subscription was deleted while the send was in flight), worker 2
+    logs nothing about it (no address or id), writes nothing else for that row, and goes on with
+    the next id. The finalize step (Pass budget 1) builds its `failed` rows with one `INSERT …
+    SELECT` over the current `subscriptions` table in the same transaction that sets the event
+    `done`, so it can only write rows of subscriptions that exist at that moment. No other code
+    writes `deliveries`. A deleted row is never eligible, so it neither keeps the event `pending`
+    nor starts another pass or sleep.
   - **Pass budget.** `N` is `PULSE_NOTIFY_RETRY_ATTEMPTS`, and `12` when that is `0`, so one
     failing address never holds the queue for ever. The budget is stored, not held in memory:
     1. Before a pass sends anything, worker 2 checks `passes`. When `passes >= N`, it does not
@@ -832,7 +878,9 @@ cannot pass on a difference by mistake.
   first. **In-flight boundary**: at most one send attempt per subscription is in flight at any
   moment, confirmation and incident mail together (D20). That one attempt, when it already
   started before the delete was answered, is not aborted; it ends within 60 s and its email can
-  still arrive. No second email can start after the delete (D12 re-read, D19 cancel). The notice
+  still arrive, but its outcome writes no row: no delivery row of a deleted subscription is ever
+  written, also when that attempt settles after the delete (D21 "Completion write"). No second
+  email can start after the delete (D12 re-read, D19 cancel). The notice
   says so ("One email that is being sent at that moment can still arrive.").
 - **Notice** (status renders it under the input, R2; `<contact>` is the R6 contact as a link:
   `<a href="mailto:<address>">address</a>` for an address in its normalized form, `<a
@@ -898,7 +946,9 @@ cannot pass on a difference by mistake.
   the same deletes (D19), and notify tests delete jobs behind a send that the fake keeps
   blocked; the one attempt in flight is bounded (D12), the two workers never have two attempts
   in flight for one subscription (D20, tested with a confirmation attempt held across confirm,
-  detection and unsubscribe), and the notice names that one email.
+  detection and unsubscribe), and the notice names that one email. That email's late outcome
+  writes no delivery row (D21, tested with an incident send held across the unsubscribe and then
+  settled four ways).
 - **Prefix hosting misconfigured.** Mitigation: R9 refuses a path at startup in both services,
   before any file is opened; the e2e scenario checks both refusals.
 - **Two notify processes on one store.** Mitigation: the lease lock of the store.
@@ -968,7 +1018,8 @@ Checklist items that apply:
 - **Personal data in memory**: a delete removes the row's queued confirmation jobs at once (D19),
   checked behind a send that the test keeps blocked; fan-out holds one address at a time; at most
   one attempt per subscription is in flight across both workers (D20) and it ends within 60 s
-  (D12).
+  (D12); when it settles after a delete, its guarded completion write inserts nothing (D21), so
+  the delete stays complete in the store.
 - **Auth order and status codes**: notify R4 (path, method, then auth before any body read);
   status R2 (origin before body); exact codes in R1 and R2; one public subscribe answer for
   every valid address under every limit L0-L8 (R8), checked byte for byte with known and unknown
@@ -1213,6 +1264,51 @@ may have it). Every expected value is a literal in the test.
   module's test hook); an attempt that hits the D12 timeout removes its entry (fake that never
   settles, injected timer at `timeoutMs`).
 
+### Late completion after delete (D21)
+
+Fixture for each case (injected clock and sleep, fake api with a manual feed, test key and token
+files, a `mkdtemp` store file, the baseline already seeded by one empty poll,
+`PULSE_NOTIFY_RETRY_ATTEMPTS = 3`): A and B are `confirmed` (A's id sorts before B's; the test
+picks the two ids). B already has a delivery row `sent` for the event E1 (written through a
+second connection), so A is E1's only eligible row. One poll detects E1. The fake `sendMail`
+returns, for its first call (A's incident send), a promise that the test holds unresolved. The
+test then unsubscribes A → `200`, and only after that settles the held send as the case says.
+Every check reads the store through a second connection to the same file. Every expected value
+is a literal in the test.
+
+- Late success: settle with success → `SELECT count(*) FROM subscriptions WHERE id = <A>` is `0`,
+  `SELECT count(*) FROM deliveries WHERE subscription_id = <A>` is `0`; the incident success
+  counter is `1` (SMTP took the message); E1 is `done` with `passes = 1`;
+  `pulse_notify_subscriber_events_pending` reads `0`; the injected sleep was asked for `0` times;
+  the fake has exactly `1` call for A. A wrong implementation with an unguarded insert leaves `1`
+  delivery row with A's id and fails the `0`.
+- Late permanent failure: settle with a `PermanentDeliveryError` (550) → the same `0` row
+  counts; the incident failure counter is `1`; E1 is `done` with `passes = 1`; no second call
+  for A.
+- Late temporary failure: settle with a temporary error → `0` delivery rows for A; E1 is `done`
+  after pass 1 (`passes = 1`, `next_pass_at` stays `NULL`), the injected sleep was asked for `0`
+  times, and the fake gets no second call for A. A wrong implementation that keeps the deleted
+  row in the pass's eligible list sleeps for `1000` ms (`PULSE_NOTIFY_RETRY_DELAY_MS`) and runs
+  pass 2.
+- Late timeout: the fake never settles and the injected timer fires at `timeoutMs` → the same
+  result as the temporary failure; `inFlight` is empty afterwards.
+- Resubscribed address: after the unsubscribe and before the send settles, A's address subscribes
+  again → `202`, a new `pending` row A2 with a new id. Settle with success → `0` delivery rows for
+  A's old id and `0` for A2's id; A2 stays `pending` and gets its confirmation mail only.
+- Progress: with a second pending event E2 behind E1 that B has not had, E2's send to B is the
+  fake's next call after A's send settled, in each case above.
+- Erasure: after the late success and E1's `done` write, a search of the bytes of the store
+  file and of its `-wal` file for A's address and for A's id finds nothing.
+- Worker 1: a confirmation attempt for a `pending` C is held unresolved; C unsubscribes (`200`,
+  with C's unsubscribe token built by the test from C's id and the test key); the attempt then
+  settles with success → `SELECT count(*) FROM subscriptions WHERE id = <C>` is `0`, and the
+  second connection's `PRAGMA data_version` reads the same value right after the unsubscribe
+  answer and after the settle (no other connection committed in between: worker 1 writes
+  nothing, R5).
+- Invariant, checked after every case of this block, of "Concurrent workers (D20)" and of
+  "Fan-out failures": `SELECT count(*) FROM deliveries d WHERE NOT EXISTS (SELECT 1 FROM
+  subscriptions s WHERE s.id = d.subscription_id)` is `0`.
+
 ### No enumeration (R8), at every limit and below it
 
 Each case compares two answers byte for byte (status code, every header except `date`, body):
@@ -1293,7 +1389,8 @@ address, or that sets a header (`retry-after`, `set-cookie`) only on one path, f
   pass 2 makes 0 sends to row 1.
 - Same, but notify stops after pass 1 and starts again with the same store; the resumed event makes
   0 sends to row 1 and 1 send to row 2 if it was not yet sent.
-- A send that started before an unsubscribe ends with success; no further send to that row.
+- A send that started before an unsubscribe ends with success; no further send to that row, and
+  no delivery row of it (D21, block "Late completion after delete (D21)").
 - Row 1 refused with 550 → delivery `failed` after 1 attempt; row 2 still gets the message.
 - `PULSE_NOTIFY_RETRY_ATTEMPTS = 0` and row 1 always temporarily failing → after 12 passes row 1 is
   `failed` and the next event starts.
@@ -1535,9 +1632,13 @@ either child is a shared finding that the other reads first.
 
 Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkdtemp` stores):
 - Every "Notify listener", "Lifecycle and timing", "Confirmation queue (D19)", "Concurrent
-  workers (D20)", "Eligibility and privacy", "Fan-out failures" and "`subscribers delete`"
-  counterexample, with the literal
-  expected codes, outputs and send counts written in the test.
+  workers (D20)", "Late completion after delete (D21)", "Eligibility and privacy", "Fan-out
+  failures" and "`subscribers delete`" counterexample, with the literal expected codes, outputs,
+  row counts and send counts written in the test.
+- Completion write (D21): the late-completion cases run in `test/subscriptions-fanout.test.ts`
+  against a real store file, and the orphan-delivery invariant query (literal `0`) runs after
+  every fan-out case of that file. A grep of `src/` for `INSERT INTO deliveries` finds only the
+  guarded statement of R5 and the finalize step's `INSERT … SELECT`.
 - Fan-out holds one address at a time: with 250 confirmed rows and a fake `sendMail` held on the
   first send, the test unsubscribes row 2 (by id order) and then resolves the send; row 2 gets no
   send (the row is read by id right before each send, R5 "Fan-out").
@@ -2019,7 +2120,12 @@ The feature is done when all of these hold. Every expected value is a literal in
    queue too, with the in-flight email that the notice names as the only exception; notify's
    "Concurrent workers (D20)" tests hold a confirmation attempt unresolved across confirm,
    detection and unsubscribe and show at most `1` attempt in flight for the address and exactly
-   `1` call in total, so the notice's "One email" is the true bound.
+   `1` call in total, so the notice's "One email" is the true bound; notify's "Late completion
+   after delete (D21)" tests hold an incident send across an unsubscribe and settle it with
+   success, a permanent failure, a temporary failure and a timeout, and each shows `0`
+   subscription rows and `0` delivery rows for the deleted id, `0` sleeps and no second send, and
+   the event `done` with `passes = 1`, so "It deletes your address and these records at once"
+   holds also for a send that ends after the delete.
 9. **SMTP password through `secrets-init`.** Deploy's `secrets-init.test.sh` writes the password
    `0400` `1000:1000` with the literal content, refuses each bad input with its literal rule line
    and writes nothing then, removes a stale copy when the host file is gone, ignores the file
