@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Name-only edits preserve exact JSON pointers and Checks editors have the required browser checks and guide",
+      "files": [
+        "src/check-form.ts",
+        "src/check-form.test.ts",
+        "src/server.checks-change.test.ts",
+        "e2e/run.ts",
+        "AGENTS.md",
+        "docs/checks.md",
+        "src/styles.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Tasks 1-5, Completion evidence and Acceptance evidence 1-6; Required behavior 1-7 and Counterexamples; Security impact checklist. Implement the pointer regression test before removing only the pointer read's .trim(); keep its red/green output. Add both browser checks together in checkScreensWith, using the literal create/edit Tab sequences of Task 2, both JavaScript modes and all twelve EDITORS at 1280 x 800. A different Chromium Tab order requires needs-input with the observed sequence, as specified; do not change the expected sequence to match it. Add the module guide and exact-pointer sentence. src/styles.ts is conditional: change it only if the browser checks expose an outline or layout defect permitted by Tasks 2-3, without hiding overflow, and report that fix. Finish the security checklist, manual exercise, whole-repository checks, existing Compose CI check and final PR evidence, including correctly labelled coverage from the final bun run check run.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "Before changing src/check-form.ts, the new name-only edit test derives posted values from editInputOf of a stored view with [{ pointer: \"/status \", equals: \"ok\" }, { pointer: \"/ready \", exists: true }] and fails because the old parser receives \"/status\" instead of the literal expected \"/status \". Record the command and assertion output; a coverage-threshold failure alone is not the required red result."
+        },
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "After removing only .trim() from the assertion pointer read, all tests in this file pass with 0 fail. The stored name-only edit preserves the literal assertion array; create preserves \"/a b\\t\"; \" /status\" and \"   \" in exists mode produce the fixed assert_0_pointer message 'Enter a JSON pointer such as /status, or leave it empty for the whole body.'; an empty exists pointer remains { pointer: \"\", exists: true }; mode none ignores its row; name \" Web shop 2 \" becomes \"Web shop 2\" and a URL with surrounding spaces still parses. A focused run may fail the global coverage threshold despite passing these tests; the final full suite owns that gate. Record the green assertion result."
+        },
+        {
+          "command": "bun test src/server.checks-change.test.ts",
+          "expected": "All tests in this file pass with 0 fail, regardless of a focused-run global coverage-threshold failure. The new stored-view regression first verifies rendered assert_0_pointer and assert_1_pointer values of \"/status \" and \"/ready \", then submits those rendered values with only name changed to \"Web shop 2\". It receives 303, observes exactly GET /admin/config followed by PUT /admin/checks/web, and asserts the PUT name and jsonAssert against the literal stored fixture. A leading-space pointer receives 422 with the existing field message and no PUT."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 on the final change: lint, root and e2e typechecks and the full Bun test suite pass with the existing 80% line-coverage gate. Retain the final test counts and the All files row, copying % Funcs as function coverage and % Lines as line coverage exactly as printed for the PR body."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Exit 0. For JavaScript on and JavaScript off, the committed check reaches every stop in Task 2's independent literal HTTP create/edit sequences by successive Tab presses, verifies outlineStyle === 'solid' and outlineWidth === '2px', and leaves form.check-editor one Tab after Submit. The check measures all 12 EDITORS at 1280 x 800 with assertFits(page, 1280, ...) and form bounds left >= 0 and right <= 1280. The ok output names the editor Tab check and '12 editors fit 1280 px' in both modes; existing quorum text, axe, design-matrix and 390 px list/detail checks still pass."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "With a fake API serving a stored trailing-space assertion, manually open the edit form, change only the name and save. Inspect the outbound PUT and confirm it keeps the literal \"/status \". Record this command, fixture setup and observed result in the PR body; merely starting the service is insufficient."
+        },
+        {
+          "command": "git diff main -- src/check-form.ts src/server.checks-change.test.ts",
+          "expected": "Security checklist review confirms exact-pointer validation rejects leading-space and spaces-only values with the fixed message and no write; rejected values are retained only through the existing escapeHtml input helper and are absent from logs, headers and error-message text. The 422 and reusable form-token behavior, API contract validation and auth/check order stay unchanged. Record the applicable input-validation and external-data error/log checklist results in the PR evidence."
+        },
+        {
+          "command": "git diff main -- AGENTS.md docs/checks.md",
+          "expected": "AGENTS.md under This repository contains Task 4's complete guide with verified route/page/parser/read/write/outcome/helper/test module paths, editInputOf, exact pointer semantics, If-Match writes, role/form-token gates and write-only Keep/Replace/Remove handling. docs/checks.md under Editor fields states that pointers are used exactly as entered and a space is part of a key name and is never removed."
+        },
+        {
+          "command": "git diff main -- package.json bun.lock src/permissions.ts src/form-tokens.ts src/server.ts",
+          "expected": "Empty diff: the contract pin, roles, form tokens and dispatcher order remain unchanged."
+        },
+        {
+          "command": "git diff main --stat",
+          "expected": "Only src/check-form.ts, src/check-form.test.ts, src/server.checks-change.test.ts, e2e/run.ts, AGENTS.md and docs/checks.md change; src/styles.ts may additionally change only for an outline or layout defect exposed by the new checks and described in the PR. No routes, dependencies, tooling or CI change."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "The final PR's existing CI checks pass, including deploy-dev: its current workflow builds the dev Compose stack with this checkout and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml from pulse-deploy after readiness. Follow Console AGENTS.md if that flow exposes a deploy defect; do not edit deploy or weaken the job."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names Closes lorenzh/pulse-meta#<child> with the actual child issue number, the checks and known limits; includes the old-code assertion failure and new-code passing result with commands/output, final bun run check counts and All files % Funcs labelled function coverage and % Lines labelled line coverage copied as printed, both browser modes' new ok lines, the manual command/result, applicable security checklist evidence and any permitted src/styles.ts fix."
+        }
+      ]
+    }
+  ]
+}
