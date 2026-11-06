@@ -1010,7 +1010,7 @@ cases compare notify's answers; status cases compare status's answers.
 | Case | Fixture | K | Must also hold |
 | --- | --- | --- | --- |
 | below every limit | empty window, 1 row | confirmed; pending in cooldown; pending at send cap; expired pending | U gets a row and a mail |
-| L1 full | `MAX = 2`, 2 rows | confirmed; pending | U: no row, no mail; K unchanged |
+| L1 full | `MAX = 2`, `MAX_PENDING = 2` (the default `1000` would break `MAX_PENDING <= MAX`), 2 rows | confirmed; pending | U: no row, no mail; K unchanged; `limited_total{limit="capacity"}` `+1` per U request |
 | L2 full | `MAX = 10`, `MAX_PENDING = 1`, 1 pending row | confirmed; the pending row | U: no row |
 | L3/L4 | pending K in cooldown / at 3 sends | — | U below other limits gets a mail; the answers are still equal |
 | L5 full | `CONFIRM_PER_HOUR = 1`, one mail queued | confirmed; pending past cooldown | neither gets a mail |
@@ -1355,7 +1355,10 @@ Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkd
 - `pulse_notify_subscriber_confirmations_queued`: `1` while a confirmation send waits (fake
   sender held), `0` after it resolved, and the success counter grew by exactly `1` before the
   gauge reached `0`.
-- Settings: each required variable missing → exit `2` naming it; a key of 63 or 65 hex
+- Settings: `PULSE_NOTIFY_SUBSCRIPTIONS_MAX=5` with `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING`
+  unset (default `1000`) → exit `2` naming `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING`; `MAX=5`
+  with `MAX_PENDING=6` → the same; `MAX=5` with `MAX_PENDING=5` (the e2e overlay values) →
+  accepted. Each required variable missing → exit `2` naming it; a key of 63 or 65 hex
   characters, or with upper case → error; `off` opens no file (the test passes a state directory
   without write permission).
 - Existing suites stay green unchanged, also `test/ledger*.test.ts` (the ledger is not touched).
@@ -1429,7 +1432,11 @@ Behavior:
     `..._SMTP_TLS: none`, `..._TOKEN_FILE: /run/pulse/subscriptions-token`,
     `..._KEY_FILE: /run/pulse/subscriptions-key`, `..._STATE: /data/notify-subscriptions.db`,
     `PULSE_NOTIFY_RETRY_DELAY_MS: "500"`, `PULSE_NOTIFY_SUBSCRIPTIONS_MAX: "5"` (so the scenario
-    can reach L1 with six addresses), volume `notify-secrets:/run/pulse:ro`, `depends_on`
+    can reach L1 with six addresses) and `PULSE_NOTIFY_SUBSCRIPTIONS_MAX_PENDING: "5"` (R3
+    requires `MAX_PENDING <= MAX`; the default `1000` would make notify exit `2`. With both at
+    `5`, L2 can only be full when L1 is full too, and R5 reports L1 first, so the scenario's
+    limit is always `capacity`; the most pending rows it holds is 3, B, D and E after step 5a),
+    volume `notify-secrets:/run/pulse:ro`, `depends_on`
     `secrets-init` completed and `mailpit` started;
   - top-level volumes `status-secrets`, `notify-secrets`.
 - `full/README.md` documents the same keys as an operator override, with a real SMTP server, TLS
@@ -1506,7 +1513,13 @@ Behavior:
      `X-Forwarded-Proto: https`. Save each answer's status, headers and body with `curl -sS -D`.
      The three status codes are `200`; the three bodies are byte-equal (`cmp`); the three header
      lists without the `date` line are byte-equal; no answer has `location`, `retry-after`,
-     `set-cookie` or `etag`, and none holds `sub-`, `@e2e.invalid` or `evil.example`. Then wait
+     `set-cookie` or `etag`. No answer (headers or body, compared without case) holds any of the
+     six visitor addresses `sub-a@e2e.invalid` … `sub-f@e2e.invalid`, any of their local parts
+     `sub-a` … `sub-f`, or `evil.example` (literals in the script). The contact
+     `privacy@e2e.invalid` of the overlay is the one `@e2e.invalid` address the answer must hold
+     (R2 subscribe answer, R10): each body holds
+     `<a href="mailto:privacy@e2e.invalid">privacy@e2e.invalid</a>` (positive control), and after
+     every occurrence of that literal is removed, no body holds `@e2e.invalid`. Then wait
      until `pulse_notify_subscriber_confirmations_queued` is `0`: the confirmation success
      counter is exactly `5`; `pulse_notify_subscription_requests_total{route="subscribe",
      outcome="known"}` grew by exactly `2` and `outcome="queued"` by exactly `1` (positive
@@ -1515,7 +1528,9 @@ Behavior:
      have exactly 1 message each. The store now has 5 rows (full).
   5b. **At capacity, known versus unknown** (R8). Send `POST /subscribe` for F (unknown), A
      (confirmed), F again, and D (pending), with the headers of 5a. All four answers are compared
-     as in 5a with each other and with the saved E answer of 5a: all byte-equal (except `date`).
+     as in 5a with each other and with the saved E answer of 5a: all byte-equal (except `date`),
+     and each passes the address checks of 5a (no visitor address or local part, no
+     `evil.example`, the contact link present, and no other `@e2e.invalid`).
      Wait until `pulse_notify_subscriber_confirmations_queued` is `0`; the confirmation success
      counter is still exactly `5`; `pulse_notify_subscription_limited_total{limit="capacity"}` is
      exactly `2` (the positive control that L1 was reached, for F twice). Read F's message count
@@ -1607,7 +1622,10 @@ Checks:
 - `e2e/subscriptions.test.sh` drives the answer comparison of steps 5a and 5b with fixed `curl
   -D` header and body files (literals in the test): it passes when only the `date` line differs;
   it fails when one answer has an extra `retry-after: 60` line, when the status lines are `200`
-  and `429`, when the bodies differ by one byte, and when a body holds `sub-u@e2e.invalid`.
+  and `429`, when the bodies differ by one byte, when a body holds `sub-u@e2e.invalid`, when a
+  body holds `SUB-C@E2E.INVALID` (case), when a body lacks the contact link, and when a body
+  holds the contact link and also `other@e2e.invalid`. It passes for equal bodies that hold
+  `<a href="mailto:privacy@e2e.invalid">privacy@e2e.invalid</a>` and no other address.
 - `e2e/subscriptions.test.sh` checks the notice matcher of step 2 against a fixed page text: it
   fails when `25 hours` is replaced by `24 hours` in the deletion sentence, and when the contact
   link is missing.
