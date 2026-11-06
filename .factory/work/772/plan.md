@@ -63,6 +63,11 @@ In `contract/docs/index.md`:
    file window shape; the api no longer accepts it as a body").
 5. Markdown tables keep their column alignment (each row padded to the column width of its table,
    as the file has it now). If a new cell is wider than the column, re-pad the whole table.
+   Current widths (measured in the contract clone at `c4a2eb5`): the type table (header
+   `docs/index.md:12-13`, rows to line 76) has every row 280 characters long, and its `Meaning`
+   column holds at most 169 characters of cell text; the admin status table
+   (`docs/index.md:368-381`) has every row 99 characters long, and its `Meaning` column holds at most
+   86 characters of cell text.
 
 ## Risks
 
@@ -105,6 +110,29 @@ The rules here are documentation rules; these texts must be rejected by review:
   would then reference an undocumented type. Reject it.
 - A wrong fix that changes `AdminWriteResponse` (line 67) to drop `AdminMaintenanceView`: the union in
   `src/admin.ts` still contains it, so the doc would disagree with the code. Reject it.
+- Rule 4, schema list: a wrong fix that drops `adminMaintenanceInputSchema` or
+  `adminMaintenanceViewSchema` from the schema list at line 324 because they "sound old". Both are
+  still exported (`src/index.ts`); `grep -c 'adminMaintenanceInputSchema' docs/index.md` and
+  `grep -c 'adminMaintenanceViewSchema' docs/index.md` must each still print at least 1 (literal
+  minimum). Reject it.
+- Rule 4, validator list: a wrong fix that drops `validateAdminMaintenanceInput` or
+  `validateAdminMaintenanceView` from the validator list at lines 385-388. Both validators are still
+  exported; `grep -c -w 'validateAdminMaintenanceInput' docs/index.md` and
+  `grep -c -w 'validateAdminMaintenanceView' docs/index.md` must each still print at least 1.
+  Reject it.
+- Rule 4, database section: a wrong fix that deletes or rewords line 413 ("`AdminMaintenanceInput`
+  stays as the file window shape; the api no longer accepts it as a body.") or any other line of
+  390-413. That section is the reference the new entries point to; the diff of the edit must add or
+  remove no line between the heading `### Database maintenance windows` and the next heading.
+  Reject it.
+- Rule 5, table alignment: a rewritten line 65 whose row is padded to a different length than its
+  neighbours (for example 260 or 300 characters while lines 64 and 66 stay 280), or a status row
+  `| 404    | Unknown id |` that is not padded to 99 characters like the other rows of lines
+  368-381. `awk 'NR>=12 && NR<=76 {print length($0)}' docs/index.md | sort -u` must print exactly
+  one value, and `awk 'NR>=368 && NR<=381 {print length($0)}' docs/index.md | sort -u` too (line
+  numbers as before the edit; adjust them if the edit adds or removes table rows). A new cell wider
+  than 169 (type table) or 86 (status table) characters without re-padding the whole table fails
+  this. Reject a fix that prints two values.
 
 No statistics are defined by this feature.
 
@@ -127,22 +155,33 @@ Behavior: apply "Required behavior" rules 1-5 to `docs/index.md`. Read every mat
 `grep -n -i 'maintenance\|index' docs/index.md` in context before and after the edit.
 
 Tool facts (verified in the contract clone at `c4a2eb5`):
-- Bun 1.4.0: `package.json` `packageManager` and `engines.bun`.
+- Bun 1.4.0: `package.json:7` (`"packageManager": "bun@1.4.0"`) and `package.json:8-9`
+  (`engines.bun` `1.4.0`).
 - `bun run check` = `bun run lint && bun run build && bun run typecheck && bun run test`
-  (`package.json` `scripts.check`); `lint` = `biome check . && pulse-eslint .`.
-- Biome `@biomejs/biome` 2.6.3 (`package.json` devDependencies). `biome.json` only `extends`
+  (`package.json:28`); `lint` = `biome check . && pulse-eslint .` (`package.json:25`); `build` and
+  `typecheck` run `typescript7` `tsc` (`package.json:22-23`); `test` = `bun test`
+  (`package.json:24`); `format` = `biome check --write .` (`package.json:26`); `prepare` =
+  `lefthook install || true` (`package.json:27`).
+- Biome `@biomejs/biome` 2.6.3 (`package.json:31`). `biome.json:2` only `extends`
   `@lorenzh/pulse-config/biome.json`, pinned at `51e95b0eb463b27a196a33b428607bd92443e4f0`
-  (`package.json` devDependencies). At that ref, `biome.json` lines 8-18 set `ignoreUnknown: true`
-  and include `**` except `dist`, `node_modules`, `bun.lock`, `*.html`, `test/fixtures`; the pinned
-  file is identical to the config clone's `main`.
-- CI: `.github/workflows/ci.yml` calls
+  (`package.json:32`). At that ref, pulse-config `biome.json:8-18` sets `ignoreUnknown: true` and
+  includes `**` except `dist`, `node_modules`, `bun.lock`, `*.html`, `test/fixtures`; the formatter
+  `lineWidth` is 100 (`biome.json:23`). The pinned file (read with
+  `gh api "repos/lorenzh/pulse-config/contents/biome.json?ref=51e95b0…"`) is byte-identical to the
+  config clone's `main` (`diff` prints nothing).
+- CI: `.github/workflows/ci.yml:17-19` calls
   `lorenzh/pulse-config/.github/workflows/check.yml@51e95b0eb463b27a196a33b428607bd92443e4f0` with
-  `build: true`; at that ref `check.yml` runs install (line 26, `bun install --frozen-lockfile`), lint
-  (line 28), typecheck (line 30), build (line 33), `git diff --exit-code -- dist` (line 36) and test
-  (line 38). The pinned file is identical to the config clone's `main`.
-- `bunfig.toml` `[test]` sets coverage with a 0.8 lines threshold; no test reads `docs/index.md`
+  `build: true`. At that ref pulse-config `check.yml` pins Bun 1.4.0 (line 24) and runs install
+  (line 26, `bun install --frozen-lockfile`), lint (line 28), typecheck (line 30), build (line 33,
+  `if: inputs.build`), `git diff --exit-code -- dist` (line 36) and test (line 38). The pinned file
+  is byte-identical to the config clone's `main` (`diff` prints nothing).
+- `bunfig.toml:1-3`: `[test]` sets `coverage = true` and `coverageThreshold = { lines = 0.8 }`
+  (line 4 ignores test files and `dist/**` for coverage). No test reads `docs/index.md`
   (`grep -rln 'docs/index\|index.md' test src` finds nothing), so no test needs to change, and no
   test is added for prose.
+- Whether Biome 2.6.3 formats or lints `.md` files is not verified here; do not rely on
+  `bun run format` to re-pad the tables. Pad by hand and check with the `awk` length checks
+  (check 7).
 
 Checks:
 1. `grep -n '/admin/maintenance/{index}' docs/index.md` prints nothing (expected: zero matches,
@@ -159,6 +198,17 @@ Checks:
 5. `bun install --frozen-lockfile && bun run check` exits 0.
 6. `git diff --exit-code -- dist` exits 0 after the build, and `git status --porcelain` lists only
    `docs/index.md` (expected: one path, literal).
+7. Table alignment (rule 5): `awk 'NR>=12 && NR<=76 {print length($0)}' docs/index.md | sort -u`
+   and `awk 'NR>=368 && NR<=381 {print length($0)}' docs/index.md | sort -u` each print exactly one
+   line (expected: one distinct row length per table, literal count; adjust the line ranges only if
+   the edit adds or removes table rows, and name the new ranges in the evidence).
+8. Preservation (rule 4): `grep -c 'adminMaintenanceInputSchema' docs/index.md` and
+   `grep -c 'adminMaintenanceViewSchema' docs/index.md` each print at least 1, `grep -c -w 'validateAdminMaintenanceInput' docs/index.md` and
+   `grep -c -w 'validateAdminMaintenanceView' docs/index.md` each print at least 1 (all four counts
+   are 1 in the clone at `c4a2eb5` before the edit), and `grep -n 'the api no longer accepts it as a body' docs/index.md`
+   prints exactly one line (expected: literal counts). The diff of `docs/index.md` adds or removes
+   no line inside the "Database maintenance windows" section (from its `###` heading to the next
+   heading), checked by reading `git diff -- docs/index.md`.
 
-Completion evidence: the diff of `docs/index.md`, the output of checks 1-4, and the exit status of
-`bun run check` and of check 6.
+Completion evidence: the diff of `docs/index.md`, the output of checks 1-4, 7 and 8, and the exit
+status of `bun run check` and of check 6.
