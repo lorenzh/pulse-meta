@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Checks fit at 1280 without mid-word breaks and Team actions align",
+      "files": [
+        "src/styles.ts",
+        "src/check-pages.ts",
+        "src/token-pages.ts",
+        "src/probe-pages.ts",
+        "src/team-pages.ts",
+        "src/server.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.tokens.test.ts",
+        "src/server.probes.test.ts",
+        "src/server.team.test.ts",
+        "e2e/design-matrix.ts",
+        "e2e/run.ts",
+        "docs/checks.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior R1, R2 and R9; Checks Unit/HTTP CSS/table assertions and Browser 1, 2 and 10; Counterexamples (Units must exist; Unbroken overlong value); Completion evidence 2 (Checks fit, words, Team) and R9 divider inspection. Implement four Checks columns and colgroup with all prior values retained in stacked cells, target ellipsis and the 56rem scroll fallback. Apply td, td * normal wrapping after the existing table rules; never allow mid-word breaks, including on links and code descendants. cell-title and cell-sub wrap only at natural points and clip oversized unbroken words with ellipsis; retain full DOM and detail values. Add the exact unbroken MATRIX_CHECKS row, name Unbroken plus 92 n characters and id unbroken plus 56 x characters. assertWordsIntact first matches each required string or fully matching pattern against the exact trimmed text of a td or descendant element, then independently measures natural units across every visible td text node; long-url matches code and is measured as long- and url. Keep required state texts discoverable without changing state sentences. Apply cell-nowrap to all R2 cells; implement Team On/Off, permission-preserving empty placeholders and aligned actions. Keep #774/#777 styles and all inherited checks, updating HEADERS.checks and the long-url code selector together. Add the token and Team word fixtures and restore fake-api state. R6 invite Email width is deferred to T2. Record baseline failures for Checks fit, Tokens word units, the unbroken Checks name and Team, plus the rendered divider cause for T4's evidence.",
+      "acceptance": [
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; lint and both root/e2e typechecks pass without weakening configuration."
+        },
+        {
+          "command": "bun test src/server.test.ts src/server.checks.test.ts src/server.tokens.test.ts src/server.probes.test.ts src/server.team.test.ts",
+          "expected": "All tests in the five listed suites pass, 0 fail; focused coverage may fail its global threshold. CSS contains table-layout: fixed, td, td * { overflow-wrap: normal; word-break: normal; }, text-overflow: ellipsis and td.cell-nowrap; it has no break-word or old Checks-only td override. Literal Checks headers are Check, Target, State, Actions with colgroup, stacked escaped identity/source and Last result text. Full overlong name/id values remain escaped in the row. Token/probe ids and dates and Team short cells have cell-nowrap. Team cells show On or Off and cell-empty contains — and No actions; no 2FA: on/off remains. Existing actor/target action and POST assertions remain green."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with Browser 1, 2 and 10 implemented and all existing checks retained. Light/dark at 1280: Checks box overflow-x auto, scrollWidth <= clientWidth, table right <= box right + 0.5, last action inside its cell content right + 0.5, link font 15 +/- 0.01 px. At 390 the existing hint, scroll-to-Actions, outline and box-end checks pass. In both schemes at 1280/390, the fourth MATRIX_CHECKS row has the exact 100-character name Unbroken plus 92 n characters and 64-character id unbroken plus 56 x characters; each natural unit is 1 line. Its cell-title and cell-sub have overflow-x hidden, text-overflow ellipsis, scrollWidth > clientWidth and right <= td right minus padding-right + 0.5; cell-title and code retain the exact full name/id text. Required Browser 2 strings/patterns match exact trimmed td or descendant text before unit measurement; long-url is found in code and its long- and url units are measured separately. Across Checks/Team/Tokens/Probes all visible natural units are 1 line, and cell-nowrap cells are 1 line as a whole. Team includes the extra admin invite; Tokens includes ci-deploy with non-null lastUsedAt and revoked old-ci, and earlier fake-api rows are restored. All required literal texts and full id/date patterns are found. Team has one 2FA header, owner —, Rem Ovable actions exactly Change role, Reset link, Reset 2FA, Remove, descendant borders 0 and actions aligned within 1 px. Document overflow, long detail data, axe, fonts, permissions and security checks remain green. New diagnostics identify scheme, width, page, element text and measurement after fonts.ready."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Manual inspection at 1280 and 390 confirms the Checks fallback, unbroken-name/id clipping and Team action alignment; record what drew the stray Team divider and the result for the PR. Capture four independent baseline messages against 5cdc34b src: Checks fit, a Tokens word unit with at least 2 lines, the unbroken Checks name with at least 2 lines, and Team 2FA: on. Use Completion evidence 2's temporary local group isolation; commit no skips or baseline source restoration."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Recovery codes, preset cards, Copy buttons and fields use their intended sizes",
+      "files": [
+        "src/styles.ts",
+        "src/token-pages.ts",
+        "src/token-view.ts",
+        "src/probe-pages.ts",
+        "src/team-pages.ts",
+        "src/check-editor-page.ts",
+        "src/check-detail-pages.ts",
+        "src/html.ts",
+        "src/server.test.ts",
+        "src/server.tokens.test.ts",
+        "src/token-view.test.ts",
+        "src/server.probes.test.ts",
+        "src/server.team.test.ts",
+        "src/server.checks.test.ts",
+        "src/check-editor-page.test.ts",
+        "src/html.test.ts",
+        "e2e/design-matrix.ts",
+        "e2e/run.ts",
+        "docs/tokens.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior R3, R4 and R6; Checks Unit/HTTP preset/Copy/editor/field assertions and Browser 3, 4 and 8; Completion evidence 2 (recovery codes, preset cards, buttons). Keep all ten code bytes/order and format; add responsive nowrap sizing. Add distinct PRESET_DESCRIPTIONS, the shared ADMIN_PRESET_TEXT caveat and aria-describedby/error association, missing-scope text and native card behavior. Add width options to field(), editor input()/select() and probe inputHtml; apply all named narrow/medium widths, the default 40rem maximum, Copy variants in all four renderers and the editor submit actions wrapper. Preserve plain/filter forms and every form attribute, token order, payload and effect. Tests ship with these changes; retain T1 checks. Store generated recovery codes immediately for later sign-ins and record the three baseline red proofs for T4.",
+      "acceptance": [
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; all production and browser changes lint and typecheck."
+        },
+        {
+          "command": "bun test src/server.test.ts src/server.tokens.test.ts src/token-view.test.ts src/server.probes.test.ts src/server.team.test.ts src/server.checks.test.ts src/check-editor-page.test.ts src/html.test.ts",
+          "expected": "All tests in the eight listed suites pass, 0 fail; focused coverage is not the full-suite gate. Four option cards use preset ids read, checks, incidents, full and exactly the four distinct R4 descriptions; one preset-note has the literal shared admin caveat and fieldset description includes the error id when invalid. No default selection, disabled scope explanations, preset scopes and POST assertions remain unchanged. All four Copy renderers use secondary small and hidden/data-copy unchanged; Save/Create is in actions. All R6 fields receive their assigned widths while validation and csrf/form_token order remain green."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with Browser 3, 4 and 8 plus all earlier checks. Light/dark real recovery pages each have exactly 10 codes matching /^[0-9a-f]{4}(-[0-9a-f]{4}){7}$/ (39 characters); at 1280 and 390 each has 1 line, scrollWidth <= clientWidth, and lies inside panel content within 0.5 px with no sideways document scroll. Presets at 1280/390 and once dark: 4 cards in read/checks/incidents/full order, R4 literal descriptions and note, radios 18 x 18 +/- 0.5 px, title gap 12 +/- 1 px and centers within 2 px; description activation and ArrowDown work with no initial selection. Save check at 1280 is narrower than half form content, left aligned within 1 px; interval_ms <= 192.5 px, name <= 384.5 px, both fit mobile. Copy on secret and host-binding pages has small, min-height 36 px, width < 200 px, left aligned within 1 px and ::after top -4px; copied bytes and JS-off/native/busy flows remain unchanged. Keep the editor radio assertions, axe and T1 regressions."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Manual token-card, check-editor and Copy/recovery layouts work at 1280 and phone width. Record command/result and independent old-src failures for recovery-code lines, preset radio center offset and Save check width per Completion evidence 2; temporary skips are never committed. Retain this evidence for the final PR."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "The sidebar spans long pages and mobile navigation and account controls stay compact",
+      "files": [
+        "src/styles.ts",
+        "src/shell.ts",
+        "src/html.ts",
+        "src/server.test.ts",
+        "src/shell.test.ts",
+        "src/html.test.ts",
+        "src/server.races.test.ts",
+        "src/server.account-shell.test.ts",
+        "src/server.overview.test.ts",
+        "e2e/design-matrix.ts",
+        "e2e/run.ts",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior R5 and R7; Checks Unit/HTTP shell/CSS assertions and Browser 5, 6 and 7; Completion evidence 2 (sidebar, nav hints, account row). Stretch the outer sidebar and keep sidebar-inner sticky on desktop; wrap Main nav with decorative, scroll-driven edge hints and preserve static-shadow fallback. Render the account-who/prefix/email/role markup and small secondary Sign out via submitButton size, with the full identity in DOM, unchanged DOM/Tab order and native sign-out. Cover long email and 390/375/360/320 widths without changing 236px sidebar or 719/720 breakpoint. Update all affected account literal assertions, including server.overview.test.ts now rather than waiting for T4, without deleting assertions. Record three baseline red proofs for final evidence.",
+      "acceptance": [
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; shell/helper/CSS and e2e changes lint and typecheck."
+        },
+        {
+          "command": "bun test src/server.test.ts src/shell.test.ts src/html.test.ts src/server.races.test.ts src/server.account-shell.test.ts src/server.overview.test.ts",
+          "expected": "All tests in the six listed suites pass, 0 fail; focused coverage may fail its global threshold. Literal shell assertions include sidebar-inner, nav-strip, both aria-hidden nav-edge spans, account-prefix Signed in as, account-role Role: Owner, and secondary small Sign out. Other submitButton callers preserve their markup/behavior. Updated race/account assertions still verify full escaped identities, csrf/form_token fields and native submission."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with Browser 5, 6 and 7 plus all prior checks. Light/dark at 1280 on editor with scrollHeight >= 1200: sidebar top+scrollY within 0.5 px of 0, bottom+scrollY >= scrollHeight-1 at top/bottom, border 1px solid rgb(223, 215, 212) light or rgb(62, 48, 73) dark, and Main nav remains inside scrolled viewport. Nav is one row; after two animation frames edge opacity is 0/1 at start, 1/1 at middle, 1/0 at end, light/dark at 390 and light 375/360/320. Tab reaches Probes and Team fully inside nav with existing outlines. At specified mobile widths foot <= 56 px, header <= 240 px; account and action centers within 6 px, both actions inside viewport and reachable, visible role 1 line, full 70-character email and Signed in as/Role: Owner remain in DOM. Existing checkEmail, checkLongEmail, checkFocus, JS-off sign-out, shell geometry, axe and all prior regressions pass."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Manual long-page and phone-header inspection confirms the stretched border, sticky nav and compact account controls. Preserve separate old-src failures for sidebar bottom, missing nav-edge and foot height > 56 via Completion evidence 2's local group isolation; commit no skips. Record command/result and the three red messages for final PR evidence."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Overview tiles link to filtered checks and the complete layout change has passing evidence",
+      "files": [
+        "src/styles.ts",
+        "src/overview.ts",
+        "src/server.test.ts",
+        "src/overview.test.ts",
+        "src/server.overview.test.ts",
+        "e2e/design-matrix.ts",
+        "e2e/run.ts",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Behavior R8; Checks Unit/HTTP Overview/CSS assertions and Browser 9; all Checks regression requirements, Completion evidence 1-6 and Acceptance evidence (feature). Replace counts with six existing-data tiles, retain overall-state/origin and unchanged empty/error views, remove ul.counts, add the visited tile rule and tenth VISITED_RULES entry, and update docs from nine to ten. Add the matching tests and the last independent baseline red proof. Finish whole-change validation of T1-T3 and this task, including the no-security-impact boundary review, manual smoke evidence, all ten baseline check groups (eleven messages, because words requires both Tokens and unbroken Checks failures), required CI/deploy-dev flow and PR limits. Include the revised unbroken name/id ellipsis and descendant-presence regressions in final evidence. No new request/data/dependency or compose file.",
+      "acceptance": [
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, root/e2e typecheck and the full test suite pass with >= 80% line coverage and summary lines recorded. Overview tests assert all six literal hrefs and fixture counts while empty, no-token, rejected-token and failure cases stay green. CSS has every literal required by Checks Unit/HTTP, with no ul.counts or old Checks td override. All earlier form, permission, copy and shell assertions remain green."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with all new ok lines and existing checks. Light/dark at 1280/390: six tile labels/counts exactly Down 2, Degraded 1, Unknown 0, Maintenance 0, Up 3, Total 6 from down/down/degraded/up/up/up; hrefs exactly /checks?state=down, /checks?state=degraded, /checks?state=unknown, /checks?state=maintenance, /checks?state=up, /checks. list-style-type none; tile-label font starts with Space Grotesk; Down click selects down; matrix API reply is restored. All 10 visited rules match. Browser 1-10 all pass with literal non-vacuous fixtures and fonts.ready, including 1280 Checks fit with four MATRIX_CHECKS rows, exact descendant-text presence and separately measured natural units, the 100-character unbroken name and 64-character id each on 1 line with verified ellipsis/overflow inside the Check cell at 1280/390, 1-line Team/Tokens/Probes word units and nowrap cells, ten 39-character recovery codes at 1280/390, and four radio-title geometries. Existing axe, 0 CSP violations, 0 other-origin requests, fonts/colors, type scale, focus, JS-off/busy flows, geometry and overflow checks remain green."
+        },
+        {
+          "command": "git diff --stat 5cdc34b",
+          "expected": "Only spec Files paths and test suites whose literal assertions changed appear. Review git diff 5cdc34b for escaping, auth/permission and form invariants: unchanged routes, roles, stored data, form semantics, csrf/form_token order, design tokens, CSP and dependencies. No changes to package.json, bun.lock or src/server.ts; styles diff changes no -- custom-property token line. Security impact remains no; no performance measurement is required by the spec."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Record successful manual checks of /checks at 1280 without horizontal scroll, /tokens/new option cards, / Overview tiles, phone one-row nav/edge hints/compact account row, and Team at 1280/390. Name the actual Team-divider cause. Completion evidence 2 covers ten baseline check groups with eleven independent messages against src at 5cdc34b: Checks fit, Tokens words, unbroken Checks name wrapping, recovery code lines, preset radio centers, sidebar extent, missing nav hints, account height, Save check width, absent tiles and Team 2FA: on. Keep local group skips and baseline source restoration uncommitted, then rerun both full checks on the restored final tree."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR names #780, includes bun run check summary, final browser ok evidence, all ten baseline groups with eleven red messages including both Tokens word wrapping and the unbroken Checks name, diff-boundary/security review and manual smoke command/results including Team-divider cause. Known limits state Target ellipsis and ellipsis for an unbroken name/id wider than the Check column with full values in DOM/detail, static-shadow scroll-hint fallback without scroll-driven animations, and contained Tokens/Probes table scrolling. Retain evidence gathered by T1-T3; never claim an unrun check."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "Required CI jobs check, docker, deploy-dev and browser pass before merge. deploy-dev runs the existing pulse-deploy main dev stack with this checkout and E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml, as console AGENTS.md requires; do not add or edit deploy files or weaken the job. Record the actual CI results in completion evidence."
+        }
+      ]
+    }
+  ]
+}
