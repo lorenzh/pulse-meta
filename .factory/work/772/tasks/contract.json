@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Maintenance documentation consistently describes ID-based writes and retained file-window types",
+      "files": ["docs/index.md"],
+      "behaviorChange": false,
+      "spec": "## Repository: contract — Behavior (Required behavior rules 1-5), Checks 1-8, and Completion evidence. Rewrite the legacy type-table row as file-window and GET /admin/config metadata with a pointer to AdminMaintenanceWindowInput; use database window {id} in the admin write route list; change the 404 meaning to Unknown id. Preserve the schema and validator lists, the detailed database section, valid file-window indices, AdminConfigResponse and AdminWriteResponse meanings, and Markdown table alignment; re-pad affected tables when needed. Edit docs/index.md only.",
+      "acceptance": [
+        {
+          "command": "grep -n -i 'maintenance\\|index' docs/index.md",
+          "expected": "Review every match in context before and after editing against Required behavior rules 1-5: no passage presents AdminMaintenanceInput or the single-check file-window shape as a current POST/PUT body, and no passage advertises index-based window writes. The retained type row describes the checks-file shape and its file index in GET /admin/config and points write callers to AdminMaintenanceWindowInput. Schema and validator lists, the database section, valid response metadata, and union membership retain their meaning; affected Markdown tables have aligned columns. Independent source: the issue text and Required behavior rules 1-5."
+        },
+        {
+          "command": "grep -n '/admin/maintenance/{index}' docs/index.md",
+          "expected": "Zero matches; no output; grep exits 1."
+        },
+        {
+          "command": "grep -n 'Unknown id or index' docs/index.md",
+          "expected": "Zero matches; no output; grep exits 1."
+        },
+        {
+          "command": "grep -n -i 'AdminMaintenanceInput' docs/index.md",
+          "expected": "Only file-window descriptions, schema or validator names, and the explicit statement that the api no longer accepts it as a body appear. No occurrence presents it as a request or write body. Independent source: the issue requirement that no sentence describes the old request shape."
+        },
+        {
+          "command": "grep -n 'PUT|DELETE /admin/maintenance/{id}' docs/index.md && grep -c 'AdminMaintenanceView' docs/index.md",
+          "expected": "Exactly 1 matching route-list line using {id}; AdminMaintenanceView occurs on at least 3 lines, retaining the type row, AdminConfigResponse row and AdminWriteResponse row."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "Exit 0; lint, build, typecheck and the full test suite including the coverage gate pass."
+        },
+        {
+          "command": "git diff --exit-code -- dist && git status --porcelain",
+          "expected": "Exit 0 after the build; dist has no diff and status lists exactly 1 changed path: docs/index.md. No schema, export, version, dependency, lockfile, source or test changes."
+        },
+        {
+          "command": "awk 'NR>=12 && NR<=76 {print length($0)}' docs/index.md | sort -u",
+          "expected": "Exactly 1 output line: one distinct row length for the type table. Keep column alignment; if the new Meaning cell exceeds the current 169-character width, re-pad the whole table. Adjust the range only if table rows are added or removed, and record the new range in completion evidence. Independent source: Required behavior rule 5 and Check 7."
+        },
+        {
+          "command": "awk 'NR>=368 && NR<=381 {print length($0)}' docs/index.md | sort -u",
+          "expected": "Exactly 1 output line: one distinct row length for the admin status table. Keep column alignment; if a Meaning cell exceeds the current 86-character width, re-pad the whole table. Adjust the range only if table rows are added or removed, and record the new range in completion evidence. Independent source: Required behavior rule 5 and Check 7."
+        },
+        {
+          "command": "grep -c 'adminMaintenanceInputSchema' docs/index.md && grep -c 'adminMaintenanceViewSchema' docs/index.md && grep -c -w 'validateAdminMaintenanceInput' docs/index.md && grep -c -w 'validateAdminMaintenanceView' docs/index.md",
+          "expected": "Each of the 4 counts is at least 1; the schema list retains adminMaintenanceInputSchema and adminMaintenanceViewSchema, and the validator list retains validateAdminMaintenanceInput and validateAdminMaintenanceView. Independent source: Required behavior rule 4 and Check 8."
+        },
+        {
+          "command": "grep -n 'the api no longer accepts it as a body' docs/index.md",
+          "expected": "Exactly 1 matching line, retaining the database section's statement that AdminMaintenanceInput stays as the file window shape and the api no longer accepts it as a body. Independent source: Required behavior rule 4 and Check 8."
+        },
+        {
+          "command": "git diff --check && git diff -- docs/index.md",
+          "expected": "Exit 0 with no whitespace errors; the diff implements Required behavior rules 1-5, including the 404 meaning Unknown id and the unchanged 409 row. No line is added or removed inside the Database maintenance windows section, from its heading to the next heading; schema and validator lists keep their meaning. Include the docs/index.md diff, outputs of Checks 1-4, 7 and 8 (and any adjusted table ranges), and exit statuses of bun run check and Check 6 in the pull request body as Completion evidence requires. Security impact: no; performance impact: none expected, as specified in the plan."
+        }
+      ]
+    }
+  ]
+}
