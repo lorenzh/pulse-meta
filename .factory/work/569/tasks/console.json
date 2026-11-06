@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Protected forms accept bounded list fields and shared writes support incident and maintenance audit targets",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/protected-route.ts",
+        "src/server.ts",
+        "src/http-context.ts",
+        "src/forms.ts",
+        "src/forms.test.ts",
+        "src/server.form-token.test.ts",
+        "src/api-failure.ts",
+        "src/people-log.ts",
+        "src/people-log.test.ts",
+        "src/check-write.ts",
+        "src/check-write.test.ts",
+        "src/token-write.test.ts",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, contract pin, shared infrastructure in Behavior and unit Checks; Required behavior 1-3 (dispatcher, list fields, body limits and ApiCall), 10-11 (shared sender and People targets); Security impact (auth order, body limits and dependency pins). Pin contract to c4a2eb5214d48d40d0c1afbae5e3e49463185e15 or a later full main SHA containing 2.3.0 and regenerate bun.lock. Add optional ProtectedRoute.listFields and required PageRequest.lists, empty on GET/HEAD. Thread list parsing through the existing readFormFields/readPostForm pipeline in src/http-context.ts and protected dispatcher in src/server.ts; preserve callers without list fields and the fixed POST order. Add the two form limits, reject duplicate list values and over-limit counts, and never allow csrf/form_token as lists. Add the four ApiCall names and seven PeopleAction values and the incident/maintenance target encodings from section 11. Export/generalize the check sender and People-row helper with per-resource texts, optional revision and resource identifiers, keeping existing check write behavior and tests green. Update the existing PageRequest literal in token-write.test.ts with empty lists so the typecheck stays green at this step. This task supplies shared support only; resource-specific routes, outcome policies and calls follow in T2/T3. Update configuration docs for list-field validation and limits. The existing shared POST pipeline and regression suites are supporting paths beyond the plan's Files list, required to carry lists without duplicating the security checks.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run lint && bun run typecheck",
+          "expected": "exit 0; the lockfile resolves the full contract main SHA containing 2.3.0; kit/config pins and the runtime dependency set are unchanged"
+        },
+        {
+          "command": "bun test src/forms.test.ts src/server.form-token.test.ts",
+          "expected": "0 fail; component=web&component=web and 1001 distinct values against a 1000-value list limit answer 400, ordered distinct values up to 1000 survive, and repeated single fields, csrf and form_token remain rejected. GET/HEAD lists are empty. Constants are 32768 and 131072; default 8192 and check-editor 524288 remain unchanged. HTTP tests preserve Origin, content type, size, repeated-field, CSRF, role and form-token order and replay status 409. A focused run may fail only the global 80% line-coverage gate; exit 0 is not required for this focused command"
+        },
+        {
+          "command": "bun test src/people-log.test.ts src/check-write.test.ts src/token-write.test.ts",
+          "expected": "0 fail; incident targets store ['incident',null,null,String(id)] or ['incident',null,null,'unknown']; maintenance targets store ['maintenance',null,null,id]; seven new action names round-trip without title/message/note/body/token. Existing token-write tests pass with empty PageRequest.lists. Existing check writes retain quoted If-Match, timeout 5000 ms, zero retries, outcome texts and People-row behavior. A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both TypeScript projects and the full test suite pass with at least 80% line coverage; existing setup, account, checks, token and probe form flows remain green"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "People can inspect, publish, update, resolve and delete incidents with a live status-card preview",
+      "files": [
+        "src/server.ts",
+        "src/incident-read.ts",
+        "src/incident-read.test.ts",
+        "src/incident-list.ts",
+        "src/incident-list.test.ts",
+        "src/incident-form.ts",
+        "src/incident-form.test.ts",
+        "src/incident-preview.ts",
+        "src/incident-preview.test.ts",
+        "src/incident-write.ts",
+        "src/incident-write.test.ts",
+        "src/incident-pages.ts",
+        "src/incident-routes.ts",
+        "src/console-script.ts",
+        "src/styles.ts",
+        "src/server.incidents.test.ts",
+        "src/server.incidents-write.test.ts",
+        "test/incident-api.ts",
+        "test/fake-api.ts",
+        "e2e/run.ts",
+        "e2e/design-matrix.ts",
+        "README.md",
+        "AGENTS.md",
+        "docs/configuration.md",
+        "docs/index.md",
+        "docs/incidents.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, incident portion of Behavior, Fake API, Checks and Docs; Required behavior 1-10, incident portion of 11 and 14; Counterexamples through Private filtering; Acceptance evidence 1-2 and 4-7. Implement the complete incident vertical feature on T1's shared support: bounded public-only reads, first-failure states, 404-as-empty manual list, list filters/order/200-row bound, separate MTTR populations and duration formatting, manual timelines and read-only automatic detail/results, composer and automatic shortcut, post update, resolve and typed-title delete. Register exact raw-path protected routes and roles, validate query ids, and set incident navId; both navigation entries are enabled together in final T3 after both page families exist. Implement contract-based CRLF-normalized forms without trimming title/message, component validation, route/JSON byte limits and every outcome in section 10. Every accepted write is guarded immediately before the one outbound request; no If-Match for incidents, no retries or followed redirects, and section 11's id-only logs/People rows. Compose the resolve page in incident-pages.ts with existing html.ts field/error/button helpers; leave confirm.ts and its tests unchanged. Both open resolve GETs issue independent tokens; already-resolved update/resolve POSTs keep text and return 409 with zero writes, while a read/write resolution race shows the API's 409 after one write. Delete uses the shipped trim/NFC helper, known revision field equal to update count without a POST revision comparison. Implement escaped server preview and independent textContent live preview in the sole existing console script, unchanged CSP, one input/change listener, no request/storage/timer; resolved preview shows all updates and open preview the latest only. Add the stateful manual-incident fake with contract validation, auth, write counts, 100-update limit, private-item switch and resolve-after-read switch, reused by HTTP/browser fixtures. Add incident HTTP/unit/browser tests and docs in this task, including mobile/axe/focus, JS-server parity and no-JS flows; T3 extends the same fake/harness for maintenance. Cover all incident counterexamples and the per-route request counts in Performance impact.",
+      "acceptance": [
+        {
+          "command": "bun test src/incident-read.test.ts src/incident-list.test.ts",
+          "expected": "0 fail; public reads carry no admin token and filter internal/accessor items before validation. Manual-list 404 becomes empty. The literal MTTR cases give 20 min with 2 resolved, 18 min for 1050000 ms, and — for no sample; filters do not change samples; manual sample 50 is labelled the 50 most recent; exactly 1000 automatic items suppress automatic MTTR; resolvedAt=now-1209600001 is excluded. Durations 29999/30000/5400000/93600000 give under 1 min/1 min/1 h 30 min/1 d 2 h. Open rows precede resolved, ties put manual before automatic then higher id; only 200 rows render. A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun test src/incident-form.test.ts src/incident-preview.test.ts src/incident-write.test.ts",
+          "expected": "0 fail; a\\r\\nb\\rc becomes a\\nb\\nc, title ' Slow' is preserved, 2001 UTF-16 message units fail and 1000 emoji (2000 units) pass; forged update status resolved gives 422 'Use Resolve to resolve an incident.'. Preview literals from status src/render.ts:648-728 at 8b6d431 give Impact: major, Status: investigating, <b>Checkout</b> slow, Affects: Web, Public API and message Line 1\\nLine <2>; HTML contains &lt;b&gt;Checkout&lt;/b&gt; slow and no <b>; no components hides affects. Each section 10 saved/refused/unknown outcome maps to its specified status and text, errors are escaped and capped at 1000 characters, and accepted writes are sent once. A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun test src/server.incidents.test.ts src/server.incidents-write.test.ts",
+          "expected": "0 fail; real server on port 0 implements all incident route/method/role cases from sections 1 and 7-10. GET-only automatic POST gives 405 and Allow: GET, HEAD; invalid/repeated ids give 404. Manual #7 and automatic #7 stay distinct, equal-time updates retain #1 then #2 order, and shortcut publish leaves the automatic incident unchanged. Viewer forged writes and Member delete give 403 with 0 API requests; CSRF/replay/session-loss/role-loss refusals match the spec. Preview returns 200 with 0 writes and 0 People rows; publish/update/resolve/delete return the specified 303 locations and saved rows. Two resolve tabs have independent tokens: preview refreshes the first token, publication resolves, then the saved second unused token POST gives 409 with 0 writes; later GET resolve gives 409 without form_token and detail has no update/resolve form. Resolve race sends exactly 1 write and shows API 409. For Slow checkout, slow checkout and Slow  checkout give 422 'The name does not match. Type Slow checkout exactly.'; blank gives 422 'Type the name to confirm.'; trailing space and decomposed Café succeed. 32769 incident-form bytes give 413. All section 10 failure rows keep input as prescribed; unreadable create redirects to /incidents?published=1, failed saved People row returns 200, timeout returns 504 with exactly 1 write and value unknown. Admin-token scan of responses/logs/database and title/message scan of logs/People rows give 0 hits. A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, both TypeScript projects and the full tests pass with at least 80% line coverage; the new fake validates the actual contract and preserves existing fake-api callers"
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; all incident pages and confirmations at 390 and 1280 px with 300-character unbroken text have 0 horizontal overflow, 0 axe violations, named controls and correct focus order. Live changes to title/impact/status/components/message cause 0 writes and equal the independent server preview after Update preview, excluding time. HTML-looking text remains inert, preview is not a live region, and there are 0 CSP violations. Publish, post update, resolve and delete confirmation work with JavaScript disabled; existing browser checks remain green"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "final",
+      "title": "People can plan and manage durable maintenance windows and both screen families pass final evidence checks",
+      "files": [
+        "src/server.ts",
+        "src/navigation.ts",
+        "src/navigation.test.ts",
+        "src/maintenance-read.ts",
+        "src/maintenance-view.ts",
+        "src/maintenance-view.test.ts",
+        "src/maintenance-form.ts",
+        "src/maintenance-form.test.ts",
+        "src/maintenance-pages.ts",
+        "src/maintenance-routes.ts",
+        "src/styles.ts",
+        "src/server.maintenance.test.ts",
+        "test/incident-api.ts",
+        "test/fake-api.ts",
+        "e2e/run.ts",
+        "e2e/design-matrix.ts",
+        "README.md",
+        "AGENTS.md",
+        "docs/configuration.md",
+        "docs/index.md",
+        "docs/incidents.md",
+        "docs/maintenance.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, maintenance portion of Behavior and Fake API, navigation Checks, maintenance and whole-change Checks, Docs and Completion evidence; Required behavior 1-3 and 11-14; maintenance Counterexamples (Time parse through Phase boundary); Performance impact, Security impact, Rollout order 1 and Acceptance evidence 1-7. Build the Maintenance list, phase/source/shadowed views and all role-aware actions; create/edit with coherent maintenance/config revisions (one retry only), immutable id on edit, direct-check plus component selection snapshot, UTC round-trip parsing and unchanged millisecond preservation, contract validation, If-Match and maintenance-specific outcomes; delete database/shadowed copies with existing plainConfirmPage fields only. Enforce guards, list/body/JSON limits, stale input retention with zero window writes, unknown handling without retry and id-only People rows/logs. Extend T2's stateful fake with database/file/shadowed windows, injected phases, common revision and the exact API status semantics listed in Fake API. Register maintenance routes and enable both Incidents and Maintenance navigation entries together for every role; leave only Activity/System unavailable. Add maintenance unit/HTTP/browser tests beside implementation and extend fixture --serve for the complete manual journey. Finish docs, full suite/browser checks, required existing deploy-dev Compose job evidence, agent-browser lifecycle/mobile record and local-api smoke. The final security/evidence review covers all of T1-T3, including earlier incident tests and the maximum four API requests for the maintenance form retry. No API/contract/status product changes and no changes to confirm.ts or CSP.",
+      "acceptance": [
+        {
+          "command": "bun test src/maintenance-form.test.ts src/maintenance-view.test.ts",
+          "expected": "0 fail; 2026-11-06T10:00 parses to 1793959200000 UTC, 2026-02-30T10:00 and 10000-01-01T00:00 give 422, and unchanged edit of start 1793959200123 keeps 1793959200123. Equal start/end gives 422 'End must be after start.'. Checks e2e-tcp,e2e-post plus component web(status-page,e2e-post) produce ['e2e-tcp','e2e-post','status-page']; 0/51 selections give 422 with literal counts; unknown components keep input; 1window/Window/65-character ids fail and db-upgrade passes. API phases are used, now=start is current and now=end is past; sections Current/Planned/Past/Shadowed have the specified ordering, 50-past bound, missing-check labels and per-role file/database/shadowed actions. A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun test src/server.maintenance.test.ts src/navigation.test.ts",
+          "expected": "0 fail; create/edit/delete return 303 to /maintenance?saved=1 or ?deleted=1, use quoted If-Match and append revision/id-only People rows. List/form/role/id/method and byte limits match sections 1-3, 12-13. Viewer writes and Member deletes give 403 with 0 API requests; duplicate values/1001 selections give 400; maintenance form above 131072 bytes gives 413. Revision mismatch GET retries exactly once (4 reads maximum); a remaining mismatch is stale without form, and stale POST keeps input with 0 window writes. Old maintenance API 404/405 shows the exact section 3 text without a form. Edit file/shadowed GET gives 409 without form; forged edit shows API 409; shadowed delete retains the file window; unknown/file-only delete gives 404. Every maintenance 409/412/422/404/403/timeout/unknown case keeps input or shows kept text as specified, never retries, and covers replay/CSRF/session-loss/role-loss and People-row failure. The fake enforces missing If-Match 428, stale 412, wildcard 400, collisions/shadowing/file-id 409, unknown 404 and shared revision. Token scans of responses/logs/database and note scans of logs/People rows give 0 hits. Both nav entries are available for all roles; exactly 2 remain unavailable (Activity, System). A focused run may fail only the global 80% line-coverage gate"
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, root/e2e TypeScript and the full test suite pass with at least 80% line coverage, including every incident/maintenance counterexample, all section 10 outcome rows and unchanged pre-existing flows"
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0; complete incident and maintenance pages/forms at 390 and 1280 px have 0 horizontal overflow, 0 axe violations and correct focus order; incident live/server preview parts agree independently, omit time only and cause 0 writes. Publish/update/resolve/delete work without JavaScript; 0 CSP violations and no CSP change"
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Fixture console and stateful fake remain running for the manual agent-browser check; the PR records the actual listen URL and commands/outcomes. Set INCIDENT_FIXTURE_URL to that observed base URL for the following agent-browser command. With agent-browser, sign in, declare with 2 components, observe live preview, publish, post identified and monitoring, resolve, reload list/MTTR/timeline, and observe a subsequent resolve 409. Plan a window from direct checks plus a component, edit note/end and delete as Owner; repeat forms at 390 px. Merely starting the fixture is not completion evidence"
+        },
+        {
+          "command": "agent-browser open \"$INCIDENT_FIXTURE_URL\"",
+          "expected": "The fixture sign-in page opens at the listen URL independently reported by bun e2e/run.ts --serve; record the actual URL and subsequent agent-browser commands and observations for the full preceding journey. Assert spec sections 4-14 and literal counterexamples, including 303 publish/update/resolve redirects and subsequent resolve 409. Expected values are not copied from the renderer under test; merely opening the browser is not completion evidence."
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "The console starts against a local API built from api main containing #568 and #765; sign in and open /incidents and /maintenance once, record the command and results in the PR. Both list pages answer 200 with the specified data or empty state"
+        },
+        {
+          "command": "gh pr checks && gh pr view --json body",
+          "expected": "All required checks are green, including existing console browser and deploy-dev Compose integration (E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml). The PR names #569 and records bun run check, check:browser, actual agent-browser commands/outcomes and local-api smoke. Applicable Security impact checks report 0 secret/text hits in their specified locations, exact dispatch/guard order, escaped 1000-character API errors, list/form/JSON bounds, accessor-safe filtering, CRLF/UTC/id validation, no retries/redirects, unchanged CSP and a full merged contract SHA with no new runtime package. Docs cover routes/roles/scopes, both MTTR populations and limits, preview time/layout exclusions, automatic shortcut, draft behavior, maintenance snapshot/stale/source/phase rules, and outcomes; index links both guides and AGENTS names the suites and preview/list-field behavior. PR states real status parity is checked in the dependent deploy child, automatic 14-day/1000-row and manual 50-result limits, and unknown write outcomes"
+        }
+      ]
+    }
+  ]
+}
