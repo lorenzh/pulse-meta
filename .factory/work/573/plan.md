@@ -25,7 +25,7 @@ notifies its operator channels exactly as before.
 - Issue #573, its comments and the "Added requirements (manager decision after the spec review)"
   in the issue body: no address enumeration under every limit, a consistent URL prefix or a
   stated and checked root-hosting rule, and visitor information with an operator contact
-  setting. R8, R9 and R10 implement them; D15-D19 record the choices.
+  setting. R8, R9 and R10 implement them; D15-D20 record the choices.
 - The first spec of this feature (closed PR #814, head `55f1da0d`) passed `spec/plan-review`
   before the manager added these requirements. This spec is that version, revised. Its two
   rules that broke the new requirements are changed: notify no longer answers `429` to an
@@ -35,7 +35,7 @@ notifies its operator channels exactly as before.
   this spec PR.
 - The issue review (`.factory/work/573/issue-review.md`, the second one, written for the added
   requirements). It has no blocking question and lists open points 1-6 and derived checks 1-9.
-  Decisions D1-D19 below settle the open points; "Acceptance evidence" maps the checks.
+  Decisions D1-D20 below settle the open points; "Acceptance evidence" maps the checks.
 - #460, section 12 (as quoted in the issue review): subscriber mail belongs to pulse-notify with
   its own settings, never to the console. This spec follows it. The console does not change.
 - #568 (closed, complete): drafts, notes and internal incidents. Its public projection is on
@@ -70,6 +70,17 @@ notifies its operator channels exactly as before.
     volume, but `secrets-init` had no path for it. D14 and the deploy section now give it one:
     an optional host file `secrets/subscriptions-smtp-password` that `secrets-init` copies to
     the notify secrets volume, with tests for its modes, its secret-free output and its absence.
+- The next `spec/plan-review` named two more defects, fixed here:
+  - The `config` check of the `full` override required the value
+    `/run/pulse/subscriptions-smtp-password` and also forbade `password` in every environment
+    value. The check now allows exactly that file path in exactly that `_FILE` key and looks for
+    secret content instead (deploy checks, "`full` override").
+  - The notice promised that one email can still arrive after a delete, but the confirmation
+    worker and the fan-out worker could both have a send in flight for one subscriber. D20 and
+    R5 "One send per subscription" now allow at most one attempt in flight per subscription
+    across both workers, a confirm cancels the row's confirmation jobs, and the new
+    counterexample block "Concurrent workers (D20)" tests the review's sequence. The notice text
+    is unchanged, because its bound is now true; its literal checks stay as they are.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` is
   answered `HTTP 404` in this run. So there are no findings yet, which is normal for a feature
   without children.
@@ -250,8 +261,26 @@ references below were read at these SHAs. Contract moved from `ebf6bbc` (`2.3.0`
   confirmation digest (a new confirmation mail) removes that row's queued jobs from the queue in
   the same synchronous step after the commit, before the operation answers. This does not wait
   for the worker: a job behind a blocked send is removed while that send stays blocked. A job
-  whose link expired is dropped too (R5 "Confirmation mail"). The one attempt already in flight
-  is the only exception (D12); the notice says that one email can still arrive (R10).
+  whose link expired, or whose row is already `confirmed`, is dropped too (R5 "Confirmation
+  mail"). A confirm cancels the row's queued jobs the same way, so a confirmed row gets no
+  further confirmation attempt. The one attempt already in flight is the only exception (D12,
+  D20); the notice says that one email can still arrive (R10).
+- **D20 At most one send in flight per subscription, across both workers.** Worker 1
+  (confirmation mail) and worker 2 (incident fan-out) run independently, so without a rule both
+  could have an attempt in flight for the same row: a confirmation attempt that is still
+  unresolved when the visitor confirms with the link it already delivered, then an incident send
+  to the now confirmed row, then an unsubscribe. Both mails could then arrive after the delete,
+  and the notice's "One email" would be false. Notify therefore keeps one in-memory map
+  `inFlight` from row id to the settle promise of the attempt in flight for that row, shared by
+  both workers (R5 "One send per subscription"). A worker starts an attempt for a row only when
+  the row has no entry; it adds its entry in the same synchronous step as its last row read and
+  the call to `sendMail` (no `await` between them, D12), and removes it when the attempt settles
+  (result or timeout). Worker 2, finding an entry, waits for it to settle (at most 60 s, D12)
+  without holding the address, then re-reads the row. Worker 1 never starts an attempt for a
+  `confirmed` row (D19), so it never waits for worker 2. So, at any moment, at most one email to
+  a subscription is in flight, and a delete leaves at most one email that can still arrive. This
+  is the bound the notice states; the review's alternative, a wider notice ("two emails"), is not
+  taken, because one bound is simpler to state and to test.
 
 ## Scope
 
@@ -525,7 +554,8 @@ Times come from the injected `now`.
 - **Confirm** `{token}`: the token must match the confirm pattern, else `400`. Find the row by
   the token's digest. No row, or a `pending` row with `confirm_expires_at <= now` → `404
   {"error":"invalid token"}`. A `pending` row → set `state = 'confirmed'`, `confirmed_at = now`
-  → `200`. A `confirmed` row → `200`, nothing changes.
+  → `200`, and after the commit cancel the row's queued confirmation jobs (D19), before the
+  answer. A `confirmed` row → `200`, nothing changes.
 - **Unsubscribe** `{token}`: the token must match the unsubscribe pattern, else `400`. A wrong
   `mac` → `404`. A right `mac`: delete the row with that id and its delivery rows, if any, cancel
   the row's queued confirmation jobs (D19), then answer `200`. A right `mac` whose row is gone
@@ -543,10 +573,13 @@ Times come from the injected `now`.
     attempt of another job that is in flight. An attempt of the cancelled job itself that is
     already in flight ends by its own result or timeout (D12); that outcome is counted as usual
     (the mail may have been delivered), and the job then makes no further attempt. The callers run `cancel(id)` after their transaction committed and
-    before they answer or return: unsubscribe, cleanup (per deleted id), subscribe steps 1 and
-    4. `subscribers delete` runs with the service stopped, when no queue exists.
+    before they answer or return: unsubscribe, cleanup (per deleted id), confirm (a `pending`
+    row that became `confirmed`), subscribe steps 1 and 4. `subscribers delete` runs with the
+    service stopped, when no queue exists.
   - **Job expiry.** Before each attempt the worker drops the job when `now >= expiresAt`, when
-    the row is gone, or when the row's digest differs from the job's. A dropped or cancelled job
+    the row is gone, when the row is `confirmed`, or when the row's digest differs from the
+    job's. This read, the `inFlight` check and entry (D20) and the call to `sendMail` are one
+    synchronous step. A dropped or cancelled job
     is counted in neither mail counter; it leaves the gauge
     `pulse_notify_subscriber_confirmations_queued` at once (an in-flight one when its attempt
     ended).
@@ -597,9 +630,13 @@ Times come from the injected `now`.
   "Barriers"):
   - A pass reads the ids (only the ids, no address) of the eligible subscriptions in pages of
     100 by `id`: `state = 'confirmed'`, `confirmed_at <= detected_at`, and no delivery row for
-    this event. For each id, right before the send, it reads the row (address and state) by id;
-    if the row is gone or not `confirmed`, it skips it (D12). So worker 2 holds at most one
-    address, the one of its current send.
+    this event. For each id, it first waits while `inFlight` has an entry for that id (a
+    confirmation attempt of worker 1, D20; the wait ends when that attempt settles, at most
+    60 s, and stop aborts it). Then, right before the send and in the same synchronous step as
+    its own `inFlight` entry and the call to `sendMail`, it reads the row (address and state) by
+    id; if the row is gone or not `confirmed`, it skips it (D12). The wait is inside the pass and
+    is not a pass of its own. So worker 2 holds at most one address, the one of its current
+    send, and none while it waits.
   - One message per subscription:
     - `From` = the setting; `To` and envelope = that address only;
     - `Subject` = `<prefix> <State>: <title>`, State is `New incident`, `Update` or `Resolved`;
@@ -645,6 +682,18 @@ Times come from the injected `now`.
   - Stop aborts the sleep and any send in flight. The event stays `pending` and the next start
     recovers it as above. An aborted send writes no delivery row.
   - Worker 2 never blocks the channel workers or worker 1.
+- **One send per subscription** (D20). `inFlight` is a `Map<string, Promise<void>>` from row id to
+  the settle promise of that row's attempt in flight, created once per process and passed to both
+  workers. Rules:
+  - a worker calls `sendMail` for a row only when `inFlight` has no entry for its id, and sets
+    the entry in the same synchronous step (after its last row read, before the call returns its
+    promise); the entry is deleted when that attempt settles: success, error, or the D12 timeout;
+  - worker 1 never waits on the map: its only possible blocker would be a worker 2 attempt, which
+    needs a `confirmed` row, and worker 1 drops the jobs of `confirmed` rows (Job expiry);
+  - worker 2 waits for an entry of worker 1 as in "Fan-out" and then re-reads the row;
+  - a cancel (D19) or a delete never removes an entry; the entry ends with its attempt.
+  So at most one subscriber email per subscription is in flight at any moment, whatever the
+  order of subscribe, confirm, detection and unsubscribe.
 - Subscriber mail never goes through the ledger, the channel deliveries or `failed list|resend`.
 - **`subscribers delete <address>`** (D18). `bun src/index.ts subscribers delete <address>` (in the
   image: `bun --no-env-file src/index.ts subscribers delete <address>`, `notify/Dockerfile:20`).
@@ -772,16 +821,19 @@ cannot pass on a difference by mistake.
   token and its expiry; per incident email: a delivery row with the subscription id (not the
   address), sent or failed, attempts and time. In memory only: the address and tokens in a queued
   confirmation job (at most 100 jobs; removed with its row, when its link is replaced or
-  expires, and at restart, R5 "Confirmation mail"), the address of the one send attempt in
-  flight per worker (at most 60 s, D12), and the queue times of the global window (no address).
+  expires, when its row is confirmed, and at restart, R5 "Confirmation mail"), the address of
+  at most one send attempt in flight per subscription, across both workers (at most 60 s, D12,
+  D20), and the queue times of the global window (no address).
   Nothing in logs or metrics. Events hold public incident content only.
 - **Retention**: pending rows and their queued jobs as R3 "Cleanup" (gone within 25 hours of the
   last confirmation mail while notify runs); confirmed rows until unsubscribe or `subscribers
   delete`; queued jobs of a deleted row at the delete (D19); delivery rows with their
   subscription or with their event after `PULSE_NOTIFY_STATE_RETENTION_DAYS`, whichever is
-  first. **In-flight boundary**: one send attempt that already started when the delete was
-  answered is not aborted; it ends within 60 s and its email can still arrive. The notice says
-  so.
+  first. **In-flight boundary**: at most one send attempt per subscription is in flight at any
+  moment, confirmation and incident mail together (D20). That one attempt, when it already
+  started before the delete was answered, is not aborted; it ends within 60 s and its email can
+  still arrive. No second email can start after the delete (D12 re-read, D19 cancel). The notice
+  says so ("One email that is being sent at that moment can still arrive.").
 - **Notice** (status renders it under the input, R2; `<contact>` is the R6 contact as a link:
   `<a href="mailto:<address>">address</a>` for an address in its normalized form, `<a
   href="<url>">url</a>` for an `https` URL, both through `escapeHtml`; "24 hours", "25 hours"
@@ -844,7 +896,9 @@ cannot pass on a difference by mistake.
   come from the contract constants that notify's cleanup uses; notify tests check cleanup at the
   literal boundaries 25 hours minus 1 ms and 25 hours. The in-memory confirmation queue follows
   the same deletes (D19), and notify tests delete jobs behind a send that the fake keeps
-  blocked; the one attempt in flight is bounded (D12) and named in the notice.
+  blocked; the one attempt in flight is bounded (D12), the two workers never have two attempts
+  in flight for one subscription (D20, tested with a confirmation attempt held across confirm,
+  detection and unsubscribe), and the notice names that one email.
 - **Prefix hosting misconfigured.** Mitigation: R9 refuses a path at startup in both services,
   before any file is opened; the e2e scenario checks both refusals.
 - **Two notify processes on one store.** Mitigation: the lease lock of the store.
@@ -908,10 +962,13 @@ Checklist items that apply:
   for addresses, tokens and secrets. The SMTP password: notify reads it with `readSecretFile`
   and its errors name the variable and path only; secrets-init's rule lines name the file and
   the rule only, checked with the password literal (deploy checks); the password is never in the
-  override, `.env` or an environment value (deploy `config` check).
+  override, `.env` or an environment value: the environment holds only its file path
+  `/run/pulse/subscriptions-smtp-password`, and the deploy `config` check looks for the
+  password literal and secret formats, not for the word `password` (deploy "secret check").
 - **Personal data in memory**: a delete removes the row's queued confirmation jobs at once (D19),
-  checked behind a send that the test keeps blocked; fan-out holds one address at a time; the one
-  attempt in flight ends within 60 s (D12).
+  checked behind a send that the test keeps blocked; fan-out holds one address at a time; at most
+  one attempt per subscription is in flight across both workers (D20) and it ends within 60 s
+  (D12).
 - **Auth order and status codes**: notify R4 (path, method, then auth before any body read);
   status R2 (origin before body); exact codes in R1 and R2; one public subscribe answer for
   every valid address under every limit L0-L8 (R8), checked byte for byte with known and unknown
@@ -1112,6 +1169,49 @@ expected value is a literal in the test.
   to the fake for A is not aborted. Resolve A: A gets no further attempt. Timeouts: with
   `PULSE_NOTIFY_TIMEOUT_MS = 120000` the fake receives `timeoutMs = 60000`; with the default it
   receives `5000`.
+
+### Concurrent workers (D20), one send in flight per subscription
+
+Fixture for each case (injected clock and sleep, fake api with a manual feed, test key and token
+files, `mkdtemp` store, the baseline already seeded by one empty poll): A subscribes at `t=0`.
+The fake `sendMail` records every call with its `To` and keeps a count of calls that are
+started and not yet settled, per `To` address; the test asserts after every step that this count
+is never above `1` for A (the "max in flight" literal is `1`). The fake returns, for A's
+confirmation attempt 1, a promise that the test holds unresolved; the test reads A's raw
+confirmation token from that call's message (the mail was handed to the server, so the visitor
+may have it). Every expected value is a literal in the test.
+
+- Confirm, detect, unsubscribe while the confirmation attempt is unresolved (the review's
+  sequence): confirm A with the token at `t=10` → `200`, A is `confirmed` with `confirmed_at =
+  10`; the gauge `pulse_notify_subscriber_confirmations_queued` still reads `1` (in flight).
+  The fake api publishes a manual incident and one poll runs at `t=20` →
+  `pulse_notify_subscriber_detections_total` `+1`, `pulse_notify_subscriber_events_pending` `1`.
+  Worker 2 runs its pass: the fake still has exactly `1` call (worker 2 waits on A's entry and
+  has not called `sendMail`). Unsubscribe A at `t=30` → `200`. Resolve A's confirmation attempt
+  with success: the confirmation success counter is `1`, the gauge `0`; worker 2 re-reads A's
+  row, finds it gone and skips it; `events_pending` reaches `0`; over the whole case the fake
+  has exactly `1` call and the incident success and failure counters are `0`. A wrong
+  implementation with independent workers makes a second call (A's incident mail) while the
+  first is unresolved, so both are in flight at the unsubscribe; the "max in flight" assertion
+  (`2` against the literal `1`) and the call count (`2` against `1`) fail.
+- Same sequence without the unsubscribe: resolve A's confirmation attempt → only then the fake
+  gets its second call, the incident mail to A; the max in flight for A stays `1`; the incident
+  success counter is `1`.
+- Confirm during the retry sleep: the fake rejects A's confirmation attempt 1 with a temporary
+  error (the message was still handed over, so the test has the token), and A waits in the
+  injected sleep. Confirm A → `200`: the sleep is aborted, the gauge reads `0` at once, A makes no
+  attempt 2 (the fake's confirmation calls for A stay `1`), and both confirmation counters stay
+  `0` (a cancelled job is counted in neither, R5). A wrong implementation that keeps the job
+  sends a second confirmation mail to a confirmed row and fails the count.
+- Worker 1 never waits on worker 2: in this case the fake resolves A's confirmation attempt at
+  once; A confirms, an incident is detected, and the fake holds the incident send to A
+  unresolved; then B subscribes → B's confirmation call is the fake's next call at once (an entry
+  of another row does not block worker 1), and A's max in flight stays `1`.
+- Stop while worker 2 waits on A's entry: the stop aborts the wait, the event stays `pending`,
+  no delivery row is written for A, and the fake has no incident call for A.
+- Map hygiene: after each case `inFlight` is empty (the test reads its size through the
+  module's test hook); an attempt that hits the D12 timeout removes its entry (fake that never
+  settles, injected timer at `timeoutMs`).
 
 ### No enumeration (R8), at every limit and below it
 
@@ -1434,8 +1534,9 @@ Shared finding: as in the status section, the wire texts are fixed by R1 and R4;
 either child is a shared finding that the other reads first.
 
 Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkdtemp` stores):
-- Every "Notify listener", "Lifecycle and timing", "Confirmation queue (D19)", "Eligibility and
-  privacy", "Fan-out failures" and "`subscribers delete`" counterexample, with the literal
+- Every "Notify listener", "Lifecycle and timing", "Confirmation queue (D19)", "Concurrent
+  workers (D20)", "Eligibility and privacy", "Fan-out failures" and "`subscribers delete`"
+  counterexample, with the literal
   expected codes, outputs and send counts written in the test.
 - Fan-out holds one address at a time: with 250 confirmed rows and a fake `sendMail` held on the
   first send, the test unsubscribes row 2 (by id order) and then resolves the send; row 2 gets no
@@ -1822,10 +1923,31 @@ Checks:
   notify mounts `pulse_notify-secrets` (a volume) at `/run/pulse` read-only; secrets-init has
   `PULSE_SECRETS_SUBSCRIPTIONS` `on` and the `/out/notify` volume; status's
   `PULSE_STATUS_PUBLIC_URL` and notify's `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` are both
-  `https://status.example.com`; no environment value of any service in the override matches
-  `[0-9a-f]{64}` or holds `password` other than in the `_FILE` key name. Without
-  `PULSE_STATUS_PUBLIC_URL` the same `config` fails and its error holds `set
-  PULSE_STATUS_PUBLIC_URL in full/.env` (literals in the test).
+  `https://status.example.com`. Without `PULSE_STATUS_PUBLIC_URL` the same `config` fails and
+  its error holds `set PULSE_STATUS_PUBLIC_URL in full/.env` (literals in the test).
+- The secret check of the same `config` output (`full` override). The required file path
+  `/run/pulse/subscriptions-smtp-password` is a path, not a secret, and is allowed; the check
+  looks for secret content instead of the word `password`:
+  - the test runs `config` with `PULSE_SECRETS_DIR` set to a `mktemp -d` directory that holds
+    `subscriptions-smtp-password` with the literal `pw-config-Secret 7` (mode `0600`) and the
+    token and key files of `scripts/init-secrets.sh`; the whole JSON output holds neither
+    `pw-config-Secret 7` nor its part `Secret 7`, nor the content of any of those token and key
+    files (read by the test from the files it wrote);
+  - no environment value of any service matches `^[0-9a-f]{64}$` (the token and key format);
+  - no environment key of any service ends in `PASSWORD`, `TOKEN`, `KEY` or `SECRET` (a secret
+    passed by value); every key that contains one of those words and ends in `_FILE` has a value
+    that starts with `/run/pulse/` (today's keys of `common/services.yaml:13,22` and
+    `full/compose.yaml:34,85-86` meet it; `PULSE_CHECKS_FILE` at `full/compose.yaml:35` holds none
+    of the words and is not checked);
+  - the only environment value that contains `password` (ignoring case) is the value of notify's
+    `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE`, and it is exactly
+    `/run/pulse/subscriptions-smtp-password`.
+  The test also runs the `jq` filter of these rules on fixed JSON (literals in the test): it
+  passes for a notify environment that holds only
+  `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE: /run/pulse/subscriptions-smtp-password`; it
+  fails for an extra key `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD: hunter2`, for that `_FILE` key
+  with the value `/tmp/subscriptions-smtp-password`, for a value of 64 `a` characters, and for a
+  value `password=hunter2` under another key.
 - `bash scripts/init-secrets.test.sh`, `bash e2e/subscriptions.test.sh`,
   `scripts/check-setup.sh`, `bash scripts/check-setup.test.sh`.
 - `e2e/subscriptions.test.sh` also drives `settle` with a fake metrics reader that replays fixed
@@ -1894,13 +2016,18 @@ The feature is done when all of these hold. Every expected value is a literal in
    notify's "Confirmation queue (D19)" tests remove the queued jobs of an unsubscribed or expired
    row while the fake keeps another send blocked (gauge literals `2` and `1`, and no send to the
    deleted address afterwards), so "at once" and "within 25 hours" in the notice hold for the
-   queue too, with the in-flight email that the notice names as the only exception.
+   queue too, with the in-flight email that the notice names as the only exception; notify's
+   "Concurrent workers (D20)" tests hold a confirmation attempt unresolved across confirm,
+   detection and unsubscribe and show at most `1` attempt in flight for the address and exactly
+   `1` call in total, so the notice's "One email" is the true bound.
 9. **SMTP password through `secrets-init`.** Deploy's `secrets-init.test.sh` writes the password
    `0400` `1000:1000` with the literal content, refuses each bad input with its literal rule line
    and writes nothing then, removes a stale copy when the host file is gone, ignores the file
    with `off`, and never prints the password; `e2e/subscriptions.test.sh` shows that the `full`
-   override points notify at `/run/pulse/subscriptions-smtp-password` on its secrets volume; the
-   notify settings tests give the literal results for the username and password rules.
+   override points notify at `/run/pulse/subscriptions-smtp-password` on its secrets volume and
+   that the `config` output holds neither the literal `pw-config-Secret 7` from the secrets
+   directory nor any other secret content (the file path is the one allowed value with
+   `password`); the notify settings tests give the literal results for the username and password rules.
 
 Issue review checks 1-9 map to: 1 → item 4 (steps 3-6); 2 → item 6; 3 → items 1 and 4 (steps 9,
 11a) and the notify "Fan-out failures"; 4 → item 4 (steps 7-8) and item 1; 5 → item 7; 6 → item 8;
