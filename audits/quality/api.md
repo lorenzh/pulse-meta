@@ -140,7 +140,28 @@ pulse_api_config_reload_total{result="error"} 0
 process alive
 ```
 
-- Command (module): a Bun script built `createConfigReloader` of the copy with a fake `ReloadFs`, swapped in an invalid file, called `poll()` once and `reloadNow()` twice. Exit code 0. Output: `"logsAfterPoll": 1, "logsAfterFirstSighup": 1, "logsAfterSecondSighup": 1`, `"metrics": ["invalid"]`, `"fileState": "invalid"`.
+- Command (module, independently re-run in audit-review): from the installed temporary copy, run the following. Exit code 0. Output: `{"logsAfterPoll":1,"logsAfterFirstSighup":1,"logsAfterSecondSighup":1,"metrics":["invalid"],"fileState":"invalid"}`.
+
+```sh
+bun -e 'import assert from "node:assert/strict";
+import { createConfigReloader, readInitialConfig } from "./src/config-reload.ts";
+let bytes = Buffer.from(JSON.stringify({ checks: [{ id: "example", name: "Example", url: "https://example.invalid/", intervalMs: 10000 }] }));
+let version = 0;
+const fs = { stat: () => ({ mtimeMs: version, size: bytes.length, ino: 1 }), readFile: () => bytes };
+const read = readInitialConfig(fs, "checks.json");
+if (!read.ok) throw read.error;
+const logs = [], metrics = [];
+const reload = createConfigReloader({ path: "checks.json", fs, now: () => 1000, onApply() {}, log: line => logs.push(line), metrics: { recordConfigReload: result => metrics.push(result) } }, read.initial);
+bytes = Buffer.from(bytes.toString().replace("https://", "ftp://"));
+version++;
+reload.poll(); const logsAfterPoll = logs.length;
+reload.reloadNow(); const logsAfterFirstSighup = logs.length;
+reload.reloadNow(); const logsAfterSecondSighup = logs.length;
+const result = { logsAfterPoll, logsAfterFirstSighup, logsAfterSecondSighup, metrics, fileState: reload.fileStatus().state };
+assert.deepEqual(result, { logsAfterPoll: 1, logsAfterFirstSighup: 1, logsAfterSecondSighup: 1, metrics: ["invalid"], fileState: "invalid" });
+console.log(JSON.stringify(result));'
+```
+
 - Direction: let a forced load (`reloadNow`) clear `lastWarning` before it loads, so `SIGHUP` logs and counts the result again, and add a test; or change `docs/operation.md:228`.
 
 ### quality-api-2026-11-06-2 (P3): an error after the answer was sent is dropped without a log line
@@ -280,3 +301,28 @@ See the list in finding 4. `AGENTS.md:72` asks not to export a function only for
 - The test output prints eight expected `audit log down` stack traces (item 5).
 - AGENTS.md's "SQL queries stay in `src/service.ts`" no longer describes the store modules (item 7).
 - Install: unauthenticated GitHub tarball downloads of the kit and config pins answered 504 on this runner; the install needed the cached, integrity-checked tarballs (Scope). Runner issue, not a repository defect.
+
+## Audit review (2026-11-06)
+
+Started at 15:50:11 UTC in a fresh session on meta report commit `f6b4bedd2fa094d6cc0a301de25e24546782770d`. Its parent is the recorded meta audit base `3eb48a8`; every target clone HEAD matches the scope table. The installed dependency pins are distinct from the main clone SHAs and were checked as recorded. The three shared configuration files are identical between the installed config pin and the config clone.
+
+Both report files agree on the 14 finding IDs and severities, five issue candidates and all eight checklist statuses. Every finding has the required fields. No gate remains. All findings and severities are retained: one P2 and 13 P3. The sole P2 was independently reproduced at module level (the exact command is now in finding 1) and against a local `bun src/main.ts` process. The rejection log count stayed at 1 after a poll and each of two SIGHUPs; the invalid counter stayed at 1, the ok/error counters at 0, and the process remained alive. SIGTERM then exited 0.
+
+The review used an `rsync -a` copy in `mktemp -d`. Commands below ran in that copy unless they validate the meta report. `<scratch>` denotes the temporary directory; its scripts import only installed dependencies or the copy's modules. The JSON `review.checks` records the outputs in more detail.
+
+| Re-run | Exit | Evidence |
+| --- | --- | --- |
+| `jq empty audits/quality/api.json`; `bun <scratch>/validate-report.mjs` | 0 each | Required fields, IDs, severities, candidate membership, checklist statuses and examined SHAs match. |
+| `BUN_INSTALL_CACHE_DIR=<scratch>/cache bun install --frozen-lockfile` | 0 | Bun 1.4.0; 121 packages installed; no added dependency or tool. |
+| `timeout 600 bun run check` | 0 | Lint: 5 Biome infos, no ESLint findings, workflow policy passes. Typecheck: no diagnostics. Tests: 821 pass, 0 fail, 1025 expect calls across 93 files; 97.59% function and 98.99% line coverage. |
+| `timeout 600 bun node_modules/typescript7/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters` | 0 | No diagnostics. |
+| `timeout 60 bun <scratch>/reproduce.mjs` | 0 | Reproduces finding 1 at module and process level, plus the cited behavior of findings 2, 3, 5, 6, 8 and 10. |
+| `timeout 30 bun <scratch>/missing-files.mjs` | 0 (both children 2) | Finding 7: tokens include the full ENOENT message and setting; checks include ENOENT only. |
+| `timeout 600 bun <scratch>/complexity.mjs` | 0 | Installed ESLint API, same shared config at threshold 0, inline directives ignored: 932 functions with positive complexity, 492 outside tests, maximum 15. Top values and locations match. Lint diagnostics imply exit 1 at threshold 0. The two other production diagnostics match item 1. |
+| Both `diff` commands of finding 14 | 1 each | Runner difference is one closing line; body-error mappings differ only in three error-class names. |
+| Writer-test `grep` pipeline of finding 4 | 123 | No check edit in file-writer tests. Admin dispatch, source and coverage support the dead branches. |
+| Export-type `grep` of finding 12 | 1 | No match. Coverage independently matches the cited uncovered lines. |
+
+Every P3 finding was spot-checked with local probes, grep/diff, source reading or the coverage output; this review does not repeat every broad scan of the original audit. The layout claims, test-only exports and wall-clock assertions also match their cited source. No finding was removed or regraded. Finding 12's JSON primary command now names `bun run test` (exit 0); the separate grep exits 1 as already stated in its excerpt. Finding 1 now provides the exact standalone module command run in review.
+
+All services started by the review were stopped; the copy, cache, fixtures and scratch scripts were removed. No target repository was edited. Review result: complete; verdict: ship.

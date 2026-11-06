@@ -77,7 +77,7 @@
       "severity": "P2",
       "candidate": true,
       "title": "SIGHUP does not log an unchanged invalid checks file again, although docs/operation.md:228 says it does",
-      "command": "bun src/main.ts of the copy (PORT=38518, PULSE_CHECKS_RELOAD_INTERVAL_MS=1000, valid checks file); sed replaces the https:// check URLs with ftp:// (the parser reports checks[1].url first); wait 2.5 s; kill -HUP twice 1 s apart; count 'config reload rejected' lines on stderr; curl /metrics; SIGTERM. Also: a Bun script with createConfigReloader of the copy, a fake ReloadFs, one poll() and two reloadNow() after an invalid file.",
+      "command": "bun -e 'import assert from \"node:assert/strict\";\nimport { createConfigReloader, readInitialConfig } from \"./src/config-reload.ts\";\nlet bytes = Buffer.from(JSON.stringify({ checks: [{ id: \"example\", name: \"Example\", url: \"https://example.invalid/\", intervalMs: 10000 }] }));\nlet version = 0;\nconst fs = { stat: () => ({ mtimeMs: version, size: bytes.length, ino: 1 }), readFile: () => bytes };\nconst read = readInitialConfig(fs, \"checks.json\");\nif (!read.ok) throw read.error;\nconst logs = [], metrics = [];\nconst reload = createConfigReloader({ path: \"checks.json\", fs, now: () => 1000, onApply() {}, log: line => logs.push(line), metrics: { recordConfigReload: result => metrics.push(result) } }, read.initial);\nbytes = Buffer.from(bytes.toString().replace(\"https://\", \"ftp://\"));\nversion++;\nreload.poll(); const logsAfterPoll = logs.length;\nreload.reloadNow(); const logsAfterFirstSighup = logs.length;\nreload.reloadNow(); const logsAfterSecondSighup = logs.length;\nconst result = { logsAfterPoll, logsAfterFirstSighup, logsAfterSecondSighup, metrics, fileState: reload.fileStatus().state };\nassert.deepEqual(result, { logsAfterPoll: 1, logsAfterFirstSighup: 1, logsAfterSecondSighup: 1, metrics: [\"invalid\"], fileState: \"invalid\" });\nconsole.log(JSON.stringify(result));'",
       "exitCode": 0,
       "excerpt": "after poll: 1 rejected line(s)\nafter SIGHUP 1: 1 rejected line(s)\nafter SIGHUP 2: 1 rejected line(s)\npulse_api_config_reload_total{result=\"invalid\"} 1\nmodule script: \"logsAfterPoll\": 1, \"logsAfterFirstSighup\": 1, \"logsAfterSecondSighup\": 1, \"metrics\": [\"invalid\"], \"fileState\": \"invalid\"",
       "claim": "docs/operation.md:228: The same bad file is not logged again at every look; fix it or send SIGHUP to log it again.",
@@ -222,7 +222,7 @@
       "severity": "P3",
       "candidate": false,
       "title": "Branches without a test: export of tls/tcp/dns/domain checks, the fchown EPERM fallback, an unreadable JSON column",
-      "command": "bun run test (coverage); grep -n '\"tls\"\\|\"tcp\"\\|\"dns\"\\|\"domain\"' src/config-export.test.ts",
+      "command": "bun run test",
       "exitCode": 0,
       "excerpt": " src/config-export.ts          |  100.00 |   81.40 | 16-19,33-36\n src/config-fs.ts              |  100.00 |   92.59 | 38-40\n src/service.ts                |   97.66 |   99.79 | 79\n(grep in src/config-export.test.ts: exit 1, no match)",
       "commits": { "api": "4b3e9b1dcce5f4e362c6bc1f529375181fb49f9a" }
@@ -253,5 +253,93 @@
       "excerpt": "0a1\n>   };\n---\n<   if (err.code === \"too-large\") return new HttpError(413, \"request body too large\");\n>   if (err.code === \"too-large\") return new ManualRouteError(413, \"request body too large\");",
       "commits": { "api": "4b3e9b1dcce5f4e362c6bc1f529375181fb49f9a", "kit": "c6d2cba7d90c981b884dcac2a9288dd9eccad8b5" }
     }
-  ]
+  ],
+  "review": {
+    "date": "2026-11-06",
+    "startedAt": "2026-11-06T15:50:11Z",
+    "state": "audit-review",
+    "metaReportCommit": "f6b4bedd2fa094d6cc0a301de25e24546782770d",
+    "apiCommit": "4b3e9b1dcce5f4e362c6bc1f529375181fb49f9a",
+    "result": "complete",
+    "structure": "Both report files agree on all 14 IDs, severities, five issue candidates and eight checked checklist items. Every finding has the required fields. All target clone HEADs match the scope table; the recorded meta audit base is the report commit's parent. Installed contract, kit and config pins are recorded separately from their main clones.",
+    "checks": [
+      {
+        "command": "jq empty audits/quality/api.json; bun <scratch>/validate-report.mjs",
+        "exitCode": 0,
+        "excerpt": "14 findings: 1 P2, 13 P3; 5 candidates; 8 checklist items; required fields, Markdown IDs/severities/candidate membership/statuses and target clone SHAs match."
+      },
+      {
+        "command": "BUN_INSTALL_CACHE_DIR=<scratch>/cache bun install --frozen-lockfile",
+        "exitCode": 0,
+        "excerpt": "Bun 1.4.0; 121 packages installed. No extra dependency or tool added."
+      },
+      {
+        "command": "timeout 600 bun run check",
+        "exitCode": 0,
+        "excerpt": "lint: Checked 190 files; Found 5 infos; pulse-workflows: ok (2 files, 8 uses). typecheck: no diagnostics. test: 821 pass, 0 fail, 1025 expect() calls, 93 files; coverage 97.59% functions, 98.99% lines."
+      },
+      {
+        "command": "timeout 600 bun node_modules/typescript7/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters",
+        "exitCode": 0,
+        "excerpt": "No diagnostics."
+      },
+      {
+        "command": "timeout 60 bun <scratch>/reproduce.mjs",
+        "exitCode": 0,
+        "excerpt": "P2 module and live bun src/main.ts: rejection log counts after poll/SIGHUP/SIGHUP are 1/1/1; pulse_api_config_reload_total{result=\"invalid\"} 1; ok/error counters 0; process alive. SIGTERM shutdown exits 0. P3 probes: post-response error 204 with logErrorCalls=0; five identical posts all 204 with one history row; contract reason/latency/checkId/status errors and API attempts error match; listening contains the five omitted fields; UnknownCheckError.name=Error; 15 deleted rollup rows log as 15 results."
+      },
+      {
+        "command": "timeout 30 bun <scratch>/missing-files.mjs",
+        "exitCode": 0,
+        "excerpt": "Both child invocations exit 2. Tokens: cannot read tokens file <run>/missing.json: ENOENT: no such file or directory, open '<run>/missing.json' (PULSE_TOKENS_FILE=<run>/missing.json). Checks: cannot read checks file <run>/missing.json: ENOENT."
+      },
+      {
+        "command": "timeout 600 bun <scratch>/complexity.mjs",
+        "exitCode": 0,
+        "excerpt": "Installed ESLint API with the same shared config, threshold 0 and inline directives ignored: 932 functions with positive cognitive complexity, 492 outside tests, maximum 15; top locations and values match the report. Lint diagnostics imply exit 1 at threshold 0. Only two other production diagnostics: sonarjs/function-return-type at src/server.ts:152 and sonarjs/no-nested-conditional at src/service.ts:429."
+      },
+      {
+        "command": "diff <(sed -n 79,107p src/latency-rollup.ts | sed 's/latency/X/g; s/LATENCY/X/g') <(sed -n 108,137p src/uptime-rollup.ts | sed 's/uptime/X/g; s/UPTIME/X/g'); diff <(sed -n 87,92p src/server.ts) <(sed -n 119,124p src/manual-incident-routes.ts)",
+        "exitCode": 1,
+        "excerpt": "Both diffs exit 1: first only 0a1 / >   };, second only the three HttpError/ManualRouteError class names."
+      },
+      {
+        "command": "grep -ln createConfigWriter src/*.test.ts | xargs grep -n 'kind: \"check\"'",
+        "exitCode": 123,
+        "excerpt": "No match, as reported; coverage and admin-route dispatch confirm the unused file-writer branches."
+      },
+      {
+        "command": "grep -n '\"tls\"\\|\"tcp\"\\|\"dns\"\\|\"domain\"' src/config-export.test.ts",
+        "exitCode": 1,
+        "excerpt": "No match; the test run independently confirms uncovered config-export lines 16-19,33-36, config-fs lines 38-40 and service line 79."
+      }
+    ],
+    "reproduced": [
+      "quality-api-2026-11-06-1"
+    ],
+    "p3SpotChecked": [
+      "quality-api-2026-11-06-2",
+      "quality-api-2026-11-06-3",
+      "quality-api-2026-11-06-4",
+      "quality-api-2026-11-06-5",
+      "quality-api-2026-11-06-6",
+      "quality-api-2026-11-06-7",
+      "quality-api-2026-11-06-8",
+      "quality-api-2026-11-06-9",
+      "quality-api-2026-11-06-10",
+      "quality-api-2026-11-06-11",
+      "quality-api-2026-11-06-12",
+      "quality-api-2026-11-06-13",
+      "quality-api-2026-11-06-14"
+    ],
+    "removedFindings": [],
+    "regradedFindings": [],
+    "corrections": "Finding 1 now includes the exact self-contained module command run by the reviewer. Finding 12's primary command is bun run test (exit 0); its separate grep has exit 1, recorded in the excerpt and review checks.",
+    "gaps": [],
+    "limitations": [
+      "P3 findings were spot-checked with local probes, grep/diff, source reading and the full test coverage output; this review does not repeat every broad scan of the original audit."
+    ],
+    "cleanup": "All locally started services stopped. Temporary repository copy, cache, fixtures and scratch scripts removed.",
+    "verdict": "ship"
+  }
 }
