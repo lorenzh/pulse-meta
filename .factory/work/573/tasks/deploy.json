@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Provision subscription credentials and an optional SMTP password through secrets-init",
+      "files": [
+        "scripts/init-secrets.sh",
+        "scripts/init-secrets.test.sh",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, secrets-init/init-secrets behavior and the related checks; D14; R10 operator-managed password and data duties; Acceptance evidence 9. Reusable secrets provisioning is independently testable before the Compose consumers in T2. Generate the two new host secrets only; copy the optional operator-supplied SMTP password in files mode, never generate it. Validate all inputs and mounted destinations before the first write; preserve off/generate behavior as specified and update the secrets-model docs.",
+      "acceptance": [
+        {
+          "command": "bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; subscription token/key are regular files of mode 0600 containing exactly 64 lowercase hex plus newline, differ from each other and every existing secret, remain byte-identical on rerun, are created independently and never printed; planted symlinks do not overwrite victims. subscriptions-smtp-password is never created. Existing directory mode 0700 and token/key checks stay green."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0. With switch on/files mode, status token, notify token and notify key are written atomically as 0400, owner 1000:1000; missing input, 63 chars, uppercase, equal subscription secrets/equality to any read token or key, and missing status/notify destination fail with the literal rule line before any write. Off/unset reads/writes no subscription files. Invalid switch fails 'PULSE_SECRETS_SUBSCRIPTIONS: must be on or off'; generate+on fails 'PULSE_SECRETS_SUBSCRIPTIONS: files mode only'. No output holds a secret."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0 for all SMTP-password cases with mounted status/notify outputs. Present host password pw-e2e-Secret 42! at 0600 copies exact content plus newline to notify volume (stat literal '400 1000:1000'); absent writes none, absent after prior present removes stale password only after other writes. Refuse 0640, 0604, symlink, directory, empty, newline-only, two lines, CR, NUL, leading space, trailing tab, 513 chars and equality to a token/key: exit 1, literal file/rule line and no subscription writes. Accept 512 chars and inner spaces. Off ignores even a 0644 password file. Both streams contain neither password nor 'Secret 42'; passing stdout is only 'secrets-init: files mode done'."
+        },
+        {
+          "command": "shellcheck -x scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/secrets-init.test.sh && bash -n scripts/init-secrets.sh && bash -n scripts/init-secrets.test.sh && bash -n scripts/secrets-init.test.sh && node --check scripts/secrets-init.mjs",
+          "expected": "exit 0 from the repository root; touched scripts/helpers are lint- and syntax-clean."
+        },
+        {
+          "command": "bun run check && scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0; existing CLI/lint/typecheck/tests and setup checks remain green independently of T2, including when subscriptions are unset. No consumer, image pin or default-enabled feature is introduced in this step."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Verify the complete subscription flow in Compose and require its CI evidence",
+      "files": [
+        "full/subscriptions.example.yaml",
+        "full/.env.example",
+        "e2e/compose.subscriptions.yaml",
+        "e2e/subscriptions.sh",
+        "e2e/subscriptions.test.sh",
+        "e2e/compose-e2e.sh",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "full/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all remaining Compose/operator override/scenario/static-check/CI/documentation behavior, all checks and Completion evidence; R8 (steps 5a/5b), D22 real release lower bound, R9 root/prefix refusal, R10 notice/operator deletion; Barriers S1-S5; Acceptance evidence 4-11; applicable Security impact checklist. Depends on T1 and merged status/notify children. Implement e2e steps 1-14, including 5a/5b/11a/12a, as one integrated scenario with mailpit; never separate stages of settle or the scenario into tasks. Full keeps its published-images skip; dev requires exact ok line.",
+      "acceptance": [
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0. Overlay renders config --quiet with both full and dev plus compose.e2e.yaml. MAX and MAX_PENDING are both literal 5; mailpit reuses only common/services.yaml pin and binds 127.0.0.1:8025; notify listener has no published port. Status/notify secrets are read-only volume mounts; no-login e2e exercises absent-password provisioning. Full override resolves both public URL settings from one PULSE_STATUS_PUBLIC_URL=https://status.example.com, mounts pulse_notify-secrets at /run/pulse read-only, enables secrets-init on with /out/notify, and sets password file exactly /run/pulse/subscriptions-smtp-password. Without public URL config fails with 'set PULSE_STATUS_PUBLIC_URL in full/.env'."
+        },
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0. Full override secret-content check allows only the required password file path in its exact key; config with scratch secrets contains neither pw-config-Secret 7 nor Secret 7 nor token/key file contents. No environment value is 64 lowercase hex; no key ends PASSWORD/TOKEN/KEY/SECRET; secret-related _FILE values start /run/pulse/. Fixed JSON accepts the required _FILE path and rejects literal SMTP_PASSWORD=hunter2, /tmp password path, 64 a characters and password=hunter2 under another key. Do not forbid the required file path merely because it contains 'password'."
+        },
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0. Fixed metric replays prove settle fails for detection growth only 1, events_pending 1, success delta 2 instead of expected 1, or growing failure counter; passes S2-S4 and two zero negative reads separated by another detection. Fixed response files pass date-only differences and required privacy@e2e.invalid contact; fail extra Retry-After, 200 versus 429, one-byte body difference, visitor address/local part including SUB-C@E2E.INVALID, missing contact or extra other@e2e.invalid beside it. Timing helper rejects 1.999 and accepts 2.000/2.350. Notice fixture rejects 24-hour deletion instead of 25, missing one-email sentence or missing contact."
+        },
+        {
+          "command": "scripts/check-setup.sh && bash scripts/check-setup.test.sh",
+          "expected": "exit 0. New e2e-subs/e2e-dev-subs combinations equal the literal base e2e port lists plus 'mailpit 127.0.0.1 8025 8025'; full-subs with the explicitly set root URL equals the full list and publishes nothing extra. Existing rule 2 also permits pulse-<svc>:dev for e2e-dev-subs; rule 8 covers status/notify secrets mounts. A broken overlay exposing mailpit on 0.0.0.0 fails rule 5. No setup adds a pin/image line outside common/services.yaml."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from repository root, including the new subscription scripts once added to the change."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0; every tracked shell script is syntactically valid."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; every helper passes the lint job syntax gate."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0; every JSON file passes the lint job syntax gate."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/console-setup.test.sh && bash e2e/snippet.test.sh && bash e2e/dev-console-prefills.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh && bash scripts/secrets-init.test.sh",
+          "expected": "exit 0; every existing script check of the touched lint CI job stays green, including T1 credential/password permissions, content, refusal and secret-free-output tests."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with sibling checkouts of merged services; print exact 'ok: email subscriptions' plus every existing ok line, including manual incident privacy and console probe locations. Complete steps 1-14: 5 confirmation mails; A/C confirmed, B/D/E pending; below-capacity A/D/E replies and saturated F/A/F/D replies byte-equal except date, each at least 2.000 s, no visitor/forged-host echo, required contact link present. Capacity limit counter exactly 2, F mails 0. Three P1 events yield 6 incident sends; private step 7 yields 2, publication step 8 yields 4, post-unsubscribe P4 yields 1 and post-restart P5 yields 1; every negative assertion waits for settle S1-S5, never another recipient/event alone. Restart only after P4 settled; no replay. Operator delete C prints deleted 1 then deleted 0 with no sub-c, and P6 has 0 sends. Draft/draft-update/note/internal markers leak to 0 messages. Every mail has one recipient and configured-origin unsubscribe; logs have 0 visitor addresses/tokens/secrets. Prefix startup exits 2 with each literal R9 line (status /pulse and /pulse/, notify /pulse before its held store lock), running services stay healthy. Hostile CRLF/origin/unauthenticated calls give 400/403/401. Bounded waits, cleanup and restore regular services work. PR records all five service SHAs and full log; CI grep requires exact ok line so a skip fails e2e-dev."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on published full images, exact 'skip: email subscriptions (published images)' and all existing assertions still pass. PR includes full-run log beside dev evidence."
+        },
+        {
+          "command": "bun run check && git diff --check",
+          "expected": "exit 0; unchanged CLI suite and tooling gates pass. PR includes all listed scripts/config checks, both e2e logs and five service SHAs, plus applicable Security impact checklist. README port/secrets/scenario docs and full README cover operator-created 0600 optional SMTP password (never literal in env/override), no-login removal path, shared public URL, root-hosting refusal, contact/deletion request stop-run-start procedure, backups and console non-goal. New lint test and exact e2e-dev grep are present, with no new action/dependency/pin."
+        }
+      ]
+    }
+  ]
+}

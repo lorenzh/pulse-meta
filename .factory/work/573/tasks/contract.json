@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Export the additive subscription contract and address rule",
+      "files": [
+        "src/subscriptions.ts",
+        "src/validate-subscriptions.ts",
+        "src/index.ts",
+        "dist/subscriptions.js",
+        "dist/subscriptions.d.ts",
+        "dist/validate-subscriptions.js",
+        "dist/validate-subscriptions.d.ts",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "test/subscriptions.test.ts",
+        "test/types.fixture.ts",
+        "test/smoke.test.ts",
+        "docs/index.md",
+        "README.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1; D13; Contract fields; Counterexamples: Address rule; Acceptance evidence 3, 5. Update the existing exact export inventory in test/smoke.test.ts alongside the new exports so the full suite remains green. Keep every existing export and WIRE_VERSION = 1.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Every Address rule counterexample has its literal result, including trim/lowercase, CR/LF, non-ASCII, display names, local length 64/65 and address length 254/255. All three strict validators preserve the input object, never throw, accept valid literals and reject missing/extra keys, wrong types and a 129-character token. Anchored flag-free patterns reject a shorter/longer token and '+'. Retention constants equal 86400000 and 3600000."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck (including new type fixtures), all tests and at least 80% line coverage pass. The package-entry smoke test independently enumerates the additive exports and the existing exports; WIRE_VERSION stays 1. Documentation specifies membership-free 202 replies and the retention constants. Version follows D13: 2.5.0 after main 2.4.0 or 2.4.1."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after generated dist files have been included in the change; generated JS/declarations match source and the CI dist gate passes."
+        },
+        {
+          "command": "for round in 1 2 3 4 5; do /usr/bin/time -f '%U %S' bun run test || exit; /usr/bin/time -f '%U %S' bun run build || exit; done",
+          "expected": "exit 0; repeat on the starting main in a separate checkout and report the five-run CPU medians and B minus A for test and build per Performance impact. Test median meets the independently named api/bench/budgets.json contract budget (9.0 s, floor 2 s); expected increase at most 0.2 s per metric."
+        },
+        {
+          "command": "git diff --check && git rev-parse HEAD",
+          "expected": "exit 0; completion evidence in the PR includes check/build/dist output, performance medians, version and the revision to use for downstream pins (update to the merged SHA after merge). Apply the relevant Security impact checklist to schemas, safe validators and unchanged wire compatibility; no dependency or tooling-policy change."
+        }
+      ]
+    }
+  ]
+}

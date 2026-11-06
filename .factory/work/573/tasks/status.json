@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Serve the complete visitor subscription flow with private and timed responses",
+      "files": [
+        "src/subscribe-routes.ts",
+        "src/subscribe-client.ts",
+        "src/subscribe-pages.ts",
+        "src/server.ts",
+        "src/settings.ts",
+        "src/start.ts",
+        "public/index.html",
+        "public/page.css",
+        "src/subscribe-routes.test.ts",
+        "src/subscribe-enumeration.test.ts",
+        "src/subscribe-timing.test.ts",
+        "src/subscribe-test-support.ts",
+        "src/settings.test.ts",
+        "src/server.contract-modules.test.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, entire public flow, all checks and completion evidence; R2, R6, R7 status and Token exception, R8 status (L0/L7/L8/L9 and precedence), D22, R9, R10; Counterexamples: Status routes, No enumeration, Response timing, Root hosting, Visitor notice and contact; Acceptance evidence 2, 5-8, 11. One cohesive task keeps form rendering, POST authorization, notify mapping, release scheduling and startup settings consistent. Pin the merged contract full SHA; update the complete browser contract-module graph. Record any wire gap as a shared finding.",
+      "acceptance": [
+        {
+          "command": "bun test src/subscribe-routes.test.ts src/settings.test.ts src/server.contract-modules.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Real HTTP on port 0 covers every Status routes counterexample and literal code/call count: 403 origin, 415 type, 413 at 2049 bytes, 400 fields/address/token, 405 other methods, GET/HEAD links cause 0 notify calls. POSTs send the exact contract bodies and bearer header. Redirects are not followed (second server 0 calls), absent wire header is tolerated and wire 2 fails. Valid link tokens appear exactly once in escaped hidden fields of 200 GET/HEAD pages only; invalid links and every POST result contain neither token nor visitor address. Result pages are no-store/no-referrer with form-action 'self'. L9 refuses request 257 before reading even an invalid body, frees slots at release/disconnect, and confirm/unsubscribe work at full L0 and L9. Feature off preserves the existing page, 404/405 and form-action 'none', with 0 scheduling calls. Contract browser import-graph test passes."
+        },
+        {
+          "command": "bun test src/subscribe-enumeration.test.ts src/subscribe-timing.test.ts",
+          "expected": "0 failing tests. Each status No enumeration row (L0, L8, L9 full/one below and all nine notify outcomes) uses fresh fixtures and both orders; status, headers except date and body are byte-equal. Literal Check your inbox text includes 24 hours and contact, with no Location, Retry-After, Set-Cookie or ETag. D22 uses raw sockets, a manual clock and scheduler for K/P/U in both orders: exactly 1 release timer of literal 2000 ms registered before the notify call, 0 response bytes after every other timer fires, whole answer only at release, and any outstanding call aborted then. Cover fast/delayed 202, errors, 503, 302, bad body, closed socket, no answer, L0 and one below L9; before-address refusals register 0 release timers. The deliberately early-response handler fails check 2 in the test's self-check. SMTP/fan-out completion is never a timing barrier."
+        },
+        {
+          "command": "bun test src/subscribe-routes.test.ts src/settings.test.ts",
+          "expected": "0 failing tests. R10 notice contains every literal sentence with 25-hour deletion, 24-hour confirmation, immediate queue deletion, the one in-flight email, sent-mail/backups exception and contact. Notice appears between input and button, referenced by aria-describedby, also on invalid-address pages. Email contact normalizes, HTTPS contact escapes correctly; missing/invalid contact, missing public URL or token and a 31-character token fail without echoing values. R9 accepts root with/without trailing slash, rejects /pulse and /pulse/ with exit 2 and the literal R9 line before files/listeners; the existing prefix-with-feature-off test stays green."
+        },
+        {
+          "command": "bun run check && bun run check:a11y",
+          "expected": "exit 0; lint, typecheck, full suite with at least 80% line coverage (including src/subscribe-test-support.ts) and axe pass. e2e/run.ts checks the form/notice and five result pages at 360/1280 px, light/dark, JavaScript on/off, with 0 violations and keyboard-accessible labelled controls."
+        },
+        {
+          "command": "bun start",
+          "expected": "Manual acceptance with configured root origin, test token/contact and a tiny local fake notify: submit the form, open the confirmation link and press its button; record commands, literal status codes and the approximately 2 s subscribe answer. No-JavaScript flow works. Root form actions and configured-origin checks ignore forged Host/X-Forwarded headers. Include the run in the PR."
+        },
+        {
+          "command": "for round in 1 2 3 4 5; do /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "exit 0; repeat on the starting main in a separate checkout; PR gives both CPU medians and B minus A, within api/bench/budgets.json status test budget 3.4 s (expected increase at most 0.5 s). Measure runtime with the Performance impact --b-ref command when api main supports it, or document its absence and why off-by-default runtime metrics should not change."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; PR includes full check/a11y logs, merged contract SHA, manual run and performance evidence, and the applicable Security impact checklist (auth order, bounded bodies/calls/waiters, timed membership-free answers, Token exception, safe contact escaping, configured URLs/no redirects, no personal data in logs or response closures). Document R9 root requirement, R10 operator duties and all status known limits named in its section."
+        }
+      ]
+    }
+  ]
+}

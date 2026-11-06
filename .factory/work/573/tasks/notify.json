@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Provide validated subscription settings, durable storage and stopped-service deletion",
+      "files": [
+        "src/subscription-settings.ts",
+        "src/subscriber-store.ts",
+        "src/subscribers-cli.ts",
+        "test/subscriptions-settings.test.ts",
+        "test/subscriptions-store.test.ts",
+        "test/subscribers-cli.test.ts",
+        "test/subscriptions-support.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, settings/store/deletion layer and its tests; R3, R5 subscribers delete (command implementation, entry-point routing in T4), D18, D21 store primitives, R9 notify, R10 data inventory/retention; Counterexamples: subscribers delete, Cleanup boundaries, Root hosting. Pin the merged contract full SHA. Build the complete store schema and synchronous transactional operations, including guarded completion/finalize primitives and durable pass fields; T3 implements the entire fan-out algorithm over them. Expose cleanup cancellation to the lifecycle consumer added in T2. Production service remains off until T4; update the corresponding docs as capabilities land.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-settings.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Every R3 default/range, missing required setting, off path, key/token and SMTP counterexample has literal expectations. MAX=5 with pending cap unset (1000) or 6 fails exit 2 naming MAX_PENDING; MAX=5/PENDING=5 accepts. Username and password file must be paired; remote TLS none login fails, loopback accepts; s3cret-pw newline trims to s3cret-pw, empty/two-line file fails without content exposure. Timeout values are available for min(configured,60000). Root URL normalizes its trailing slash; /pulse and /pulse/ fail with the literal R9 line before store/lock/listener opens. Off opens no files even in an unwritable state directory."
+        },
+        {
+          "command": "bun test test/subscriptions-store.test.ts",
+          "expected": "0 failing tests. A real mkdtemp SQLite store uses mode 0600, WAL, synchronous FULL, secure_delete ON, user_version 1 and all R3 tables/constraints, including persisted passes=0 and next_pass_at=NULL. Other versions are refused. Every mutation is transactional; completion inserts only while the subscription exists, and finalize selects current subscriptions in its event-done transaction. Startup cleanup and the independent 3600000 ms timer run without polling: expiry 86400001 remains at t=86400000, is gone at t=90000000, confirmed rows remain at 10*86400000. Cleanup returns deleted ids for immediate queue cancellation; retention never prunes pending or still-listed events and does not prune before a good read. Second-connection queries find 0 deleted subscription/delivery rows, checkpoint leaves WAL size 0, and file bytes contain no deleted address; busy checkpoints warn without data and retry at cleanup/shutdown."
+        },
+        {
+          "command": "bun test test/subscribers-cli.test.ts",
+          "expected": "0 failing tests. Exercise the CLI module directly under its store lock: normalized confirmed and pending addresses delete with deleted 1, repeat yields deleted 0 (exit 0); missing store yields deleted 0 without creating it; held lock exits 2 with existing lock message; invalid a@b exits 1 with the literal invalid-address line; missing/extra args exit 1 with usage: pulse-notify subscribers delete <address>. It reads only state-path/lock settings, works with subscriptions off, prints no address, and deletes delivery rows/checkpoints to WAL size 0. T4 supplies the executable entry-point routing."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; the independently testable layer and all existing suites pass with at least 80% full-suite line coverage. Shared test support is confined to test/subscriptions-support.ts; existing unlisted tests stay unchanged. No ledger-format/channel/config-file behavior changes and no new dependency beyond the contract pin."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "step",
+      "title": "Accept private subscription operations and cancel confirmation work immediately",
+      "files": [
+        "src/subscription-server.ts",
+        "src/subscription-requests.ts",
+        "src/subscriber-mail.ts",
+        "src/subscriber-fanout.ts",
+        "src/mailbox-guard.ts",
+        "src/subscriber-store.ts",
+        "src/metrics.ts",
+        "test/subscriptions-server.test.ts",
+        "test/subscriptions-enumeration.test.ts",
+        "test/subscriptions-store.test.ts",
+        "test/subscriptions-fanout.test.ts",
+        "test/subscriptions-mailbox.test.ts",
+        "test/subscriptions-support.ts",
+        "test/metrics.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "docs/channels/email.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, private listener, synchronous subscribe/confirm/unsubscribe, token/message builders and the complete confirmation worker; R4; R5 Subscribe, Confirm, Unsubscribe, Confirmation mail and One send per mailbox (guard and worker 1); R7 optional metrics; R8 L1-L7 and immediate class of D22; D8-D12, D19, D20 guard. Counterexamples: Notify listener, Lifecycle and timing, Confirmation queue, No enumeration and guard unit cases of One send per mailbox. T3 adds the incident worker, the two-worker sequence tests and held-fan-out timing variants; T4 wires the modules into main. Do not create an incident-worker placeholder or split its algorithm across tasks.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-server.test.ts test/subscriptions-store.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Real listener on 127.0.0.1:0 follows path 404, method 405/Allow POST, bearer 401 before body (also wrong bearer plus 2 MiB), JSON type 415, size 413 at 1025 bytes, parse/strict validation 400, store failure 503. Answers are contract-validated JSON/no-store/x-pulse-contract 1. subscribe() is non-Promise for queued/known/limited and every valid subscribe returns literal 202 accepted immediately. Lifecycle literals: at 0/600000/1200000 three mails, none at 599999/1800000; tokens rotate, TTL exclusive at last_sent_at+86400000; repeated confirm preserves first confirmed_at; unsubscribe is idempotent, wrong MAC 404, pending cancellation works, fresh generation has a different id and old token cannot affect it. No response echoes address or token."
+        },
+        {
+          "command": "bun test test/subscriptions-enumeration.test.ts",
+          "expected": "0 failing tests. Every notify No enumeration fixture (below limits, L1 with MAX=2/PENDING=2, L2, L3/L4, L5, L6, store error) uses fresh stores and both orders, compares status/all headers except date/body byte-for-byte and checks literal row/mail effects. Valid replies always 202 {\"status\":\"accepted\"}; global store error always 503 unavailable. Capacity counter grows by 1 per unknown request and known confirmed id/state remain. Window at 3599999 refuses silently and at 3600000 admits. Immediate-class checks use frozen clock/recording scheduler and held SMTP: 0 response-path timers and no awaited mail. Final two-worker/held-fan-out variants are added in T3."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts test/subscriptions-mailbox.test.ts",
+          "expected": "0 failing tests. Entire D19 Confirmation queue block runs behind held A attempt (exactly 1 call while blocked): unsubscribe B changes gauge 3 to 2 immediately and only C sends next; cleanup at 90000000 changes gauge to 1 before A resolves; rotating B keeps gauge 3 and sends only the current digest; at exact expiry 86400001 B is dropped while C sends; retry notBefore=1003 does not block B at t=3, and cancelling A gives 0 second attempts. Confirm cancels queued/retry jobs; worker drops confirmed/gone/rotated/expired rows. In-flight unsubscribe does not abort that attempt; timeouts passed to mailer are literal 60000 and 5000. Worker 1 writes nothing on completion and all guard entries are released. Guard unit cases use keyed normalized addresses, fresh per-process salt, owner 1 then 2, late release(1) cannot free owner 2, stop forbids acquire, and no key contains address/local part. Deferred retry/busy jobs preserve order while other ready mailboxes progress."
+        },
+        {
+          "command": "bun test test/subscriptions-server.test.ts test/subscriptions-fanout.test.ts test/metrics.test.ts",
+          "expected": "0 failing tests. Confirmation messages have exactly one To/envelope address, configured-origin confirmation/unsubscribe/notice links (one slash), literal 24/25 hours, specified subject and independently computed stable Message-ID. Token digest only is persisted; unsubscribe HMAC comparison is timing-safe. R7 metrics register only on opt-in; all literal names/help/labels render, including capacity 2, and the existing off exact-text test stays unchanged. A held confirmation gives gauge 1, then success grows exactly 1 before gauge 0; cancelled jobs increment neither mail counter. Queue holds at most 100 jobs, worker makes at most 3 attempts per job, and stop drops waiting jobs and aborts its send without retaining addresses."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; all current lifecycle tests, existing suites and full-suite coverage at least 80% pass. Metrics additions preserve off output; lifecycle modules can be exercised without production entry-point integration or the incident worker. Only notify Files-list paths are modified."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "kind": "step",
+      "title": "Fan out public incident events with durable recovery and one send per mailbox",
+      "files": [
+        "src/subscriber-fanout.ts",
+        "src/subscriber-store.ts",
+        "src/subscriber-mail.ts",
+        "src/mailbox-guard.ts",
+        "src/notifier.ts",
+        "src/metrics.ts",
+        "test/subscriptions-fanout.test.ts",
+        "test/subscriptions-mailbox.test.ts",
+        "test/subscriptions-enumeration.test.ts",
+        "test/subscriptions-support.ts",
+        "README.md",
+        "docs/operation.md",
+        "docs/channels/email.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, complete incident detection/fan-out/recovery algorithm and its regression checks; R5 Detection, Fan-out, Pass budget, Recovery, Completion write and One send per mailbox; D5/D6/D11/D12/D20/D21; R3 event retention; R7 detection/events/mail metrics; D22 notify timing with both workers held. All Counterexamples: One send per mailbox, Late completion after delete, Eligibility and privacy, Fan-out failures. Add an optional notifier hook for each successful non-404 manual projection and listedIds, after channel work; production main opts in only in T4. Retain unchanged operator-channel and ledger behavior. This task implements every stage of the incident algorithm together.",
+      "acceptance": [
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. All Eligibility and privacy rows plus the three issue acceptance tests pass: pending gets 0 incident mails while confirmed gets 3 (opened/update/resolved); unsubscribe gives 0 next-incident sends while another confirmed gets 1; draft/draft-update/note/internal activity gives 0 and publish gives 1 per confirmed recipient. Equality confirmed_at=detected_at is eligible, 999 before confirmation at 1000 is not; first enablement seeds 3 visible incidents with 0 sends, later update sends once. Use only public projections, never /admin; no automatic/reminder/warning mail or private fields; two recipients never see each other's address. Stable independently computed event/id Message-ID and configured-origin unsubscribe links match R5."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests. All Fan-out failures and durable restart counterexamples pass on new worker/store instances: 550 records failed attempts=1 and next recipient proceeds; RETRY_ATTEMPTS=0 closes after 12 passes; N=3 restart before last pass totals exactly 3 attempts, restart inside committed pass 3 sends 0 more for E1 and advances E2 before any sleep. Remaining wait is literal 300 ms, not 1000; ten restarts never exceed 3 pass starts. Events order by detected_at then key, passes commit before sending, next_pass_at survives restart, done events do not resend. 250 rows yield 3 id-only pages; unsubscribe row 2 while row 1 is held prevents row 2's send; stop aborts wait/send and preserves pending state. No SMTP work blocks polls/channels/worker 1."
+        },
+        {
+          "command": "bun test test/subscriptions-mailbox.test.ts",
+          "expected": "0 failing tests. Every deterministic D20 two-worker case and all mirrored outcomes run: normalize literal ' SUB-M@Example.COM ' to sub-m@example.com; subscribe M1, hold confirmation, confirm/detect/unsubscribe/re-subscribe as M2; then mirror with old incident held and new confirmation queued. Mailer-observed maximum in flight is at most literal 1 for M and N after every step. M2 send starts only after old attempt settles, while N sends immediately despite M's busy guard. Cover success, 550, temporary failure, timeout and stop; old row is re-read, no stale consent borrowed, 0 old/new delivery rows, E1 done after pass 1 with 0 sleeps when M1 is deleted, and stop sends no M2. Also confirm without delete, confirm during retry, other-mailbox progress and stop during wait. Owner checks and map hygiene leave size 0 after every case. The row-keyed wrong-guard self-check reaches literal 2, proving the regression check can fail."
+        },
+        {
+          "command": "bun test test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests. Every D21 late-completion outcome (success, permanent 550, temporary failure, timeout), held across unsubscribe, leaves literal 0 subscription rows and 0 delivery rows for the deleted id, E1 done/passes=1, pending gauge 0, retry sleeps 0, no second send to A, and E2's B send next. Correct mail outcome counters still grow. Re-subscribe creates a different pending id with 0 deliveries and confirmation only after old send settled. Store/WAL byte searches find neither old address nor id; worker-1 late completion does not change second-connection PRAGMA data_version. Orphan invariant query returns 0 after every fan-out, mailbox and late-completion case."
+        },
+        {
+          "command": "rg -n 'INSERT INTO deliveries' src",
+          "expected": "Exactly 2 insert statements: the completion INSERT SELECT WHERE EXISTS guard and the finalize INSERT SELECT over current subscriptions in the same transaction that marks event done; no unguarded writer. Inspect both against the literal SQL of R5 Completion write."
+        },
+        {
+          "command": "bun test test/subscriptions-enumeration.test.ts test/subscriptions-fanout.test.ts",
+          "expected": "0 failing tests. Complete D22 notify cases for confirmed/pending/unknown, both orders below limits and at L1/L2/L5/L6, hold both SMTP and incident fan-out unresolved: replies remain immediate 202 accepted under frozen clock, scheduler records 0 response timers and subscribe() is non-Promise. All R8 rows also satisfy byte equality and row/mail effects. Detection counter increments exactly 1 only after readable committed rows, also for seeding/no-new-key polls, and 0 on error/404; pending-events gauge reaches 0 only once all sends/passes ended. Confirmation and incident workers share one guard across subscription generations."
+        },
+        {
+          "command": "bun run lint && bun run typecheck && bun run test",
+          "expected": "exit 0; complete algorithm and optional notifier integration leave all existing unlisted suites unchanged and green with at least 80% full-suite coverage. Subscriber records never enter the ledger, channel delivery path or failed list/resend. Document applicable delivery/restart/mailbox limits as they land."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "kind": "final",
+      "title": "Wire the opt-in service lifecycle and publish security and performance evidence",
+      "files": [
+        "src/index.ts",
+        "src/notifier.ts",
+        "src/metrics.ts",
+        "Dockerfile",
+        "test/index.test.ts",
+        "test/metrics.test.ts",
+        "test/subscriptions-security.test.ts",
+        "test/subscriptions-fanout.test.ts",
+        "test/subscriptions-support.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/operation.md",
+        "docs/channels/email.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, production integration, all remaining checks and Completion evidence; R3 startup cleanup/timer/second lock, R4 bind ordering, R5 shutdown/subscribers command, R7 opt-in metrics; R9 startup refusal, R10 retention/operator duties; Performance impact and applicable Security impact checklist; Acceptance evidence 1, 5-12. Wire T1-T3 without changing existing ledger/channels or unlisted tests. Stop marks guard stopping before aborting workers, then closes listener/store and releases the second lock, including failed starts and lock loss. Document every new setting and D-R1..D-R13; correct AGENTS ledger format to current code (4 on this clone, retain 5 if #570 merged first).",
+      "acceptance": [
+        {
+          "command": "bun test test/index.test.ts test/metrics.test.ts",
+          "expected": "0 failing tests; focused coverage is not the gate. Off startup creates only the literal existing ledger file list and opens 0 subscription stores/locks/listeners/workers or R7 series. On startup exposes authenticated listener (401 without token) before first poll, store and lock are mode 0600, independent cleanup runs before requests, bind failure exits 2 and unwinds resources. /pulse fails ConfigError with literal R9 line before store/lock/listener. Stop empties guard (size 0), frees both locks and allows a second main on the directory. Spawned subscribers with no args exits 1/usage; deletion while service owns store lock exits 2. Opt-in metric names/help/labels match literal lines including capacity 2; off exact-text test stays unchanged."
+        },
+        {
+          "command": "bun test test/subscriptions-security.test.ts test/subscriptions-fanout.test.ts test/subscriptions-mailbox.test.ts test/subscriptions-enumeration.test.ts",
+          "expected": "0 failing tests. Complete Security impact checklist for notify: real store/lock 0600; full flow plus SMTP failure leaves no subscriber address, confirmation/unsubscribe token, HMAC key, bearer or SMTP password in captured logs/errors/metrics or any listener answer for every R1 status. Both message kinds have exactly one To/envelope recipient and no subject CR/LF. Atomic deletion/checkpoints and late-completion guards leave 0 orphans; maximum subscriber sends per normalized mailbox is 1 across both generations/workers with size 0 after stop. Every-limit response bytes and immediate timing checks pass with mail/fan-out held; startup/auth/body/URL/pin rules hold."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck, all suites and at least 80% line coverage pass. Existing unlisted test/notifier, ledger, failed-cli and other suites remain unchanged and green. Final notify task-path union equals its Files list in both directions, including test/index.test.ts and test/metrics.test.ts."
+        },
+        {
+          "command": "docker build -t pulse-notify:subscriptions-test .",
+          "expected": "exit 0; existing image checks pass, non-root image only adds PULSE_NOTIFY_SUBSCRIPTIONS_HOST=0.0.0.0, listener remains off by default and authenticated when enabled. No new dependency/image/action pin or exposed host port."
+        },
+        {
+          "command": "bun run start",
+          "expected": "Manual acceptance with subscriptions on, a local fake api and local SMTP stub: curl subscribe, confirm using the token from the stub, publish one public manual incident. Record exact commands and receipt of 1 confirmation plus 1 incident message; mail links use configured root origin, one recipient and unsubscribe. Include the manual run and contract merged SHA in PR completion evidence."
+        },
+        {
+          "command": "for round in 1 2 3 4 5; do /usr/bin/time -f '%U %S' bun run test || exit; done",
+          "expected": "exit 0; repeat on the starting main in a separate checkout; PR records both CPU medians and B minus A, meets api/bench/budgets.json notify test budget 3.4 s (floor 1.5 s, expected increase at most 0.9 s). Runtime comparison uses Performance impact --b-ref command when api main supports it; otherwise record its absence and feature-off explanation."
+        },
+        {
+          "command": "bun \"$SUBSCRIPTIONS_BENCH_SCRIPT\"",
+          "expected": "Run the Performance impact scratch script outside the repository: fan out 1 event to 2000 confirmed rows in a mkdtemp store with an immediately resolving fake mailer. Report process.cpuUsage CPU and before/after RSS in the PR: expected under 5 s CPU and under 20 MiB RSS growth, explain larger values (reported, not gating). Commit no benchmark script or scratch data."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; PR supplies full checks, Docker build, security checklist, manual run, contract SHA and both performance measurements. Docs include root-hosting sentence, data inventory/25-hour cleanup/one-email mailbox boundary, immediate queue cancellation, D21 late-write behavior, deletion/contact procedure, secure backups, key rotation and all known limits D-R1..D-R13. Read/publish shared findings for any wire gap as the section requires."
+        }
+      ]
+    }
+  ]
+}
