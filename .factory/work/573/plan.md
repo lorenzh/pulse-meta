@@ -1,0 +1,1053 @@
+# Spec #573: email subscriptions for status page visitors
+
+Issue: [#573](https://github.com/lorenzh/pulse-meta/issues/573). Issue review:
+`.factory/work/573/issue-review.md`.
+
+## Goal
+
+A visitor of the public status page can subscribe by email. The visitor confirms the address
+through a link (double opt-in) and can unsubscribe through a link in every message. Confirmed
+subscribers get an email when a public manual incident is published, gets a published update, or
+is resolved. Drafts, draft updates, private notes and internal-only incidents never cause a
+subscriber email. An address that has not confirmed gets only its confirmation email and no
+incident email.
+
+The feature is off by default. An installation that does not configure it starts, monitors and
+notifies its operator channels exactly as before.
+
+## Sources and decisions this spec applies
+
+- Issue #573 and its comments. The only comment is the Factory note of `spec/issue-review`. It
+  records no owner decision.
+- The issue review (`.factory/work/573/issue-review.md`). It has no blocking question and lists
+  open points that the plan must settle. Decisions D1-D14 below settle them.
+- #460, section 12 (as quoted in the issue review): subscriber mail belongs to pulse-notify with
+  its own settings, never to the console. This spec follows it. The console does not change.
+- #568 (closed, complete): drafts, notes and internal incidents. Its public projection is on
+  `main` and is reused here, not rebuilt: the api serves only published public incidents with
+  their published updates, and notify filters private items before validation
+  (`notify/src/api.ts:301-308`, `isPublicManualIncident` and `publicManualIncident` of the
+  contract, `contract/src/manual-incident-public.ts`).
+- #570 (in flight, children #806-#811 open). It makes status settings and notify channels editable
+  from the console, bumps contract to `2.4.0` and the notify ledger to format 5, and adds an e2e
+  scenario. This spec is written against `main`, which does not have #570 yet. To stay apart from
+  #570, this spec:
+  - changes neither the notify ledger format nor the `PULSE_NOTIFY_CONFIG` file format;
+  - puts every new setting in environment variables, which #570 does not report or edit;
+  - takes the next contract minor version after the one on contract `main` when the contract
+    child merges (D13);
+  - adds its own e2e overlay and scenario, as #570 does.
+  #573 does not wait for #570. A child that starts after the #570 part of its repository merged
+  rebases onto it and keeps the rules above.
+- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` answered
+  `HTTP 404` in this run. So there are no findings yet, which is normal for a feature without
+  children.
+
+### Clone heads read for this spec
+
+| Target | HEAD | What matters here |
+| --- | --- | --- |
+| contract | `ebf6bbc895e54303a71852eb7fc10e4fb7c28aa3` | version `2.3.0` (`package.json:3`); `WIRE_VERSION = 1` (`src/version.ts:5`) |
+| status | `8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d` | pins contract `9ab7e249…` (version `2.1.0`, `package.json:34`) |
+| notify | `c79f0b7cb5e25ada96e6314220e69cf4f5279b32` | pins contract `9ab7e249…` (`package.json:30`), ledger format 4 (`src/ledger.ts:31`) |
+| deploy | `e754d468a2c445e76d5017692096428bff179f28` | e2e on `full` or `dev`; mailpit pinned in `common/services.yaml` for the demo |
+| api | `3b29fa0ce29890248ade4294a55812cc77ed951c` | read only; not changed |
+| kit | `536133f3e8b708179fa01feeb02395a0e1961e07` | status and notify pin `236df214…`, which exports `readBody`, `readJsonBody`, `sendJson`, `readSecretFile` and `escapeHtml` (checked with `gh api` at that ref, `src/index.ts:12,14,42`) |
+| config | `bc870498cc8e2539a132ce2aac35a09db1deabd8` | read only; not changed |
+
+### Current behavior (verified in the clones)
+
+- **Status** accepts only `GET` and `HEAD`. Any other method answers `405` with
+  `allow: GET, HEAD` (`status/src/server.ts:818-821`). Its CSP has `form-action 'none'`
+  (`status/src/server.ts:347-360`). It sets `referrer-policy: no-referrer`
+  (`status/src/server.ts:816`). The page template has no form (`status/public/index.html`). The
+  settings have no subscription value (`status/src/settings.ts`). `PULSE_STATUS_PUBLIC_URL`
+  is an http(s) URL without credentials, query or fragment (`status/src/settings.ts:33-48`).
+- **Status serves contract `dist` files to the browser** from a fixed list
+  (`status/src/server.ts:189-206`). A test walks the import graph from `index.js` and fails on an
+  unserved import (`status/src/server.contract-modules.test.ts:107-134`). So a contract bump that
+  adds modules must add them to that list.
+- **Notify** polls the api feeds and detects manual events by key: `manual:<id>:opened`,
+  `manual:<id>:update:<digest>` (a content digest, not a position) and `manual:<id>:resolved`
+  (`notify/src/detector.ts:92-161`). A 404 on `/manual-incidents` means "none" (`isAbsent`), and
+  `listedIds` holds every listed id, also private or invalid ones (`notify/src/api.ts:275-310`).
+  A channel without a baseline seeds the visible keys quietly (`notify/src/notifier.ts:567-600`).
+- **Notify mail**: `sendMail` sends one message over one SMTP connection (`pool: false`,
+  `notify/src/channels/smtp-send.ts:62-80`). A 5xx reply is a `PermanentDeliveryError`
+  (`smtp-send.ts:104-117`). `MailMessage` has `from`, `to`, `envelopeTo`, `subject`, `text`,
+  `date` and `messageId` (`notify/src/channels/mailer.ts:56-70`). The email channel has a fixed
+  `to` list and no unsubscribe link (`notify/src/types.ts:128-136`,
+  `notify/src/channels/email.ts`). So the channel cannot be reused for visitors: every recipient
+  would see the others, and there is no per-recipient link.
+- **Notify HTTP**: only the ops server of pulse-kit (`/healthz`, `/readyz`, `/metrics`,
+  `notify/src/index.ts:259-268`). No listener takes requests from another service.
+- **Notify ledger**: format 4, one SQLite file with a lease lock `<state>.lock`
+  (`notify/src/ledger.ts:31`, `notify/src/ledger-lock.ts`). The image sets
+  `PULSE_NOTIFY_STATE=/data/notify-state.json` (`notify/Dockerfile`).
+- **Deploy**: the e2e test merges `e2e/compose.e2e.yaml` after `full` or `dev`
+  (`deploy/e2e/compose-e2e.sh:14-25`). Notify's e2e channels write JSONL files
+  (`deploy/e2e/notify.json`). Mailpit is pinned in `deploy/common/services.yaml` and used only by
+  the demo. Secrets reach containers only through `secrets-init` (`deploy/AGENTS.md`, "Rules").
+  `secrets-init.mjs` writes probe, admin and console secrets only
+  (`deploy/scripts/secrets-init.mjs:1-14`). CI job `e2e-dev` requires two `ok:` lines
+  (`deploy/.github/workflows/ci.yml:304-306`).
+- **meta**: `docs/approved-packages.md:58` approves mailpit for the `demo` setup only.
+
+## Decisions
+
+- **D1 Owner: notify stores subscriptions and sends all subscriber mail.** Notify already polls the
+  public feeds with the privacy filters of #568, detects manual events with stable keys, and has
+  SMTP. A second database in the api would need a private api for recipient lists and a way to
+  hand raw confirmation tokens from the api to notify. Notify keeps subscriptions in **its own new
+  SQLite file**, separate from the ledger, so the ledger format (and #570's format 5) does not
+  change. The api does not change. No service reads another service's file.
+- **D2 Status serves the public forms; notify serves a private HTTP listener.** The browser only
+  ever talks to status. Status forwards the three operations to notify over HTTP with a bearer
+  token. The notify listener is a new port, off unless subscriptions are on. The wire shapes are
+  in the contract.
+- **D3 Only manual incidents are mailed.** "Incident updates" in the issue are what an operator
+  publishes: a manual incident's publication, its published updates and its resolution.
+  Automatic check incidents are not mailed to subscribers. Reasons: the status page labels them
+  by status settings that notify does not know (`hideDetails`, `showChecks`,
+  `status/src/components-view.ts:141-163`), their reason text can hold internal detail, and they
+  can flap. Reminders and warning events (budget, TLS, domain) are not mailed either. This
+  narrows the issue review's assumption 3. Mailing automatic incidents is a later issue.
+- **D4 Every eligible event is mailed.** No per-publication "notify subscribers" toggle. The
+  composer label of the design is context. So the api and the console do not change (issue
+  review, assumption 4).
+- **D5 Future events only, by notify's own clock.** A subscription gets an event when it was
+  confirmed at or before the time notify first detected the event (`confirmed_at <=
+  detected_at`, both from notify's injected clock). No history is replayed at confirmation. A
+  later update or resolution of an incident that was open at confirmation is a new event and is
+  mailed. This avoids clock skew between the api and notify, and does not depend on the `at` of a
+  draft update.
+- **D6 First enablement seeds quietly.** When the subscription store has no manual baseline, the
+  first good, non-404 manual read stores the keys of every visible manual event as `seeded` and
+  sends nothing. This is the same rule as a new channel (`notify/src/notifier.ts:567-600`).
+- **D7 Lifecycle: `pending` and `confirmed` rows; unsubscribe deletes.** A subscription is one row
+  with a random id. Unsubscribe deletes the row and its delivery rows in one transaction, so a
+  cancelled address is not stored. A later subscribe creates a new row with a new id and needs a
+  new confirmation. Tokens of the old row can never act on the new row.
+- **D8 Tokens.**
+  - Confirmation token: 32 random bytes, base64url without padding (43 characters). Notify
+    stores only its SHA-256 hex digest. It is valid for 24 hours after the last confirmation mail
+    of the row. It works while the row is `pending`. On a `confirmed` row the same token answers
+    `confirmed` again (a harmless repeat) and changes nothing. A new confirmation mail for the
+    same row replaces the digest, so older confirmation links stop working.
+  - Unsubscribe token: `<id>.<mac>`. `id` is the row id (16 random bytes, base64url, 22
+    characters). `mac` is base64url of HMAC-SHA256 with the subscription key over the bytes of
+    `pulse-unsubscribe:<id>` (43 characters). Notify stores no unsubscribe token. The link works
+    for the whole life of the row, also after the confirmation link expired. The check uses
+    `timingSafeEqual`.
+- **D9 Commit only on POST.** A link in a mail opens a status page (`GET`) with a button. Only the
+  `POST` of that button confirms or unsubscribes. A link scanner or `HEAD` changes nothing.
+- **D10 Links use one configured base URL.** Notify builds links from
+  `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL`, never from a request header or a visitor value. A path
+  prefix in that URL is kept: links are `<base>/subscribe/confirm?token=…` and
+  `<base>/unsubscribe?token=…`.
+- **D11 Delivery is at least once, per subscriber.** Each confirmed subscriber gets its own message
+  with only its own address in `To`. Progress is stored per event and subscription. A crash
+  after SMTP accepted a message and before the progress write can send that message once more;
+  its `Message-ID` is the same, so a receiver can drop the copy. Exactly once is not promised.
+- **D12 An unsubscribe answered before a send starts stops that send.** Notify re-reads the row
+  right before each SMTP send, in the same process and without an `await` between the read and
+  the start of the send. A send that already started finishes.
+- **D13 Contract version.** The contract change is additive: a new minor version, `WIRE_VERSION`
+  stays `1`. Its version is the next minor after the version on contract `main` when it merges
+  (`2.4.0` if it merges before #806, `2.5.0` after #806's `2.4.0`).
+- **D14 Secrets through `secrets-init`.** The bearer token between status and notify and the HMAC
+  key are two new host secrets. `scripts/init-secrets.sh` creates them, and `secrets-init` copies
+  them into new status and notify secret volumes only when `PULSE_SECRETS_SUBSCRIPTIONS=on`.
+
+## Scope
+
+- contract: the wire shapes and limits of the three subscription operations, the address rule and
+  the token formats.
+- status: the subscribe form on the page, the confirm and unsubscribe pages, the three `POST`
+  routes, the call to notify, settings and docs.
+- notify: settings, the subscription store, the private listener, confirmation mail, detection
+  and fan-out of manual events to confirmed subscribers, metrics and docs.
+- deploy: `secrets-init` and `init-secrets.sh` for the two secrets, a test-only overlay with
+  mailpit, an e2e scenario that reads real mail, CI and docs.
+- meta (this spec PR): `docs/approved-packages.md` allows the pinned mailpit in the test-only e2e
+  overlay too.
+
+## Non-goals
+
+- Mail for automatic incidents, reminders and warnings (D3).
+- A per-publication toggle, console screens for subscribers, a subscriber list or export, any api
+  change.
+- Component selection, several pages, SMS, digests, accounts, a visitor dashboard.
+- The `List-Unsubscribe` and `List-Unsubscribe-Post` mail headers (RFC 2369, RFC 8058). The
+  body link is the unsubscribe path that the issue asks for. The headers are a later change.
+- Non-ASCII (internationalized) addresses (rejected by the address rule).
+- A `failed resend` for subscriber mail. The notify CLI keeps working on ledger entries only.
+- Turning subscriptions on in `full`, `minimal`, `demo` or `dev` by default.
+- Persisting confirmation mails across a notify restart (D-R5 below).
+
+## Required behavior
+
+### R1 Contract shapes (all in a new contract module)
+
+Routes of the notify listener (`SUBSCRIPTION_ROUTES`):
+
+| Route | Method | Body | Answers |
+| --- | --- | --- | --- |
+| `/subscriptions` | `POST` | `SubscriptionRequest` `{ "email": string }` | `202 {"status":"accepted"}`; `400`, `401`, `413`, `415`, `429`, `503` with `ErrorResponse` |
+| `/subscriptions/confirm` | `POST` | `SubscriptionTokenRequest` `{ "token": string }` | `200 {"status":"confirmed"}`; `400`, `401`, `404`, `413`, `415`, `503` with `ErrorResponse` |
+| `/subscriptions/unsubscribe` | `POST` | `SubscriptionTokenRequest` `{ "token": string }` | `200 {"status":"unsubscribed"}`; `400`, `401`, `404`, `413`, `415`, `503` with `ErrorResponse` |
+
+- `SUBSCRIPTION_MAX_BODY_BYTES = 1024`: the largest request body of these routes.
+- `SUBSCRIBER_EMAIL_MAX = 254`: the longest address after normalization.
+- `SubscriptionRequest`: strict object with one key `email`, a string for which
+  `normalizeSubscriberEmail(email) === email`. So only the normalized form is valid on the wire.
+- `SubscriptionTokenRequest`: strict object with one key `token`, a string of at most 128
+  characters. The route decides which pattern applies:
+  - `SUBSCRIPTION_CONFIRM_TOKEN_PATTERN` = `^[A-Za-z0-9_-]{43}$`;
+  - `SUBSCRIPTION_UNSUBSCRIBE_TOKEN_PATTERN` = `^[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$`.
+- `SubscriptionAnswer`: strict object `{ "status": SubscriptionResult }` with
+  `SUBSCRIPTION_RESULTS = ["accepted", "confirmed", "unsubscribed"]`.
+- Errors use the existing `ErrorResponse` (`contract/src/schema.ts:1298`).
+- `normalizeSubscriberEmail(value: unknown): string | undefined`. It never throws. Rules, in this
+  order:
+  1. not a string: `undefined`;
+  2. remove leading and trailing spaces and tabs (U+0020, U+0009) only;
+  3. every remaining character is in U+0021..U+007E, else `undefined` (so CR, LF, NUL, spaces
+     inside, and non-ASCII are rejected);
+  4. exactly one `@`;
+  5. local part: 1..64 characters from ``A-Z a-z 0-9 ! # $ % & ' * + / = ? ^ _ ` { | } ~ . -``; not
+     starting or ending with `.`; no `..`;
+  6. domain: 1..253 characters; at least two labels split by `.`; each label 1..63 characters of
+     `A-Z a-z 0-9 -`, not starting or ending with `-`; the last label is not all digits (so no
+     IP address); no `[` literal;
+  7. the result is the whole address in lower case, at most `SUBSCRIBER_EMAIL_MAX` characters,
+     else `undefined`.
+- Validators `validateSubscriptionRequest`, `validateSubscriptionTokenRequest`,
+  `validateSubscriptionAnswer` return `Validation<T>` and never throw, like
+  `contract/src/validate-tokens.ts`.
+
+### R2 Status: page, forms and routes
+
+Subscriptions are on in status when `PULSE_STATUS_SUBSCRIPTIONS_URL` is set (R6). When off, status
+answers exactly as today: no form, `405` for every non-`GET`/`HEAD` request, `404` for the new
+paths, `form-action 'none'`.
+
+When on:
+
+- **Form.** The page has a section after "Maintenance":
+  `<section id="subscribe" aria-labelledby="subscribe-title">` with the heading
+  `Get incident updates by email`, a `<form method="post" action="/subscribe">`, a visible
+  `<label for="subscribe-email">Email address</label>`, `<input id="subscribe-email"
+  name="email" type="email" autocomplete="email" required maxlength="254">`, a
+  `<button type="submit">Subscribe</button>`, and the line `We send a confirmation link first. Every
+  email has a link to unsubscribe.` It works without JavaScript. The client poller does not touch
+  it.
+- **CSP.** `form-action 'self'` on every answer. Everything else of the CSP stays.
+- **Pages.** Each result page is server-rendered HTML with the page's title, wordmark, theme and
+  CSS, `cache-control: no-store`, the headers of today (CSP, `x-content-type-options`,
+  `x-frame-options`, `referrer-policy: no-referrer`), and a link back to `/`. All text from a
+  request is escaped with `escapeHtml`; no address or token is echoed, except the token in the
+  hidden field of the confirm and unsubscribe forms.
+- **Routes.**
+
+| Request | Checks, in this order | Answer |
+| --- | --- | --- |
+| `POST /subscribe` | origin (below) → `403`; `content-type` not `application/x-www-form-urlencoded` (parameters allowed) → `415`; body over 2048 bytes → `413`; fields not exactly one `email` → `400`; `normalizeSubscriberEmail` fails → `400` with the form and the error `Enter a valid email address.`; call notify | notify `202` → `200` page `Check your inbox. If the address can subscribe, we sent it a confirmation link. It works for 24 hours.`; notify `429` → `429` page `Subscriptions are not available right now. Try again later.`; notify `400` → `400` like an invalid address; anything else → `503` page `Subscriptions are not available right now. Try again later.` |
+| `GET` or `HEAD /subscribe/confirm?token=<t>` | exactly one `token` that matches `SUBSCRIPTION_CONFIRM_TOKEN_PATTERN`, else `400` page `This link is not valid. Request a new one on the status page.` | `200` page with `<form method="post" action="/subscribe/confirm">`, a hidden `token`, and `<button type="submit">Confirm subscription</button>`. No notify call. |
+| `POST /subscribe/confirm` | origin → `403`; content type → `415`; size → `413`; exactly one `token` with the confirm pattern, else `400` (invalid-link page); call notify | `200` → `200` page `Your subscription is confirmed.`; `404` → `400` page `This link is not valid or has expired. Request a new one on the status page.`; anything else → `503` |
+| `GET` or `HEAD /unsubscribe?token=<t>` | one `token` with the unsubscribe pattern, else `400` invalid-link page | `200` page with `<form method="post" action="/unsubscribe">`, hidden `token`, `<button type="submit">Unsubscribe</button>` |
+| `POST /unsubscribe` | origin → `403`; content type → `415`; size → `413`; one `token` with the unsubscribe pattern, else `400`; call notify | `200` → `200` page `You are unsubscribed. You get no more emails.`; `404` → `400` invalid-link page; anything else → `503` |
+
+- `POST` to any other path still answers `405` with `allow: GET, HEAD`. `GET /subscribe` answers
+  `404` as today.
+- **Origin check.** When the request has an `Origin` header, it must equal the origin of
+  `PULSE_STATUS_PUBLIC_URL` (scheme, host and port), else `403`. `Origin: null` is a mismatch.
+  When there is no `Origin` but a `Sec-Fetch-Site` header, it must be `same-origin` or `none`,
+  else `403`. With neither header the request goes on (no-JS browsers, curl). Status never
+  reads `Host`, `X-Forwarded-*` or `Referer` for this.
+- **Notify call.** `requestJson` of the contract with `method: "POST"`, the body
+  `JSON.stringify(...)` of the validated shape, `Authorization: Bearer <token>`, `timeoutMs` =
+  `PULSE_STATUS_UPSTREAM_TIMEOUT_MS`, `maxBytes: 4096`, and `validate` =
+  `validateSubscriptionAnswer`. A non-`2xx` answer, a timeout, a network error, a wire version
+  mismatch or an invalid body is mapped by the table above. The notify URL is never followed
+  through a redirect (a `3xx` is an error → `503`). Status logs the failure kind and route, never
+  the address, the token or the notify URL's credentials.
+
+### R3 Notify: settings and store
+
+- Settings (env, read with the pulse-kit readers; secrets with `readSecretFile`):
+
+| Variable | Default | Rule |
+| --- | --- | --- |
+| `PULSE_NOTIFY_SUBSCRIPTIONS` | `off` | `on` or `off`. Everything below is read only when `on`. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` | required | http(s) URL without credentials, query or fragment; a trailing `/` is removed. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_FROM` | required | single-line address, the same rule as a channel `from` (`notify/src/channel-schema.ts:32-39`). |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SUBJECT_PREFIX` | `[<host of STATUS_URL>]` | single line, 1..64 characters. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_HOST` | required | the `smtp.host` rule (`channel-schema.ts:88-93`). |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PORT` | `587` | 1..65535. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_TLS` | `starttls` | `starttls`, `tls` or `none`. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_USERNAME` | unset | single line. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` | unset | a file read once at startup; only with a username. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_TOKEN_FILE` | required | the bearer token of status; one line, at least 32 printable ASCII characters. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_KEY_FILE` | required | the HMAC key; exactly 64 lowercase hex characters (32 bytes). |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_HOST` | `127.0.0.1` | listener address. The image sets `0.0.0.0`. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_PORT` | `9300` | listener port. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_STATE` | `<directory of PULSE_NOTIFY_STATE>/notify-subscriptions.db` | the store file. |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_MAX` | `10000` | 1..100000: the most rows (pending plus confirmed). |
+| `PULSE_NOTIFY_SUBSCRIPTIONS_CONFIRM_PER_HOUR` | `100` | 1..10000: the most confirmation mails queued in any 3600 s. |
+
+  A bad value fails startup with exit `2` and one line that names the variable, never its value
+  or a file's content. With `off`, no listener, store, lock or worker starts.
+- `PULSE_NOTIFY_SMTP_CLIENT_NAME` and the retry and timeout settings
+  (`PULSE_NOTIFY_RETRY_*`, `PULSE_NOTIFY_TIMEOUT_MS`) also apply to subscriber mail.
+- **Store**: a SQLite file (`bun:sqlite`, WAL, `synchronous = FULL`), created with mode `0600`
+  under its own lease lock `<store>.lock` (the existing `acquireLock`, `notify/src/ledger-lock.ts`).
+  `PRAGMA user_version = 1`. Tables:
+  - `subscriptions(id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, state TEXT NOT NULL CHECK
+    (state IN ('pending','confirmed')), created_at INTEGER NOT NULL, confirm_digest TEXT UNIQUE,
+    confirm_expires_at INTEGER, confirm_sends INTEGER NOT NULL, last_sent_at INTEGER,
+    confirmed_at INTEGER)`;
+  - `events(key TEXT PRIMARY KEY, manual_id INTEGER NOT NULL, status TEXT NOT NULL CHECK (status
+    IN ('seeded','pending','done')), detected_at INTEGER NOT NULL, payload TEXT, settled_at
+    INTEGER)`;
+  - `deliveries(event_key TEXT NOT NULL, subscription_id TEXT NOT NULL, status TEXT NOT NULL CHECK
+    (status IN ('sent','failed')), attempts INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY
+    (event_key, subscription_id))`;
+  - `meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)` with `manual_baseline_at`.
+  A file with another `user_version` is refused at startup (exit `2`). Each mutation is one
+  transaction.
+- **Cleanup**, at the first poll and then hourly: delete `pending` rows whose
+  `confirm_expires_at` passed; delete `seeded` and `done` events (with their deliveries) whose
+  `settled_at` (or `detected_at` for `seeded`) is older than `PULSE_NOTIFY_STATE_RETENTION_DAYS`
+  and whose `manual_id` is not in the `listedIds` of the last good manual read. An expired
+  `pending` row is treated as absent also before cleanup removes it.
+
+### R4 Notify: the listener
+
+- `node:http` server on `PULSE_NOTIFY_SUBSCRIPTIONS_HOST:PORT`, started before the notifier,
+  with `headersTimeout` and `requestTimeout` of 10 s. A bind error fails startup like the health
+  listener (`notify/src/index.ts:285-293`).
+- Order for every request:
+  1. unknown path → `404 {"error":"not found"}`;
+  2. method not `POST` → `405` with `allow: POST`;
+  3. `Authorization` is not `Bearer <token>` equal to the token file (compare SHA-256 digests
+     with `timingSafeEqual`) → `401 {"error":"unauthorized"}`; nothing of the body is read;
+  4. `content-type` not `application/json` → `415`;
+  5. body over `SUBSCRIPTION_MAX_BODY_BYTES` (kit `readBody`) → `413`; not JSON → `400`;
+  6. the contract validator fails → `400 {"error":"invalid request"}`;
+  7. the operation (R5). A store error → `503 {"error":"unavailable"}` and an error log without
+     address or token.
+- Every answer has `content-type: application/json`, `cache-control: no-store` and
+  `x-pulse-contract: 1` (`WIRE_VERSION_HEADER`, `WIRE_VERSION`).
+
+### R5 Notify: operations
+
+Times come from the injected `now`.
+
+- **Subscribe** `{email}`:
+  1. delete the row of `email` if it is `pending` and expired;
+  2. a `confirmed` row → `202`, no mail;
+  3. a `pending` row with `now - last_sent_at < 600000` (10 min) or `confirm_sends >= 3` → `202`,
+     no mail;
+  4. the global window (below) is full, or the confirmation queue holds 100 jobs → `429`
+     `{"error":"rate limited"}`;
+  5. a `pending` row: new token, new digest, `confirm_expires_at = now + 86400000`,
+     `confirm_sends + 1`, `last_sent_at = now`; queue the mail → `202`;
+  6. no row: the store holds `PULSE_NOTIFY_SUBSCRIPTIONS_MAX` rows → `429`; else insert a
+     `pending` row (new id, token as in 5, `confirm_sends = 1`); queue the mail → `202`.
+  The global window is the list of the times of the confirmation mails queued in the last
+  3600000 ms (a sliding window over queue times, in memory, at most `CONFIRM_PER_HOUR` entries,
+  empty after a restart). Steps 2 and 3 answer like step 5, so the answer does not tell whether
+  an address is subscribed.
+- **Confirm** `{token}`: the token must match the confirm pattern, else `400`. Find the row by
+  the token's digest. No row, or a `pending` row with `confirm_expires_at <= now` → `404
+  {"error":"invalid token"}`. A `pending` row → set `state = 'confirmed'`, `confirmed_at = now`
+  → `200`. A `confirmed` row → `200`, nothing changes.
+- **Unsubscribe** `{token}`: the token must match the unsubscribe pattern, else `400`. A wrong
+  `mac` → `404`. A right `mac`: delete the row with that id and its delivery rows, if any →
+  `200`. A right `mac` whose row is gone (already cancelled, or pruned) → `200`.
+- **Confirmation mail** (worker 1, in memory, FIFO, at most 100 jobs, one send at a time, up to 3
+  attempts with the `retryDelay` of `notify/src/delivery.ts:43-45`):
+  - `From` = the setting, `To` and envelope = the address only, `Subject` =
+    `<prefix> Confirm your subscription`, `Message-ID` = `<sha256("confirm:" + id + ":" +
+    confirm_sends) first 32 hex>@<from domain>`;
+  - body:
+
+    ```
+    Someone asked to get incident updates of <STATUS_URL> at this address.
+
+    Confirm: <STATUS_URL>/subscribe/confirm?token=<confirm token>
+    The link works for 24 hours. If you did not ask for this, ignore this email.
+
+    Unsubscribe: <STATUS_URL>/unsubscribe?token=<unsubscribe token>
+    ```
+  - before each attempt the job checks that the row still exists with the same digest; else it
+    is dropped. Jobs are lost at shutdown (the count is logged); the visitor asks again.
+- **Detection** (in each poll of `Notifier`, after the channels, only when the manual read
+  answered and is not a 404):
+  - no `manual_baseline_at`: store every key of `seedManualKeys(incidents)` as `seeded` with
+    `detected_at = now`, and set `manual_baseline_at = now`, in one transaction. Send nothing.
+  - else: `detectManualEvents(incidents, key => store has key)`; store each as `pending` with
+    `detected_at = now` and the payload of `buildManualNotification`
+    (`notify/src/notifier.ts:150-178`), then wake worker 2.
+  - The input is the `incidents` of `fetchManualIncidents`, which are already public projections
+    (`notify/src/api.ts:301-308`). Nothing from `/admin` is read.
+- **Fan-out** (worker 2, one event at a time, in `detected_at` order, also the `pending` events
+  found at start):
+  - A pass reads the eligible subscriptions in pages of 100 by `id`: `state = 'confirmed'`,
+    `confirmed_at <= detected_at`, and no delivery row for this event. For each one, right before
+    the send, it reads the row again by id; if the row is gone or not `confirmed`, it skips it
+    (D12).
+  - One message per subscription:
+    - `From` = the setting; `To` and envelope = that address only;
+    - `Subject` = `<prefix> <State>: <title>`, State is `New incident`, `Update` or `Resolved`;
+    - `Message-ID` = `<sha256(event key + ":" + subscription id) first 32 hex>@<from domain>`;
+    - body (each value through `cleanText` of `notify/src/channels/message.ts:57-60`):
+
+      ```
+      <State>: <title>
+
+      Impact: <impact>
+      Status: <status>
+      <message>
+      Time: <ISO 8601 UTC of the event>
+
+      Status page: <STATUS_URL>
+      You get this email because you subscribed at <STATUS_URL>.
+      Unsubscribe: <STATUS_URL>/unsubscribe?token=<unsubscribe token>
+      ```
+    - no reason, check name, component id or other subscriber.
+  - Outcome per send: success → delivery `sent`; `PermanentDeliveryError` or a refused recipient
+    → delivery `failed`; another error → the subscription stays for the next pass.
+  - After a pass with no subscription left, the event is `done` (`settled_at = now`). Else the
+    next pass starts after `retryDelay(pass, PULSE_NOTIFY_RETRY_DELAY_MS,
+    PULSE_NOTIFY_RETRY_MAX_DELAY_MS)`. After `N` passes, the subscriptions still left get
+    delivery `failed` with `attempts = N` and the event is `done`. `N` is
+    `PULSE_NOTIFY_RETRY_ATTEMPTS`, and `12` when that is `0`, so one failing address never holds
+    the queue for ever.
+  - Stop aborts the sleep and any send in flight. The event stays `pending` and the next start
+    resumes it.
+  - Worker 2 never blocks the channel workers or worker 1.
+- Subscriber mail never goes through the ledger, the channel deliveries or `failed list|resend`.
+
+### R6 Status settings
+
+| Variable | Default | Rule |
+| --- | --- | --- |
+| `PULSE_STATUS_SUBSCRIPTIONS_URL` | unset (off) | http(s) base URL of the notify listener, for example `http://notify:9300`; never echoed. |
+| `PULSE_STATUS_SUBSCRIPTIONS_TOKEN_FILE` | required when the URL is set | the bearer token, read once with `readSecretFile`; at least 32 printable ASCII characters. |
+
+With the URL set, `PULSE_STATUS_PUBLIC_URL` is required too (the origin check of R2). A missing or
+bad value fails startup with exit `2` and one line that names the variable.
+
+### R7 Logs and metrics
+
+- No log line, error text, metric label or HTTP answer of status or notify holds an address, a
+  token, the key, the bearer token or an SMTP password. Logs carry counts and fixed reasons.
+- Notify metrics (registered only when subscriptions are on):
+  - `pulse_notify_subscribers{state="pending"|"confirmed"}` (gauge, read at scrape);
+  - `pulse_notify_subscriber_events_pending` (gauge);
+  - `pulse_notify_subscriber_mails_total{kind="confirmation"|"incident",outcome="success"|"failure"}`;
+  - `pulse_notify_subscription_requests_total{route="subscribe"|"confirm"|"unsubscribe",outcome="ok"|"invalid"|"limited"|"unauthorized"|"error"}`.
+- Status adds no metric. Its `pulse_status_http_requests_total` counts the new routes by status
+  code as today.
+
+### R-limits and known limits (documented in the notify and status READMEs)
+
+- D-R1 At least once (D11).
+- D-R2 An event whose incident left the bounded manual feed while notify was down is never seen
+  and never mailed.
+- D-R3 Order: subscriber events are sent one by one; an SMTP outage delays later events.
+- D-R4 Rate limits are per process and start empty after a restart.
+- D-R5 A confirmation mail that was queued but not sent when notify stopped is lost; the visitor
+  can ask again after 10 minutes.
+- D-R6 Clock: eligibility uses notify's clock only (D5).
+- D-R7 Backups: the store file holds addresses. It belongs to the notify data backup and must be
+  protected like it. Losing it drops all subscriptions; restoring an old copy brings back rows
+  that later unsubscribed (their old unsubscribe links still work).
+- D-R8 Key rotation: a new HMAC key breaks the unsubscribe links of every delivered mail. Keep the
+  key.
+
+## Risks
+
+- **Privacy leak through mail.** Mitigation: the only input is the public projection already
+  used by the channels (#568); the body has a fixed set of fields; the e2e scenario uses private
+  markers and checks every mail in mailpit for them.
+- **A link scanner confirms or unsubscribes.** Mitigation: D9, `GET` changes nothing.
+- **Abuse of the subscribe form to send mail.** Mitigation: double opt-in, per-row cooldown and
+  send cap, the global window, the queue cap, the row cap, the 1 KiB/2 KiB body limits. Known
+  limit: a flood fills the global window and blocks real visitors for up to an hour (`429`).
+- **Two notify processes on one store.** Mitigation: the lease lock of the store.
+- **Merge conflicts with #570** in `notify/src/index.ts`, `notify/src/config.ts`,
+  `notify/src/notifier.ts`, `status/src/settings.ts`, `status/src/server.ts`,
+  `deploy/e2e/compose-e2e.sh` and `deploy/.github/workflows/ci.yml`. Mitigation: the new code
+  sits in new modules, the wiring change is small, and a conflict runs the `merge` workflow.
+- **Fan-out time.** One SMTP connection per message (today's `sendMail`). At 50-200 ms per message,
+  10 000 subscribers take 8-33 minutes per event. Documented; pooling is a later change.
+
+## Performance impact
+
+The api does not change, so no `api` metric of `bench/budgets.json` can move. The bench stack runs
+notify and status without the new variables (`api/bench/compose.bench.yaml:47-75`, fixture
+`api/bench/fixtures/notify.json`), so subscriptions are off there.
+
+| Service | Metric (`api/bench/budgets.json`) | Expected change | Why |
+| --- | --- | --- | --- |
+| status | `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `startup_wall_ms` | none (within noise) | off: one setting read, the page template gets an empty placeholder |
+| status | `test_cpu_s` (gating, budget 3.4 s) | + up to 0.4 s | new HTTP suites with a fake notify |
+| status | `image_mb` | none | no new dependency |
+| notify | `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `startup_wall_ms` | none (within noise) | off: one setting read, no listener, store or worker |
+| notify | `test_cpu_s` (gating, budget 3.4 s, floor 1.5 s) | + up to 0.6 s | new suites with SQLite and HTTP |
+| notify | `image_mb` | none | no new dependency |
+| contract | `test_cpu_s` (gating, 9.0 s, floor 2 s), `build_cpu_s` | + up to 0.2 s each | one small module |
+| api, probe | all | none | not changed |
+
+With subscriptions on, notify holds one page of 100 rows and one message at a time, so its RSS grows
+by the SQLite page cache and not by the number of subscribers.
+
+How each child measures:
+
+- `test_cpu_s`: five runs of `bun run test` on the branch and on the `main` it started from, CPU
+  time as `user + sys` of `/usr/bin/time -f '%U %S'`, median of the five per side. The PR shows
+  both medians and B − A. It fails when B is above the budget of that repository in
+  `api/bench/budgets.json`.
+- Runtime metrics: when api `main` has `--b-ref` (from #570's api part), run
+  `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref
+  <status|notify>=<branch SHA>` in an api checkout (`--rounds 1` allowed locally; say so) and
+  paste the table. Without `--b-ref` on api `main`, the PR states that and why none is expected
+  (feature off in the bench fixture).
+- notify only, feature on (reported, not gating): with a scratch script outside the repository
+  (nothing is committed), fan out one event to 2 000 confirmed rows in a `mkdtemp` store with a
+  fake `sendMail` that resolves at once. Report the CPU time (`process.cpuUsage()`), and the RSS
+  (`process.memoryUsage().rss`) before and after, in the PR. Expected: under 5 s CPU and under
+  20 MiB RSS growth. A higher value is reported and explained, not hidden.
+
+## Security impact
+
+Security impact: yes
+New anonymous public write routes, a new authenticated service listener, mail sent to visitor
+input, new secrets, file writes, and CI changes.
+
+Checklist items that apply:
+
+- **Secrets in errors, logs and responses**: R7; startup errors name the variable only; the
+  status pages never echo the address; the e2e scenario scans logs for addresses, tokens and
+  secrets.
+- **Auth order and status codes**: notify R4 (path, method, then auth before any body read);
+  status R2 (origin before body); exact codes in R1 and R2.
+- **Body and size limits**: status 2048 bytes; notify `SUBSCRIPTION_MAX_BODY_BYTES` 1024; status
+  reads at most 4096 bytes of a notify answer; row cap, queue cap, window cap.
+- **Input validation**: the address rule (R1) at status and again at notify; token patterns;
+  strict objects; exact form fields; no header injection (CR/LF rejected, one recipient per
+  message, `To` built from the stored normalized address only).
+- **Accessor execution**: notify parses JSON with `readJsonBody` and the contract zod validators;
+  the error text of `requestJson` reads an own data property only
+  (`contract/src/client.ts:246-260`).
+- **SSRF and redirects**: status calls only the operator-set notify URL, never a URL from a
+  request, and treats `3xx` as an error; links in mail use only the configured base (D10).
+- **Atomic, path-safe writes**: the store is a SQLite file at a configured path, created `0600`
+  with its lock; secrets-init writes the new secrets through its temp-and-rename path, `0400`.
+- **Dependency pins**: status and notify bump the contract pin to the merged full SHA. No new
+  package. Mailpit stays on its pinned digest in `common/services.yaml`.
+- **CI**: deploy adds a CI requirement and test steps; no new action, no secret in CI.
+- **Dockerfiles**: notify's image gets one `ENV` value, `PULSE_NOTIFY_SUBSCRIPTIONS_HOST=0.0.0.0`.
+  The listener still starts only with `PULSE_NOTIFY_SUBSCRIPTIONS=on`, and it needs the bearer
+  token. No port is published in any setup.
+- Not applicable: admin routes and authentication of the api, and the probe HTTP client.
+
+## Rollout order
+
+1. **contract** (new minor, D13). Additive. Every consumer on an older pin keeps working: no
+   existing export, schema or `WIRE_VERSION` changes.
+2. **status** and **notify**, in either order, each with the new contract pin.
+   - Both default to off. An upgrade without the new variables changes nothing.
+   - New status with old notify (operator set the URL too early): the call fails → `503` page.
+     Nothing is stored.
+   - Old status with new notify: notify's listener is unused; incident fan-out works for rows that
+     exist (none without status).
+   - Probe, api, console and kit are untouched and keep their pins.
+   - A downgrade of notify leaves the store file on the volume. The old notify ignores the
+     variables and the file. A later upgrade resumes with the same rows and baseline (events
+     during the downgrade that are still in the manual feed are detected then, with that
+     `detected_at`).
+   - #570: if #570's notify part merged first, its ledger format 5 and reports are untouched by
+     this change; subscriber state is never in a report.
+3. **deploy**, after both service PRs merged (its `e2e-dev` CI builds `main` of each service).
+   `full` runs the published `0.1.0` images, which lack the feature, so the scenario prints
+   `skip: email subscriptions (published images)` there. The `e2e-dev` job requires the `ok:`
+   line, so a skip cannot pass there. Turning the scenario on for `full` is part of the image
+   bump that follows a release (an owner decision).
+4. **meta** (this spec PR) extends the approved use of mailpit before the deploy child starts.
+
+## Counterexamples
+
+### Address rule (`normalizeSubscriberEmail`)
+
+| Input | Result | Rule |
+| --- | --- | --- |
+| `" Sub-A@E2E.Invalid\t"` | `"sub-a@e2e.invalid"` | trim spaces/tabs, lower case |
+| `"a@example.com\r\nBcc: x@example.org"` | `undefined` | CR/LF |
+| `"a@example.com, b@example.com"` | `undefined` | space inside and two `@` |
+| `"a@b"` | `undefined` | one label |
+| `"a..b@example.com"`, `".a@example.com"`, `"a.@example.com"` | `undefined` | dots |
+| `"\"a b\"@example.com"` | `undefined` | quote and space |
+| `"ü@example.com"` | `undefined` | non-ASCII |
+| `"a@-example.com"`, `"a@example-.com"` | `undefined` | hyphen at label edge |
+| `"a@192.168.0.1"`, `"a@[192.168.0.1]"` | `undefined` | all-digit last label; literal |
+| local part of 65 characters | `undefined` | local 1..64 |
+| 64 + `@` + 189 = 254 characters, valid labels | accepted | limit is inclusive |
+| the same with 255 characters | `undefined` | over 254 |
+| `"Name <a@example.com>"` | `undefined` | display name |
+| `{ "email": "A@example.com" }` on the wire | `400` at notify | not normalized |
+
+### Status routes
+
+- `POST /subscribe` with `Origin: https://evil.example` → `403`, notify gets no call (the fake
+  counts 0).
+- `POST /subscribe` with `Origin: null` → `403`.
+- `POST /subscribe` without `Origin`, with `Sec-Fetch-Site: cross-site` → `403`.
+- `POST /subscribe` without both headers → goes on.
+- `content-type: application/json` → `415`; `multipart/form-data` → `415`.
+- Body of 2049 bytes → `413`.
+- `email=a@example.com&email=b@example.com` → `400`; `email=a@example.com&x=1` → `400`.
+- `GET /subscribe/confirm?token=<valid>` changes nothing: the fake notify gets 0 calls.
+- `HEAD /unsubscribe?token=<valid>` → `200`, 0 notify calls.
+- `GET /subscribe/confirm?token=<43 chars>&token=<43 chars>` → `400`.
+- Notify answers `302` → `503`, the `Location` is not followed (the fake's second server gets 0
+  requests).
+- Notify answers `202` without `x-pulse-contract` → accepted (absent tolerated, as `requestJson`
+  does); with `x-pulse-contract: 2` → `503`.
+- `PUT /subscribe` → `405`, `allow: GET, HEAD`.
+- Feature off: `POST /subscribe` → `405`; `GET /subscribe/confirm?token=…` → `404`; the page has no
+  `id="subscribe"`; the CSP has `form-action 'none'`.
+
+### Notify listener
+
+- No `Authorization`, valid body → `401`, the store is unchanged.
+- `Authorization: Bearer <token>x` (one character more) → `401`.
+- Wrong token and a 2 MiB body → `401` (the body is not read).
+- `GET /subscriptions` → `405`, `allow: POST`; `POST /subscriptions/other` → `404`.
+- `{"email":"a@example.com","extra":1}` → `400` (strict).
+- `{"token":"<44 characters>"}` on confirm → `400`.
+
+### Lifecycle and timing (injected clock `t`, in ms)
+
+- Subscribe at `t=0` → mail 1. Subscribe at `t=599999` → `202`, no mail. At `t=600000` → mail 2
+  (token rotates; mail 1's confirm link now answers `404`). At `t=1200000` → mail 3. At
+  `t=1800000` → `202`, no mail (`confirm_sends = 3`).
+- Confirm with mail 3's token at `t = last_sent_at + 86399999` → `200`; at `last_sent_at +
+  86400000` → `404` (the end is exclusive).
+- Confirm twice → `200` and `200`; `confirmed_at` is the first time.
+- Confirm, unsubscribe, then confirm with the same token → `404`; the address gets no later mail.
+- Unsubscribe twice → `200` and `200`.
+- Unsubscribe with a valid `id` and a `mac` of another key → `404`; the row stays.
+- Unsubscribe B from B's confirmation mail while `pending`; then B's confirm token → `404`.
+- Subscribe A, unsubscribe, subscribe A again: a new `id`; the old unsubscribe token answers
+  `200` but does not touch the new row (the new row is still there afterwards); the new row needs
+  confirmation.
+- Global window with `CONFIRM_PER_HOUR = 2`: mails queued at `t=0` and `t=1000`; a new address at
+  `t=3599999` → `429`; at `t=3600000` → `202` and a mail (the entry of `t=0` left the window,
+  `now - queuedAt >= 3600000`).
+- Row cap 2 with 2 rows; a new address → `429`; an existing `confirmed` address → `202`.
+
+### Eligibility and privacy
+
+- A pending (never confirmed) address: publish, update and resolve a public incident → 0 incident
+  sends to it (only its confirmation mail exists).
+- Confirmed at `t=1000`; an event detected at `t=1000` → sent (`<=`); detected at `t=999` → not
+  sent.
+- Incident published at `t=500` (detected at `t=500`), subscriber confirmed at `t=1000`, update
+  detected at `t=2000` → only the update is sent.
+- First enablement with three visible manual incidents → 0 sends; a new update after that → 1 send
+  per confirmed row.
+- A draft incident, a saved draft update, a note, and a published or resolved internal incident:
+  the api feed does not list them → 0 events, 0 sends. A feed item with
+  `"visibility":"internal"` that an older api leaks is dropped by `isPublicManualIncident` → 0
+  events.
+- Publishing the draft update later → exactly one `update` (or `resolved`) send per confirmed row.
+- A manual incident that temporarily carries an explicit private flag and then is public again
+  with the same updates → no second send (keys exist).
+- Two confirmed rows: the message to row 1 has `To` = row 1's address only and does not contain
+  row 2's address anywhere.
+
+### Fan-out failures (fake `sendMail`, injected sleep)
+
+- SMTP answers a temporary error for row 1 at pass 1; the test unsubscribes row 1 before pass 2;
+  pass 2 makes 0 sends to row 1.
+- Same, but notify stops after pass 1 and starts again with the same store; the resumed event makes
+  0 sends to row 1 and 1 send to row 2 if it was not yet sent.
+- A send that started before an unsubscribe ends with success; no further send to that row.
+- Row 1 refused with 550 → delivery `failed` after 1 attempt; row 2 still gets the message.
+- `PULSE_NOTIFY_RETRY_ATTEMPTS = 0` and row 1 always temporarily failing → after 12 passes row 1 is
+  `failed` and the next event starts.
+- 250 confirmed rows → the store is read in 3 pages; every row gets one send; no two sends for one
+  row.
+- Restart after an event is `done` → 0 new sends for it.
+
+## Contract fields
+
+New names, and the search that shows that each is free in the contract and config clones
+(run from the meta checkout; all searches printed nothing):
+
+```sh
+grep -rn 'subscription\|Subscription\|SUBSCRIPTION' .repos/contract/src .repos/config   # no match
+grep -rn 'subscriber\|Subscriber\|SUBSCRIBER' .repos/contract/src .repos/config         # no match
+grep -rn 'unsubscribe' .repos/contract/src .repos/config                                 # no match
+grep -rn '/subscribe' .repos/contract/src .repos/config                                  # no match
+```
+
+Contract (new module `src/subscriptions.ts`, validators in `src/validate-subscriptions.ts`):
+
+| Name | Kind |
+| --- | --- |
+| `SUBSCRIPTION_ROUTES` | `{ subscribe: "/subscriptions", confirm: "/subscriptions/confirm", unsubscribe: "/subscriptions/unsubscribe" } as const` |
+| `SUBSCRIPTION_MAX_BODY_BYTES` | `1024` |
+| `SUBSCRIBER_EMAIL_MAX` | `254` |
+| `SUBSCRIPTION_CONFIRM_TOKEN_PATTERN` | `RegExp` |
+| `SUBSCRIPTION_UNSUBSCRIBE_TOKEN_PATTERN` | `RegExp` |
+| `SUBSCRIPTION_RESULTS` | `["accepted", "confirmed", "unsubscribed"] as const` |
+| `normalizeSubscriberEmail` | function |
+| `subscriptionRequestSchema`, `subscriptionTokenRequestSchema`, `subscriptionAnswerSchema` | zod schemas |
+| `SubscriptionRequest`, `SubscriptionTokenRequest`, `SubscriptionAnswer`, `SubscriptionResult` | types |
+| `validateSubscriptionRequest`, `validateSubscriptionTokenRequest`, `validateSubscriptionAnswer` | validators |
+| JSON keys `email`, `token`, `status` | in the new shapes only |
+
+Services and deploy (searched in the status, notify and deploy clones, `.repos/status/src`,
+`.repos/notify/src`, `.repos/deploy`): `PULSE_NOTIFY_SUBSCRIPTIONS*`, `PULSE_STATUS_SUBSCRIPTIONS*`,
+`PULSE_SECRETS_SUBSCRIPTIONS`, `subscriptions-token`, `subscriptions-key`, `E2E_SUBSCRIPTIONS`,
+`pulse_notify_subscri`, `/subscribe`, `9300`: no match. `subscription`, `subscriber` and
+`unsubscribe` appear only as unrelated words: a comment in `notify/src/metrics.ts:5`,
+`notify/src/alert-poll.ts:19-34` (`isSubscribed`, channel alert opt-in; the new notify modules do
+not reuse that name) and local `unsubscribe` variables in `deploy/cli/*.ts`. #570's spec uses
+none of these names (`grep -n -i 'subscri' .factory/work/570/plan.md` shows only the non-goal
+line 703).
+
+Status routes `/subscribe`, `/subscribe/confirm`, `/unsubscribe`; notify routes of
+`SUBSCRIPTION_ROUTES`; notify metrics of R7; status variables of R6; notify variables of R3.
+
+## Repository: contract
+
+Files:
+- `src/subscriptions.ts` (new: constants, `normalizeSubscriberEmail`, schemas, types)
+- `src/validate-subscriptions.ts` (new: the three validators)
+- `src/index.ts` (changed: exports)
+- `dist/subscriptions.js`, `dist/subscriptions.d.ts`, `dist/validate-subscriptions.js`,
+  `dist/validate-subscriptions.d.ts`, `dist/index.js`, `dist/index.d.ts` (built)
+- `test/subscriptions.test.ts` (new)
+- `test/types.fixture.ts` (changed: the new types)
+- `docs/index.md` (changed: a "Subscriptions" section with R1)
+- `README.md` (changed: the list of shapes names subscriptions)
+- `package.json` (changed: version, D13)
+
+Behavior change: yes. New exported shapes, validators and an address rule.
+
+Behavior:
+- R1 exactly. `normalizeSubscriberEmail` is pure and never throws. The validators return the same
+  object they get (`contract/AGENTS.md`, "This repository").
+- `subscriptionRequestSchema` refines `email` with `normalizeSubscriberEmail(v) === v`.
+- The token patterns are anchored and have no flags.
+
+Checks:
+- `test/subscriptions.test.ts`: every row of "Address rule" in Counterexamples with its literal
+  expected value; the length bounds 254 and 255 and local 64 and 65; each validator accepts one
+  valid literal and rejects a missing key, an extra key, a wrong type and a 129-character token;
+  each pattern accepts one literal of the right length and rejects one character more and less
+  and a `+`.
+- `bun run check` (`package.json:28`: lint, build, typecheck, test). CI uses
+  `lorenzh/pulse-config/.github/workflows/check.yml@51e95b0eb463b27a196a33b428607bd92443e4f0`
+  with `build: true` (`.github/workflows/ci.yml:17-19`). At that ref the workflow sets Bun 1.4.0
+  (`check.yml:24`) and runs `bun install --frozen-lockfile` (`:26`), `bun run lint` (`:28`),
+  `bun run typecheck` (`:30`), `bun run build` (`:33`), `git diff --exit-code -- dist` (`:36`) and
+  `bun run test` (`:38`). The pinned file equals the config clone. Biome: `biome.json:2` extends
+  `@lorenzh/pulse-config/biome.json`, whose `files.includes` (`config/biome.json:10-17`, same at
+  the pin) checks everything but `dist`, `node_modules`, `bun.lock`, `*.html` and
+  `test/fixtures`. Biome is `@biomejs/biome` `2.6.3` (`package.json:31`). Coverage: `bunfig.toml:2-3`
+  (`lines = 0.8`).
+- `test_cpu_s` and `build_cpu_s` per "Performance impact".
+
+Completion evidence:
+- The merged SHA and the version in the PR, for the status and notify pins.
+- The output of `bun run check` and `git diff --exit-code -- dist` after `bun run build`.
+
+## Repository: status
+
+Files:
+- `src/subscribe-routes.ts` (new: the routes of R2, origin check, form parsing, mapping of notify
+  answers)
+- `src/subscribe-client.ts` (new: the call to notify with `requestJson`)
+- `src/subscribe-pages.ts` (new: the form section and the result pages)
+- `src/server.ts` (changed: `ServerOptions` gets the subscription options; the method gate lets
+  the three `POST` routes through when on; CSP `form-action`; the `{{subscribe}}` placeholder;
+  `contractModules` adds `subscriptions.js` and `validate-subscriptions.js`, and every other module
+  that the new contract's `index.js` imports, see `src/server.ts:189-206`)
+- `src/settings.ts` (changed: R6)
+- `src/start.ts` (changed: passes the settings and reads the token file)
+- `public/index.html` (changed: `{{subscribe}}` after the maintenance list)
+- `public/page.css` (changed: form styles, readable at 360 px)
+- `src/subscribe-routes.test.ts` (new: real server on port 0 with a fake notify on port 0)
+- `src/settings.test.ts` (changed)
+- `src/server.contract-modules.test.ts` (changed only if the served list needs a new assertion)
+- `e2e/run.ts` (changed: axe checks of the page with the form and of the five result pages, at 360
+  and 1280 px, light and dark, with and without JavaScript)
+- `README.md`, `docs/configuration.md`, `docs/operation.md` (changed: settings, routes, known
+  limits D-R3, D-R4)
+- `package.json`, `bun.lock` (changed: contract pin to the merged full SHA of the contract child)
+
+Behavior change: yes. New public form, pages and `POST` routes when configured.
+
+Behavior: R2, R6, R7 (status parts). Off by default with today's answers.
+
+Shared finding: the exact text of the notify answers and the order of the notify checks are fixed
+by R1 and R4. If the status child finds a gap there, it records it as a shared finding; the notify
+child reads it before it starts, and the other way round.
+
+Checks:
+- `src/subscribe-routes.test.ts`: every "Status routes" counterexample with its literal status
+  code and the fake notify's call count; a valid subscribe sends exactly
+  `{"email":"sub-a@e2e.invalid"}` with `Authorization: Bearer <token of the test file>` to
+  `/subscriptions` (literals in the test); the confirm and unsubscribe `POST`s send `{"token":…}`
+  to their routes; every page has `cache-control: no-store`, the CSP with `form-action 'self'`,
+  `referrer-policy: no-referrer`; no answer body contains the submitted address; a hostile address
+  text `<script>` is never echoed.
+- Feature off: the four "Feature off" counterexamples.
+- `src/settings.test.ts`: URL without token file → startup error naming
+  `PULSE_STATUS_SUBSCRIPTIONS_TOKEN_FILE`; URL without `PULSE_STATUS_PUBLIC_URL` → error naming it;
+  a token of 31 characters → error; the error text never contains the token.
+- The contract graph test (`src/server.contract-modules.test.ts:107-134`) passes with the new pin.
+- `bun run check` (`package.json:19`: lint, typecheck, test). Lint is `biome check . &&
+  pulse-eslint . && pulse-workflows` (`package.json:15`); Biome `2.6.3` (`package.json:23`),
+  `biome.json:2` extends `@lorenzh/pulse-config/biome.json` (`config/biome.json:10-17`, equal at
+  the pin `04108fa…`, `package.json:24`). Coverage `bunfig.toml:2-3` (`lines = 0.8`). CI:
+  `.github/workflows/ci.yml:18` uses `check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, which
+  runs install, lint, typecheck and test with Bun 1.4.0 (`check.yml:24-38`; equal to the clone).
+  The `a11y` job runs `bun run check:a11y` (`ci.yml:51-68`, `package.json:18`).
+- `test_cpu_s` per "Performance impact".
+- Once by hand: `bun start` with a fake notify (a tiny local server), subscribe, open the confirm
+  link, press the button; report the commands and the codes.
+
+Completion evidence: `bun run check` and `bun run check:a11y` output; the PR names the contract SHA
+and the manual run.
+
+## Repository: notify
+
+Files:
+- `src/subscription-settings.ts` (new: R3 settings)
+- `src/subscriber-store.ts` (new: the SQLite store, cleanup)
+- `src/subscription-server.ts` (new: the listener, R4)
+- `src/subscription-requests.ts` (new: the operations of R5, pure over the store and the clock)
+- `src/subscriber-mail.ts` (new: the two message builders, tokens, `Message-ID`)
+- `src/subscriber-fanout.ts` (new: detection input, worker 1 and worker 2)
+- `src/index.ts` (changed: wiring, second lock, listener start before the notifier, stop order)
+- `src/notifier.ts` (changed: hands each good manual read and `listedIds` to the fan-out)
+- `src/metrics.ts` (changed: R7 series)
+- `Dockerfile` (changed: `PULSE_NOTIFY_SUBSCRIPTIONS_HOST=0.0.0.0` next to the health host)
+- `test/subscriptions-store.test.ts`, `test/subscriptions-server.test.ts`,
+  `test/subscriptions-fanout.test.ts`, `test/subscriptions-settings.test.ts`,
+  `test/subscriptions-security.test.ts` (new)
+- `README.md`, `docs/configuration.md`, `docs/operation.md`, `docs/channels/email.md` (changed:
+  settings, the listener, known limits D-R1..D-R8, backup of the store)
+- `AGENTS.md` (changed: the new modules in "This repository"; the ledger line says format 4, not
+  3, as `src/ledger.ts:31` has)
+- `package.json`, `bun.lock` (changed: contract pin to the merged full SHA)
+
+Behavior change: yes. A new listener, store and subscriber mail when configured.
+
+Behavior: R3, R4, R5, R7. With `PULSE_NOTIFY_SUBSCRIPTIONS` unset, the service, its ledger, its
+channels, `failed list|resend`, `/healthz`, `/readyz` and `/metrics` behave exactly as on `main`.
+
+Shared finding: as in the status section, the wire texts are fixed by R1 and R4; a gap found by
+either child is a shared finding that the other reads first.
+
+Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkdtemp` stores):
+- Every "Notify listener", "Lifecycle and timing", "Eligibility and privacy" and "Fan-out failures"
+  counterexample, with the literal expected codes and send counts written in the test.
+- The acceptance tests that the issue names: (1) an unconfirmed address gets 0 incident sends while
+  a confirmed one gets 3 (opened, update, resolved) for the same incident; (2) after unsubscribe
+  the address gets 0 sends for a new incident while a second confirmed address gets 1; (3) a draft,
+  a draft update, a note and an internal incident in the api's private data (served by the fake
+  api only under `/admin`, not in `/manual-incidents`) produce 0 sends, and publishing the draft
+  produces exactly 1 per confirmed address.
+- The server tests start the real listener on `127.0.0.1:0` and type every answer with the contract
+  validators.
+- `test/subscriptions-security.test.ts`: the store file and its lock are mode `0600`; no log line
+  (captured logger) holds the address, a token, the key or the bearer token after a full flow with
+  a failing SMTP; the metric output holds no address; a confirmation and an incident message have
+  exactly one `To` address and no CR/LF in `Subject`.
+- Settings: each required variable missing → exit `2` naming it; a key of 63 or 65 hex
+  characters, or with upper case → error; `off` opens no file (the test passes a state directory
+  without write permission).
+- Existing suites stay green unchanged, also `test/ledger*.test.ts` (the ledger is not touched).
+- `bun run check` (`package.json:17`: lint, typecheck, test); lint `biome check . && pulse-eslint .
+  && pulse-workflows` (`package.json:14`); Biome `2.6.3` (`package.json:21`); `biome.json:2`
+  extends the shared config (`config/biome.json:10-17`, equal at pin `04108fa…`,
+  `package.json:22`); coverage `bunfig.toml:2-3`. CI `.github/workflows/ci.yml:18` uses
+  `check.yml@04108fa…` (install, lint, typecheck, test with Bun 1.4.0, `check.yml:24-38`, equal to
+  the clone), and the `docker` job builds the image (`ci.yml:20-40`).
+- `test_cpu_s` and the feature-on measurement per "Performance impact".
+- Once by hand: `bun run start` with subscriptions on, a local fake api and a local SMTP stub;
+  subscribe with `curl`, confirm with the token from the stub, create a manual incident in the fake
+  api; report the commands and that the stub received one confirmation and one incident message.
+
+Completion evidence: `bun run check` output; the measurements; the manual run; the contract SHA.
+
+## Repository: deploy
+
+Files:
+- `scripts/init-secrets.sh` (changed: `make_token subscriptions-token` and `make_token
+  subscriptions-key`, same format as today: 64 lowercase hex and a newline)
+- `scripts/init-secrets.test.sh` (changed: both files exist, mode `0600`, 64 hex, differ from
+  every other secret, are kept on a rerun, are never printed)
+- `scripts/secrets-init.mjs` (changed: `PULSE_SECRETS_SUBSCRIPTIONS`)
+- `scripts/secrets-init.test.sh` (changed)
+- `e2e/compose.subscriptions.yaml` (new, test only)
+- `e2e/subscriptions.sh` (new: the scenario)
+- `e2e/subscriptions.test.sh` (new: the scenario's parsing helpers on fixed mailpit answers, and
+  `docker compose ... config --quiet` of the overlay with both base files)
+- `e2e/compose-e2e.sh` (changed: the step "Email subscriptions" after "Console probe locations"
+  and before "Persistence across down and up", `e2e/compose-e2e.sh:1097-1121`)
+- `scripts/check-setup.sh`, `scripts/check-setup.test.sh` (changed: the overlay combinations
+  `e2e-subs` and `e2e-dev-subs` with their published ports, rule 5 at `check-setup.sh:74-91`)
+- `.github/workflows/ci.yml` (changed: a `lint` step `bash e2e/subscriptions.test.sh` after
+  `:55`; in `e2e-dev`, `grep -qx 'ok: email subscriptions' e2e-dev.log` after `:306`)
+- `README.md` (changed: secrets model, port table, e2e test)
+- `full/README.md` (changed: how to turn subscriptions on with an override file)
+
+Behavior change: yes. New secrets handling, a new CI requirement and test scenario.
+
+Behavior:
+- `secrets-init.mjs`, files mode, with `PULSE_SECRETS_SUBSCRIPTIONS`:
+  - unset or `off`: nothing new;
+  - `on`: read `/in/subscriptions-token` and `/in/subscriptions-key` with `readHostFile`; each must
+    be 64 lowercase hex after one trailing newline is dropped, and the two must differ from each
+    other and from every token and key read in this run, else fail with `<file>: <rule>` (the
+    pattern of `secrets-init.mjs:31-34`). `/out/status` and `/out/notify` must be directories, else
+    fail `/out/status: is not mounted`. All inputs are checked before the first write. Then write
+    `/out/status/subscriptions-token`, `/out/notify/subscriptions-token` and
+    `/out/notify/subscriptions-key` with `writeSecret` (`0400`, `1000:1000`);
+  - any other value: fail `PULSE_SECRETS_SUBSCRIPTIONS: must be on or off`;
+  - generate mode with `on`: fail `PULSE_SECRETS_SUBSCRIPTIONS: files mode only`.
+- `e2e/compose.subscriptions.yaml` (merged after the base file and `e2e/compose.e2e.yaml`, test
+  only, comment header like `e2e/compose.e2e.yaml:1-5`):
+  - `secrets-init`: `PULSE_SECRETS_SUBSCRIPTIONS: "on"` and the volumes
+    `status-secrets:/out/status`, `notify-secrets:/out/notify`;
+  - `mailpit`: `extends: { file: ../common/services.yaml, service: mailpit }`, port
+    `127.0.0.1:${PULSE_MAILPIT_PORT:-8025}:8025`, no other change;
+  - `status`: `PULSE_STATUS_SUBSCRIPTIONS_URL: http://notify:9300`,
+    `PULSE_STATUS_SUBSCRIPTIONS_TOKEN_FILE: /run/pulse/subscriptions-token`, volume
+    `status-secrets:/run/pulse:ro`, `depends_on` `secrets-init` completed and `notify` started;
+  - `notify`: `PULSE_NOTIFY_SUBSCRIPTIONS: "on"`,
+    `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL: http://status.e2e.invalid` (the value that
+    `e2e/compose.e2e.yaml` gives `PULSE_STATUS_PUBLIC_URL`),
+    `PULSE_NOTIFY_SUBSCRIPTIONS_FROM: pulse e2e <status@e2e.invalid>`,
+    `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_HOST: mailpit`, `..._SMTP_PORT: "1025"`,
+    `..._SMTP_TLS: none`, `..._TOKEN_FILE: /run/pulse/subscriptions-token`,
+    `..._KEY_FILE: /run/pulse/subscriptions-key`, `..._STATE: /data/notify-subscriptions.db`,
+    `PULSE_NOTIFY_RETRY_DELAY_MS: "500"`, volume `notify-secrets:/run/pulse:ro`, `depends_on`
+    `secrets-init` completed and `mailpit` started;
+  - top-level volumes `status-secrets`, `notify-secrets`.
+- `full/README.md` documents the same keys as an operator override, with a real SMTP server, TLS
+  `starttls` or `tls`, `PULSE_NOTIFY_SUBSCRIPTIONS_SMTP_PASSWORD_FILE` through a secrets volume,
+  `PULSE_STATUS_PUBLIC_URL` and `PULSE_NOTIFY_SUBSCRIPTIONS_STATUS_URL` set to the same public URL,
+  backups of the notify volume (D-R7), and that the console does not show subscribers.
+- The step "Email subscriptions" in `e2e/compose-e2e.sh`:
+  - `E2E_SETUP=full`: prints `skip: email subscriptions (published images)`;
+  - `dev`: runs `bash e2e/subscriptions.sh "$api_port" "$status_port"` with the admin token in
+    the environment, prints its output, fails when it fails, and the last line is
+    `ok: email subscriptions`.
+- `e2e/subscriptions.sh` (uses `COMPOSE_FILE=<base>:e2e/compose.e2e.yaml:e2e/compose.subscriptions.yaml`
+  for its own calls only; addresses `sub-a@e2e.invalid`, `sub-b@e2e.invalid`, `sub-c@e2e.invalid`
+  and marker strings are literals in the script):
+  1. `up -d mailpit`, wait for `GET /api/v1/messages` `200`, `DELETE /api/v1/messages`. Then
+     `up -d --force-recreate secrets-init status notify` and wait until both are healthy and
+     notify's `pulse_notify_polls_total{outcome="ok"}` grew.
+  2. `GET /` holds `id="subscribe"`, `action="/subscribe"` and `name="email"`; its CSP holds
+     `form-action 'self'`.
+  3. `POST /subscribe` for A (sent as `Sub-A@E2E.invalid`), B and C (form bodies) → `200` each.
+     Wait (bounded, `T_NOTIFY`) until mailpit has exactly one message to each of A, B, C whose
+     subject ends with `Confirm your subscription`, whose `To` has one address, and whose text
+     holds `http://status.e2e.invalid/subscribe/confirm?token=` and
+     `http://status.e2e.invalid/unsubscribe?token=`.
+  4. Repeat `POST /subscribe` for A → `200`. Then subscribe a fourth address D and wait for D's
+     confirmation (FIFO barrier); A still has exactly 1 message.
+  5. For A and C: take the path and query of the confirm link, `GET` it on
+     `127.0.0.1:<status port>` → `200` with a form; `POST /subscribe/confirm` with that token →
+     `200`. B and D stay pending.
+  6. Publish public manual incident P1 (`POST /manual-incidents`, title `e2e-sub-p1-5d2`), add
+     an update with message `e2e-sub-p1-upd-5d2`, resolve it. Wait until A and C each have the
+     three incident messages (subjects `New incident: e2e-sub-p1-5d2`, `Update: …`,
+     `Resolved: …`), each with one `To` address and a text that holds `/unsubscribe?token=`.
+     A's messages do not contain C's address and the other way round. B and D have exactly 1
+     message (the confirmation).
+  7. Private activity on the api's admin routes (as in `e2e/compose-e2e.sh:715-745`): draft D2
+     with marker `e2e-sub-draft-9a7`, internal incident I2 with `e2e-sub-internal-9a7` published,
+     public incident P2 (title `e2e-sub-p2-9a7`, its opened mail is expected) with a note
+     `e2e-sub-note-9a7` and a saved draft update `e2e-sub-dupd-9a7`. Each write must answer its
+     success code (positive control). Wait for P2's opened mail to A and C. Wait for two more good
+     notify polls and `pulse_notify_subscriber_events_pending 0`. Then mailpit search for each of
+     the four private markers returns 0 messages.
+  8. Publish P2's draft update → A and C each get exactly one message holding `e2e-sub-dupd-9a7`.
+     Publish D2 → A and C each get its `New incident` message. Resolve I2 through its draft and
+     publish (as at `:835-836`), then publish P3 `e2e-sub-p3-9a7` as barrier; when P3 arrived,
+     `e2e-sub-internal-9a7` still has 0 messages.
+  9. A: take the unsubscribe link of A's last message; `GET` → `200` with a form; `POST
+     /unsubscribe` → `200`; again → `200`. B: unsubscribe through its confirmation mail → `200`;
+     then `POST /subscribe/confirm` with B's old confirm token → `400`.
+  10. Publish P4 `e2e-sub-p4-9a7`; wait for C's message (barrier); A and B have 0 messages with
+      `e2e-sub-p4-9a7`.
+  11. `docker compose restart notify`; wait for a good poll; publish P5 `e2e-sub-p5-9a7`; wait for
+      C's message; C has exactly 1 message with `e2e-sub-p4-9a7` (no resend after restart).
+  12. Hostile requests: `POST /subscribe` with `email=a%40e2e.invalid%0D%0ABcc%3Ax%40e2e.invalid`
+      → `400`; with `Origin: https://evil.example` → `403`; from inside the status container,
+      `POST http://notify:9300/subscriptions` without a token → `401`.
+  13. `docker compose logs status notify` holds none of the four addresses, none of the tokens
+      taken from mail, and neither secret file's content.
+  14. Resolve the open e2e incidents, recreate status and notify with the regular two files
+      (`up -d --no-deps --force-recreate status notify`), stop and remove mailpit, and print
+      `ok: email subscriptions`.
+  Each `ok:` line names its literal expectation. Waits are bounded by the script's `T_*` timeouts;
+  every negative check runs only after a positive barrier of the same or a later event.
+- `README.md`: the two new secrets, the `PULSE_SECRETS_SUBSCRIPTIONS` switch, the mailpit port of
+  the subscription overlay in the port table, and the new scenario.
+- `scripts/check-setup.sh`: `compose_args` gets `e2e-subs` (`-f full/compose.yaml -f
+  e2e/compose.e2e.yaml -f e2e/compose.subscriptions.yaml`) and `e2e-dev-subs` (the same with
+  `dev/compose.yaml`). `expected_ports` for both is the `e2e` list plus
+  `mailpit 127.0.0.1 8025 8025`, written literally. The loop of `:92` runs over them too, so rule 8
+  (only a `*-secrets` volume at `/run/pulse`) covers the new status and notify mounts.
+  `check-setup.test.sh` gets one broken copy of the overlay with mailpit on `0.0.0.0` and expects
+  the rule 5 failure.
+
+Checks:
+- `bash scripts/secrets-init.test.sh` (Docker): `on` with valid inputs writes the three files
+  `0400` `1000:1000`; a missing input, a 63-character value, an upper-case value, equal values, a
+  value equal to the probe token, a missing `/out/status` each fail with the literal rule line and
+  write nothing; no output holds a value; `off` writes none of the files.
+- `bash scripts/init-secrets.test.sh`, `bash e2e/subscriptions.test.sh`,
+  `scripts/check-setup.sh`, `bash scripts/check-setup.test.sh`.
+- Shell lint, helper syntax and JSON syntax of the `lint` job (`ci.yml:34-40`, commands in
+  `deploy/AGENTS.md`, "Commands"), run from the repository root.
+- `E2E_SETUP=dev bash e2e/compose-e2e.sh` with sibling checkouts of the merged status and notify
+  `main` that contain the feature; the PR names the five service SHAs (the CI step
+  "Revisions of the service checkouts", `ci.yml` in the `e2e-dev` job) and pastes the
+  `ok: email subscriptions` line.
+- `bash e2e/compose-e2e.sh` (full) still passes and prints the skip line.
+- `bun run check` (`package.json:18`) stays green; the CLI is not changed. CI `ci.yml:17` uses
+  `check.yml@04108fa…` (equal to the clone). Biome does not check `scripts`, `e2e` or `full`
+  (`biome.json:12-20`).
+
+Completion evidence: the logs of the dev and full e2e runs with the service SHAs; the outputs of
+the listed test scripts.
+
+## Acceptance evidence (feature)
+
+The feature is done when all of these hold. Every expected value is a literal in the check.
+
+1. Notify tests (notify section): an unconfirmed address gets 0 incident sends while a confirmed
+   one gets 3; after unsubscribe 0 sends; a draft, a draft update, a note and an internal incident
+   give 0 sends, and publishing the draft gives 1 per confirmed address.
+2. Status tests: every status counterexample with its literal status code and notify call count.
+3. Contract tests: every address-rule row with its literal result.
+4. The `e2e-dev` CI run of deploy after the deploy PR shows the line `ok: email subscriptions`, with
+   mail read from mailpit; the line `ok: manual incident privacy` and every other existing `ok:`
+   line still appear.
+5. Every child's `bun run check` (and deploy's listed scripts) passes, and no budget of
+   `api/bench/budgets.json` is exceeded.
