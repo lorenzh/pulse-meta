@@ -35,7 +35,7 @@
         },
         {
           "command": "bun test src/subscribe-enumeration.test.ts",
-          "expected": "0 failing tests, with a fresh fake notify and status server per case, both K/U orders, comparing status/headers except date/body byte for byte for sub-k@e2e.invalid and sub-u@e2e.invalid. All nine notify outcomes in No enumeration, L8 timeout at 200 ms and L0 with 8 held calls give the same 200 answer; the 9th call is skipped. L7 gives the same 413 before lookup. Literal R2 text includes 24 hours and the configured contact link; no location, retry-after, set-cookie or etag. Bounded call handling and skipped-request logging once per minute reveal no address. Focused test results, not focused coverage exit status, prove this check."
+          "expected": "0 failing tests, with a fresh fake notify and status server per case, both K/U orders, comparing status/headers except date/body byte for byte for sub-k@e2e.invalid and sub-u@e2e.invalid. All nine notify outcomes in No enumeration, L8 timeout at 200 ms and L0 with 8 held calls give the same 200 answer; the 9th call is skipped. L7 gives the same 413 before lookup. Literal R2 text includes 24 hours and the configured contact link; no location, retry-after, set-cookie or etag. Bounded call handling and skipped-request logging once per minute reveal no address. Focused test results, not focused coverage exit status, prove this check. The configured operator contact is intentionally present; checks forbid submitted visitor addresses and do not reject the required contact link."
         },
         {
           "command": "bun test src/settings.test.ts src/subscribe-routes.test.ts",
@@ -43,7 +43,7 @@
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; repository lint, both TypeScript projects, all tests and 80% full-suite line coverage pass. Pin the merged contract full SHA, serve every runtime import from its new index.js, and pass the contract import-graph test. Document settings/routes, exact R9 sentence, notice/operator deletion duties and limits D-R3/D-R4/D-R9/D-R10. Applicable Security impact checklist covers auth/origin order, 2048/4096 byte limits, capped calls, escaped input, redirect refusal, token exception, secret-free logs/metrics and dependency pins."
+          "expected": "exit 0; repository lint, both TypeScript projects, all tests and 80% full-suite line coverage pass. Pin the merged contract full SHA, serve every runtime import from its new index.js, and pass the contract import-graph test. Document settings/routes, exact R9 sentence, notice/operator deletion duties and limits D-R3/D-R4/D-R9/D-R10. Applicable Security impact checklist covers auth/origin order, 2048/4096 byte limits, capped calls, escaped input, redirect refusal, token exception, secret-free logs/metrics and dependency pins. Keep the contact in the invariant subscribe answer so deploy steps 5a and 5b can compare identical pages below and at capacity."
         },
         {
           "command": "bun run check:a11y",

@@ -23,11 +23,11 @@
         "package.json"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1, R8 wire answer, R10 time constants, D13, Contract fields, Address rule counterexamples, Performance impact and applicable Security impact checks. One cohesive additive module and its exports; WIRE_VERSION stays 1.",
+      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1, R8 wire answer, R10 time constants, D13, Contract fields, Address rule counterexamples, Performance impact, applicable Security impact checks and Acceptance evidence items 3 and 5. One cohesive additive module and its exports; WIRE_VERSION stays 1.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions.test.ts",
-          "expected": "0 failing tests. Every Address rule counterexample has its literal result; local lengths 64/65 and total lengths 254/255 are checked. Validators preserve input identity, never throw, and reject missing/extra keys, wrong types and a 129-character token. Anchored flag-free token patterns reject length +/-1 and '+'. Constants equal 1024, 254, 86400000 and 3600000, and route/result literals match R1. Focused coverage can fail its gate; this check requires the test results, not exit 0."
+          "expected": "0 failing tests. Every Address rule counterexample has its literal result; local lengths 64/65 and total lengths 254/255 are checked. Validators preserve input identity, never throw, and reject missing/extra keys, wrong types and a 129-character token. Anchored flag-free token patterns reject length +/-1 and '+'. Constants equal 1024, 254, 86400000 and 3600000, and route/result literals match R1. Focused coverage can fail its gate; this check requires the test results, not exit 0. The wire subscribe answer is accepted for every valid normalized request; no membership-dependent result or 429 shape is introduced."
         },
         {
           "command": "bun run check",

@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Provision distinct subscription secrets through the existing secrets initializer",
+      "files": [
+        "scripts/init-secrets.sh",
+        "scripts/init-secrets.test.sh",
+        "scripts/secrets-init.mjs",
+        "scripts/secrets-init.test.sh",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, init-secrets and secrets-init behavior and their checks; D14, R3 secret formats and applicable Security impact atomic-write/secret-output requirements. Add and test the reusable files-mode switch before its Compose consumer in T2. Existing setups remain opt-in/off; document the new secrets and switch with their implementation.",
+      "acceptance": [
+        {
+          "command": "bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; subscriptions-token and subscriptions-key are regular files, each mode 0600 and exactly 64 lowercase hex characters plus one newline (65 bytes), in a 0700 directory. They differ from each other, probe-token, admin-token and console-secret-key. Every existing file is kept byte-for-byte on rerun; a missing secret is created independently. Captured output contains 0 secret values and planted-symlink protection still passes."
+        },
+        {
+          "command": "bash scripts/secrets-init.test.sh",
+          "expected": "exit 0 with Docker; PULSE_SECRETS_SUBSCRIPTIONS unset/off writes none of the three new outputs. Files mode on, with valid distinct inputs, writes /out/status/subscriptions-token, /out/notify/subscriptions-token and /out/notify/subscriptions-key, each mode 0400 and owner 1000:1000, through writeSecret. Missing/nonregular/symlink/unsafe-mode inputs retain readHostFile refusals. Missing input, 63-character value, uppercase value, equal subscription values, or equality to any other token/key read in the run fail with the literal file/rule line and write 0 files, including existing probe/admin/console outputs. Missing /out/status fails '/out/status: is not mounted'; require /out/notify too. Unknown switch fails 'PULSE_SECRETS_SUBSCRIPTIONS: must be on or off'; generate mode with on fails 'PULSE_SECRETS_SUBSCRIPTIONS: files mode only' before writes. No output contains a secret."
+        },
+        {
+          "command": "shellcheck -x scripts/init-secrets.sh scripts/init-secrets.test.sh scripts/secrets-init.test.sh",
+          "expected": "exit 0 from the repository root; existing shell conventions remain green."
+        },
+        {
+          "command": "bash -n scripts/init-secrets.sh && bash -n scripts/init-secrets.test.sh && bash -n scripts/secrets-init.test.sh",
+          "expected": "exit 0 for each of the three scripts; the final task also checks every tracked shell file individually as CI does."
+        },
+        {
+          "command": "node --check scripts/secrets-init.mjs",
+          "expected": "exit 0; existing files/generate modes remain syntactically valid without adding a package or changing an image pin."
+        },
+        {
+          "command": "scripts/check-setup.sh",
+          "expected": "exit 0; current full/minimal/demo/dev and both existing e2e combinations retain their ports, mounts, hardening and default disabled behavior. The new switch is not enabled in a regular setup."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint, typecheck, full CLI tests and 80% line coverage stay green. README documents the two secrets and the files-only PULSE_SECRETS_SUBSCRIPTIONS switch without showing a real value. The integration scenario and full acceptance evidence follow in T2."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "Prove visitor mail, membership-free responses, root hosting and deletion in Compose and CI",
+      "files": [
+        "e2e/compose.subscriptions.yaml",
+        "e2e/subscriptions.sh",
+        "e2e/subscriptions.test.sh",
+        "e2e/compose-e2e.sh",
+        "scripts/check-setup.sh",
+        "scripts/check-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "full/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, complete overlay, scenario steps 1-14 including 5a/5b/11a/12a, Barriers S1-S5, setup checks, CI, docs, all checks and completion evidence; D10/D14-D18, R8-R10, Rollout order, Security impact and Acceptance evidence items 4-8. Depends on T1 secrets and merged status/notify children. Keep the integrated scenario, helper tests, port/mount guards and CI enforcement together; do not split stages of the settle algorithm into tasks.",
+      "acceptance": [
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0; fixed mailpit fixtures test address/subject/text/link parsing and exact single-recipient To counts. Both full+e2e+subscriptions and dev+e2e+subscriptions run docker compose config --quiet successfully. Resolved overlay uses the existing common mailpit service, only its 127.0.0.1:8025:8025 published port, status/notify secret volumes, private notify:9300, root http://status.e2e.invalid, privacy@e2e.invalid contact, SMTP 1025/none and MAX=5 plus MAX_PENDING=5 explicitly. Expected settings/ports are literals from the spec, not values inferred from the overlay being checked."
+        },
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0 for the fixed-metrics settle tests: reject detections growth of only 1 after a write, events_pending stuck at 1, incident success delta 2 when expected 1, or any failure-counter growth; accept a replay meeting S2-S4 with both negative reads 0 and an extra committed detection between reads. S1 captures the counter after the last successful API write; S2 requires +2, S3 pending 0, S4 exact step delta and no failures, S5 expected mail plus two negative reads separated by another detection and pending 0. A timeout fails with safe metric values; neither another recipient's nor a later incident's mail substitutes for settlement."
+        },
+        {
+          "command": "bash e2e/subscriptions.test.sh",
+          "expected": "exit 0 for the fixed curl-header/body fixtures of steps 5a/5b: date-only differences pass; an extra 'retry-after: 60', status 200 versus 429, or a one-byte body difference fails. Visitor address sub-u@e2e.invalid, uppercase SUB-C@E2E.INVALID, missing contact, and the required contact next to other@e2e.invalid each fail. Equal pages containing only the literal <a href=\"mailto:privacy@e2e.invalid\">privacy@e2e.invalid</a> contact pass. Forbid all visitor addresses A-F and local parts sub-a through sub-f case-insensitively, and evil.example; require the contact link, remove every occurrence of that exact link, then reject any remaining @e2e.invalid text. The notice matcher passes the literal R10 page, fails deletion time changed from 25 hours to 24 hours, and fails a missing contact link."
+        },
+        {
+          "command": "scripts/check-setup.sh",
+          "expected": "exit 0; add e2e-subs and e2e-dev-subs using their respective base plus both overlays. Their exact port table is api 127.0.0.1 3000 3000, console 127.0.0.1 8082 8082, status - 8080 8080, mailpit 127.0.0.1 8025 8025. Include both combinations in all existing loop checks, including rule 8 for new *-secrets mounts at /run/pulse and the dev-image allowance of rule 2 for e2e-dev-subs. Every non-dev image still resolves from the common digest pin; no image pin is copied into the overlay or tests. No regular setup enables subscriptions or exposes port 9300."
+        },
+        {
+          "command": "bash scripts/check-setup.test.sh",
+          "expected": "exit 0; valid full/dev subscription combinations pass, while a broken copy publishing overlay mailpit on 0.0.0.0 is refused specifically by rule 5. All existing negative setup checks remain green."
+        },
+        {
+          "command": "bash scripts/init-secrets.test.sh && bash scripts/secrets-init.test.sh",
+          "expected": "exit 0; T1 secret-format, separation, permissions, rerun and validate-before-write checks still pass with the integrated overlay."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "exit 0 from the repository root, including the new staged subscriptions scripts; no shellcheck rule is weakened."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "exit 0 for every tracked shell file, including the new subscriptions scripts."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "exit 0; every helper passes syntax checks."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0; every tracked JSON file passes syntax checks."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/console-setup.test.sh && bash e2e/snippet.test.sh && bash e2e/dev-console-prefills.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh",
+          "expected": "exit 0; run every other existing test-script step of the touched lint job, alongside subscriptions.test.sh, static setup and secrets tests above. Existing helper/privacy/console behavior remains green."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; repository lint (including workflow checks), typecheck, full CLI suite and its 80% coverage gate pass; CLI behavior is unchanged. CI lint runs bash e2e/subscriptions.test.sh, and e2e-dev requires grep -qx 'ok: email subscriptions' e2e-dev.log in addition to its existing privacy and console lines; keep existing SHA-pinned actions and persist-credentials:false."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 using sibling merged main service checkouts containing the feature; final subscription line is exactly 'ok: email subscriptions', with all prior ok lines including 'ok: manual incident privacy' and 'ok: console probe locations'. Steps 1-5: real mailpit gives one confirmation each to A/B/C/D, repeat A sends 0 extra, confirmation success 4 and queued 0; only A/C confirm through GET form then POST. Step 2 finds id=subscribe, root action, email field, form-action 'self', all literal R10 notice sentences, 24/25 hours and the contact link. Steps 5a/5b complete within 300 s: below capacity A/D/E responses and full-capacity F/A/F/D responses match byte-for-byte, status 200 and all headers except date, also matching saved E. Each permits the required contact link while forbidding visitor addresses/local parts and evil.example. Below capacity confirmation success becomes 5, known delta 2 and queued delta 1; at capacity it stays 5, capacity-limited counter is exactly 2, F gets 0 mails on two reads separated by a detection. Every generated link uses the configured root origin despite forged Host/X-Forwarded-* headers. After each incident write group run settle S1-S5: steps 6/7/8/10/11/11a have exact incident-success deltas 6/2/4/1/1/0 and failure delta 0. Pending B/D/E get only confirmation, F nothing; private draft/note/internal markers have 0 messages on both settled reads; later publications send exactly the stated public messages to A/C, with only one recipient each and no cross-address leak. Step 9 unsubscribes A and pending B (repeat 200); B's old confirm returns 400. Step 10 P4 goes only to C; restart happens only after step 10 settled, resends 0, and P5 goes only to C. Step 11a stopped-service delete Sub-C prints 'deleted 1' then 'deleted 0', exits 0 without the address, restart resends 0 and P6 produces 0 mails while prior mail remains. Hostile address 400, cross-origin 403, unauthenticated private listener 401. Step 12a refuses /pulse and /pulse/ in status and /pulse in notify with exit 2 and the literal R9 lines before file/lock work; root deployment completes the full scenario and running services stay healthy. Log scan finds 0 addresses/tokens/secrets. Resolve fixtures, recreate regular status/notify with two base files, remove mailpit and restore the caller's Compose configuration before persistence checks."
+        },
+        {
+          "command": "bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on full published images; the new step prints exactly 'skip: email subscriptions (published images)', existing acceptance lines still appear, and published images never run the subscription scenario. The dev CI gate cannot accept this skip."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body includes dev/full e2e logs, the five exact service checkout SHAs printed by the existing CI revision step, the 'ok: email subscriptions' line, and all listed script/check outputs. Applicable Security impact evidence covers mode 0600 host and 0400 consumer secrets, distinct values, validation before writes, no secret output, private bearer listener/no published 9300, existing common mailpit digest, unchanged action pins and no CI secret. README updates secrets model, switch, mailpit overlay port and scenario; full/README has a real-SMTP/TLS/password-file override through secrets-init volumes, one PULSE_STATUS_PUBLIC_URL variable feeding both services, the exact R9 root-hosting sentence, required operator contact, stopped-service deletion procedure and stated backup retention limits D-R7/D-R11. Feature stays off in all regular setups and the console does not expose subscribers."
+        }
+      ]
+    }
+  ]
+}
