@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Export the additive subscription contract and retention constants",
+      "title": "Export subscription shapes, validators and shared retention constants",
       "files": [
         "src/subscriptions.ts",
         "src/validate-subscriptions.ts",
@@ -40,6 +40,10 @@
         {
           "command": "/usr/bin/time -f '%U %S' bun run test",
           "expected": "Per Performance impact, run five times on the starting main and five on the branch; report both median user+sys values and B - A in the PR, plus build_cpu_s per Performance impact. Branch test_cpu_s is no greater than the independent contract budget 9.0 s in api/bench/budgets.json; expected test/build increase is at most 0.2 s each."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run build",
+          "expected": "Record build_cpu_s as user + sys and the starting-main versus branch comparison in the PR per Performance impact; expected increase is at most 0.2 s. The expected comparison comes from the spec, not from generated dist."
         },
         {
           "command": "gh pr view --json body --jq .body",
