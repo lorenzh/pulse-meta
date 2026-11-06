@@ -1,8 +1,8 @@
 [
   {"name": "contract", "dependsOn": []},
   {"name": "api", "dependsOn": ["contract"]},
-  {"name": "status", "dependsOn": ["contract"]},
-  {"name": "notify", "dependsOn": ["contract"]},
   {"name": "console", "dependsOn": ["contract"]},
-  {"name": "deploy", "dependsOn": ["api", "status", "notify", "console"]}
+  {"name": "status", "dependsOn": ["contract", "api"]},
+  {"name": "notify", "dependsOn": ["contract", "api"]},
+  {"name": "deploy", "dependsOn": ["api", "console", "status", "notify"]}
 ]

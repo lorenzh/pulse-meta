@@ -30,6 +30,22 @@ and sends it in the running process.
      (R1, Contract fields);
   7. pin-specific tool citations in every section, and the explicit deploy CI wiring;
   8. file lists that mark every new file, with notify's tests in `test/`.
+
+  The second plan-review asked for six more corrections; this version makes them too:
+  1. every `requestId` the api answered is stored, so a retry after a lost `200` never creates a
+     second command (Decision 14, table `resend_requests`);
+  2. size limits that every valid value fits through end to end: a radius limit, a status
+     settings byte limit, a per-channel byte limit that fits the console form, admin views that
+     no longer copy the report, and report bodies limited at the api (Decisions 9, 12, R1, R3);
+  3. an executable measurement: contract measures its own CPU without the api harness; the api
+     harness simulates and counts the service traffic; status and notify measure after the api
+     is merged, on the same api on both sides, and a failed token creation fails the run
+     (Performance impact; status and notify now depend on api);
+  4. the status contract pin and the served contract module list change together (status
+     section);
+  5. a per-field live and precedence matrix for every exposed notify field (notify section);
+  6. one rule for a missing settings file and one capacity rule for resend commands, with the
+     counterexamples changed to match (Decisions 7, 14, Counterexamples).
 - #460, decision 7, and its amendment of 2 November (sections 2, 13, 19, 20), as quoted in the
   issue review. It is the authority on these points:
   - the console never writes service files;
@@ -268,9 +284,13 @@ and sends it in the running process.
 
 These decisions settle the open points of the issue review and the plan-review corrections.
 
-1. **One spec, six repository sections.** contract → api, status, notify, console (in parallel)
-   → deploy. Each of api, status, notify and console implements its own side of the HTTP
-   interface this spec defines.
+1. **One spec, six repository sections.** contract → api and console (in parallel) → status and
+   notify (in parallel, after api) → deploy. Each of api, status, notify and console implements
+   its own side of the HTTP interface this spec defines, and each builds and passes its checks
+   against a fake api. Status and notify wait for the merged api only because their performance
+   evidence needs it: an A/B run on the same api on both sides, with the bench harness and the
+   service routes of this feature (Performance impact). Without that wait, the B side of their
+   measurement would have no api that accepts their tokens.
 2. **Precedence.**
    - Status, per field: environment > status settings file > database > built-in default. An env
      variable counts as set when it is present and non-empty after trim (kit `readString`,
@@ -282,8 +302,10 @@ These decisions settle the open points of the issue review and the plan-review c
    - `notify_channels`: id, definition JSON, created and updated times.
    - `service_reports`: one row per service (`status`, `notify`), holding the last report and its
      receive time.
-   - `resend_commands`: id, request id, channel id, key, state, created, updated and claimed
-     times.
+   - `resend_commands`: id, request id (of the request that created it), channel id, key, state,
+     created, updated and claimed times.
+   - `resend_requests`: request id (primary key), command id, channel id, key and created time.
+     One row for every `requestId` the api answered with `200` or `202` (Decision 14).
    - `runtime_state`: one row with `status_generation` and `notify_generation`, both starting at 0.
 
    Each configuration resource has its own revision: `sha256-` + hex SHA-256 of
@@ -324,8 +346,16 @@ These decisions settle the open points of the issue review and the plan-review c
      When both the theme file and a `theme` key in the settings file are set, start fails with
      exit `2`.
    - Status re-reads the settings file and the theme file at each settings poll. A changed, valid
-     file applies live. An invalid or unreadable file keeps the last good values and is reported
-     as rejected. The env stays fixed for the life of the process.
+     file applies live. The env stays fixed for the life of the process.
+   - One rule for a file that cannot be used, whatever the cause (invalid JSON, a value outside
+     the rules, a read error, or a file that no longer exists): status keeps the last good values
+     of that file and reports `rejected` with `source: "file"` and a reason such as `settings
+     file: cannot read: ENOENT`. Deleting the file is therefore not a way to remove overrides.
+     An override is removed by removing its key from the file, or by writing `{}`: the database
+     value, else the default, then applies on the next poll.
+   - At start, a configured file that cannot be used fails the start, as an unreadable theme file
+     does today (`theme-config.ts:108-113`, thrown while the server is made at `server.ts:689`).
+   - The settings file is read with a limit of 1 048 576 bytes; a larger file cannot be used.
 8. **Status live apply.**
    - One effective snapshot carries name, logo, theme CSS, CSP, order and the four flags. It has a
      `fingerprint`: the first 16 hex characters of the SHA-256 of its canonical JSON.
@@ -339,13 +369,26 @@ These decisions settle the open points of the issue review and the plan-review c
      Filtering always uses the snapshot current at write time.
 9. **Status fields and their effect.**
    - `name`: string 1..60 characters (`STATUS_NAME_MAX`, today's `NAME_MAX`).
-   - `logoUrl`: a database or file value is an `https:` URL of at most 2048 characters, without
-     userinfo. A local logo file is only possible through `PULSE_STATUS_LOGO`, as today.
+   - `logoUrl`: a database or file value is an `https:` URL of at most 2048 printable ASCII
+     characters (`0x21`..`0x7e`, without `"`, `\`, `<` and `>`), without userinfo. A local logo
+     file is only possible through `PULSE_STATUS_LOGO`, as today.
    - `theme`: `{light?, dark?, "font-sans"?, "font-mono"?, "radius-sm"?, "radius-md"?,
-     "radius-pill"?}`. The keys and value rules are those of `src/theme-config.ts:6-54`. They are
-     merged per token, so a partial file theme leaves the other database tokens in force.
-   - `componentOrder`: 0..500 unique non-empty ids (`STATUS_COMPONENT_ORDER_MAX`), each at most
-     200 characters.
+     "radius-pill"?}`. The keys and value rules are those of `src/theme-config.ts:6-54`, with one
+     addition: a radius is at most 32 characters (`STATUS_RADIUS_MAX`). Today `RADIUS_RE`
+     (`theme-config.ts:41`) has no length limit, so an unbounded digit string would pass. The
+     limit applies to the database and to the settings file (both use the contract validator).
+     The legacy `PULSE_STATUS_THEME` file keeps today's rule, so no existing file breaks; such a
+     token reaches only the local snapshot, and its report `value` follows the 2 048-byte rule of
+     R1. Tokens are merged per token, so a partial file theme leaves the other database tokens in
+     force.
+   - `componentOrder`: 0..500 unique ids (`STATUS_COMPONENT_ORDER_MAX`), each matching the
+     contract component id rule: at most 64 characters of `^[a-z0-9][a-z0-9._-]*$`
+     (`MAX_COMPONENT_ID` and `COMPONENT_ID`, contract `src/schema.ts:776-797`). A list of ids that
+     no component can have is therefore refused by the contract already.
+   - Size: a whole `StatusSettings` document is at most 65 536 bytes as UTF-8
+     `JSON.stringify` (`STATUS_SETTINGS_MAX_BYTES`), checked by the contract validator. The
+     field rules already keep every valid document below about 40 000 bytes (R1, "Size
+     bounds"), so the byte limit only guards against a rule that a later change loosens.
      - Status orders components by their position in the list; unlisted components follow in
        upstream order. Groups then appear in order of their first component.
      - At save time the api refuses an id that is not a current component (`422`). Status ignores
@@ -380,7 +423,9 @@ These decisions settle the open points of the issue review and the plan-review c
     - Without a token, notify behaves exactly as today: the file is required and needs at least
       one channel.
     - Notify re-reads the channel file every 15 s by comparing a SHA-256 of its bytes. A changed,
-      valid file reconciles. An invalid file keeps the last good set and is reported.
+      valid file reconciles. A file that cannot be used, a deleted one included, keeps the last
+      good set and is reported, as for status (Decision 7). A file channel is removed by removing
+      it from the file.
 12. **Database channel shape and limits.** Types `webhook`, `slack`, `teams` and `email`. A
     database channel of type `file` is refused.
     - The routing fields are the existing ones and keep their existing rules.
@@ -397,14 +442,23 @@ These decisions settle the open points of the issue review and the plan-review c
     - The contract rejects these keys as unknown fields: literal `url`, `password` and `secret`.
     - Id: `^[a-z0-9][a-z0-9_-]{0,63}$`.
     - Per channel: every list has at most 200 entries and every string at most 200 characters;
-      references and `statusUrl` follow their own rules above.
+      references and `statusUrl` follow their own rules above. On top of that, one definition is
+      at most 16 384 bytes as UTF-8 `JSON.stringify(definition)`
+      (`NOTIFY_CHANNEL_DEFINITION_MAX_BYTES`), checked by the contract validator. The list rules
+      alone would allow a webhook with four 200 × 200-character routing lists (about 162 000
+      bytes), which no console form could carry. With the byte limit, the console channel form
+      of R3 (65 536 bytes) carries every valid definition: form encoding takes at most 3 bytes
+      per JSON byte (`%XX`), a list separator is at most 6 bytes (`%0D%0A`) against 3 in JSON
+      (`","`), and the field names, form token and revision add at most 8 192 bytes, so
+      3 × 16 384 + 8 192 = 57 344 ≤ 65 536.
     - Aggregate: at most 100 database channels (`NOTIFY_CHANNEL_MAX`), and the sum over all of
       them of the UTF-8 byte length of `JSON.stringify(definition)` is at most 262 144
-      (`NOTIFY_CHANNELS_MAX_BYTES`). The api refuses a create or replace that would exceed either
-      limit with `422`. With 100 × about 80 bytes for `createdAt`, `updatedAt` and separators, the
-      largest `GET /service/notify/channels` answer stays below 280 000 bytes, under the 1 048 576
-      limit of Decision 6. (Without this limit, 30 webhooks with one 200 × 200-character list each
-      would reach 1 220 399 bytes, as the plan-review computed.)
+      (`NOTIFY_CHANNELS_MAX_BYTES`). The api refuses a create or replace that would exceed any of
+      the three byte or count limits with `422`. With 100 × at most 120 bytes for `createdAt`,
+      `updatedAt`, `source` and separators, the largest `GET /service/notify/channels` answer is
+      at most 262 144 + 12 000 + 200 = 274 344 bytes, under the 1 048 576 limit of Decision 6.
+      (Without the aggregate limit, 30 webhooks with one 200 × 200-character list each would
+      reach 1 220 399 bytes, as the first plan-review computed.)
 13. **Notify reconcile.**
     - The effective set is the file channels plus the database channels whose id is not in the
       file. Each database channel is resolved on its own. A channel whose secret is missing,
@@ -432,18 +486,38 @@ These decisions settle the open points of the issue review and the plan-review c
     - **Create** (`POST /admin/notify/resends`, body `{channelId, key, requestId}`; `requestId`
       matches `^[A-Za-z0-9_-]{16,64}$` and the console creates it when it renders the button).
       The api checks in this order, in one transaction under the write lock:
-      1. a command with this `requestId` exists: same `channelId` and `key` → `200` with it;
-         different → `409` `requestId was used for another delivery`;
-      2. an open command for the same `(channelId, key)` exists → `200` with it;
+      1. a `resend_requests` row with this `requestId` exists:
+         - its `channelId` and `key` differ → `409` `requestId was used for another delivery`;
+         - its command still exists → `200` with that command, in whatever state it is now
+           (`failed` included);
+         - its command was deleted (by capacity, step 5, or by retention, because a reuse row can
+           be younger than its command) → `409` `the resend request was already handled; reload
+           the failed list`. The row's `command id` is therefore a plain column, with no foreign
+           key that would delete the row with its command.
+         No new command and no new row are made in any of these cases;
+      2. an open command for the same `(channelId, key)` exists → a `resend_requests` row
+         (`requestId` → that command) is inserted, then `200` with the command. When the
+         `resend_requests` table already holds 10 000 rows (step 5), the answer is that step's
+         `503` instead, and nothing is stored;
       3. the notify report is `stale` or `never` → `503` `pulse-notify has not reported recently`;
       4. the report's `failed` list holds no entry with this `(channelId, key)` → `409` `not a
          failed delivery`;
-      5. capacity: the table holds 1000 commands (`RESEND_COMMAND_MAX`) or more → the oldest
-         finished commands (by `updatedAt`) are deleted until 999 remain. When no finished command
-         can be deleted, the answer is `503` `too many open resend commands` with
-         `retry-after: 60`;
-      6. a new `queued` command with an api-made id (24 random base64url characters) → `202`, and
-         one audit row `notify-resend.create`.
+      5. capacity:
+         - the `resend_requests` table holds 10 000 rows (`RESEND_REQUEST_MAX`) → `503` `too many
+           resend requests` with `retry-after: 60`. Request rows are deleted only by retention
+           (7 days), never to make room;
+         - the `resend_commands` table holds 1000 commands (`RESEND_COMMAND_MAX`) → the single
+           oldest finished command (smallest `updatedAt`, then smallest `id`) is deleted, so 999
+           remain and the new command makes 1000 again. Its `resend_requests` rows stay; step 1
+           then answers `409` for them. When no command is finished, the answer is `503` `too
+           many open resend commands` with `retry-after: 60`;
+      6. a new `queued` command with an api-made id (24 random base64url characters) and its
+         `resend_requests` row → `202`, and one audit row `notify-resend.create`.
+      - Steps 2 and 6 store the `requestId` in the same transaction as the answer they give, so
+        every `requestId` that ever received `200` or `202` gets the same command again on a
+        retry, as long as its row exists (7 days; the console's form token, which carries the
+        `requestId`, lives 12 hours: console `src/form-tokens.ts:2`). A `503` or `409` of steps
+        3 to 5 stores nothing, and a retry is evaluated again from step 1.
     - **Claim** (`POST /service/notify/resends/claim`). One transaction: every `claimed` command
       with `claimedAt` at least 60 000 ms ago (`RESEND_CLAIM_TIMEOUT_MS`) goes back to `queued`;
       then up to 20 (`RESEND_CLAIM_MAX`) `queued` commands, oldest `createdAt` first, become
@@ -480,8 +554,9 @@ These decisions settle the open points of the issue review and the plan-review c
       - The existing ledger prune deletes a row whose `postedState` = `state`, whose `state` is
         finished, and whose `updatedAt` is more than 7 days old. No other rule deletes a row.
     - **Retention in the api.** The existing retention pass deletes every command whose
-      `createdAt` is more than 7 days old, in any state. Notify then gets `404` for a late result
-      and stops posting it.
+      `createdAt` is more than 7 days old (604 800 000 ms, `RESEND_RETENTION_MS`), in any state,
+      and every `resend_requests` row whose own `createdAt` is more than 7 days old. Notify then
+      gets `404` for a late result and stops posting it.
     - Notify's report carries the failed list (Decision 12 limits in R1). It never carries a
       payload or destination.
     - The delivery guarantee stays at least once. The webhook `idempotency-key` and the email
@@ -504,9 +579,9 @@ These decisions settle the open points of the issue review and the plan-review c
     | `POST /admin/notify/channels` | required, notify revision | `notify_generation` + 1 | `notify-channel.create` | `409` on an existing id |
     | `PUT /admin/notify/channels/:id` | required, notify revision | `notify_generation` + 1 | `notify-channel.replace` | `412` |
     | `DELETE /admin/notify/channels/:id` | required, notify revision | `notify_generation` + 1 | `notify-channel.delete` | `412`; then `404` |
-    | `POST /admin/notify/resends` | ignored | none | `notify-resend.create`, only on `202` | `requestId` (Decision 14) |
-    | `PUT /service/status/report` | ignored | none | none | whole replace, last write wins |
-    | `PUT /service/notify/report` | ignored | none | none | whole replace, last write wins |
+    | `POST /admin/notify/resends` | ignored | none | `notify-resend.create`, only on `202` | every answered `requestId` stored in `resend_requests` (Decision 14) |
+    | `PUT /service/status/report` | ignored | none | none | whole replace, last write wins; body at most 524 288 bytes |
+    | `PUT /service/notify/report` | ignored | none | none | whole replace, last write wins; body at most 524 288 bytes |
     | `POST /service/notify/resends/claim` | ignored | none | none | requeue and claim in one transaction |
     | `POST /service/notify/resends/:id/result` | ignored | none | none | the acknowledgement rules of Decision 14 |
 
@@ -526,10 +601,11 @@ These decisions settle the open points of the issue review and the plan-review c
 
 - contract: schemas and validators for the new shapes, two new scopes, new audit actions and
   kinds, new constants.
-- api: storage, admin routes, service routes, reports, the resend queue, audit; the bench option
-  and service-token fixtures for the A/B measurement.
+- api: storage, admin routes, service routes, reports, the resend queue, audit; the bench
+  options, the service-token fixture and the simulated service traffic for the A/B
+  measurements.
 - status: the new settings, the local settings file, token, poll, live apply, report, the poller
-  placeholder.
+  placeholder, the served contract modules.
 - notify: token, database-only mode, live reload and reconcile, webhook references, secret
   restrictions, live resend, ledger format 5, report.
 - console:
@@ -570,7 +646,9 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
     five font and radius keys;
   - the colour, font and radius keys move into the contract as exported constants
     (`STATUS_COLOR_KEYS`, `STATUS_FONT_KEYS`, `STATUS_RADIUS_KEYS`), so status and contract
-    share one list. Their values are the keys of status `src/theme-config.ts:6-29`, in that order.
+    share one list. Their values are the keys of status `src/theme-config.ts:6-29`, in that order;
+  - the whole document is at most `STATUS_SETTINGS_MAX_BYTES` (65 536) bytes as UTF-8
+    `JSON.stringify`, message `settings: must be at most 65536 bytes as JSON`.
 - **`ServiceStatusSettings`** (answer of `GET /service/status/settings`): `{revision: Revision,
   settings: StatusSettings}`.
 - **`StatusServiceReport`**:
@@ -580,7 +658,9 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
   - `field` is a dotted path: `name`, `logoUrl`, `theme.light.bg`, `theme.font-sans`,
     `componentOrder`, `showChecks`, …; at most 60 entries;
   - `via` is the env variable name or `"settings file"` / `"theme file"`;
-  - `value` is the local value, except for a local logo file path, which is left out;
+  - `value` is the local value, except for a local logo file path, which is left out. A value
+    whose JSON is over 2 048 bytes is left out too, except the `componentOrder` value, which its
+    own rule bounds (at most 500 × 67 bytes);
   - `reason` is at most 300 characters.
 - **`StatusServiceState`**: `{state: "fresh"|"stale"|"never", receivedAt: number|null, report:
   StatusServiceReport|null}`. `never` has `receivedAt: null` and `report: null`.
@@ -596,7 +676,7 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
   `refs` are the reference names (`SLACK_OPS`, `hook.txt`), never values. A file channel id longer
   than 200 characters is cut to 199 characters plus `…`; such an id cannot collide with a database
   id (at most 64 characters).
-- **`NotifyChannelView`**: `NotifyFileChannelView | (NotifyChannelRecord & {source: "database"})`.
+- **`NotifyDatabaseChannelView`**: `NotifyChannelRecord & {source: "database"}`.
 - **`NotifyRejectedChannel`**: `{channelId: string|null (1..200), reason (1..300)}`.
 - **`NotifyFailedDelivery`**: `{channelId (1..200), key (1..300), event: "opened"|"resolved"|
   "reminder"|"manual"|"warning", failedAt, hasPayload: boolean}`. A failed entry of a channel id
@@ -609,14 +689,18 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
     from all file ids, not only the 200 reported.
 - **`NotifyServiceState`**: `{state: "fresh"|"stale"|"never", receivedAt: number|null, report:
   NotifyServiceReport|null}`, with the same rules as `StatusServiceState`.
-- **Admin notify view** `AdminNotifyChannelsView`: `{revision, channels: NotifyChannelView[],
-  shadowed: NotifyChannelView[], service: NotifyServiceState}`.
-  - `channels` holds the reported file channels, then the unshadowed database channels in
-    creation order.
-  - `shadowed` holds the database channels whose id is in the last report's `shadowedIds` (a stale
-    report included).
-- **`AdminNotifyFailedView`**: `{service: NotifyServiceState, failed: NotifyFailedDelivery[],
-  failedTotal}`; `failed` is `[]` and `failedTotal` 0 with no report.
+- **Admin notify view** `AdminNotifyChannelsView`: `{revision, channels: NotifyDatabaseChannelView[],
+  shadowed: NotifyDatabaseChannelView[], service: NotifyServiceState}`, where
+  `NotifyDatabaseChannelView` is `NotifyChannelRecord & {source: "database"}`.
+  - `channels` holds the unshadowed database channels in creation order; `shadowed` holds the
+    database channels whose id is in the last report's `shadowedIds` (a stale report included).
+    Each database channel is in exactly one of the two.
+  - The file channels are not copied into the view: the console reads them from
+    `service.report.fileChannels`. So the view holds each reported byte once (the size bounds
+    below).
+- **`AdminNotifyFailedView`**: `{state: "fresh"|"stale"|"never", receivedAt: number|null, failed:
+  NotifyFailedDelivery[], failedTotal}`, taken from the last report; `failed` is `[]` and
+  `failedTotal` 0 with no report. It does not carry the rest of the report.
 - **Resend**:
   - `ResendRequest`: `{channelId (1..200), key (1..300), requestId}`.
   - `ResendCommandState`: the ten states of Decision 14, exported as `RESEND_COMMAND_STATES`.
@@ -626,11 +710,36 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
   - `ResendResultInput`: `{state}` with an admission or a final outcome; `queued` and `claimed`
     are refused.
 - **Report size.** A service never sends a report whose JSON is over 524 288 bytes
-  (`SERVICE_REPORT_MAX_BYTES`). Notify leaves out entries from the end of `failed`, then of
-  `fileChannels`, until it fits; the totals stay. Status leaves out the `value` of the
-  `componentOrder` lock, then of the other locks. With the counts above, a report of plain ASCII
-  values stays below 450 000 bytes, so the trimming applies only to escaped characters. The
-  largest admin notify view is then under 262 144 + 524 288 + 20 000 bytes, below the api's 1 MiB.
+  (`SERVICE_REPORT_MAX_BYTES`), and the api's two report routes refuse a larger body with `413`
+  (R2), so a stored report is never larger. Notify leaves out entries from the end of `failed`,
+  then of `fileChannels`, then of `rejected`, until it fits; the totals stay. Status leaves out
+  the `value` of the `componentOrder` lock, then of the other locks.
+- **Size bounds.** Every bound below is UTF-8 bytes of `JSON.stringify`; a string character is at
+  most 6 bytes in JSON (`\u00XX`), and at most 1 byte for the ASCII-only rules named.
+  - `StatusSettings`: `name` 60 × 6 = 360; `logoUrl` 2 048 (printable ASCII, Decision 9) plus
+    its key, about 2 060; 40 colours of at most 9 characters with their keys, about 1 240; two
+    fonts of 200 characters, where only `"` needs escaping (2 bytes), about 840; three radii of
+    32 characters, about 156; `componentOrder` 500 ids of at most 64 ASCII characters, quoted and
+    separated, 500 × 67 + 20 = 33 520; four flags and the remaining keys, about 200. Sum: below
+    40 000, so `STATUS_SETTINGS_MAX_BYTES` (65 536) never refuses a document that the field rules
+    accept.
+  - `ServiceStatusSettings`: settings + revision (71) + keys, at most 65 536 + 120 = 65 656.
+  - `StatusServiceReport`: the `componentOrder` lock at most 33 502 + 130; 59 other locks at most
+    2 048 + 130 each (128 502); `rejected` at most 1 800 + 60; the rest about 200. Sum: at most
+    164 224, so status never needs to trim; the rule stays as a guard.
+  - `AdminStatusSettingsView`: 65 536 + 524 288 (the stored report limit) + 300 = 590 124.
+  - `ServiceNotifyChannels`: 274 344 (Decision 12).
+  - `NotifyServiceReport`: with plain ASCII values, 200 file views of at most 1 478 bytes
+    (295 600), 200 failed entries of at most 610 (122 000), 100 shadowed ids (6 700) and 100
+    rejected entries of at most 540 (54 000), plus about 200: 478 500, below 524 288. Escaped
+    characters can exceed it; then the trimming applies.
+  - `AdminNotifyChannelsView`: the database records once, in `channels` or in `shadowed`
+    (274 344), plus the stored report (524 288), plus about 300: at most 798 932.
+  - `AdminNotifyFailedView`: at most the stored report, 524 288 + 100.
+  - `ResendClaimResponse`: 20 commands of at most 24 + 1 200 + 1 800 + 64 + 150 bytes: at most
+    64 760.
+  - All of them are below the 1 048 576 limit with which status and notify read service answers
+    (Decision 6), and below the console's read limit (5 MiB, contract `src/client.ts:7`).
 - **Tokens**: `TOKEN_SCOPES` gains `status` and `notify`, in that order after `probe`. The rule
   "probe must be the only scope" becomes "probe, status and notify must each be the only scope",
   with the message `"<scope> must be the only scope"`. A location is allowed only for `probe`.
@@ -639,25 +748,26 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
 ### R2 Api routes
 
 All new routes answer `405` with `Allow` for other methods. Bodies are JSON within 1 MiB (`413`
-beyond). Decision 16 says which routes need `If-Match`: there it is `428` when missing, `400` when
+beyond), except the two report routes, whose limit is `SERVICE_REPORT_MAX_BYTES` (524 288;
+`413` beyond). Decision 16 says which routes need `If-Match`: there it is `428` when missing, `400` when
 malformed, `412` `the settings changed: reload them and retry` when stale, and the success answer
 carries the new `etag`.
 
 | Method and path | Token | Answer |
 | --- | --- | --- |
 | `GET /admin/status/settings` | `admin` | `200` `AdminStatusSettingsView`, `etag` |
-| `PUT /admin/status/settings` | `admin` | body `StatusSettings`; `200` view; `422` invalid or unknown component id |
+| `PUT /admin/status/settings` | `admin` | body `StatusSettings`; `200` view; `422` invalid, over 65 536 bytes, or unknown component id |
 | `GET /admin/notify/channels` | `admin` | `200` `AdminNotifyChannelsView`, `etag` |
-| `POST /admin/notify/channels` | `admin` | `201` and `location`; `409` id exists in the database or in the last report's `fileChannels` ids; `422` invalid, over 100 channels or over 262 144 bytes in total |
-| `PUT /admin/notify/channels/:id` | `admin` | `200`; `400` body id ≠ path id; `409` shadowed (only delete allowed); `422` invalid or over 262 144 bytes; `404` unknown |
+| `POST /admin/notify/channels` | `admin` | `201` and `location`; `409` id exists in the database or in the last report's `fileChannels` ids; `422` invalid, over 16 384 bytes, over 100 channels or over 262 144 bytes in total |
+| `PUT /admin/notify/channels/:id` | `admin` | `200`; `400` body id ≠ path id; `409` shadowed (only delete allowed); `422` invalid, over 16 384 bytes or over 262 144 bytes in total; `404` unknown |
 | `DELETE /admin/notify/channels/:id` | `admin` | `204`; works on a shadowed copy; `404` unknown |
 | `GET /admin/notify/failed` | `admin` | `200` `AdminNotifyFailedView` |
 | `POST /admin/notify/resends` | `admin` | Decision 14: `202`; `200` for a repeat or an open command; `409`; `503` |
 | `GET /admin/notify/resends/:id` | `admin` | `200` `ResendCommand`; `404` |
 | `GET /service/status/settings` | `status` | `200` `ServiceStatusSettings` with `etag`; `304` on a matching `If-None-Match` |
-| `PUT /service/status/report` | `status` | body `StatusServiceReport`; `204`; `422` invalid |
+| `PUT /service/status/report` | `status` | body `StatusServiceReport`; `204`; `413` over 524 288 bytes; `422` invalid |
 | `GET /service/notify/channels` | `notify` | `200` `ServiceNotifyChannels` with `etag`; `304` |
-| `PUT /service/notify/report` | `notify` | body `NotifyServiceReport`; `204`; `422` invalid |
+| `PUT /service/notify/report` | `notify` | body `NotifyServiceReport`; `204`; `413` over 524 288 bytes; `422` invalid |
 | `POST /service/notify/resends/claim` | `notify` | `200` `ResendClaimResponse` |
 | `POST /service/notify/resends/:id/result` | `notify` | `204`; `409`; `404`; `422` (Decision 14) |
 
@@ -715,6 +825,21 @@ carries the new `etag`.
     `412`, form tokens are used.
   - Token rejected, old api (`404` on `/admin/status/settings`), offline service (stale report),
     apply-rejected, `422` over a channel limit, and `503` on resend each have a state.
+  - Form limits (`maxFormBytes` of the protected route, console `src/protected-route.ts:59-60`;
+    the default `MAX_FORM_BYTES` is 8192, `src/forms.ts:4`):
+    - status form 65 536 bytes (`MAX_STATUS_FORM_BYTES`). The largest form of a valid
+      `StatusSettings` is below 47 000 bytes: name 60 characters of at most 4 UTF-8 bytes, each
+      encoded as `%XX` (720); logo URL 2 048 × 3 (6 144); 40 colour fields of about 31 bytes
+      (1 240); two fonts of 200 × 3 + 20 (1 240); three radii (150); four switches (100); 500
+      order fields `order=<id>&` of at most 71 bytes, because component ids use only characters
+      that form encoding leaves as they are (35 500); form token, CSRF token, revision and action
+      (1 000). The order control lists at most 500 ids; further components follow in upstream
+      order (Decision 9);
+    - channel form 65 536 bytes (`MAX_CHANNEL_FORM_BYTES`), which carries every definition of at
+      most 16 384 bytes (Decision 12: at most 57 344);
+    - delete and resend forms keep 8192.
+  - The notifications list takes the file channels from `service.report.fileChannels` of the
+    admin view (R1), and the database channels from `channels` and `shadowed`.
 
 ## Risks
 
@@ -739,6 +864,11 @@ carries the new `etag`.
 - **Notify test CPU.** notify's `test_cpu_s` budget is 3.4 s with a B median of about 3.1 s
   (`bench/README.md:122`). New notify tests must use fake timers and reuse servers; see
   Performance impact.
+- **status and notify wait for the api merge.** This serializes them behind the api (Decision 1)
+  for their performance evidence only. Mitigation: their builds and checks use a fake api, so
+  nothing else waits; console runs in parallel with the api.
+- **The resend request table grows with retries.** Mitigation: 10 000 rows and 7 days, with a
+  `503` instead of deleting a row that a retry may still need (Decision 14).
 - **Full/dev `PULSE_STATUS_SHOW_CHECKS=true` locks show checks.** This is intended and documented;
   the E2E checks an unlocked field as well.
 
@@ -747,14 +877,14 @@ carries the new `etag`.
 Metrics of api `bench/budgets.json` that the change can move, with direction and size:
 
 - **api** (`api` section):
-  - `startup_cpu_ms` (gating, 325): + under 5 ms on a normal start (five more tables exist in the
+  - `startup_cpu_ms` (gating, 325): + under 5 ms on a normal start (six more tables exist in the
     seed). The first start after the upgrade runs migration step 9 on an existing file: + under
     10 ms, measured with `cold-read.ts --seed-with` (below), reported, not gating.
   - `startup_wall_ms` (reported): the same.
   - `idle_rss_mib` (gating, 88): + under 1 MiB.
-  - `load_cpu_s` (gating, 28.1): + under 0.1 s. In the 60 s window, B with the loops on gets
-    about 4 status settings reads, 4 notify channel reads, 12 claims and 2 to 4 reports: about 22
-    small requests next to the about 2 600 of the load.
+  - `load_cpu_s` (gating, 28.1): + under 0.1 s. In the 60 s window, B with the simulated service
+    traffic (procedure 2 below) gets at least 4 status settings reads, 4 notify channel reads, 12
+    claims and 2 reports: about 22 small requests next to the about 2 600 of the load.
   - `peak_rss_mib`, `p95_*`, `rps`, `cold_*`, `eod_*`: none expected; the read paths do not change.
   - `test_cpu_s` (gating, 5.6, floor 1.6): + up to 0.5 s for the new suites.
   - `image_mb` (reported): none; no new package.
@@ -780,28 +910,93 @@ Metrics of api `bench/budgets.json` that the change can move, with direction and
 - **kit, config, probe**: none; they do not change.
 - **console, deploy**: not in `bench/budgets.json`; none expected beyond the new pages.
 
-How the implementers measure (all runs from a checkout of the api that has the harness change of
-the api section: the api branch before it merges, `main` after):
+How the implementers measure. Three procedures, so that no measurement waits for code that is
+not merged yet:
 
-- The api section adds `--b-ref <repo>=<ref>` (repeatable, any repository but the api) to
-  `bench/run.ts` and `bench/refs.ts`: it sets only that repository's B side, and every other rule
-  stays.
-- The api section gives the bench stack an admin tokens file and creates a `status` and a
-  `notify` token after the api is ready, plus one status settings document and five database
-  webhook channels. A side whose api refuses the new scopes runs without tokens and logs
-  `service tokens: not available on <side>`. So side A (old code) has the loops off and side B
-  (new code) has them on.
-- Commands, with full SHAs:
-  - api: `bun bench/run.ts --a <api main> --b <api branch>`;
-  - status: `bun bench/run.ts --a <api main> --b <api with the feature> --b-ref status=<status branch>`;
-  - notify: `bun bench/run.ts --a <api main> --b <api with the feature> --b-ref notify=<notify branch>`;
-  - contract: `bun bench/run.ts --a <api main> --b <api main> --b-ref contract=<contract branch>`
-    (only the contract rows matter);
-  - migration on upgrade: `bun bench/cold-read.ts --api <api branch worktree> --seed-with <api
-    main worktree>`.
-  - A local run may use `--rounds 1`; the PR says so and pastes the table.
-- Shared finding: the first child that runs a measurement records the api ref that has the
-  harness option and the command it used. The others read it before they measure.
+1. **contract, before it merges (no api harness needed).** The bench measures `test_cpu_s` and
+   `build_cpu_s` as user + system CPU of `bun run test` and `bun run build` and their waited
+   children (`bench/measure.ts:47`, `:68-70`; `bench/run.ts:161-171`). The contract child
+   measures the same quantity with bash's `time` keyword, which reports the user and system
+   time of the command and its waited children:
+
+   ```sh
+   git worktree add ../contract-a <merge base with main>   # A
+   # B is the branch checkout; run `bun install --frozen-lockfile` in both
+   TIMEFORMAT='%3U %3S'
+   for round in 1 2 3 4 5; do
+     for side in a b; do
+       dir=.; [ "$side" = a ] && dir=../contract-a
+       (cd "$dir" && { time bun run test >/dev/null 2>&1; } 2>>"/tmp/contract-test-$side")
+       (cd "$dir" && { time bun run build >/dev/null 2>&1; } 2>>"/tmp/contract-build-$side")
+     done
+   done
+   ```
+
+   Per side and metric the value of a round is user + system; the result is the median of the
+   five rounds (the 3rd smallest), as `bench/README.md:79` defines it. The PR shows the ten raw
+   values per metric, both medians, and the verdict by the bench rule: `FAIL regression` when
+   B − A > max(A × 10 %, floor), with the contract `test_cpu_s` floor 2 s and the default `s`
+   floor 0.2 s for `build_cpu_s` (`bench/README.md:89-90`, `:114`), and `FAIL budget` above
+   9.0 s and 6.4 s. `bun run build` rewrites `dist/`; the PR's committed `dist/` is the one of
+   the last B build, and `git diff --exit-code -- dist` must pass afterwards.
+2. **api, before it merges: simulated service traffic.** The api section adds two options to
+   `bench/run.ts`:
+   - `--simulate-services`: after the api of a side is ready, the harness creates a `status` and
+     a `notify` token with the bench admin token, PUTs one status settings document and creates
+     five database webhook channels (`bench/runtime-fixture.ts`). During the 60 s load window it
+     then sends, from the harness process, the traffic that status and notify will send:
+     `GET /service/status/settings` every 15 s and `PUT /service/status/report` every 60 s;
+     `GET /service/notify/channels` every 15 s, `POST /service/notify/resends/claim` every 5 s
+     and `PUT /service/notify/report` every 60 s (`bench/runtime-traffic.ts`). The real status and
+     notify containers get no token.
+   - Answers of the token creation:
+     - side B: `201` for both tokens is required; any other answer is a harness error (exit
+       `2`, `service tokens: <status> on b`). There is no silent fallback on B;
+     - side A: `201` turns the simulation on for A too. A `400` whose error starts with
+       `scopes` (an api without the new scopes, `src/token-routes.ts:232-233`) turns it off for
+       A, with the log line `service traffic: not available on a`. Any other answer on A is a
+       harness error (exit `2`).
+   - Observed traffic: every simulated request must answer `200`, `204` or `304`, else exit
+     `2`. At the end of the window each side with the simulation on must have counted at least
+     4 status settings reads, 4 channel reads, 12 claims and 2 reports (literals; one report of
+     each service at the window start and one at its end), else exit `2` `service traffic not
+     observed on <side>`. The run logs `service traffic (<side>): <n> status reads, <n>
+     channel reads, <n> claims, <n> reports`.
+   - Command: `bun bench/run.ts --a <api main SHA> --b <api branch SHA> --simulate-services`.
+   - Migration on upgrade: `bun bench/cold-read.ts --api <api branch worktree> --seed-with <api
+     main worktree>` (an existing tool, `bench/README.md:54`).
+3. **status and notify, after the api merged: the real services with tokens.** The api section
+   adds two more options:
+   - `--b-ref <repo>=<ref>` (repeatable, any repository but the api): it sets only that
+     repository's B side; every other rule of `bench/refs.ts:48-71` stays;
+   - `--service-tokens`: the harness creates the two tokens and the fixture of procedure 2
+     after the api is ready and before probe, status and notify start (`bench/stack.ts:198-199`),
+     writes the token secrets to `<run dir>/service-tokens/{status,notify}` and passes them as
+     `PULSE_STATUS_API_TOKEN_FILE` and `PULSE_NOTIFY_API_TOKEN_FILE` to the real containers on
+     both sides. Any answer but `201` on either side is a harness error (exit `2`): both sides
+     run the same api, so a refusal can only be a fault;
+   - `--expect-report <status|notify>` (repeatable): after the load window, the harness reads
+     `GET /admin/status/settings` or `GET /admin/notify/channels` with the admin token. On side
+     B, `service.state` must be `"fresh"` and `service.report.appliedRevision` must equal
+     `revision`, else exit `2` `<service> report not observed on b`. On side A the state is only
+     logged: A runs the newest `v*` tag of that service, which ignores the token variable, so
+     its loops are off;
+   - `--simulate-services` together with `--service-tokens` is a usage error (exit `2`).
+   - Commands, with the merged api SHA on both sides:
+     - status: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --b-ref status=<status
+       branch SHA> --service-tokens --expect-report status`;
+     - notify: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --b-ref notify=<notify
+       branch SHA> --service-tokens --expect-report notify`.
+   - So A and B differ only in the status (or notify) code, and B is proven to have polled,
+     applied and reported.
+
+- A local run may use `--rounds 1`; the PR says so and pastes the table.
+- This is why status and notify depend on api in `targets.json`: procedure 3 needs the merged
+  api with the routes and the options. Their builds and checks do not need it.
+- Shared finding: the api child records the exact commands it ran and any deviation. The status
+  and notify children read it before they measure, and use api `main` at their start as the api
+  SHA on both sides (they are started only after the api merged). The contract child records its
+  raw values.
 
 ## Security impact
 
@@ -821,10 +1016,11 @@ Checklist items that apply:
   the other service's routes. Console Owner-only, checked on every route and again just before the
   write (`writeGuardProblem`).
 - **Body and size limits.**
-  - Every new api route: 1 MiB. Channels: 100 and 262 144 bytes in total. Reports: 524 288 bytes
-    on the sending side, 1 MiB at the api.
-  - The console forms: `MAX_FORM_BYTES` 8192 for resend and delete, and 65536 for the status and
-    channel forms.
+  - Every new api route: 1 MiB, except the report routes: 524 288 bytes (`413`). Status
+    settings: 65 536 bytes. Channels: 16 384 bytes each, 100 and 262 144 bytes in total. Resend:
+    1000 commands and 10 000 request rows.
+  - The console forms: `MAX_FORM_BYTES` 8192 for resend and delete, and 65 536 for the status and
+    channel forms, which every valid value fits (R3).
   - Service answers: 1 048 576 bytes in status and notify.
 - **Input validation.** Contract validators at the api edge and again in status and notify. Ref
   patterns, secret directory basename rules, and no database `file` channel.
@@ -845,7 +1041,9 @@ Checklist items that apply:
 1. **contract `2.4.0`.** Additive: new modules and validators, two new scopes, new audit values.
    - Older consumers stay on their pins: api `c4a2eb5`, status and notify `9ab7e24`, console
      `66818a24`. Nothing changes for them until they move.
-2. **api, status, notify, console** in any order, each with the contract pin `2.4.0`.
+2. **api and console** in either order, each with the contract pin `2.4.0`. Then **status and
+   notify** in either order, after the api merged (their performance evidence needs it, Decision
+   1), each with the contract pin `2.4.0`. Each step leaves the others' older versions working:
    - api: older status and notify send no token and call no `/service/*` route, so they keep
      working on public reads. The older console (contract `66818a24`) works until someone creates
      a `status` or `notify` token. Then its Tokens and Probes lists show "pulse-api sent an
@@ -853,7 +1051,12 @@ Checklist items that apply:
      service tokens.
    - status and notify without a token behave as today. With a token against an api without the
      routes, the settings read gets `404`: status runs on env and file, and notify on its file.
-     Both log once that the api has no runtime settings.
+     Both log once that the api has no runtime settings. Because status and notify merge after
+     the api, the released order never has a new service against an old api; the `404` rule
+     covers an operator who runs a new image against an older api.
+   - An older status serves the contract modules of its own pin, so its browser module list
+     (`server.ts:189-206`) still matches. The new status serves the four new modules of
+     `2.4.0` (status section).
    - The console against an older api: `/status-page` and `/notifications` show the "old api"
      state.
    - A format-5 notify ledger is refused by an older notify (`ledger.ts:670-690`). The notify docs
@@ -874,22 +1077,53 @@ Checklist items that apply:
   - Theme file sets only `light.accent=#112233`, and the database sets `light.accent=#445566` and
     `light.bg=#ffffff`: the CSS has `--accent:#112233` and `--bg:#ffffff`.
 - **Reset:** the database has `name: "Acme"`, and a PUT without `name` gives `"pulse status"` (the
-  default) on the next poll. A settings file with `name: "Local"` is then removed: the retained
-  database value shows again; with no database value, the default.
+  default) on the next poll.
+  - The settings file holds `{"name": "Local"}` and the database `name: "Acme"`: the page shows
+    `Local`. The file is rewritten as `{}`: on the next poll the page shows `Acme`. With no
+    database value it shows `pulse status`.
+  - The same file is deleted instead: the page still shows `Local` (the last good file values),
+    and the report has `rejected: {source: "file", reason: "settings file: cannot read: ENOENT"}`
+    (Decision 7). A wrong implementation that treats a missing file as `{}` shows `Acme`.
+  - The file is put back with `{}`: the next poll shows `Acme`, and `rejected` is `null`.
 - **Notify whole channel:** file channel `ops` (slack, `urlEnv: SLACK_OPS`) and database `ops`
   (webhook, `urlEnv: PULSE_NOTIFY_SECRET_HOOK`, `checks: ["api*"]`). The effective `ops` is the
   slack channel with the file routing. The webhook URL is never used, and the database copy is
   listed under `shadowed` because the report's `shadowedIds` holds `ops`.
 - **Create collisions:** `POST` of id `ops` while the report lists file `ops`: `409`. `POST` of
   `Ops` (upper case): `422` id pattern. `POST` of the 101st channel: `422`.
-- **Aggregate size:** database channels whose definitions sum to exactly 262 144 bytes: the last
-  create is `201`. One more byte (a 1-character longer string): `422`. Thirty webhooks with one
-  200 × 200-character `checks` list each (about 41 000 bytes per write): the 7th create is `422`,
-  so `GET /service/notify/channels` never exceeds 1 048 576 bytes.
+- **Channel size:**
+  - One definition of exactly 16 384 bytes: `201`. One more character in a routing string:
+    `422` `channel: must be at most 16384 bytes as JSON`.
+  - A webhook with four routing lists of 200 strings of 200 characters each (about 162 000
+    bytes), which the per-list rules alone accept: `422`. A wrong implementation without the
+    per-channel limit stores it, and then the console cannot render or post it within 65 536
+    bytes.
+  - Database channels whose definitions sum to exactly 262 144 bytes (sixteen of 16 384): the
+    last create is `201`. A 17th channel of 1 byte more than the remaining room: `422`
+    `channels: must be at most 262144 bytes as JSON in total`.
+  - A replace that grows a channel past the aggregate is `422`, and one that keeps the total at
+    262 144 is `200` (the candidate replaces its old version in the sum).
+  - The largest console channel form, built from a 16 384-byte definition of 3-byte characters
+    (each `%XX%XX%XX` in the form): at most 57 344 bytes, accepted by the 65 536 limit.
+- **Settings size:**
+  - A radius `"1" × 31 + "px"` (33 characters): `422` `theme.radius-sm: must be at most 32
+    characters`. Today's status theme file accepts it (`theme-config.ts:41`), and the legacy theme
+    file still does.
+  - The largest valid `StatusSettings` (every field at its limit, 500 order ids of 64
+    characters): below 40 000 bytes, accepted; its service answer below 65 656 bytes; its console
+    form below 47 000 bytes. The expected limits are the literals of R1 and R3.
+  - A `componentOrder` id of 65 characters, or one with an upper-case letter: `422`
+    (`MAX_COMPONENT_ID`, `COMPONENT_ID`).
+  - A `logoUrl` with a space or a non-ASCII character: `422`.
+- **Admin view size:** a stored notify report of 524 288 bytes plus 262 144 bytes of database
+  channels: `GET /admin/notify/channels` is at most 798 932 bytes, and the report's file channels
+  appear in it once. A wrong implementation that also copies them into `channels` exceeds
+  1 048 576 bytes with escaped ids.
 - **Report size:** a notify report with 200 file channels of 200-character ids made of `"`
   (escaped to 2 bytes each), 6 refs of 200 characters each and 200 failed entries: notify trims
   `failed`, then `fileChannels`, to at most 524 288 bytes, keeps `failedTotal` and
-  `fileChannelsTotal`, and the api answers `204`, not `413`.
+  `fileChannelsTotal`, and the api answers `204`, not `413`. A report body of 524 289 bytes sent
+  directly to the api: `413`, and the stored report is unchanged.
 - **References:**
   - `urlEnv: "PULSE_API_TOKEN"` or `"PULSE_NOTIFY_API_TOKEN"`: `422`, wrong prefix.
   - `urlFile: "../api/token"`, `"a/b"`, `"."`: `422`.
@@ -924,10 +1158,23 @@ Checklist items that apply:
     `200`, one audit row, one claim, one receiver hit.
   - The same `requestId` with another `key`: `409` `requestId was used for another delivery`.
   - Two different `requestId`s while the first is `queued`, `claimed` or `admitted`: `200` with
-    the first command.
+    the first command, and `resend_requests` then holds both ids for it.
+  - Lost `200` after reuse (the second plan-review's sequence): request A gets `202` (command
+    `C`). Request B, with another `requestId`, gets `200` with `C`, but the answer is lost. `C`
+    ends `failed`, and the report lists the delivery as failed again. B is retried with the same
+    `requestId`: `200` with `C` in state `failed`; the command count stays 1, no claim returns a
+    new command, and the receiver gets no extra request. A wrong implementation that stores only
+    the creating `requestId` answers `202` with a second command.
+  - A retry of a `requestId` whose command was deleted by the capacity rule: `409` `the resend
+    request was already handled; reload the failed list`, and no command is made.
   - 1000 commands, all open: the next create is `503` `too many open resend commands` with
-    `retry-after: 60`. 1000 commands of which 3 are finished: the 3 oldest finished go, and the
-    create is `202`.
+    `retry-after: 60`, and nothing is stored.
+  - 1000 commands of which 3 are finished, with `updatedAt` 10, 20 and 30: the one with
+    `updatedAt` 10 is deleted, the create is `202`, the table holds 1000 commands, and the two
+    others stay. A wrong implementation that deletes all finished commands leaves 998.
+  - 10 000 `resend_requests` rows, all younger than 7 days: a new `requestId` is `503` `too many
+    resend requests`, also when it would reuse an open command. A row 604 800 001 ms old is
+    deleted by retention; one 604 800 000 ms old is kept.
   - Lost admission answer: notify executes, stores `admitted`, and its post times out. The api
     requeues after 60 000 ms, notify claims again, finds the row, and posts `admitted`: `204`. No
     second send.
@@ -964,7 +1211,7 @@ Every name below gave **0** hits, except where a count is given:
 
 - Types: `StatusSettings`, `StatusTheme`, `ServiceStatusSettings`, `StatusServiceReport`,
   `StatusLockedField`, `StatusServiceState`, `AdminStatusSettingsView`, `NotifyChannelDefinition`,
-  `NotifyChannelRecord`, `ServiceNotifyChannels`, `NotifyFileChannelView`, `NotifyChannelView`,
+  `NotifyChannelRecord`, `ServiceNotifyChannels`, `NotifyFileChannelView`, `NotifyDatabaseChannelView`,
   `NotifyRejectedChannel`, `NotifyFailedDelivery`, `NotifyServiceReport`, `NotifyServiceState`,
   `AdminNotifyChannelsView`, `AdminNotifyFailedView`, `ResendRequest`, `ResendCommand`,
   `ResendCommandState`, `ResendClaimResponse`, `ResendResultInput`.
@@ -979,7 +1226,9 @@ Every name below gave **0** hits, except where a count is given:
   `NOTIFY_CHANNEL_MAX` (100), `NOTIFY_CHANNELS_MAX_BYTES` (262144), `NOTIFY_FAILED_REPORT_MAX`
   (200), `NOTIFY_FILE_CHANNEL_REPORT_MAX` (200), `SERVICE_REPORT_MAX_BYTES` (524288),
   `SERVICE_REPORT_STALE_MS` (180000), `RESEND_CLAIM_MAX` (20), `RESEND_CLAIM_TIMEOUT_MS` (60000),
-  `RESEND_COMMAND_MAX` (1000), `RESEND_COMMAND_STATES`.
+  `RESEND_COMMAND_MAX` (1000), `RESEND_COMMAND_STATES`, `STATUS_RADIUS_MAX` (32),
+  `STATUS_SETTINGS_MAX_BYTES` (65536), `NOTIFY_CHANNEL_DEFINITION_MAX_BYTES` (16384),
+  `RESEND_REQUEST_MAX` (10000), `RESEND_RETENTION_MS` (604800000).
 - Fields: `showLatency`, `showSlos`, `showChecks`, `hideDetails`, `componentOrder`, `logoUrl`,
   `requestId`, `appliedRevision`, `startedAt`, `receivedAt`, `locked`, `via`, `fileChannels`,
   `fileChannelsTotal`, `shadowedIds`, `failedTotal`, `failedAt`, `hasPayload`, `channelId`,
@@ -998,6 +1247,14 @@ Every name below gave **0** hits, except where a count is given:
 - Routes and paths: `/service/`, `/admin/status`, `/admin/notify`, `page-settings`,
   `data-settings`.
 - Permission names (api only): `runtime-admin`, `status-service`, `notify-service`.
+- Api table `resend_requests`: 0 hits in the contract and config clones, and 0 in
+  `.repos/api/src` (`grep -rn resend_requests .repos/api/src | wc -l`).
+- Api bench names: `--b-ref`, `--simulate-services`, `--service-tokens`, `--expect-report`,
+  `runtime-fixture`, `runtime-traffic`: 0 hits each in `.repos/api/bench` and
+  `.repos/api/package.json` (`grep -rn -- '<name>' .repos/api/bench .repos/api/package.json | wc
+  -l`).
+- Console constants: `MAX_STATUS_FORM_BYTES`, `MAX_CHANNEL_FORM_BYTES`: 0 hits in
+  `.repos/console/src` and in the contract and config clones.
 - Env: `PULSE_STATUS_SETTINGS_FILE`, `PULSE_STATUS_SHOW_LATENCY`, `PULSE_STATUS_SHOW_SLOS`,
   `PULSE_STATUS_API_TOKEN` (also covers `PULSE_STATUS_API_TOKEN_FILE`),
   `PULSE_STATUS_SETTINGS_POLL_MS`, `PULSE_NOTIFY_API_TOKEN` (also covers `_FILE`),
@@ -1029,7 +1286,7 @@ New names in one list:
   - `/notifications`, `/notifications/new`, `/notifications/edit`, `/notifications/delete`,
     `/notifications/failed`, `/notifications/resend`.
 - Console `NavId`s: `status-page`, `notifications`.
-- Bench option (api): `--b-ref`.
+- Bench options (api): `--b-ref`, `--simulate-services`, `--service-tokens`, `--expect-report`.
 
 ## Repository: contract
 
@@ -1060,9 +1317,12 @@ Behavior: R1 exactly.
 - Database channels refuse `type: "file"` with `type: must be one of "webhook", "slack", "teams",
   "email"`.
 - The file view accepts `file` too.
-- The channel validators check one definition. The aggregate byte limit is a constant that the
-  api applies over all channels; the contract exports it and documents the measure (UTF-8 bytes of
+- The channel validators check one definition, including its 16 384-byte limit
+  (`NOTIFY_CHANNEL_DEFINITION_MAX_BYTES`). The aggregate byte limit is a constant that the api
+  applies over all channels; the contract exports it and documents the measure (UTF-8 bytes of
   `JSON.stringify(definition)`).
+- The `StatusSettings` validator checks the radius limit (32), the `componentOrder` id rule of
+  `schema.ts:776-797`, the printable-ASCII `logoUrl` rule and the 65 536-byte document limit.
 - `ResendResultInput` refuses `queued` and `claimed`.
 
 Checks (tests in `test/`, as the existing suites):
@@ -1081,7 +1341,11 @@ Checks (tests in `test/`, as the existing suites):
   - `status` with a location;
   - a report with 201 failed entries, 201 file channels or 101 shadowed ids;
   - a `ResendResultInput` with `queued`;
-  - a `NotifyServiceState` with `state: "never"` and a non-null report.
+  - a `NotifyServiceState` with `state: "never"` and a non-null report;
+  - a 33-character radius, a 65-character order id, a `logoUrl` with a space;
+  - a channel definition of 16 384 bytes (accepted) and of 16 385 bytes (refused), built in the
+    test from literal lengths;
+  - an `AdminNotifyChannelsView` with a file view in `channels` (refused: only database views).
 - `tokenMetadataSchema` accepts a `notify` token. Older scope lists stay valid.
 - The audit entry `notify-channel.create` with kind `notify-channel` is accepted. The same action
   with kind `check` is rejected.
@@ -1108,43 +1372,50 @@ Tool facts (contract `ebf6bbc`):
   and test (`check.yml:25-38`).
 
 Completion evidence: `bun run check` output; `git diff --exit-code -- dist` after `bun run
-build`; the new tests fail on `ebf6bbc` (missing exports) and pass after; the bench rows for
-contract `test_cpu_s` and `build_cpu_s` from the command in Performance impact (a shared finding,
-see there).
+build`; the new tests fail on `ebf6bbc` (missing exports) and pass after; the contract CPU A/B of
+Performance impact, procedure 1 (ten raw values per metric, the medians and the verdict against
+`test_cpu_s` 9.0 s and `build_cpu_s` 6.4 s). It needs no api change, so it is done before the
+contract merges.
 
 ## Repository: api
 
 Files:
 - `src/migrations.ts` (changed: step 9 with `status_settings`, `notify_channels`,
-  `service_reports`, `resend_commands`, `runtime_state`)
-- `src/runtime-store.ts` (new: SQL of the five tables, generations, revisions, aggregate size)
+  `service_reports`, `resend_commands`, `resend_requests`, `runtime_state`)
+- `src/runtime-store.ts` (new: SQL of the six tables, generations, revisions, per-channel and
+  aggregate size)
 - `src/status-settings-routes.ts` (new: admin and service status routes, report)
 - `src/notify-channel-routes.ts` (new: admin and service channel routes, report, failed view)
-- `src/resend-routes.ts` (new: resend create, read, claim, results, requeue)
+- `src/resend-routes.ts` (new: resend create with the `resend_requests` lookup, read, claim,
+  results, requeue)
 - `src/token-scopes.ts` (changed: permissions `runtime-admin`, `status-service`,
   `notify-service`; `canGrant` for `status`/`notify`)
 - `src/admin-routes.ts`, `src/admin-auth-failures.ts` (changed: dispatch of the new admin
   sections; a service token on `/admin/*` is `403`)
 - `src/server.ts` (changed: `/service/*` dispatch before the read paths, `routeOf` labels,
   `ADMIN_ROUTE`)
-- `src/retention.ts`, `src/start.ts`, `src/main.ts` (changed: resend command retention, wiring)
+- `src/retention.ts`, `src/start.ts`, `src/main.ts` (changed: retention of resend commands and
+  resend requests, wiring)
 - tests, new: `src/runtime-store.test.ts`, `src/server.status-settings.test.ts`,
   `src/server.notify-channels.test.ts`, `src/server.resend.test.ts`,
   `src/server.service-auth.test.ts`
 - tests, changed: `src/db.migrations.test.ts` (step 9), `src/token-scopes.test.ts`,
   `src/server.allow.test.ts`, `src/server.scopes.test.ts`, `src/retention.test.ts`,
   `src/backup.test.ts`
-- bench, changed: `bench/refs.ts`, `bench/run.ts` (`--b-ref`), `bench/stack.ts` (admin tokens
-  file, service tokens, runtime fixture), `bench/fixtures.ts` (admin tokens file),
-  `bench/compose.bench.yaml` (api `PULSE_API_ADMIN_TOKENS_FILE`; status
-  `PULSE_STATUS_API_TOKEN_FILE: ${BENCH_STATUS_TOKEN_FILE:-}`; notify
-  `PULSE_NOTIFY_API_TOKEN_FILE: ${BENCH_NOTIFY_TOKEN_FILE:-}` and
-  `PULSE_NOTIFY_SECRET_BENCH`; a read-only `service-tokens` mount), `bench/selftest/check-refs.ts`,
-  `bench/README.md`
-- bench, new: `bench/runtime-fixture.ts` (token creation and the settings and channel fixture,
-  with injected `fetch`), `bench/selftest/check-runtime-fixture.ts`
-- `package.json` (changed: contract pin to the merged `2.4.0` SHA; `bench:selftest` gains
-  `check-runtime-fixture.ts`), `bun.lock` (changed)
+- bench, changed: `bench/refs.ts` (`--b-ref`), `bench/run.ts` (`--b-ref`,
+  `--simulate-services`, `--service-tokens`, `--expect-report`), `bench/stack.ts` (admin tokens
+  file; fixture between the api start and the other services; traffic during the window; report
+  check after it), `bench/fixtures.ts` (admin tokens file), `bench/compose.bench.yaml` (api
+  `PULSE_API_ADMIN_TOKENS_FILE`; status `PULSE_STATUS_API_TOKEN_FILE:
+  ${BENCH_STATUS_TOKEN_FILE:-}`; notify `PULSE_NOTIFY_API_TOKEN_FILE:
+  ${BENCH_NOTIFY_TOKEN_FILE:-}` and `PULSE_NOTIFY_SECRET_BENCH`; a read-only `service-tokens`
+  mount), `bench/selftest/check-refs.ts`, `bench/README.md`
+- bench, new: `bench/runtime-fixture.ts` (token creation with the per-side answer rules, the
+  settings and channel fixture, the report check; injected `fetch`), `bench/runtime-traffic.ts`
+  (the simulated service traffic and its counts; injected `fetch` and timers),
+  `bench/selftest/check-runtime-fixture.ts`, `bench/selftest/check-runtime-traffic.ts`
+- `package.json` (changed: contract pin to the merged `2.4.0` SHA; `bench:selftest`
+  (`package.json:18`) gains the two new self-tests), `bun.lock` (changed)
 - `README.md`, `docs/rest-api.md`, `docs/operation.md`, `docs/configuration.md` (changed)
 
 Behavior change: yes. New tables, routes, scopes, audit actions and bench options.
@@ -1155,21 +1426,34 @@ Behavior: Decisions 3, 4, 5, 12, 14, 15 and 16, and R2.
   contract patterns.
 - `GET /admin/notify/channels` computes `shadowed` from the last report's `shadowedIds`, even a
   stale one. With no report at all, `shadowed` is `[]` and `service.state` is `"never"`.
-- The create collision check uses the ids of the last report's `fileChannels`.
+- The create collision check uses the ids of the last report's `fileChannels`. A file id that
+  the report left out (beyond 200) cannot be checked; such a database channel is shadowed by
+  notify after its create and then shows under `shadowed`.
+- The report routes read their body with the 524 288-byte limit (`413` beyond), so a stored
+  report never exceeds it, and the admin views stay within the R1 size bounds.
+- A resend create inserts its `resend_requests` row in the same transaction as the answer
+  (Decision 14 steps 2 and 6).
 - The aggregate byte limit is computed over the stored definitions with the candidate in place
   of its old version.
-- Bench:
+- Bench, as Performance impact procedures 2 and 3 define it:
   - `--b-ref <repo>=<ref>` may repeat; an unknown repository, `api`, or a repeated repository
     exits `2` with a usage line. `--others-ref` still pins both sides; `--b-ref` then overrides B.
   - The admin tokens file holds one fixed bench admin token of at least 32 characters
     (`src/admin-tokens.ts:8-16`).
-  - After the api is ready, `bench/runtime-fixture.ts` posts the two service tokens. On `201` it
-    writes the secrets to `<run dir>/service-tokens/{status,notify}` (mode 0644, the containers'
-    `bun` user reads them) and sets `BENCH_STATUS_TOKEN_FILE` and `BENCH_NOTIFY_TOKEN_FILE`. Then
-    it PUTs one status settings document (`name`, `showLatency: false`) and creates five webhook
-    channels (`urlEnv: PULSE_NOTIFY_SECRET_BENCH`, `checks: ["c0"]`). Any other answer to the
-    token create leaves both variables empty and logs `service tokens: not available on <side>`.
-  - Status and notify then start as today, after the api (`bench/stack.ts:198-199`).
+  - Without `--simulate-services` and `--service-tokens`, nothing changes: no token is created,
+    both token variables are empty, and the run is today's run.
+  - With either option, `bench/runtime-fixture.ts` posts the two service tokens after the api is
+    ready, with the answer rules per side of procedure 2 (`--simulate-services`) or procedure 3
+    (`--service-tokens`). After `201` it PUTs one status settings document (`name`,
+    `showLatency: false`) and creates five webhook channels (`urlEnv: PULSE_NOTIFY_SECRET_BENCH`,
+    `checks: ["c0"]`); any other answer to these writes is a harness error (exit `2`).
+  - With `--service-tokens` it writes the secrets to `<run dir>/service-tokens/{status,notify}`
+    (mode 0644, so the containers' `bun` user reads them) and sets `BENCH_STATUS_TOKEN_FILE` and
+    `BENCH_NOTIFY_TOKEN_FILE` before status and notify start (`bench/stack.ts:198-199`).
+  - With `--simulate-services`, `bench/runtime-traffic.ts` sends the traffic of procedure 2
+    during the window, checks every answer, and fails the run unless it counted at least 4, 4, 12
+    and 2 requests.
+  - With `--expect-report`, the report check of procedure 3 runs after the window.
   - `docker compose -f bench/compose.bench.yaml config --quiet` still passes with the defaults.
 
 Checks (real server at `127.0.0.1:0`, `mkdtemp` database, injected `now`):
@@ -1187,21 +1471,40 @@ Checks (real server at `127.0.0.1:0`, `mkdtemp` database, injected `now`):
   check write does not stale a status save.
 - The create collision with a report file id gives `409`. A shadowed PUT gives `409`, a shadowed
   DELETE `204`, a PUT of an unknown id `404`.
-- Limits: the 101st channel and the byte boundary of Counterexamples (262 144 accepted, 262 145
-  refused), with literal sizes built in the test.
+- Limits, with literal sizes built in the test: the 101st channel; the aggregate boundary
+  (262 144 accepted, one byte more refused); one definition of 16 384 bytes accepted and 16 385
+  refused; the four-list webhook of Counterexamples refused; a status settings document of the
+  largest valid size accepted and one of 65 537 bytes refused; a report body of 524 289 bytes
+  `413` with the stored report unchanged.
+- Serialized answers, measured in the test with `Buffer.byteLength` of the body: with a stored
+  report of 524 288 bytes and 262 144 bytes of channels, `GET /admin/notify/channels` is at most
+  798 932 bytes and holds no file view outside `service.report`; `GET /service/notify/channels`
+  is at most 274 344 bytes; `GET /service/status/settings` of the largest valid settings is at
+  most 65 656 bytes. The limits are the literals of R1.
 - Resend: every Counterexample under "Resend" that touches the api, with a fake clock: idempotency,
-  `requestId` conflict, open-command reuse for each open state, `503` stale (180 001 ms) and fresh
-  (180 000 ms), `409` not failed, the 1000-command capacity both ways, requeue at 60 000 ms and
-  not at 59 999 ms, every row of the acknowledgement rules (`204` or `409`), retention at 7 days.
+  `requestId` conflict, open-command reuse for each open state, the lost `200` after reuse (a
+  second command must not appear; literal command count `1`), the `409` for a request whose
+  command was deleted, `503` stale (180 001 ms) and fresh (180 000 ms), `409` not failed, the
+  1000-command capacity both ways (all open: `503`; three finished: exactly one deleted, count
+  `1000`), the 10 000-request `503`, requeue at 60 000 ms and not at 59 999 ms, every row of the
+  acknowledgement rules (`204` or `409`), retention of commands and requests at 604 800 000 ms
+  (kept) and 604 800 001 ms (deleted).
 - Migration: a step-8 file with checks, tokens, incidents and windows opens at version 9 with all
   rows kept. A backup holds the new tables.
 - Audit rows for each configuration write and for a `202` resend hold the action, kind and target
   id, and no settings value; a `200` resend and every service route write no audit row. A
   sentinel reference name `PULSE_NOTIFY_SECRET_SENTINEL` appears in no audit row and no log line.
-- Bench self-tests: `check-refs.ts` covers `--b-ref status=x` (A status = tag, B status = `x`,
-  every other repository unchanged), with `--others-ref`, and the refusals; `check-runtime-fixture.ts`
-  covers `201` (files written, variables set) and `422` (variables empty, log line) with a fake
-  `fetch`.
+- Bench self-tests (literal expectations, fake `fetch` and timers):
+  - `check-refs.ts`: `--b-ref status=x` gives A status = tag and B status = `x`, every other
+    repository unchanged; with `--others-ref`; the refusals (`api`, unknown, repeated);
+  - `check-runtime-fixture.ts`: `--service-tokens` with `201` on both sides writes both files and
+    sets both variables; `--service-tokens` with `400` on A is exit `2`;
+    `--simulate-services` with `400` `scopes: …` on A turns A off with the log line, and with
+    `400` on B, `500` on A, or `401` on A is exit `2`; `--expect-report` with a `stale` B report
+    is exit `2`, with a `fresh` but unapplied B report exit `2`, with a `never` A report a log
+    line only; both options together are exit `2`;
+  - `check-runtime-traffic.ts`: in a fake 60 s window it sends 4, 4, 12 and 2 requests; one
+    `500` answer is exit `2`; a count of 11 claims is exit `2`.
 - Expected codes and texts are the literals of R2 and Decision 14.
 - The tests fail on `4b3e9b1` (routes `404`) and pass after.
 
@@ -1224,209 +1527,18 @@ Tool facts (api `4b3e9b1`):
   image (`:35-53`).
 
 Completion evidence: `bun run check` and `bun run bench:selftest` output; the api A/B table of
-Performance impact and the `cold-read.ts --seed-with` output; one manual run with `bun start`, an
-admin token and a `status` token:
+Performance impact procedure 2 (`--simulate-services`) with its `service traffic (b): …` log line,
+and the `cold-read.ts --seed-with` output; one manual run with `bun start`, an admin token and a
+`status` token:
 
 ```sh
 curl -X PUT /admin/status/settings
 curl /service/status/settings
 ```
 
-The output goes in the PR. Shared finding: record the api ref that has `--b-ref` and the runtime
-fixture, so status, notify and contract can measure.
-
-## Repository: status
-
-Files:
-- `src/settings.ts` (changed: new env names and token; "set" recorded per field)
-- `src/runtime-settings.ts` (new: precedence merge of env, file and database into the effective
-  snapshot, fingerprint, locked list, report trimming)
-- `src/settings-poll.ts` (new: poll of `/service/status/settings`, re-read of local files, report)
-- `src/theme-config.ts` (changed: keys from the contract constants; CSS from a snapshot)
-- `src/server.ts` (changed: snapshot in place of fixed options: CSS, CSP, logo, wordmark, flags;
-  readiness `settings not loaded`; `/page-settings.json`)
-- `src/answer-cache.ts`, `src/http-cache.ts` (changed: fingerprint in the key and the ETag;
-  in-flight rule)
-- `src/api-filter.ts`, `src/hidden-checks.ts` (changed: `showLatency`, `showSlos` filtering)
-- `src/poller.ts` (changed: `latencyMs: 0` placeholder in `fillLocations`, validated copy only)
-- `src/render.ts` (changed: no latency label for a result without `latencyMs`)
-- `src/components-view.ts` (changed: order)
-- `src/sections.ts`, `src/component-latency.ts` (changed: latency and SLO switches)
-- `public/client.js` (changed: fingerprint poll and one reload)
-- `src/start.ts`, `src/main.ts` (changed: wiring)
-- tests, new: `src/runtime-settings.test.ts`, `src/settings-poll.test.ts`,
-  `src/server.runtime-settings.test.ts`
-- tests, changed: `src/poller.test.ts`, `src/render.test.ts`, `src/api-filter.test.ts`,
-  `src/server.privacy.test.ts`, `src/server.cache.test.ts`, `src/answer-cache.test.ts`,
-  `src/http-cache.test.ts`, `src/components-view.test.ts`, `src/settings.test.ts`,
-  `src/theme-config.test.ts`, `src/main.startup.test.ts`
-- `e2e/run.ts` (changed: browser convergence and the `showLatency:false` refresh)
-- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md`, `docs/configuration.md`, `docs/theming.md`, `docs/operation.md` (changed)
-
-Behavior change: yes. New settings, live apply and new routes.
-
-Behavior: Decisions 2 and 5–10, and the report size rule of R1.
-- Without a token, the database layer is empty and nothing is reported. The status settings file
-  and the new env names still work.
-- Without either, the effective settings equal today's.
-- The report goes to `PUT /service/status/report` after every apply attempt and at least every
-  60 s.
-- `poller.ts` is a browser module (`AGENTS.md`, "This repository"); the placeholder change stays
-  free of `node:` imports.
-- `docs/operation.md` names the full/dev `PULSE_STATUS_SHOW_CHECKS` lock.
-- Empty `PULSE_STATUS_API_TOKEN_FILE` (as the bench passes on side A) means not set
-  (kit `readString`).
-
-Checks (fake api on `127.0.0.1:0`, fake clock and timers):
-- A per-field matrix covers name, `logoUrl`, each theme token group (one colour per mode, one
-  font, one radius), `componentOrder`, and each of the four flags in both directions. For each
-  field:
-  - the database value applies after one poll without a new server;
-  - an env value, or a file value, wins and appears in `locked`;
-  - removing the file key brings back the database value;
-  - clearing the database key brings back the default.
-- The Counterexamples' precedence, theme merge, order, visibility and in-flight cases. The
-  expected values are literals.
-- Poller (`src/poller.test.ts`): a `/api/checks` body with one check whose
-  `locations[0].result` has no `latencyMs` refreshes with no error state, and the returned check
-  has no `latencyMs` key. The same body on `8b6d431` fails with the path
-  `checks[0].locations[0].result.latencyMs`.
-- Render: `renderLatency` of that check returns `""`.
-- CSP `img-src` follows a new `logoUrl` origin.
-- `/theme.css` changes its body and ETag after a theme change.
-- `/page-settings.json` changes.
-- Bad answers keep the last good snapshot and report `rejected`, then recover on the next good
-  poll:
-  - a `200` with an invalid body;
-  - a body over 1 048 576 bytes;
-  - a wire mismatch;
-  - an api timeout;
-  - an invalid settings file.
-- `404` from an older api: the database layer is empty and the page is ready.
-- A token is set and no read has succeeded yet: the page answers `503`.
-- A report with a 500-entry `componentOrder` of escaped characters stays at most 524 288 bytes.
-- Browser (`e2e/run.ts`): an open page reloads once after a fingerprint change and shows the new
-  name and no checks list; with `showLatency:false` and populated results, the page refreshes and
-  shows no latency label.
-- The tests fail on `8b6d431` and pass after.
-
-Tool facts (status `8b6d431`):
-- Bun `1.4.0` (`package.json:9` `engines`, `:38` `packageManager`).
-- `check` is `bun run lint && bun run typecheck && bun run test` (`package.json:19`); `lint` is
-  `biome check . && pulse-eslint . && pulse-workflows` (`:15`); `typecheck` also checks `e2e`
-  (`:13`); `test` is `bun test` (`:14`); `check:a11y` is `bun e2e/run.ts` (`:18`).
-- Biome `2.6.3` (`package.json:23`). `biome.json:2` extends the config; pin
-  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:24`). At that pin Biome checks `**`
-  without `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures` (config
-  `biome.json:8-18`), so `public/client.js` and `e2e/run.ts` are linted, `public/*.html` is not.
-- Pins: contract `9ab7e2492a2cec91789fba7c742bdba900a800a9` (`package.json:34`), kit
-  `236df214f9df8658f2992dd6f7c100952c07102b` (`:35`).
-- `bunfig.toml:1-4`: `[test]` coverage on, lines `0.8`, functions `0`.
-- CI (`.github/workflows/ci.yml`): `check` calls `check.yml@04108fa…` (`:17-18`), which runs
-  install, lint, typecheck and test at that pin (`check.yml:25-30`, `:37-38`). `docker` builds the
-  image (`:20-49`). `a11y` installs Chromium and runs `bun run check:a11y` (`:51-68`).
-
-Completion evidence: `bun run check` and `bun run check:a11y` output; the status A/B table of
-Performance impact (read the shared finding for the api ref first); one manual run against a local
-api with a `status` token, changing `showChecks` in the database and showing the changed
-`/api/checks` without a restart.
-
-## Repository: notify
-
-Files:
-- `src/config.ts` (changed: token, database-only mode, `PULSE_NOTIFY_SECRET_DIR`, poll settings,
-  webhook `urlEnv`/`urlFile`, resolving one channel at a time)
-- `src/channel-schema.ts` (changed: webhook references, exactly one of `url`, `urlEnv`, `urlFile`)
-- `src/remote-channels.ts` (new: poll of `/service/notify/channels`, database channel validation
-  with the notify-local reference rules, secret directory resolution)
-- `src/channel-set.ts` (new: effective set, shadowing, per-id diff)
-- `src/notifier.ts`, `src/delivery.ts` (changed: reconcile: install, replace, remove workers;
-  live enqueue of a resent key; final outcome hook)
-- `src/resend-commands.ts` (new: claim, execute in one transaction, post results with the
-  acknowledgement rules)
-- `src/service-report.ts` (new: report with file channel views, shadowed ids, rejected list,
-  failed list, size trimming)
-- `src/ledger.ts` (changed: format 5 with `remote_channels` and `resend_commands` tables;
-  migration from 4; prune of finished command rows)
-- `src/failed-cli.ts` (changed: opens format 5)
-- `src/metrics.ts` (changed: series per installed channel)
-- `src/api.ts`, `src/index.ts` (changed: Bearer on `/service/*` only; wiring)
-- tests, new (in `test/`, the repository's test directory, `AGENTS.md:108`):
-  `test/remote-channels.test.ts`, `test/channel-set.test.ts`, `test/reconcile.test.ts`,
-  `test/resend-commands.test.ts`, `test/service-report.test.ts`, `test/ledger.v5.test.ts`
-- tests, changed: `test/support.ts` (fake api `/service/notify/*` routes), `test/config.test.ts`,
-  `test/index.test.ts`, `test/ledger.test.ts`, `test/failed-cli.test.ts`, `test/webhook.test.ts`,
-  `test/metrics.test.ts`
-- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md`, `AGENTS.md` (ledger format), `docs/configuration.md`, `docs/channels.md`,
-  `docs/operation.md` (changed)
-
-Behavior change: yes. Live reload, database channels, live resend and a new ledger format.
-
-Behavior: Decisions 2, 5, 6 and 11–14, and the report size rule of R1.
-- The public reads stay without a token.
-- The failed CLI still refuses with exit `2` while the service holds the lock. When notify is
-  stopped, the CLI works offline on format 5 as before, and `docs/operation.md` describes both
-  ways.
-- A format-5 ledger opened by an older notify is refused by its version check, as today. The docs
-  say downgrade is not supported.
-- Empty `PULSE_NOTIFY_API_TOKEN_FILE` (as the bench passes on side A) means not set (kit
-  `readString`).
-
-Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mkdtemp` ledger):
-- Database-only start with zero channels:
-  - a database webhook appears on the next poll;
-  - a new matching incident is delivered once;
-  - old incidents are seeded, not sent.
-- Each routing field (`checks`, `excludeChecks`, `components`, `excludeComponents`, `alerts`,
-  `sendIncidents`, `remindEverySeconds`) has a matching and a non-matching event after a live
-  change. Widening the routing seeds quietly.
-- File-over-database shadowing for the whole channel; the report's `shadowedIds` holds the id.
-  Removing the file channel live unshadows the database copy. No field mixing: the receiver hit
-  is at the file destination.
-- Changed destination with a pending retrying job: the job goes to the new receiver only, once.
-- Removed channel with a pending entry: not sent. Re-added: sent once.
-- A slow channel does not block another channel or the poll.
-- A missing secret reference keeps the last good version and reports a reason without the value.
-- A sentinel secret value appears in no report body, log line or metric.
-- A channels answer over 1 048 576 bytes keeps the last good set and is reported.
-- Live resend:
-  - a failed entry is resent through a claimed command;
-  - the receiver gets exactly one more request (literal `1`) with the same `idempotency-key`;
-  - the command ends `delivered`;
-  - a second claim of the same id posts the stored state and sends nothing;
-  - the Counterexamples' lost admission answer, lost final answer and `409` cases, with a fake
-    api that drops or refuses answers;
-  - a crash simulated between the transaction commit and the enqueue: a new notify on the same
-    ledger sends once.
-- Partial SMTP failure: a resend retries only the refused recipients (fake SMTP).
-- Report trimming of Counterexamples: at most 524 288 bytes, totals kept.
-- Ledger 4 → 5 migration keeps every entry; the prune keeps unposted command rows.
-- The tests fail on `c79f0b7` and pass after.
-
-Tool facts (notify `c79f0b7`):
-- Bun `1.4.0` (`package.json:9` `engines`, `:35` `packageManager`).
-- `check` is `bun run lint && bun run typecheck && bun run test` (`package.json:17`); `lint` is
-  `biome check . && pulse-eslint . && pulse-workflows` (`:14`); `test` is `bun test` (`:13`),
-  which finds the suites in `test/`.
-- Biome `2.6.3` (`package.json:21`). `biome.json:2` extends the config; pin
-  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:22`). At that pin Biome checks `**`
-  without `dist`, `node_modules`, `bun.lock`, `*.html` and `**/test/fixtures` (config
-  `biome.json:8-18`), and turns `noNonNullAssertion` off in `**/test/**` (`:53-63`).
-- Pins: contract `9ab7e2492a2cec91789fba7c742bdba900a800a9` (`package.json:30`), kit
-  `236df214f9df8658f2992dd6f7c100952c07102b` (`:31`).
-- `bunfig.toml:1-4`: `[test]` coverage on, lines `0.8`, functions `0`, `test/**` ignored for
-  coverage.
-- CI (`.github/workflows/ci.yml`): `check` calls `check.yml@04108fa…` (`:17-18`), which runs
-  install, lint, typecheck and test at that pin (`check.yml:25-30`, `:37-38`). `docker` builds and
-  smoke-tests the image (`:20-92`).
-
-Completion evidence: `bun run check` output; the notify A/B table of Performance impact (read the
-shared finding for the api ref first), with `test_cpu_s` called out; a local timing of opening a
-format-4 ledger with 10 000 entries as format 5 (reported, not gating); one manual run with a
-local api, a `notify` token and a fake webhook receiver, showing a database channel added and a
-resend delivered without a restart.
+The output goes in the PR. Shared finding: record the exact commands of procedures 2 and 3 as
+they ran, and any deviation, so the status and notify children can measure. They take the api SHA
+from api `main` at their start: they start only after the api merged.
 
 ## Repository: console
 
@@ -1460,7 +1572,12 @@ Behavior: R3, and Decision 14 for the resend button.
 - The People log row is written for saved and unknown outcomes, as for checks.
 - The token list accepts tokens with the new scopes.
 - The console reads admin views with the contract default limit (5 MiB, contract
-  `client.ts:7`); the largest view is under 1 MiB (R1).
+  `client.ts:7`); the largest view is at most 798 932 bytes (R1, "Size bounds").
+- The status and channel routes set `maxFormBytes` to 65 536 (`MAX_STATUS_FORM_BYTES`,
+  `MAX_CHANNEL_FORM_BYTES`, R3); delete and resend keep the default 8192 (`src/forms.ts:4`).
+- The notifications list shows the file channels of `service.report.fileChannels` and the
+  database channels of `channels` and `shadowed` (R1: the view no longer copies file channels).
+- The failed list reads `GET /admin/notify/failed` (`{state, receivedAt, failed, failedTotal}`).
 
 Checks (real console server, fake api on `127.0.0.1:0`):
 - Owner can save, delete and resend. Admin, Member and Viewer get `403` on direct GET and POST of
@@ -1469,6 +1586,14 @@ Checks (real console server, fake api on `127.0.0.1:0`):
 - Invalid Origin, CSRF and replayed form tokens are refused (`403`, `403`, `409`).
 - Locked fields are read-only, and a forged POST of a locked field is refused by the console with
   `422`, and nothing is sent.
+- Form sizes, built in the test with `Buffer.byteLength` of the encoded body:
+  - the status form of the largest valid settings (500 order ids of 64 characters, every field
+    at its limit, 4-byte characters in the name) is below 47 000 bytes and is accepted; a body
+    of 65 537 bytes is refused with `413`, as for check forms;
+  - the channel form of a 16 384-byte definition made of 3-byte characters is at most 57 344
+    bytes and is accepted, and the fake api receives the same definition (deep equal);
+  - a channel definition that the api refuses with `422` over 16 384 bytes shows the limit
+    state with the input kept.
 - Each state: `412` keeps the input; token rejected; old api (`404`); stale report; rejected
   apply; zero channels; `422` channel limit; `503` resend.
 - A repeated Resend post after a fake api timeout sends the same `requestId` (the fake api sees
@@ -1498,6 +1623,264 @@ Tool facts (console `fc2c166`):
 
 Completion evidence: `bun run check` and `bun run check:browser` output; a manual run against a
 local api with screenshots of both screens in the PR.
+
+## Repository: status
+
+Files:
+- `src/settings.ts` (changed: new env names and token; "set" recorded per field)
+- `src/runtime-settings.ts` (new: precedence merge of env, file and database into the effective
+  snapshot, fingerprint, locked list, report trimming)
+- `src/settings-poll.ts` (new: poll of `/service/status/settings`, re-read of local files, report)
+- `src/theme-config.ts` (changed: keys from the contract constants; CSS from a snapshot)
+- `src/server.ts` (changed: snapshot in place of fixed options: CSS, CSP, logo, wordmark, flags;
+  readiness `settings not loaded`; `/page-settings.json`; the four new contract modules in
+  `contractModules`, `:189-206`)
+- `src/answer-cache.ts`, `src/http-cache.ts` (changed: fingerprint in the key and the ETag;
+  in-flight rule)
+- `src/api-filter.ts`, `src/hidden-checks.ts` (changed: `showLatency`, `showSlos` filtering)
+- `src/poller.ts` (changed: `latencyMs: 0` placeholder in `fillLocations`, validated copy only)
+- `src/render.ts` (changed: no latency label for a result without `latencyMs`)
+- `src/components-view.ts` (changed: order)
+- `src/sections.ts`, `src/component-latency.ts` (changed: latency and SLO switches)
+- `public/client.js` (changed: fingerprint poll and one reload)
+- `src/start.ts`, `src/main.ts` (changed: wiring)
+- tests, new: `src/runtime-settings.test.ts`, `src/settings-poll.test.ts`,
+  `src/server.runtime-settings.test.ts`
+- tests, changed: `src/server.contract-modules.test.ts` (the four new modules are served),
+  `src/poller.test.ts`, `src/render.test.ts`, `src/api-filter.test.ts`,
+  `src/server.privacy.test.ts`, `src/server.cache.test.ts`, `src/answer-cache.test.ts`,
+  `src/http-cache.test.ts`, `src/components-view.test.ts`, `src/settings.test.ts`,
+  `src/theme-config.test.ts`, `src/main.startup.test.ts`
+- `e2e/run.ts` (changed: browser convergence and the `showLatency:false` refresh)
+- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
+- `README.md`, `docs/configuration.md`, `docs/theming.md`, `docs/operation.md` (changed)
+
+Behavior change: yes. New settings, live apply and new routes.
+
+Behavior: Decisions 2 and 5–10, and the report size rule of R1.
+- **Contract pin and served modules change together.** The browser gets the contract under
+  `/pulse-contract/` only for the files in `contractModules` (`server.ts:189-206`, checked at
+  `:255`). Contract `2.4.0`'s `index.js` exports four new modules (`runtime-settings.js`,
+  `notify-channels.js`, `resend.js`, `validate-runtime.js`), so the change that moves the pin
+  also adds those four names; otherwise the existing graph test
+  (`src/server.contract-modules.test.ts:107-129`, which follows every import from `index.js` and
+  expects `200`) gets `404`. A task that moves the pin therefore includes the module list and
+  that test, and passes `bun run check` on its own. `src/server.contract-modules.test.ts` also
+  asserts `200` for each of the four paths by name (literal list).
+- The settings file follows Decision 7: a file that cannot be used, a deleted one included,
+  keeps the last good values and reports `rejected`; `{}` removes all file overrides. Its values
+  go through the contract `StatusSettings` validator (radius at most 32 characters). The legacy
+  `PULSE_STATUS_THEME` file keeps today's rules.
+- Without a token, the database layer is empty and nothing is reported. The status settings file
+  and the new env names still work.
+- Without either, the effective settings equal today's.
+- The report goes to `PUT /service/status/report` after every apply attempt and at least every
+  60 s.
+- `poller.ts` is a browser module (`AGENTS.md`, "This repository"); the placeholder change stays
+  free of `node:` imports.
+- `docs/operation.md` names the full/dev `PULSE_STATUS_SHOW_CHECKS` lock.
+- Empty `PULSE_STATUS_API_TOKEN_FILE` (as the bench passes on side A) means not set
+  (kit `readString`).
+
+Checks (fake api on `127.0.0.1:0`, fake clock and timers):
+- A per-field matrix covers name, `logoUrl`, each theme token group (one colour per mode, one
+  font, one radius), `componentOrder`, and each of the four flags in both directions. For each
+  field:
+  - the database value applies after one poll without a new server;
+  - an env value, or a file value, wins and appears in `locked`;
+  - removing the file key (the file rewritten without it, or as `{}`) brings back the database
+    value;
+  - clearing the database key brings back the default.
+- The Reset counterexamples literally: a deleted settings file keeps `Local` and reports
+  `settings file: cannot read: ENOENT`; `{}` shows `Acme`.
+- The Counterexamples' precedence, theme merge, order, visibility and in-flight cases. The
+  expected values are literals.
+- Poller (`src/poller.test.ts`): a `/api/checks` body with one check whose
+  `locations[0].result` has no `latencyMs` refreshes with no error state, and the returned check
+  has no `latencyMs` key. The same body on `8b6d431` fails with the path
+  `checks[0].locations[0].result.latencyMs`.
+- Render: `renderLatency` of that check returns `""`.
+- CSP `img-src` follows a new `logoUrl` origin.
+- `/theme.css` changes its body and ETag after a theme change.
+- `/page-settings.json` changes.
+- Bad answers keep the last good snapshot and report `rejected`, then recover on the next good
+  poll:
+  - a `200` with an invalid body;
+  - a body over 1 048 576 bytes;
+  - a wire mismatch;
+  - an api timeout;
+  - an invalid settings file.
+- `404` from an older api: the database layer is empty and the page is ready.
+- A token is set and no read has succeeded yet: the page answers `503`.
+- The largest valid settings (every field at its limit, 500 order ids of 64 characters) and 60
+  locks give a report of at most 164 224 bytes (literal, R1), measured with `Buffer.byteLength`.
+- A 33-character radius in the settings file is rejected and reported; the same value in the
+  legacy theme file is accepted, and its lock carries no `value` when its JSON is over 2 048
+  bytes.
+- Browser (`e2e/run.ts`): an open page reloads once after a fingerprint change and shows the new
+  name and no checks list; with `showLatency:false` and populated results, the page refreshes and
+  shows no latency label.
+- The tests fail on `8b6d431` and pass after.
+
+Tool facts (status `8b6d431`):
+- Bun `1.4.0` (`package.json:9` `engines`, `:38` `packageManager`).
+- `check` is `bun run lint && bun run typecheck && bun run test` (`package.json:19`); `lint` is
+  `biome check . && pulse-eslint . && pulse-workflows` (`:15`); `typecheck` also checks `e2e`
+  (`:13`); `test` is `bun test` (`:14`); `check:a11y` is `bun e2e/run.ts` (`:18`).
+- Biome `2.6.3` (`package.json:23`). `biome.json:2` extends the config; pin
+  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:24`). At that pin Biome checks `**`
+  without `dist`, `node_modules`, `bun.lock`, `*.html` and `test/fixtures` (config
+  `biome.json:8-18`), so `public/client.js` and `e2e/run.ts` are linted, `public/*.html` is not.
+- Pins: contract `9ab7e2492a2cec91789fba7c742bdba900a800a9` (`package.json:34`), kit
+  `236df214f9df8658f2992dd6f7c100952c07102b` (`:35`).
+- `bunfig.toml:1-4`: `[test]` coverage on, lines `0.8`, functions `0`.
+- CI (`.github/workflows/ci.yml`): `check` calls `check.yml@04108fa…` (`:17-18`), which runs
+  install, lint, typecheck and test at that pin (`check.yml:25-30`, `:37-38`). `docker` builds the
+  image (`:20-49`). `a11y` installs Chromium and runs `bun run check:a11y` (`:51-68`).
+
+Completion evidence: `bun run check` and `bun run check:a11y` output; the status A/B table of
+Performance impact procedure 3 (`--b-ref status=<branch SHA> --service-tokens --expect-report
+status`, api `main` on both sides; read the api child's shared finding first), with the log line
+that B's report was fresh and applied; one manual run against a local api with a `status` token,
+changing `showChecks` in the database and showing the changed `/api/checks` without a restart.
+
+## Repository: notify
+
+Files:
+- `src/config.ts` (changed: token, database-only mode, `PULSE_NOTIFY_SECRET_DIR`, poll settings,
+  webhook `urlEnv`/`urlFile`, resolving one channel at a time)
+- `src/channel-schema.ts` (changed: webhook references, exactly one of `url`, `urlEnv`, `urlFile`)
+- `src/remote-channels.ts` (new: poll of `/service/notify/channels`, database channel validation
+  with the notify-local reference rules, secret directory resolution)
+- `src/channel-set.ts` (new: effective set, shadowing, per-id diff)
+- `src/notifier.ts`, `src/delivery.ts` (changed: reconcile: install, replace, remove workers;
+  live enqueue of a resent key; final outcome hook)
+- `src/resend-commands.ts` (new: claim, execute in one transaction, post results with the
+  acknowledgement rules)
+- `src/service-report.ts` (new: report with file channel views, shadowed ids, rejected list,
+  failed list, size trimming)
+- `src/ledger.ts` (changed: format 5 with `remote_channels` and `resend_commands` tables;
+  migration from 4; prune of finished command rows)
+- `src/failed-cli.ts` (changed: opens format 5)
+- `src/metrics.ts` (changed: series per installed channel)
+- `src/api.ts`, `src/index.ts` (changed: Bearer on `/service/*` only; wiring)
+- tests, new (in `test/`, the repository's test directory, `AGENTS.md:108`):
+  `test/remote-channels.test.ts`, `test/channel-set.test.ts`, `test/reconcile.test.ts`,
+  `test/resend-commands.test.ts`, `test/service-report.test.ts`, `test/ledger.v5.test.ts`,
+  `test/channel-fields.test.ts` (the per-field matrix below)
+- tests, changed: `test/support.ts` (fake api `/service/notify/*` routes), `test/config.test.ts`,
+  `test/index.test.ts`, `test/ledger.test.ts`, `test/failed-cli.test.ts`, `test/webhook.test.ts`,
+  `test/metrics.test.ts`
+- `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
+- `README.md`, `AGENTS.md` (ledger format), `docs/configuration.md`, `docs/channels.md`,
+  `docs/operation.md` (changed)
+
+Behavior change: yes. Live reload, database channels, live resend and a new ledger format.
+
+Behavior: Decisions 2, 5, 6 and 11–14, and the report size rule of R1.
+- The public reads stay without a token.
+- The failed CLI still refuses with exit `2` while the service holds the lock. When notify is
+  stopped, the CLI works offline on format 5 as before, and `docs/operation.md` describes both
+  ways.
+- A format-5 ledger opened by an older notify is refused by its version check, as today. The docs
+  say downgrade is not supported.
+- Empty `PULSE_NOTIFY_API_TOKEN_FILE` (as the bench passes on side A) means not set (kit
+  `readString`).
+
+Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mkdtemp` ledger):
+- Database-only start with zero channels:
+  - a database webhook appears on the next poll;
+  - a new matching incident is delivered once;
+  - old incidents are seeded, not sent.
+- Each routing field (`checks`, `excludeChecks`, `components`, `excludeComponents`, `alerts`,
+  `sendIncidents`, `remindEverySeconds`) has a matching and a non-matching event after a live
+  change. Widening the routing seeds quietly.
+- **Per-field matrix** (`test/channel-fields.test.ts`, table-driven). Every field that a database
+  channel can hold, and that the console editor exposes, has three steps on one running notifier
+  (one `Notifier` instance and one ledger for the whole row; literal expected values in the
+  table):
+  1. **live**: the fake api changes the database channel from value V1 to V2 and its revision;
+     after one channel poll, without a new notifier, the next matching event shows V2;
+  2. **file wins**: the channel file gains a channel with the same id and value V3 (the file is
+     re-read at the next poll, Decision 11); the next event shows V3, never V2, and the report's
+     `shadowedIds` holds the id;
+  3. **back**: the file is rewritten without that channel; the next event shows V2 again.
+
+  | Field | Types | What the fake receiver shows |
+  | --- | --- | --- |
+  | `urlEnv` | webhook, slack, teams | the request reaches receiver R2 (`PULSE_NOTIFY_SECRET_R2`) instead of R1; V3 is a file `urlEnv` naming R3 |
+  | `urlFile` | webhook, slack, teams | the request reaches the URL in `r2.url` of `PULSE_NOTIFY_SECRET_DIR` |
+  | `secretEnv`, `secretFile` | webhook | `x-pulse-signature` (`src/channels/webhook.ts:19`) verifies with secret S2, not S1; without a secret the header is absent |
+  | `statusUrl` | slack, teams, email | the message body holds the new link |
+  | `hideReason` | slack, teams, email | `true`: the incident reason text is absent; `false`: present |
+  | `smtp.host` | email | V1 `127.0.0.1` (the stub of `test/smtp-stub.ts`) → V2 `mail.invalid`: the stub gets no connection and the attempt fails with a resolve error; V3 `127.0.0.1`: the stub gets it again |
+  | `smtp.port` | email | the stub on the second port gets the message |
+  | `smtp.tls` | email | `none`: the stub sees no `STARTTLS`; `starttls`: it sees `STARTTLS` (the stub's `starttls` option, `smtp-stub.ts:52`, `:89`) |
+  | `smtp.username`, `smtp.passwordEnv`, `smtp.passwordFile` | email | the stub's `AUTH` (`smtp-stub.ts:54`, `:161`) decodes to the new user name and the sentinel password P2 |
+  | `smtp.clientName` | email | the `EHLO` argument (`smtp-stub.ts:155`) |
+  | `from` | email | `MAIL FROM` |
+  | `to` | email | the set of `RCPT TO` addresses |
+  | `subjectPrefix` | email | the `Subject` header starts with the new prefix |
+  | `type` | all four | an id changed from webhook to slack: the next event reaches the slack receiver, not the webhook one |
+  | routing fields | all four | the matching and non-matching events of the item above, after V2 and after V3 |
+
+  - A sentinel secret value (S2, P2, the R2 URL) is absent from every report body, log line and
+    metric of the row.
+  - To keep `test_cpu_s` low (Risks), one fake api, one set of receivers and one SMTP stub per
+    port serve the whole file, and every wait uses fake timers.
+  - These checks need a running notifier with live reconciliation, so they belong with the
+    worker reconciliation part of this section, not with the configuration part: a task split
+    puts `test/channel-fields.test.ts` in the task that makes the notifier reconcile channels.
+- File-over-database shadowing for the whole channel; the report's `shadowedIds` holds the id.
+  Removing the file channel live unshadows the database copy. No field mixing: the receiver hit
+  is at the file destination.
+- Changed destination with a pending retrying job: the job goes to the new receiver only, once.
+- Removed channel with a pending entry: not sent. Re-added: sent once.
+- A slow channel does not block another channel or the poll.
+- A missing secret reference keeps the last good version and reports a reason without the value.
+- A sentinel secret value appears in no report body, log line or metric.
+- A channels answer over 1 048 576 bytes keeps the last good set and is reported.
+- Live resend:
+  - a failed entry is resent through a claimed command;
+  - the receiver gets exactly one more request (literal `1`) with the same `idempotency-key`;
+  - the command ends `delivered`;
+  - a second claim of the same id posts the stored state and sends nothing;
+  - the Counterexamples' lost admission answer, lost final answer and `409` cases, with a fake
+    api that drops or refuses answers;
+  - a crash simulated between the transaction commit and the enqueue: a new notify on the same
+    ledger sends once.
+- Partial SMTP failure: a resend retries only the refused recipients (fake SMTP).
+- Report trimming of Counterexamples: at most 524 288 bytes measured with `Buffer.byteLength`,
+  `failed` trimmed first, then `fileChannels`, then `rejected`, totals kept.
+- A database channel over 16 384 bytes in a channels answer (an api that does not apply the
+  limit) is not installed and is reported as rejected; the other channels apply.
+- Ledger 4 → 5 migration keeps every entry; the prune keeps unposted command rows.
+- The tests fail on `c79f0b7` and pass after.
+
+Tool facts (notify `c79f0b7`):
+- Bun `1.4.0` (`package.json:9` `engines`, `:35` `packageManager`).
+- `check` is `bun run lint && bun run typecheck && bun run test` (`package.json:17`); `lint` is
+  `biome check . && pulse-eslint . && pulse-workflows` (`:14`); `test` is `bun test` (`:13`),
+  which finds the suites in `test/`.
+- Biome `2.6.3` (`package.json:21`). `biome.json:2` extends the config; pin
+  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:22`). At that pin Biome checks `**`
+  without `dist`, `node_modules`, `bun.lock`, `*.html` and `**/test/fixtures` (config
+  `biome.json:8-18`), and turns `noNonNullAssertion` off in `**/test/**` (`:53-63`).
+- Pins: contract `9ab7e2492a2cec91789fba7c742bdba900a800a9` (`package.json:30`), kit
+  `236df214f9df8658f2992dd6f7c100952c07102b` (`:31`).
+- `bunfig.toml:1-4`: `[test]` coverage on, lines `0.8`, functions `0`, `test/**` ignored for
+  coverage.
+- CI (`.github/workflows/ci.yml`): `check` calls `check.yml@04108fa…` (`:17-18`), which runs
+  install, lint, typecheck and test at that pin (`check.yml:25-30`, `:37-38`). `docker` builds and
+  smoke-tests the image (`:20-92`).
+
+Completion evidence: `bun run check` output; the notify A/B table of Performance impact procedure
+3 (`--b-ref notify=<branch SHA> --service-tokens --expect-report notify`, api `main` on both
+sides; read the api child's shared finding first), with the log line that B's report was fresh
+and applied, and `test_cpu_s` called out; a local timing of opening a
+format-4 ledger with 10 000 entries as format 5 (reported, not gating); one manual run with a
+local api, a `notify` token and a fake webhook receiver, showing a database channel added and a
+resend delivered without a restart.
 
 ## Repository: deploy
 
@@ -1580,18 +1963,26 @@ Completion evidence: CI `e2e-dev` log with `ok: runtime settings`; CI `lint` log
 1. contract `bun run check` and the dist diff.
 2. api, status, notify and console `bun run check`, plus the api `bench:selftest`, the status
    `check:a11y` and the console `check:browser`, each with tests that fail on the cited heads.
-3. Per-setting live tests in status and notify:
+3. Per-setting live tests in status and notify (the status matrix and the notify per-field
+   matrix, `test/channel-fields.test.ts`):
    - a database change reaches the running service without a restart;
-   - a file value overrides the database value.
+   - a file value overrides the database value;
+   - removing the file value brings the database value back.
 
    The expected values are literals in the tests (Counterexamples).
 4. The notify resend test: exactly one more receiver request with the same key, from a single
-   command, also after a lost admission answer. Expected count `1`, a literal.
+   command, also after a lost admission answer. Expected count `1`, a literal. The api test of
+   a lost `200` after reuse: command count `1`, a literal.
 5. The status poller test: a `/api/checks` answer without `latencyMs` refreshes without an error
    state (literal: no error kind), and fails on `8b6d431`.
-6. The api limit tests: 262 144 bytes accepted and 262 145 refused, the 101st channel refused, and
-   the 1000-open-command `503`; all literals.
-7. The A/B tables of Performance impact in the api, status, notify and contract PRs, produced by
-   `bun bench/run.ts` with `--b-ref` (two independently built sides).
+6. The api limit tests: 262 144 bytes accepted and one byte more refused, 16 384 bytes per
+   channel accepted and 16 385 refused, the 101st channel refused, the 65 537-byte status
+   settings refused, the 524 289-byte report `413`, the serialized admin view at most 798 932
+   bytes, the 1000-open-command `503`, and exactly one finished command deleted at capacity; all
+   literals.
+7. The performance evidence of Performance impact: the contract CPU A/B of procedure 1 (two
+   worktrees measured independently), the api A/B with `--simulate-services` and its traffic
+   counts, and the status and notify A/Bs with `--service-tokens --expect-report` on the merged
+   api (two independently built sides each).
 8. deploy `e2e-dev` prints `ok: runtime settings`. This is the integrated check across console,
    api, status, notify and a fake receiver.
