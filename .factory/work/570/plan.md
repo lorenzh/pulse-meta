@@ -46,6 +46,20 @@ and sends it in the running process.
   5. a per-field live and precedence matrix for every exposed notify field (notify section);
   6. one rule for a missing settings file and one capacity rule for resend commands, with the
      counterexamples changed to match (Decisions 7, 14, Counterexamples).
+
+  The third plan-review asked for four more corrections; this version makes them:
+  1. notify's format-5 change updates the suites that assert format 4 today
+     (`test/ledger.test.ts`, `test/ledger.v4.test.ts`, `test/reminders.test.ts`), and the
+     migration from 4 keeps the 3 → 4 checks for crashes and refusals (Decision 17, notify
+     section);
+  2. a controlled A/B: `--others-ref main` on both sides, every ref resolved once to a SHA and
+     every checkout verified, so only the measured repository differs; the simulated traffic is
+     counted per service, 2 status and 2 notify reports (Performance impact, api section);
+  3. notify's report normalization: a cut rule for display names and references, left-out
+     failed entries for keys a resend needs exactly, and an event enum and mapping that cover
+     `update`, `budget-low`, `tls-expiry`, `domain-expiry` and payloadless entries (R1);
+  4. the deploy scenario fails a separate event while the receiver answers `500`, then resends
+     exactly that key (deploy section).
 - #460, decision 7, and its amendment of 2 November (sections 2, 13, 19, 20), as quoted in the
   issue review. It is the authority on these points:
   - the console never writes service files;
@@ -477,7 +491,7 @@ These decisions settle the open points of the issue review and the plan-review c
       - Type changed: recipient progress is kept but used only by email.
     - Metric series per channel are created when a channel is installed.
     - The last applied database channel definitions (references only) are kept in the ledger
-      (format 5). A cold start with the api down therefore still runs them.
+      (format 5, Decision 17). A cold start with the api down therefore still runs them.
 14. **Resend.**
     - **States.** Open: `queued`, `claimed`, `admitted`. Finished: `delivered`, `failed`, `dropped`,
       `not-failed`, `no-payload`, `channel-unavailable`. Admission outcomes: `admitted`,
@@ -596,6 +610,41 @@ These decisions settle the open points of the issue review and the plan-review c
       answer `cache-control: no-store` and never `304`, because their `service` part changes
       without a revision change. Service GETs answer `304` on a matching `If-None-Match`, because
       their bodies depend only on the generation.
+17. **Notify ledger format 5.** Format 5 is format 4 (`src/ledger.ts:37-63`) plus two `STRICT`
+    tables, with `PRAGMA user_version = 5` (`LEDGER_VERSION`, `:31`):
+    - `remote_channels (id TEXT PRIMARY KEY, definition TEXT NOT NULL, revision TEXT NOT NULL,
+      applied_at INTEGER NOT NULL)`: one row per database channel of the last applied channel
+      answer (Decision 13), `definition` its canonical JSON (references only, never a resolved
+      value), `revision` the notify revision of that answer. A reconcile replaces all rows in one
+      transaction.
+    - `resend_commands (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, key TEXT NOT NULL, state
+      TEXT NOT NULL CHECK (state IN ('admitted','delivered','failed','dropped','not-failed',
+      'no-payload','channel-unavailable')), posted_state TEXT CHECK (posted_state IS NULL OR
+      posted_state IN (<the same seven>)), updated_at INTEGER NOT NULL)`: the notify side of
+      Decision 14.
+    - Loading a format-5 file validates every row of both tables, as format 4 does for its
+      tables (`loadAlerts` and `loadRows`, `:420-443`); a bad row, or a format-5 file without
+      either table, refuses the file (`unsupported format`) with its bytes unchanged.
+    - **Migration.** The existing migration of format 3 (`:641-651`, the order documented in
+      `docs/operation.md:8`) is generalized from one previous version (`PREVIOUS_VERSION`, `:34`)
+      to two, 3 and 4:
+      - a format-3 or format-4 file is validated read-only as its own format, checkpointed,
+        validated again, copied to a private `<state>.v<N>.bak` (mode `0600`, an old backup or
+        symlink removed first), built as format 5 at `<state>.migrating` and renamed over the
+        path; the service logs `ledger migrated` with `from: 3` or `from: 4`;
+      - format 4 → 5 keeps every channel, mark, entry, payload, recipient record and
+        `alert_state` row. Today's `publish` (`:546-568`) writes only the channel rows
+        (`writeRows`), so it gains the alert rows; format 3 → 5 starts with an empty alert
+        state, as 3 → 4 does today. Both new tables start empty;
+      - a JSON ledger of format 1 or 2 migrates directly to format 5, as it does to 4 today;
+      - an interruption at any step leaves the old file with every row, and the next start
+        migrates again;
+      - any other `user_version` (6 and above included) is refused, as today.
+    - Downgrade to a format-4 notify: stop, restore `<state>.v4.bak` to `<state>`, remove
+      `<state>-wal` and `<state>-shm`, as `docs/operation.md:187` describes for format 3. Events
+      settled and resend commands handled after the migration are lost and may be sent again.
+    - The failed CLI opens and migrates the ledger in the same way (`failed-cli.ts`, unchanged
+      call).
 
 ## Scope
 
@@ -674,13 +723,57 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
 - **`NotifyFileChannelView`**: `{source: "file", id (1..200 characters), type:
   "webhook"|"file"|"slack"|"teams"|"email", refs: string[] (0..6, each 1..200 characters)}`.
   `refs` are the reference names (`SLACK_OPS`, `hook.txt`), never values. A file channel id longer
-  than 200 characters is cut to 199 characters plus `…`; such an id cannot collide with a database
-  id (at most 64 characters).
+  than 200 characters is cut by the cut rule below; such an id cannot collide with a database id
+  (at most 64 characters).
 - **`NotifyDatabaseChannelView`**: `NotifyChannelRecord & {source: "database"}`.
 - **`NotifyRejectedChannel`**: `{channelId: string|null (1..200), reason (1..300)}`.
-- **`NotifyFailedDelivery`**: `{channelId (1..200), key (1..300), event: "opened"|"resolved"|
-  "reminder"|"manual"|"warning", failedAt, hasPayload: boolean}`. A failed entry of a channel id
-  longer than 200 characters is left out of the list and counted in `failedTotal`.
+- **`NotifyFailedDelivery`**: `{channelId (1..200), key (1..300), event: NotifyFailedEvent,
+  isManual: boolean, failedAt, hasPayload: boolean}`.
+  - `NotifyFailedEvent` is one of `NOTIFY_FAILED_EVENTS` = `["opened", "update", "resolved",
+    "reminder", "budget-low", "tls-expiry", "domain-expiry", "unknown"]`, in that order. The first
+    seven are exactly notify's events today: `NotificationEvent` (`notify/src/types.ts:1`) and
+    `AlertEvent` (`:13`). `unknown` is for a payloadless entry whose key tells nothing.
+  - `isManual` is `true` for a manual incident event (key prefix `manual:`, `detector.ts:100`,
+    `:112`).
+  - The mapping is notify's (Report normalization below); the contract checks only the enum.
+- **Report normalization (notify).** Notify builds the report from its in-memory state with
+  these rules, before the size trimming; every length is JavaScript `string.length` (UTF-16 code
+  units), which is what the contract's zod `.max()` counts.
+  - **Cut rule** for display text: a string longer than its limit `L` becomes its longest prefix
+    of at most `L − 1` code units that does not end in a high surrogate (U+D800–U+DBFF), plus `…`
+    (U+2026, one code unit). So the result has at most `L` code units and never a lone
+    surrogate. A string of at most `L` code units is unchanged. An empty string never occurs in
+    these fields: notify refuses an empty channel id (`config.ts:264-266`) and an empty
+    reference (`channel-schema.ts:26-30`).
+  - Where it applies:
+    - file view `id` (L 200), each file view `refs` entry (L 200), rejected `channelId` (L 200)
+      and rejected `reason` (L 300). Today's file references have no length limit
+      (`channel-schema.ts:26-30`, only `min(1)`), so a valid 201-character `urlFile` path is
+      reported as its first 199 characters plus `…`. A ref is a name for display; the cut copy is
+      never used to resolve a secret;
+    - `refs` keeps at most 6 entries, in the order `urlEnv`, `urlFile`, `secretEnv`,
+      `secretFile`, `smtp.passwordEnv`, `smtp.passwordFile`, skipping absent ones. A file channel
+      can hold at most these six, so nothing is dropped in practice; the rule is a guard.
+  - Where it never applies: a failed entry's `channelId` and `key` are the exact values a resend
+    needs, so they are never cut. A failed entry whose `channelId` is over 200 or whose `key` is
+    over 300 code units is left out of `failed` and counted in `failedTotal`. Notify's own keys
+    are shorter (the longest, `manual:<id>:update:<32 hex>` or `budget:<kind>:<ms>:<32 hex>`, is
+    under 80), so only a hand-edited or legacy JSON ledger can hold such a key.
+  - **Event mapping** of a failed entry, first rule that matches:
+    1. it has a payload whose `event` is one of the seven: `event` = that value, `isManual` =
+       the payload has a `manual` object (`types.ts:29`). The ledger checks only that a payload
+       is an object (`ledger.ts:268-269`, `:328`), so a payload with another `event` falls
+       through to the key rules;
+    2. no payload, key `manual:<id>:<e>` or `manual:<id>:<e>:<rest>`: `event` = `<e>` when `<e>`
+       is `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: true`;
+    3. no payload, key `budget:<rest>`: `budget-low`, `isManual: false`;
+    4. no payload, key `<n>:<e>` or `<n>:<e>:<rest>` with `<n>` decimal digits: `<e>` when it is
+       `opened`, `update`, `resolved` or `reminder`, else `unknown`; `isManual: false`;
+    5. anything else, `expiry:<rest>` included (TLS and domain expiry keys have the same shape,
+       `expiry-alerts.ts:90`, so the key alone cannot tell them apart): `unknown`, `isManual:
+       false`.
+    - The failed CLI keeps its own text column (`failed-cli.ts:16-20`) unchanged; its tests
+      (`test/failed-cli.test.ts:287-307`, `:85-89`) stay as they are.
 - **`NotifyServiceReport`**: `{at, startedAt, appliedRevision: Revision|null, fileChannels:
   NotifyFileChannelView[] (0..200, file order), fileChannelsTotal (integer ≥ fileChannels.length),
   shadowedIds: string[] (0..100, database id pattern), rejected: NotifyRejectedChannel[] (0..100),
@@ -730,8 +823,9 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
   - `AdminStatusSettingsView`: 65 536 + 524 288 (the stored report limit) + 300 = 590 124.
   - `ServiceNotifyChannels`: 274 344 (Decision 12).
   - `NotifyServiceReport`: with plain ASCII values, 200 file views of at most 1 478 bytes
-    (295 600), 200 failed entries of at most 610 (122 000), 100 shadowed ids (6 700) and 100
-    rejected entries of at most 540 (54 000), plus about 200: 478 500, below 524 288. Escaped
+    (295 600), 200 failed entries of at most 630 with `isManual` and the longest event name
+    `domain-expiry` (126 000), 100 shadowed ids (6 700) and 100 rejected entries of at most 540
+    (54 000), plus about 200: 482 500, below 524 288. Escaped
     characters can exceed it; then the trimming applies.
   - `AdminNotifyChannelsView`: the database records once, in `channels` or in `shadowed`
     (274 344), plus the stored report (524 288), plus about 300: at most 798 932.
@@ -809,8 +903,9 @@ carries the new `etag`.
     - `/notifications/new`;
     - `/notifications/edit?id=`;
     - `/notifications/delete?id=`;
-    - `/notifications/failed`: up to 200 rows, newest first, with channel, key, event, failure
-      time, and a Resend button only when `hasPayload`;
+    - `/notifications/failed`: up to 200 rows, newest first, with channel, key, event (the
+      `event` value as text, `unknown` shown as "unknown"; "manual" after it when `isManual`),
+      failure time, and a Resend button only when `hasPayload`;
     - `/notifications/resend?id=<command id>`: the command state, read on each load.
   - The editor:
     - shows the type-specific fields;
@@ -869,6 +964,12 @@ carries the new `etag`.
   nothing else waits; console runs in parallel with the api.
 - **The resend request table grows with retries.** Mitigation: 10 000 rows and 7 days, with a
   `503` instead of deleting a row that a retry may still need (Decision 14).
+- **A format-4 alert state is lost in the migration.** Today's `publish` writes only channel
+  rows (`ledger.ts:546-568`). Mitigation: Decision 17 makes it write the alert rows for 4 → 5,
+  and the migration test reads both alert rows back.
+- **A long reference or id breaks the whole notify report.** A 201-character reference fails the
+  contract and would leave the console with no report. Mitigation: the R1 cut rule before the
+  report is sent, and failed entries the cut cannot apply to are left out and counted.
 - **Full/dev `PULSE_STATUS_SHOW_CHECKS=true` locks show checks.** This is intended and documented;
   the E2E checks an unlocked field as well.
 
@@ -883,8 +984,9 @@ Metrics of api `bench/budgets.json` that the change can move, with direction and
   - `startup_wall_ms` (reported): the same.
   - `idle_rss_mib` (gating, 88): + under 1 MiB.
   - `load_cpu_s` (gating, 28.1): + under 0.1 s. In the 60 s window, B with the simulated service
-    traffic (procedure 2 below) gets at least 4 status settings reads, 4 notify channel reads, 12
-    claims and 2 reports: about 22 small requests next to the about 2 600 of the load.
+    traffic (procedure 2 below) gets exactly 4 status settings reads, 4 notify channel reads, 12
+    claims, 2 status reports and 2 notify reports: 24 small requests next to the about 2 600 of
+    the load.
   - `peak_rss_mib`, `p95_*`, `rps`, `cold_*`, `eod_*`: none expected; the read paths do not change.
   - `test_cpu_s` (gating, 5.6, floor 1.6): + up to 0.5 s for the new suites.
   - `image_mb` (reported): none; no new package.
@@ -911,7 +1013,25 @@ Metrics of api `bench/budgets.json` that the change can move, with direction and
 - **console, deploy**: not in `bench/budgets.json`; none expected beyond the new pages.
 
 How the implementers measure. Three procedures, so that no measurement waits for code that is
-not merged yet:
+not merged yet.
+
+Controlled refs (procedures 2 and 3). Today a repository other than the api runs its newest `v*`
+tag on A and `main` on B (`bench/refs.ts:63-65`), and every round fetches the ref again
+(`bench/run.ts:106-118`), so `main` can move during a 40-minute run. An A/B of this feature must
+differ only in the repository it measures. So:
+
+- both procedures pass `--others-ref main`: every repository but the api runs `main` on both
+  sides (`refs.ts:60-62`), and only `--b-ref` changes one repository's B side;
+- the harness (api section) resolves every ref of both sides to a full commit SHA once, before
+  the first round (`git fetch origin <ref>`, then `git rev-parse FETCH_HEAD^{commit}` in the
+  repository's bench clone), and every round checks out those SHAs, not the ref names;
+- after each checkout it compares `git rev-parse HEAD` of the worktree with the resolved SHA, and
+  checks that every repository without `--b-ref`, the api excluded, has the same SHA on A and
+  B. A difference is exit `2` `ref mismatch: <repo> <side>`;
+- it logs one line per repository, `ref <repo> a=<sha> b=<sha>`, and the PR pastes these lines
+  with the table;
+- `--b-ref` without `--others-ref` is a usage error (exit `2`), so an uncontrolled comparison
+  cannot be run by accident.
 
 1. **contract, before it merges (no api harness needed).** The bench measures `test_cpu_s` and
    `build_cpu_s` as user + system CPU of `bun run test` and `bun run build` and their waited
@@ -956,19 +1076,26 @@ not merged yet:
        `scopes` (an api without the new scopes, `src/token-routes.ts:232-233`) turns it off for
        A, with the log line `service traffic: not available on a`. Any other answer on A is a
        harness error (exit `2`).
+   - Schedule, in ms from the window start `t = 0`: status settings reads and notify channel
+     reads at 0, 15 000, 30 000 and 45 000 (4 each); claims at 0, 5 000, …, 55 000 (12); one
+     status report and one notify report at 0 and one of each after the window's last load
+     request (2 per service, 4 in total). Each request is sent when its time has come, even if
+     the timer fires late, so the count does not depend on the machine's speed.
    - Observed traffic: every simulated request must answer `200`, `204` or `304`, else exit
-     `2`. At the end of the window each side with the simulation on must have counted at least
-     4 status settings reads, 4 channel reads, 12 claims and 2 reports (literals; one report of
-     each service at the window start and one at its end), else exit `2` `service traffic not
-     observed on <side>`. The run logs `service traffic (<side>): <n> status reads, <n>
-     channel reads, <n> claims, <n> reports`.
-   - Command: `bun bench/run.ts --a <api main SHA> --b <api branch SHA> --simulate-services`.
+     `2`. At the end each side with the simulation on must have counted exactly 4 status
+     settings reads, 4 channel reads, 12 claims, 2 status reports and 2 notify reports
+     (literals), else exit `2` `service traffic not observed on <side>`. The run logs `service
+     traffic (<side>): <n> status reads, <n> channel reads, <n> claims, <n> status reports, <n>
+     notify reports`.
+   - Command: `bun bench/run.ts --a <api main SHA> --b <api branch SHA> --others-ref main
+     --simulate-services`.
    - Migration on upgrade: `bun bench/cold-read.ts --api <api branch worktree> --seed-with <api
      main worktree>` (an existing tool, `bench/README.md:54`).
 3. **status and notify, after the api merged: the real services with tokens.** The api section
    adds two more options:
-   - `--b-ref <repo>=<ref>` (repeatable, any repository but the api): it sets only that
-     repository's B side; every other rule of `bench/refs.ts:48-71` stays;
+   - `--b-ref <repo>=<ref>` (repeatable, any repository but the api, only together with
+     `--others-ref`): it sets only that repository's B side; A keeps the `--others-ref` ref,
+     and the controlled-refs rules above apply;
    - `--service-tokens`: the harness creates the two tokens and the fixture of procedure 2
      after the api is ready and before probe, status and notify start (`bench/stack.ts:198-199`),
      writes the token secrets to `<run dir>/service-tokens/{status,notify}` and passes them as
@@ -979,16 +1106,19 @@ not merged yet:
      `GET /admin/status/settings` or `GET /admin/notify/channels` with the admin token. On side
      B, `service.state` must be `"fresh"` and `service.report.appliedRevision` must equal
      `revision`, else exit `2` `<service> report not observed on b`. On side A the state is only
-     logged: A runs the newest `v*` tag of that service, which ignores the token variable, so
-     its loops are off;
+     logged: A runs that service's `main` (`--others-ref main`), which does not have the
+     feature yet and ignores the token variable, so its loops are off. The other service gets
+     the same token variable and the same SHA on both sides, so whatever it does (loops on if
+     its feature merged first, off if not) is equal on A and B;
    - `--simulate-services` together with `--service-tokens` is a usage error (exit `2`).
    - Commands, with the merged api SHA on both sides:
-     - status: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --b-ref status=<status
-       branch SHA> --service-tokens --expect-report status`;
-     - notify: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --b-ref notify=<notify
-       branch SHA> --service-tokens --expect-report notify`.
-   - So A and B differ only in the status (or notify) code, and B is proven to have polled,
-     applied and reported.
+     - status: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main
+       --b-ref status=<status branch SHA> --service-tokens --expect-report status`;
+     - notify: `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main
+       --b-ref notify=<notify branch SHA> --service-tokens --expect-report notify`.
+   - So A runs status (or notify) `main`, B its branch, and probe, the other service, contract,
+     kit and config run the same SHA on both sides, which the `ref` log lines show. B is proven
+     to have polled, applied and reported.
 
 - A local run may use `--rounds 1`; the PR says so and pastes the table.
 - This is why status and notify depend on api in `targets.json`: procedure 3 needs the merged
@@ -1011,6 +1141,8 @@ Checklist items that apply:
   - Status and notify send `Bearer` only to `/service/*`; the token never enters a log, report or
     error.
   - Tests use sentinel secret values and assert they are absent everywhere.
+  - Notify's report carries file reference names, cut by the R1 cut rule, never a resolved
+    value; the cut copy is never used to resolve anything.
 - **Auth order and status codes.** As in R2. Sole scopes `status` and `notify`. `403` for a
   service token on `/admin/*`, for an admin token on `/service/*`, and for one service's token on
   the other service's routes. Console Owner-only, checked on every route and again just before the
@@ -1031,7 +1163,12 @@ Checklist items that apply:
   - Service calls use `redirect: "manual"`, as today.
 - **Atomic, path-safe writes.** Notify reads a secret file only inside the secret directory,
   rejecting `..`, `/` and symlinks that leave it (`realpath` check). Ledger writes stay SQLite
-  transactions. No service file is ever written.
+  transactions. The format-5 migration keeps today's order and file rules (Decision 17): a
+  private `<state>.v4.bak` (mode `0600`, an existing symlink removed, not followed), the build at
+  `<state>.migrating` (mode `0600`) and an atomic rename. A refused file keeps its bytes. No
+  service file is ever written.
+- **Bench.** The bench refuses an uncontrolled `--b-ref` run and a checkout at an unexpected SHA
+  (`ref mismatch`), so a measurement cannot silently run other code than its log says.
 - **Dependency pins.** Contract pin updates in api, status, notify and console. No new runtime
   package.
 - **CI.** deploy adds one `lint` step and one `e2e-dev` grep; no new action or permission.
@@ -1059,8 +1196,9 @@ Checklist items that apply:
      `2.4.0` (status section).
    - The console against an older api: `/status-page` and `/notifications` show the "old api"
      state.
-   - A format-5 notify ledger is refused by an older notify (`ledger.ts:670-690`). The notify docs
-     say a downgrade is not supported.
+   - A format-5 notify ledger is refused by an older notify (`ledger.ts:670-690`). The first
+     start migrates a format-4 file and keeps `<state>.v4.bak`; the notify docs describe the
+     downgrade by restoring that backup (Decision 17).
 3. **deploy** after the four services are on `main`. It adds a test-only overlay, receiver and
    scenario. `full` and `dev` defaults do not change, so older images run as before. The E2E
    scenario detects the feature through `GET /admin/notify/channels` (`404` prints `skip`) and runs
@@ -1124,6 +1262,37 @@ Checklist items that apply:
   `failed`, then `fileChannels`, to at most 524 288 bytes, keeps `failedTotal` and
   `fileChannelsTotal`, and the api answers `204`, not `413`. A report body of 524 289 bytes sent
   directly to the api: `413`, and the stored report is unchanged.
+- **Report normalization:**
+  - A file webhook with `urlFile: "/" + "a" × 200` (201 characters, valid today): the report's
+    ref is `"/" + "a" × 198 + "…"`, and the api accepts the report (`204`). A wrong implementation
+    that sends the ref unchanged gets `422` for the whole report, and the console then shows the
+    service as never reported; one that only trims bytes never fixes it.
+  - A ref of 199 `a` plus `😀`: cut to 199 `a` plus `…`. A wrong cut at 199 code units plus the
+    high surrogate leaves a lone surrogate.
+  - A failed entry with a 301-character key is not cut: it is left out and counted in
+    `failedTotal`. A cut key would make a resend name a key that does not exist.
+- **Event mapping:** payloadless `expiry:1:14:<32 hex>`: `unknown`, not `tls-expiry` (the key
+  does not tell TLS from domain). Payloadless `budget:check:1:<32 hex>`: `budget-low`, not
+  `check` (which the failed CLI prints, `failed-cli.ts:19`). Payloadless `manual:3:resolved`:
+  `resolved` with `isManual: true`. A payload `{event: "update", manual: {…}}`: `update`, `true`;
+  a wrong enum without `update` refuses the report.
+- **Ledger format 5:**
+  - A format-4 file with two `alert_state` rows: after the migration both rows are there. A
+    wrong migration that reuses today's `publish` unchanged loses them (it writes only the
+    channel rows).
+  - A format-4 file and a crash in `beforePublish`: the next open finds a format-4 file with all
+    rows and migrates; `<state>.v4.bak` is version 4.
+  - `user_version = 6`: refused, bytes unchanged.
+- **Bench refs:** `--b-ref status=<sha>` without `--others-ref`: exit `2`. With `--others-ref
+  main`, a `main` of kit that moves between round 1 and round 2: both sides of every round still
+  run the SHA resolved before round 1. A B worktree of notify at a SHA other than the resolved
+  one: `ref mismatch: notify b`.
+- **Traffic counts:** in the 60 s window, 2 status reports and 2 notify reports, 4 in total; a
+  count of 2 reports in total (one per service) is exit `2`.
+- **Deploy resend:** the event resent is `manual:<B>:opened`, which failed because the receiver
+  answered `500` while it was sent. Resending `manual:<A>:opened`, delivered in step 5, gives
+  `409` `not a failed delivery`; a scenario that switches the receiver to `500` after a
+  delivery has no failed entry to resend.
 - **References:**
   - `urlEnv: "PULSE_API_TOKEN"` or `"PULSE_NOTIFY_API_TOKEN"`: `422`, wrong prefix.
   - `urlFile: "../api/token"`, `"a/b"`, `"."`: `422`.
@@ -1212,7 +1381,8 @@ Every name below gave **0** hits, except where a count is given:
 - Types: `StatusSettings`, `StatusTheme`, `ServiceStatusSettings`, `StatusServiceReport`,
   `StatusLockedField`, `StatusServiceState`, `AdminStatusSettingsView`, `NotifyChannelDefinition`,
   `NotifyChannelRecord`, `ServiceNotifyChannels`, `NotifyFileChannelView`, `NotifyDatabaseChannelView`,
-  `NotifyRejectedChannel`, `NotifyFailedDelivery`, `NotifyServiceReport`, `NotifyServiceState`,
+  `NotifyRejectedChannel`, `NotifyFailedDelivery`, `NotifyFailedEvent`, `NotifyServiceReport`,
+  `NotifyServiceState`,
   `AdminNotifyChannelsView`, `AdminNotifyFailedView`, `ResendRequest`, `ResendCommand`,
   `ResendCommandState`, `ResendClaimResponse`, `ResendResultInput`.
 - Validators: `validateStatusSettings`, `validateServiceStatusSettings`,
@@ -1228,17 +1398,23 @@ Every name below gave **0** hits, except where a count is given:
   `SERVICE_REPORT_STALE_MS` (180000), `RESEND_CLAIM_MAX` (20), `RESEND_CLAIM_TIMEOUT_MS` (60000),
   `RESEND_COMMAND_MAX` (1000), `RESEND_COMMAND_STATES`, `STATUS_RADIUS_MAX` (32),
   `STATUS_SETTINGS_MAX_BYTES` (65536), `NOTIFY_CHANNEL_DEFINITION_MAX_BYTES` (16384),
-  `RESEND_REQUEST_MAX` (10000), `RESEND_RETENTION_MS` (604800000).
+  `RESEND_REQUEST_MAX` (10000), `RESEND_RETENTION_MS` (604800000), `NOTIFY_FAILED_EVENTS`.
 - Fields: `showLatency`, `showSlos`, `showChecks`, `hideDetails`, `componentOrder`, `logoUrl`,
   `requestId`, `appliedRevision`, `startedAt`, `receivedAt`, `locked`, `via`, `fileChannels`,
   `fileChannelsTotal`, `shadowedIds`, `failedTotal`, `failedAt`, `hasPayload`, `channelId`,
-  `urlEnv`, `urlFile`, `secretEnv`, `secretFile`, `passwordEnv`, `passwordFile`.
+  `urlEnv`, `urlFile`, `secretEnv`, `secretFile`, `passwordEnv`, `passwordFile`, `isManual`.
   - `refs`: 2 hits, both in config tests about git refs (`config/src/release.test.ts:104`,
     `config/src/workflow-policy.test.ts:151`). No contract field.
   - `rejected`: 18 hits, all in comments of contract validators ("unknown keys are rejected",
     for example `validate.ts:266`). No field or export.
 - State and kind values: `not-failed`, `no-payload`, `channel-unavailable`, `status-settings`,
   `notify-channel`, `notify-resend`.
+- Event values of `NOTIFY_FAILED_EVENTS` (searched with the quotes, `'"<value>"'`): `"opened"`,
+  `"reminder"`, `"budget-low"`, `"tls-expiry"`, `"domain-expiry"`: 0 hits. `"update"`: 1 hit, a
+  default parameter `path = "update"` (`contract/src/validate.ts:351`). `"resolved"`: 6 hits,
+  incident status values (`client.ts:362`, `schema.ts:861,944,1033,1111,1123`). `"unknown"`: 3
+  hits, a check state (`schema.ts:98`, `:1183`, `components.ts:14`). They live only inside the
+  new enum, as members, and become no export of their own, so none collides.
   - The values `queued`, `claimed`, `admitted`, `delivered`, `failed`, `dropped` are members of the
     new `RESEND_COMMAND_STATES` only; they become no export of their own.
 - Scope values: `"notify"`: 0 hits. `"status"`: 5 hits, all incident status fields
@@ -1249,8 +1425,12 @@ Every name below gave **0** hits, except where a count is given:
 - Permission names (api only): `runtime-admin`, `status-service`, `notify-service`.
 - Api table `resend_requests`: 0 hits in the contract and config clones, and 0 in
   `.repos/api/src` (`grep -rn resend_requests .repos/api/src | wc -l`).
+- Notify ledger names (Decision 17): `remote_channels`, `resend_commands`, `posted_state`,
+  `.v4.bak`: 0 hits in `.repos/notify/src`, `.repos/notify/test` and `.repos/notify/docs`
+  (`grep -rn 'remote_channels\|resend_commands\|posted_state' .repos/notify/src
+  .repos/notify/test | wc -l`, and `grep -rn 'v4\.bak' … | wc -l`).
 - Api bench names: `--b-ref`, `--simulate-services`, `--service-tokens`, `--expect-report`,
-  `runtime-fixture`, `runtime-traffic`: 0 hits each in `.repos/api/bench` and
+  `runtime-fixture`, `runtime-traffic`, `ref mismatch`: 0 hits each in `.repos/api/bench` and
   `.repos/api/package.json` (`grep -rn -- '<name>' .repos/api/bench .repos/api/package.json | wc
   -l`).
 - Console constants: `MAX_STATUS_FORM_BYTES`, `MAX_CHANNEL_FORM_BYTES`: 0 hits in
@@ -1345,7 +1525,14 @@ Checks (tests in `test/`, as the existing suites):
   - a 33-character radius, a 65-character order id, a `logoUrl` with a space;
   - a channel definition of 16 384 bytes (accepted) and of 16 385 bytes (refused), built in the
     test from literal lengths;
-  - an `AdminNotifyChannelsView` with a file view in `channels` (refused: only database views).
+  - an `AdminNotifyChannelsView` with a file view in `channels` (refused: only database views);
+  - a `NotifyFailedDelivery` with `event: "update"` and `isManual: true` (accepted), with
+    `event: "manual"` or `"warning"` (refused), and without `isManual` (refused);
+  - a file view with a `refs` entry of 201 characters (refused) and of 200 characters ending in
+    `…` (accepted): the contract checks the limit, notify cuts (R1).
+- `NOTIFY_FAILED_EVENTS` equals the literal list of R1, written out in the test; its first seven
+  entries are notify's events at `c79f0b7` (`notify/src/types.ts:1`, `:13`), an independent
+  source.
 - `tokenMetadataSchema` accepts a `notify` token. Older scope lists stay valid.
 - The audit entry `notify-channel.create` with kind `notify-channel` is accepted. The same action
   with kind `check` is rejected.
@@ -1402,8 +1589,11 @@ Files:
 - tests, changed: `src/db.migrations.test.ts` (step 9), `src/token-scopes.test.ts`,
   `src/server.allow.test.ts`, `src/server.scopes.test.ts`, `src/retention.test.ts`,
   `src/backup.test.ts`
-- bench, changed: `bench/refs.ts` (`--b-ref`), `bench/run.ts` (`--b-ref`,
-  `--simulate-services`, `--service-tokens`, `--expect-report`), `bench/stack.ts` (admin tokens
+- bench, changed: `bench/refs.ts` (`--b-ref`; the same-SHA rule and the checkout comparison of
+  "Controlled refs", as pure functions), `bench/run.ts` (`--b-ref`, `--simulate-services`,
+  `--service-tokens`, `--expect-report`; refs resolved to SHAs once before the first round,
+  `checkout` (`:106-118`) by SHA, the `git rev-parse HEAD` comparison after each checkout, the
+  `ref <repo> a=<sha> b=<sha>` log lines), `bench/stack.ts` (admin tokens
   file; fixture between the api start and the other services; traffic during the window; report
   check after it), `bench/fixtures.ts` (admin tokens file), `bench/compose.bench.yaml` (api
   `PULSE_API_ADMIN_TOKENS_FILE`; status `PULSE_STATUS_API_TOKEN_FILE:
@@ -1436,8 +1626,12 @@ Behavior: Decisions 3, 4, 5, 12, 14, 15 and 16, and R2.
 - The aggregate byte limit is computed over the stored definitions with the candidate in place
   of its old version.
 - Bench, as Performance impact procedures 2 and 3 define it:
-  - `--b-ref <repo>=<ref>` may repeat; an unknown repository, `api`, or a repeated repository
-    exits `2` with a usage line. `--others-ref` still pins both sides; `--b-ref` then overrides B.
+  - `--b-ref <repo>=<ref>` may repeat; an unknown repository, `api`, a repeated repository, or
+    `--b-ref` without `--others-ref` exits `2` with a usage line. `--others-ref` pins both sides;
+    `--b-ref` then overrides B.
+  - Every run, with or without the new options, resolves its refs to SHAs once and verifies each
+    checkout, as "Controlled refs" of Performance impact says. A run without `--b-ref` thus
+    measures what it measured before, but `main` cannot move between rounds.
   - The admin tokens file holds one fixed bench admin token of at least 32 characters
     (`src/admin-tokens.ts:8-16`).
   - Without `--simulate-services` and `--service-tokens`, nothing changes: no token is created,
@@ -1451,8 +1645,9 @@ Behavior: Decisions 3, 4, 5, 12, 14, 15 and 16, and R2.
     (mode 0644, so the containers' `bun` user reads them) and sets `BENCH_STATUS_TOKEN_FILE` and
     `BENCH_NOTIFY_TOKEN_FILE` before status and notify start (`bench/stack.ts:198-199`).
   - With `--simulate-services`, `bench/runtime-traffic.ts` sends the traffic of procedure 2
-    during the window, checks every answer, and fails the run unless it counted at least 4, 4, 12
-    and 2 requests.
+    during the window on the schedule of procedure 2, checks every answer, and fails the run
+    unless it counted exactly 4 status settings reads, 4 channel reads, 12 claims, 2 status
+    reports and 2 notify reports.
   - With `--expect-report`, the report check of procedure 3 runs after the window.
   - `docker compose -f bench/compose.bench.yaml config --quiet` still passes with the defaults.
 
@@ -1495,16 +1690,22 @@ Checks (real server at `127.0.0.1:0`, `mkdtemp` database, injected `now`):
   id, and no settings value; a `200` resend and every service route write no audit row. A
   sentinel reference name `PULSE_NOTIFY_SECRET_SENTINEL` appears in no audit row and no log line.
 - Bench self-tests (literal expectations, fake `fetch` and timers):
-  - `check-refs.ts`: `--b-ref status=x` gives A status = tag and B status = `x`, every other
-    repository unchanged; with `--others-ref`; the refusals (`api`, unknown, repeated);
+  - `check-refs.ts`: `--others-ref main --b-ref status=x` gives A status `main`, B status `x`,
+    and `main` on both sides for probe, notify, contract, kit and config; the refusals (`api`,
+    unknown, repeated, `--b-ref` without `--others-ref`); the comparison with literal SHAs:
+    resolved kit `1111…` (40 hex) on A and `2222…` on B without a `--b-ref` for kit is `ref
+    mismatch: kit b`, an observed `HEAD` `3333…` for a resolved `1111…` is `ref mismatch: kit a`,
+    and equal SHAs pass; the existing cases (`check-refs.ts:25-40`) keep passing;
   - `check-runtime-fixture.ts`: `--service-tokens` with `201` on both sides writes both files and
     sets both variables; `--service-tokens` with `400` on A is exit `2`;
     `--simulate-services` with `400` `scopes: …` on A turns A off with the log line, and with
     `400` on B, `500` on A, or `401` on A is exit `2`; `--expect-report` with a `stale` B report
     is exit `2`, with a `fresh` but unapplied B report exit `2`, with a `never` A report a log
     line only; both options together are exit `2`;
-  - `check-runtime-traffic.ts`: in a fake 60 s window it sends 4, 4, 12 and 2 requests; one
-    `500` answer is exit `2`; a count of 11 claims is exit `2`.
+  - `check-runtime-traffic.ts`: in a fake 60 s window it sends exactly 4 status settings
+    reads, 4 channel reads, 12 claims, 2 status reports and 2 notify reports (literals; 24
+    requests); with timers that fire 4 000 ms late it still sends those counts; one `500` answer
+    is exit `2`; a count of 11 claims, or 1 notify report, is exit `2`.
 - Expected codes and texts are the literals of R2 and Decision 14.
 - The tests fail on `4b3e9b1` (routes `404`) and pass after.
 
@@ -1527,7 +1728,8 @@ Tool facts (api `4b3e9b1`):
   image (`:35-53`).
 
 Completion evidence: `bun run check` and `bun run bench:selftest` output; the api A/B table of
-Performance impact procedure 2 (`--simulate-services`) with its `service traffic (b): …` log line,
+Performance impact procedure 2 (`--others-ref main --simulate-services`) with its `ref …` lines
+and its `service traffic (b): …` log line,
 and the `cold-read.ts --seed-with` output; one manual run with `bun start`, an admin token and a
 `status` token:
 
@@ -1739,9 +1941,10 @@ Tool facts (status `8b6d431`):
   image (`:20-49`). `a11y` installs Chromium and runs `bun run check:a11y` (`:51-68`).
 
 Completion evidence: `bun run check` and `bun run check:a11y` output; the status A/B table of
-Performance impact procedure 3 (`--b-ref status=<branch SHA> --service-tokens --expect-report
-status`, api `main` on both sides; read the api child's shared finding first), with the log line
-that B's report was fresh and applied; one manual run against a local api with a `status` token,
+Performance impact procedure 3 (`--others-ref main --b-ref status=<branch SHA> --service-tokens
+--expect-report status`, api `main` on both sides; read the api child's shared finding first),
+with the `ref <repo> a=<sha> b=<sha>` lines (only status differs) and the log line that B's
+report was fresh and applied; one manual run against a local api with a `status` token,
 changing `showChecks` in the database and showing the changed `/api/checks` without a restart.
 
 ## Repository: notify
@@ -1758,9 +1961,10 @@ Files:
 - `src/resend-commands.ts` (new: claim, execute in one transaction, post results with the
   acknowledgement rules)
 - `src/service-report.ts` (new: report with file channel views, shadowed ids, rejected list,
-  failed list, size trimming)
-- `src/ledger.ts` (changed: format 5 with `remote_channels` and `resend_commands` tables;
-  migration from 4; prune of finished command rows)
+  failed list; the normalization of R1 (cut rule, left-out failed entries, event mapping); size
+  trimming)
+- `src/ledger.ts` (changed: format 5 of Decision 17 with `remote_channels` and
+  `resend_commands` tables; migration from 3 and from 4; prune of finished command rows)
 - `src/failed-cli.ts` (changed: opens format 5)
 - `src/metrics.ts` (changed: series per installed channel)
 - `src/api.ts`, `src/index.ts` (changed: Bearer on `/service/*` only; wiring)
@@ -1769,23 +1973,41 @@ Files:
   `test/resend-commands.test.ts`, `test/service-report.test.ts`, `test/ledger.v5.test.ts`,
   `test/channel-fields.test.ts` (the per-field matrix below)
 - tests, changed: `test/support.ts` (fake api `/service/notify/*` routes), `test/config.test.ts`,
-  `test/index.test.ts`, `test/ledger.test.ts`, `test/failed-cli.test.ts`, `test/webhook.test.ts`,
-  `test/metrics.test.ts`
+  `test/index.test.ts`, `test/failed-cli.test.ts`, `test/webhook.test.ts`, `test/metrics.test.ts`,
+  and the three suites that assert format 4 today, updated in the same change as `LEDGER_VERSION`
+  (they belong to the ledger part of this section, so a task split puts them with format 5):
+  - `test/ledger.test.ts:95-113`: the exact-schema test becomes "format 5 has the exact schema,
+    user_version 5 and WAL mode", with the five tables of Decision 17 written out as literal SQL
+    and `{ user_version: 5 }`;
+  - `test/ledger.v4.test.ts`: `:159-185` "a valid format-3 file migrates to format 5 …" with
+    `inspect(file).version` `5` (`:163`) and the `.v3.bak` still version `3`; `:188-197` "a JSON
+    ledger migrates directly to format 5" (`:196`: `5`); the WAL crash and publish tests keep
+    every step and expect `{ version: 3, entries: THREE }` after the crash (`:245-246`,
+    unchanged) and `{ version: 5, entries: THREE }` after the next open (`:255`, `:266`); the
+    refusal tables (`:200-220`, `:539-557`) keep every case, rename `"user_version 5"` to
+    `"format 5 without its new tables"` (still refused) and add `"user_version 6"`
+    (`${SCHEMA_V3} PRAGMA user_version = 6;`), and also assert that no `.v4.bak` appears;
+  - `test/reminders.test.ts:149`: `assert.equal(state.version, 5)`.
+  - `test/ledger.v2.test.ts:211-212` and `test/index.test.ts:188` need no change: their files
+    (`user_version` 4 or 5 on a format-3 schema) lack the tables of their format and stay
+    refused. They must pass unchanged.
 - `package.json`, `bun.lock` (changed: contract pin to the merged `2.4.0` SHA)
-- `README.md`, `AGENTS.md` (ledger format), `docs/configuration.md`, `docs/channels.md`,
-  `docs/operation.md` (changed)
+- `README.md` (format 5), `AGENTS.md` (ledger format; `:105` still says format 3),
+  `docs/configuration.md`, `docs/channels.md`, `docs/operation.md` (format 5, migration from 4,
+  `<state>.v4.bak` downgrade, `:7-9`, `:184-194`), `docs/troubleshooting.md` (`:31`: "other than
+  3, 4 or 5"), `docs/development.md` (`:28`) (changed)
 
 Behavior change: yes. Live reload, database channels, live resend and a new ledger format.
 
-Behavior: Decisions 2, 5, 6 and 11–14, and the report size rule of R1.
+Behavior: Decisions 2, 5, 6, 11–14 and 17, and the report normalization and size rules of R1.
 - The public reads stay without a token.
 - The failed CLI still refuses with exit `2` while the service holds the lock. When notify is
   stopped, the CLI works offline on format 5 as before, and `docs/operation.md` describes both
   ways.
 - A format-5 ledger opened by an older notify is refused by its version check, as today. The docs
-  say downgrade is not supported.
-- Empty `PULSE_NOTIFY_API_TOKEN_FILE` (as the bench passes on side A) means not set (kit
-  `readString`).
+  describe the downgrade by restoring `<state>.v4.bak` (Decision 17).
+- Empty `PULSE_NOTIFY_API_TOKEN_FILE` (as the bench passes without `--service-tokens`) means not
+  set (kit `readString`).
 
 Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mkdtemp` ledger):
 - Database-only start with zero channels:
@@ -1854,7 +2076,37 @@ Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mk
   `failed` trimmed first, then `fileChannels`, then `rejected`, totals kept.
 - A database channel over 16 384 bytes in a channels answer (an api that does not apply the
   limit) is not installed and is reported as rejected; the other channels apply.
-- Ledger 4 → 5 migration keeps every entry; the prune keeps unposted command rows.
+- Ledger format 5 (`test/ledger.v5.test.ts`, Decision 17):
+  - a valid format-4 file with three entries (one `failed` with payload and recipients) and two
+    `alert_state` rows migrates: `ledger.migration` is `{ from: 4, entries: 3, backup:
+    "<file>.v4.bak" }`, `user_version` is `5`, the backup is version `4` with mode `0600`, and
+    every entry, mark and alert row reads back equal to the fixture literals;
+  - the same file with the `afterSidecars` and `beforePublish` crash hooks (the pattern of
+    `test/ledger.v4.test.ts:238-268`): after each crash the file is still `{ version: 4,
+    entries: … }` with all rows, and the next open migrates;
+  - a format-5 file with a `resend_commands` row of state `queued` (not a notify state), or
+    with `remote_channels` missing: `unsupported format`, bytes of main file, `-wal` and `-shm`
+    unchanged;
+  - a second open of a migrated file has `migration` `undefined`;
+  - the prune keeps unposted command rows and deletes a posted, finished row older than 7 days.
+- Report normalization (`test/service-report.test.ts`, literal inputs and outputs):
+  - a file webhook with `urlFile` of 201 characters `"/" + "a" × 200`: its view `refs` entry is
+    `"/" + "a" × 198 + "…"` (200 code units); one of 200 characters is unchanged;
+  - a ref of 198 `a` followed by `😀` (U+1F600, two code units, 200 in total) is unchanged; a ref
+    of 199 `a` followed by `😀` (201 code units) becomes 199 `a` plus `…`, never a lone
+    surrogate;
+  - a file id of 201 `x`: view id 199 `x` plus `…`; a rejected reason of 301 characters: 299
+    plus `…`;
+  - a failed entry with a 301-character key: absent from `failed`, `failedTotal` counts it;
+  - event mapping of failed entries, one row each (key → `event`, `isManual`):
+    payload `update` with `manual` → `update`, `true`; payload `budget-low` → `budget-low`;
+    payload `tls-expiry` → `tls-expiry`; payload `domain-expiry` → `domain-expiry`; no payload
+    `5:resolved` → `resolved`, `false` (the legacy JSON case of `test/failed-cli.test.ts:85-89`);
+    no payload `7:reminder:2` → `reminder`; no payload `manual:3:update:<32 hex>` → `update`,
+    `true`; no payload `budget:check:1:<32 hex>` → `budget-low`; no payload
+    `expiry:1:14:<32 hex>` → `unknown`; no payload `x` → `unknown`; a payload with `event:
+    "zzz"` and key `9:opened` → `opened`;
+  - every report of these tests passes `validateNotifyServiceReport` of contract `2.4.0`.
 - The tests fail on `c79f0b7` and pass after.
 
 Tool facts (notify `c79f0b7`):
@@ -1875,9 +2127,9 @@ Tool facts (notify `c79f0b7`):
   smoke-tests the image (`:20-92`).
 
 Completion evidence: `bun run check` output; the notify A/B table of Performance impact procedure
-3 (`--b-ref notify=<branch SHA> --service-tokens --expect-report notify`, api `main` on both
-sides; read the api child's shared finding first), with the log line that B's report was fresh
-and applied, and `test_cpu_s` called out; a local timing of opening a
+3 (`--others-ref main --b-ref notify=<branch SHA> --service-tokens --expect-report notify`, api
+`main` on both sides; read the api child's shared finding first), with the `ref <repo> a=<sha>
+b=<sha>` lines (only notify differs) and the log line that B's report was fresh and applied, and `test_cpu_s` called out; a local timing of opening a
 format-4 ledger with 10 000 entries as format 5 (reported, not gating); one manual run with a
 local api, a `notify` token and a fake webhook receiver, showing a database channel added and a
 resend delivered without a restart.
@@ -1888,9 +2140,13 @@ Files:
 - `e2e/compose.runtime.yaml` (new, test only: status `PULSE_STATUS_API_TOKEN_FILE`, notify
   `PULSE_NOTIFY_API_TOKEN_FILE`, `PULSE_NOTIFY_SECRET_DIR`, `PULSE_NOTIFY_SECRET_E2E_HOOK`,
   `PULSE_NOTIFY_RETRY_ATTEMPTS: "2"`, `PULSE_NOTIFY_RETRY_DELAY_MS: "500"`, read-only token and
-  secret mounts, and the `e2e-hook` receiver service)
-- `e2e/hook.mjs` (new: webhook receiver that counts requests per `idempotency-key` and can be
-  switched between `500` and `200`)
+  secret mounts, and the `e2e-hook` receiver service: `bun-tools` running `/e2e/hook.mjs`, as
+  `e2e-target` does in `e2e/compose.e2e.yaml:47-53`, with port 8080 published on `127.0.0.1`)
+- `e2e/hook.mjs` (new: webhook receiver. Per `idempotency-key` it counts `seen` (every request)
+  and `accepted` (requests it answered `200`). `POST /control` with `{"status":500}` or
+  `{"status":200}` sets the answer for all later webhook requests; `GET /counts?key=<key>`
+  answers `{"seen":n,"accepted":m}`. The scenario reaches it through `published_port e2e-hook
+  8080` (`e2e/compose-e2e.sh:303-306`).)
 - `e2e/runtime-settings.sh` (new: the scenario), `e2e/runtime-settings.test.sh` (new: its parsing
   helpers on fixed fixture answers, and `docker compose ... config --quiet` of the overlay)
 - `e2e/compose-e2e.sh` (changed: a "Runtime settings" step after "Console probe locations",
@@ -1924,17 +2180,37 @@ Behavior:
   3. Sign in as Owner, as `e2e/console-setup.sh` does.
   4. Save `name` and `showLatency=false` through the console form, and see the public page change
      within 30 s without restarting status.
-  5. Create a database webhook channel with `urlEnv: PULSE_NOTIFY_SECRET_E2E_HOOK` through the
-     console, and see one delivery of a new incident at `e2e-hook`.
-  6. Switch the receiver to `500` until the console failed list shows the delivery, switch it to
-     `200`, press Resend once, and see exactly one more request with the same `idempotency-key`
-     (literal `1`).
-  7. Check that the status `showChecks` field shows "Set by PULSE_STATUS_SHOW_CHECKS".
-  8. Check that no token value appears in the step output (the pattern of `:1110-1115`).
-  9. Recreate status and notify without the overlay, so the later steps run as before.
+  5. Delivery. Create the database webhook channel `e2e-db-hook` with `urlEnv:
+     PULSE_NOTIFY_SECRET_E2E_HOOK` and no routing fields through the console. Wait until
+     `GET /admin/notify/channels` has `service.state` `"fresh"` and
+     `service.report.appliedRevision` equal to its `revision`. Create manual incident A with
+     `POST /manual-incidents` and the admin token (the script's own copy of `manual_call`,
+     `e2e/compose-e2e.sh:257-262`; the body as at `:543`, with `componentIds: []`). Wait until `GET /counts?key=manual:<A>:opened` is `{"seen":1,"accepted":1}`.
+  6. Failure. `POST /control {"status":500}`. Create a second manual incident B. Wait (at most
+     60 s) until `GET /admin/notify/failed` lists `channelId` `e2e-db-hook` with key
+     `manual:<B>:opened`; with `PULSE_NOTIFY_RETRY_ATTEMPTS: "2"` and a 500 ms delay that takes
+     a few seconds. Read `seen` for that key as `n0` (at least `1`, every request refused, so
+     `accepted` is `0`). This is a separate event from step 5, so its failed entry exists
+     only because the receiver refused it.
+  7. Resend. `POST /control {"status":200}`. In the console failed list, press Resend once on the
+     row `e2e-db-hook` / `manual:<B>:opened`. Wait until `GET /counts?key=manual:<B>:opened` has
+     `accepted` `1` and the row is gone from `GET /admin/notify/failed`; wait 15 s more (three
+     claim intervals), then check: `accepted` is still `1` and `seen` is `n0 + 1` (exactly one
+     more request, the literal `1`), and `manual:<A>:opened` is still `{"seen":1,
+     "accepted":1}`. All counts come from the receiver, not from notify or the api.
+  8. Check that the status `showChecks` field shows "Set by PULSE_STATUS_SHOW_CHECKS".
+  9. Check that no token value appears in the step output (the pattern of `:1110-1115`).
+  10. Clean up: delete `e2e-db-hook` with the admin token, resolve manual incidents A and B
+      (`POST /manual-incidents/<id>/updates` with `{"status":"resolved","message":"Fixed."}`, as
+      `:562`),
+      and recreate status and notify without the overlay, so the later steps run as before.
 
 Checks:
-- `bash e2e/runtime-settings.test.sh` passes in `lint`.
+- `bash e2e/runtime-settings.test.sh` passes in `lint`. It runs the scenario's parsing helpers
+  on fixed fixture answers with literal expectations: a `/counts` answer `{"seen":3,"accepted":0}`
+  gives `3` and `0`; a failed view that lists `e2e-db-hook` / `manual:7:opened` is found, one
+  that lists only `other` / `manual:7:opened` is not; an admin view with `appliedRevision` ≠
+  `revision` is "not applied".
 - CI `e2e-dev` greps `ok: runtime settings` on images built from `main`, after the four services
   merged. The expected line is a literal.
 - `full` stays green on the published images: the step prints `skip`.
@@ -1984,5 +2260,9 @@ Completion evidence: CI `e2e-dev` log with `ok: runtime settings`; CI `lint` log
    worktrees measured independently), the api A/B with `--simulate-services` and its traffic
    counts, and the status and notify A/Bs with `--service-tokens --expect-report` on the merged
    api (two independently built sides each).
-8. deploy `e2e-dev` prints `ok: runtime settings`. This is the integrated check across console,
+8. The notify format-5 and report tests: a format-4 file migrates with `from: 4`, `user_version`
+   `5` and its alert rows; the updated format-4 suites pass with the literal `5`; a 201-character
+   reference is reported as 200 characters ending in `…`; the event mapping rows of the notify
+   section hold their literal values.
+9. deploy `e2e-dev` prints `ok: runtime settings`. This is the integrated check across console,
    api, status, notify and a fake receiver.
