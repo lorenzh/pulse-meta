@@ -35,10 +35,20 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
   `b - a > max(a * thresholdPct / 100, floor)` (default `thresholdPct` 10, api test floor 1.6 s),
   then `FAIL budget` when `b > budget` (strictly greater). `buildRows()` uses `median()` of the
   per-round samples of each side.
-- `bench/measure.ts` lines 23-32: `median()` sorts and takes the middle value; with the default 5
-  rounds per side it is the 3rd smallest of the five samples, so a median is one measured sample.
-  CPU time has a resolution of 10 ms (`bench/README.md`, "What is measured"), so every median is a
-  multiple of 0.01 s.
+- `bench/measure.ts` lines 23-32: `median()` sorts and takes the middle value; with an odd count it
+  returns that sample unchanged. `bench/run.ts` line 76 defaults `--rounds` to 5, and
+  `bench.yml` line 53 passes no `--rounds`, so a hosted median is the 3rd smallest of five samples,
+  that is, one measured sample.
+- Precision of `test_cpu_s`: `bench/measure.ts` lines 68-70 compute `cpuSeconds` as
+  `(Number(usage.cpuTime.user) + Number(usage.cpuTime.system)) / 1e6` from Bun's
+  `resourceUsage()` (integer microseconds). `bench/run.ts` lines 165-166 record that value
+  unrounded, `bench/compare.ts` lines 213-223 keep the median unrounded, and `bench/run.ts` line 257
+  writes it with `JSON.stringify` (shortest round-trip decimal). So a `b` value in `table.json` is
+  an integer number of microseconds divided by 10^6, for example `5.042317`, **not** a multiple of
+  0.01 s. The "resolution of 10 ms" in `bench/README.md` line 36 covers only the `/proc/1/stat`
+  numbers of the running services (startup and load CPU), not `test_cpu_s`. Only `table.md`
+  rounds, to two decimals (`bench/compare.ts` line 237), so the budget must not be computed from
+  `table.md`.
 - `bench/run.ts` lines 225-258: the harness loads `budgets.json` from its own checkout (the
   workflow's ref), resolves refs (logged as `[bench] A: …` / `[bench] B: …`), runs 5 rounds per
   side alternating A, B, and writes `table.json` (array of rows `{ service, metric, a, b, budget,
@@ -90,11 +100,24 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
    count and is replaced. Its `FAIL budget` on api `test_cpu_s` (against the old 5.6 s) is
    expected and does not invalidate it.
 2. **Value.** From each counted run, take the `b` field of the `table.json` row with
-   `service == "api"` and `metric == "test_cpu_s"` (the B median, in seconds). Let `m` be the
-   largest of those values, written as an integer number of centiseconds `c` (`m` is a multiple of
-   0.01 s). The new budget is `ceil(11 * c / 100) / 10` seconds, computed in integers: that is
-   `m * 1.10` rounded up to the next 0.1 s, and unchanged when `m * 1.10` already is a multiple of
-   0.1 s.
+   `service == "api"` and `metric == "test_cpu_s"` (the B median in seconds, at the full precision
+   of `table.json`; never the two-decimal `table.md`). Statistic, exactly:
+   - Sample set: the 5 B samples of api `test_cpu_s` of one run; its median is the 3rd smallest
+     (`bench/measure.ts` `median()`), as written in `b`.
+   - Convert each run's `b` to integer microseconds `u = Math.round(b * 1e6)` and check
+     `Math.abs(b * 1e6 - u) < 1e-3`. If that check fails, the value is not a whole number of
+     microseconds, which the harness does not produce with 5 rounds: request a hold
+     (`needs-input`) with the value instead of guessing.
+   - `U` is the largest `u` over the counted runs (the maximum, not the mean).
+   - The budget in tenths of a second is `T = ceil(11 * U / 10^6)`, computed exactly in integers:
+     `T = (11n * U + 999999n) / 1000000n` with BigInt. The budget is `T / 10` s, written as the
+     JavaScript number `Number(T) / 10` prints it (for example `9.6`; `10` for `T = 100`).
+   - No rounding or truncation happens before this last step: the result is the highest B median
+     × 1.10 rounded up to the next 0.1 s, unchanged when that product already is a multiple of
+     0.1 s.
+
+   Reference computation, with `B` set to the largest `b` of the counted runs:
+   `B=<b> bun -e 'const u = BigInt(Math.round(Number(process.env.B) * 1e6)); console.log(Number((11n * u + 999999n) / 1000000n) / 10)'`.
 3. **`bench/budgets.json`.** Set `api.test_cpu_s.budget` to that value. Nothing else in the file
    changes; formatting stays as Biome writes it.
 4. **`bench/README.md`.** Rewrite the api bullet of "Temporary test floors" (line 123) so it says:
@@ -106,14 +129,34 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
    "Changing a budget" and that the value is temporary. Leave the notify and status bullets, the
    introductory paragraph and the closing paragraph about release tags unchanged.
 5. **PR description.** Name each measurement run (URL, `a`/`b` SHA, `others`), its api
-   `test_cpu_s` A and B medians, the maximum B median, the calculation and the new value; state
-   that this follows option (B) of meta #761; list any other failing rows seen in those runs as
-   out of scope. Keep `Closes lorenzh/pulse-meta#<child>`.
-6. **Confirmation run after merge.** After the PR is merged, read the new api `main` full SHA
-   `M2` and dispatch once more on ref `main` with `a=<M2> b=<M2> others=main`. Its `table.json`
-   row api `test_cpu_s` must have `verdict == "ok"`. Post the run URL and that row in the child
-   issue. If it is not `ok`, request a hold (`needs-input`) with the row and do not raise the
-   budget again on your own.
+   `test_cpu_s` A and B medians (full precision from `table.json`), the maximum B median, the
+   calculation and the new value. Name the pre-merge confirmation run of Required behavior 6
+   (URL, branch head SHA, `a`/`b` = `M1`, the api `test_cpu_s` row). State that this follows
+   option (B) of meta #761. List any other failing rows seen in those runs as out of scope. Add a
+   "Post-merge acceptance" section with the command and expected verdict of Required behavior 7,
+   addressed to the person who merges. Keep `Closes lorenzh/pulse-meta#<child>`.
+6. **Pre-merge confirmation run (task completion).** The harness reads `budgets.json` from the
+   workflow's own checkout (`bench/run.ts` line 223, `join(BENCH_DIR, "budgets.json")`), so a run
+   dispatched on the task branch checks the new budget against api `main` before the merge.
+   Commit the two files, push the task branch, read api `main` again as `M1` (equal to `M` unless
+   main moved), and dispatch once:
+   `gh workflow run bench.yml -R lorenzh/pulse-api --ref <task branch> -f a=<M1> -f b=<M1> -f others=main`.
+   The branch head at dispatch must be the commit with the new budget (check `headSha` with
+   `gh run view <id> --json headSha`). This run is separate from the measurement runs and is not
+   used to compute the value. Its `table.json` row api `test_cpu_s` must have
+   `verdict == "ok"` and `budget` equal to the new value. Precedent: the child of meta #654
+   pushed `factory/654-…` and dispatched run 41586621885 on it at its PR head `8df8bf2` before it
+   opened PR #80. If the verdict is not `ok`, request a hold (`needs-input`) with the row; do not
+   raise the budget again on your own and do not touch the floor.
+7. **Post-merge acceptance (owner, not the task).** Factory's `build` ends when the PR is opened,
+   and a person merges it (meta `AGENTS.md`, "How a feature flows", steps 4-5), so the
+   implementer cannot run anything after the merge. The owner's "Done when" run belongs to the
+   person who merges the api PR (the repository owner `lorenzh`). The PR description hands it
+   over with the exact command: after the merge, read the new api `main` full SHA `M2` and run
+   `gh workflow run bench.yml -R lorenzh/pulse-api --ref main -f a=<M2> -f b=<M2> -f others=main`.
+   The `table.json` row api `test_cpu_s` must show `verdict == "ok"`. The person posts the run URL
+   and that row on meta #761. If it is not `ok`, that is a new issue (runner variance or a grown
+   test suite), not a reopened task.
 
 ## Performance impact
 
@@ -127,7 +170,7 @@ bench measures. What changes is a gate threshold:
 - Startup CPU, load CPU, idle/peak RSS, build CPU, cold/eod CPU and the reported metrics
   (wall-clock startup, p95 latencies, rps, image size): none expected, no code changes.
 
-Measured by the hosted runs of Required behavior 1 and 6 (`bench.yml` on `ubuntu-24.04`), not by a
+Measured by the hosted runs of Required behavior 1, 6 and 7 (`bench.yml` on `ubuntu-24.04`), not by a
 local run: the budget must match the hosted runner, and `bench/README.md` says local numbers are
 comparable only on one machine.
 
@@ -146,13 +189,23 @@ service behavior changes.
 
 ## Counterexamples
 
-- **Rounding up, exact case.** Highest B median 7.00 s (`c = 700`): `ceil(7700 / 100) = 77`, so
-  the budget is 7.7 s. The float computation `Math.ceil(7.00 * 1.1 * 10) / 10` gives 7.8 s
-  (`7.00 * 1.1` is `7.700000000000001` in JavaScript) and is wrong.
-- **Rounding up, inexact case.** 8.67 s (`c = 867`): `11 * 867 = 9537`, `ceil(95.37) = 96`, budget
-  9.6 s. Rounding to nearest (9.5 s) is wrong.
-- **Highest, not mean.** B medians 8.35, 8.67, 8.10 s: use 8.67 s (budget 9.6 s), not the mean
-  8.37 s (which would give 9.3 s).
+- **Full precision, not centiseconds.** Highest B median `7.000001` s (`U = 7000001` µs):
+  `11 × 7000001 = 77000011`, `ceil(77.000011) = 78`, so the budget is 7.8 s. Truncating or
+  rounding the median to centiseconds first (7.00 s, then `ceil(77.00) = 77`) gives 7.7 s, which
+  is below `7.000001 × 1.1 = 7.7000011` s and therefore wrong. Likewise `9.090910` s gives
+  `ceil(100.00001) = 101`, 10.1 s; truncating to 9.09 s gives `ceil(99.99) = 100`, 10 s, which is
+  wrong.
+- **Taking the value from `table.md` is wrong.** `table.md` prints two decimals
+  (`bench/compare.ts` line 237); `7.000001` appears as `7.00` and leads to the 7.7 s error above.
+- **Rounding up, exact case.** Highest B median `7` s (`U = 7000000`): `ceil(77000000 / 10^6) =
+  77`, so the budget is 7.7 s. The float computation `Math.ceil(7 * 1.1 * 10) / 10` gives 7.8 s
+  (`7 * 1.1` is `7.700000000000001` in JavaScript) and is wrong.
+- **Rounding up, inexact case.** `8.674321` s (`U = 8674321`): `11 × 8674321 = 95417531`,
+  `ceil(95.417531) = 96`, budget 9.6 s. Rounding to nearest (9.5 s) is wrong.
+- **Non-integer microseconds.** A `b` of `8.6743215` (`b × 1e6` is 0.5 away from an integer)
+  fails the integer check of Required behavior 2 and leads to a hold, not to a guessed value.
+- **Highest, not mean.** B medians `8.351204`, `8.674321`, `8.102977` s: use `8.674321` s (budget
+  9.6 s), not the mean `8.376167` s (which would give `ceil(92.137837) = 93`, 9.3 s).
 - **Medians, not samples.** A run with B samples 8.1, 8.3, 8.4, 8.9, 9.4 s has B median 8.4 s (3rd
   smallest of five). Using its largest sample 9.4 s, or the mean 8.62 s, is wrong.
 - **B, not A.** Use the `b` field. The README's usual rule (A median + 30 %) does not apply here.
@@ -161,8 +214,11 @@ service behavior changes.
 - **Nothing else moves.** A diff that also changes `api.test_cpu_s.floor` (1.6), the probe
   `test_cpu_s` budget (2.3), `bench/baseline.json`, or any other value must be rejected by the
   acceptance check below.
-- **Budget comparison is strict.** In the confirmation run, a B median equal to the new budget is
-  `ok` (`judge` fails only on `b > budget`); a B median 0.01 s above it is `FAIL budget`.
+- **Budget comparison is strict.** In a confirmation run, a B median equal to the new budget is
+  `ok` (`judge` fails only on `b > budget`); a B median 1 µs above it is `FAIL budget`.
+- **Confirmation on the wrong ref.** A pre-merge confirmation dispatched on ref `main` (old
+  budget 5.6 s) or on a branch head that lacks the commit with the new budget checks the old
+  value and does not count; nor does a measurement run reused as the confirmation.
 - **Regression check still applies.** A main-vs-main run whose `b - a` exceeds
   `max(0.1 × a, 1.6 s)` is `FAIL regression` regardless of the budget; that is runner noise and
   goes to a hold, not to a wider floor.
@@ -189,11 +245,13 @@ Required behavior 2 (someone re-set it), request a hold instead of a review.
 
 ### Task
 
-Follow Required behavior 1-6 above: dispatch the measurement runs, compute the value, edit the two
-files, write the PR description, and after merge run the confirmation and report it in the child
-issue. Waiting for runs: each run takes about 40 minutes and runs queue in the `bench`
-concurrency group (`.github/workflows/bench.yml`), so three runs take about two hours; the nightly
-at 02:17 UTC can queue in between.
+One final task. Follow Required behavior 1-6 above: dispatch the measurement runs, compute the
+value, edit the two files, push the task branch, dispatch the pre-merge confirmation run on it,
+and write the PR description with the post-merge handoff of Required behavior 7. The task ends
+before the merge; Required behavior 7 is the owner's step, not part of this task. Waiting for
+runs: each run takes about 40 minutes and runs queue in the `bench` concurrency group
+(`.github/workflows/bench.yml` lines 25-27, no cancelling), so four runs take about three hours;
+the nightly at 02:17 UTC (line 6) can queue in between.
 
 ### Tool facts
 
@@ -227,29 +285,45 @@ at 02:17 UTC can queue in between.
 3. The new value is recomputed from the run artifacts, not from the file: for each run cited in
    the PR, `gh run download <id> -R lorenzh/pulse-api -n bench-out` and
    `jq '.[] | select(.service=="api" and .metric=="test_cpu_s") | .b' table.json`; take the
-   maximum, apply Required behavior 2, and compare with
-   `jq .api.test_cpu_s.budget bench/budgets.json` at `H`. They must be equal. Also
+   maximum, apply the integer computation of Required behavior 2 (reference `bun -e` line), and
+   compare with `jq .api.test_cpu_s.budget bench/budgets.json` at `H`. They must be equal. Also
    `jq -c '[.refs.a.api, .refs.b.api]' samples.json` must show the same full SHA `M` on both
    sides, and the run's log line `[bench] A:` must show `others` at `main`.
-4. `git diff B0 H -- bench/README.md` changes only the api bullet of "Temporary test floors"; it
+4. Pre-merge confirmation: for the run of Required behavior 6, `gh run view <id> -R
+   lorenzh/pulse-api --json headBranch,headSha` shows the task branch and `H` (or a later head
+   whose `bench/budgets.json` equals `H`'s); its downloaded `table.json` row api `test_cpu_s`
+   has `verdict` equal to the literal `"ok"` and `budget` equal to the value from Check 3 (an
+   independent source: the measurement runs' artifacts); `samples.json` shows `M1` on both
+   sides.
+5. `git diff B0 H -- bench/README.md` changes only the api bullet of "Temporary test floors"; it
    names every run id cited in the PR and the new value, and keeps the 1.6 s floor derivation and
    run ids 41508721559, 41517811504, 41525755478, 41578638886.
 
 ### Completion evidence
 
+All of it exists before the merge; nothing in the task's completion waits for the merge.
+
+- Checks 1-5 pass.
 - The PR with the measurement runs, medians, calculation and value (Required behavior 5).
-- After merge, the confirmation run of Required behavior 6: its URL and the `table.json` row of
-  api `test_cpu_s` with `verdict` `"ok"` (literal expected value), `a` and `b` refs equal to the
-  merged `main` SHA `M2`, posted in the child issue.
+- The pre-merge confirmation run of Required behavior 6, named in the PR: its URL, branch head
+  SHA, and the `table.json` row of api `test_cpu_s` with `verdict` `"ok"` (literal expected value)
+  and `a` and `b` refs equal to `M1`.
+- The PR's "Post-merge acceptance" section with the exact command of Required behavior 7 for the
+  person who merges.
 
 ## Risks
 
 - **Runner speed varies by 20-35 % between days.** A budget of max + 10 % over three runs of one
   day can still fail on a slower day. Accepted by the owner (option B); a later failure goes to a
   new issue, not to this one.
-- **api `main` moves during the task.** A merge that grows the test suite between the measurement
-  runs and the confirmation run can push the confirmation over the new budget. The measurement
-  runs all use `M`; if `M2` adds tests and the confirmation fails, hold with both SHAs.
+- **api `main` moves during the task or before the merge.** A merge that grows the test suite
+  between the measurement runs and a confirmation run can push it over the new budget. The
+  measurement runs all use `M`. If the pre-merge confirmation at `M1` fails, the task holds with
+  both SHAs. If the owner's post-merge run at `M2` fails, the owner opens a new issue.
+- **Post-merge acceptance is a person's step.** Factory does not run after the merge, so the
+  owner's "Done when" depends on the person who merges running Required behavior 7. The pre-merge
+  confirmation (same harness change, same `a`/`b`/`others` shape) makes a post-merge failure
+  unlikely unless `main` or the runner speed changed in between.
 - **Other rows fail.** With `others=main`, rows outside scope (probe `test_cpu_s` 2.32 s vs 2.3 s
   in the last nightly) can fail and make the workflow conclude `failure`. The "Done when" only
   requires the api `test_cpu_s` row to be `ok`; the PR lists the other failures.
@@ -258,7 +332,13 @@ at 02:17 UTC can queue in between.
 
 ## Acceptance evidence
 
-Done when: one Bench run on api `main` after the merge, dispatched with `a` = `b` = the full SHA of
-api `main` and `others=main`, shows api `test_cpu_s` with verdict `ok` in its `table.json` (the
-expected verdict `ok` is a literal; the budget it is checked against is computed from the earlier,
-separate measurement runs, Check 3).
+- **Task completion (implementer, before merge):** the pre-merge confirmation run on the task
+  branch (Required behavior 6, Check 4), dispatched with `a` = `b` = the full SHA of api `main` and
+  `others=main`, shows api `test_cpu_s` with verdict `ok` in its `table.json`. The expected verdict
+  `ok` is a literal. The budget it checks against is computed from the earlier, separate
+  measurement runs (Check 3).
+- **Feature done (owner, after merge):** the owner's "Done when": one Bench run on api `main`
+  after the merge, dispatched with `a` = `b` = the full SHA of api `main` and `others=main`, shows
+  api `test_cpu_s` with verdict `ok` in its `table.json` (literal expected value). The person who
+  merges the api PR runs it with the command in the PR (Required behavior 7) and posts the run
+  URL and the row on meta #761.
