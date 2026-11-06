@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "README and configuration describe the layout on console main",
+      "files": [
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: console — Task items 1–4; all Required behavior (Overview, navigation/account row, Checks and other tables, token presets and forms); Checks 1–5; Counterexamples; Security impact; Completion evidence. Keep README short, link to configuration and the existing checks/tokens/team docs for detail, preserve the settings/endpoints tables and link-color sentence, and change only the two listed docs. Re-read current main; request a hold for a material source/runtime contradiction rather than changing code or documenting behavior that does not exist.",
+      "acceptance": [
+        {
+          "command": "git rev-parse origin/main; git show origin/main:src/overview.ts; git show origin/main:src/navigation.ts; git show origin/main:src/shell.ts; git show origin/main:src/styles.ts; git show origin/main:src/check-pages.ts; git show origin/main:src/check-filters.ts; git show origin/main:src/token-pages.ts; git show origin/main:src/token-view.ts; git show origin/main:src/probe-pages.ts; git show origin/main:src/team-pages.ts",
+          "expected": "Manually compare the current main sources to Required behavior before writing. The spec baseline is fc2c166de8237a841b5253cef99bb3fd17f85f2f. If main has advanced, re-read it and report harmless differences in the PR; a difference changing a required point's meaning requires a hold. The five filtered tile links, unfiltered Total, 719px breakpoint, navigation roles, four Checks columns, table scrolling, preset cards and form limits agree with the cited sources. No source file changes."
+        },
+        {
+          "command": "git diff --name-only | sort",
+          "expected": "Before committing, exactly two lines: README.md\ndocs/configuration.md"
+        },
+        {
+          "command": "git status --short",
+          "expected": "Before committing, only README.md and docs/configuration.md are modified; zero untracked files. After committing, the working tree is clean."
+        },
+        {
+          "command": "git diff --name-only origin/main...HEAD | sort",
+          "expected": "On the final committed branch, exactly two lines: README.md\ndocs/configuration.md"
+        },
+        {
+          "command": "git diff --check origin/main...HEAD",
+          "expected": "On the final committed branch, exit 0 with no output."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "Exit 0; no dependency or lockfile change."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 for the full lint, typecheck and test gate, including the existing 80% line coverage threshold."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Sign in locally with the fixture account and manually compare the new docs with the running console at 1280px and 390px, plus a dark-scheme check. Overview has six tiles in order: Down -> /checks?state=down, Degraded -> /checks?state=degraded, Unknown -> /checks?state=unknown, Maintenance -> /checks?state=maintenance, Up -> /checks?state=up, Total -> /checks. Follow all six links: each state filter selects its named state and its independent list row count equals the corresponding tile count; Total opens the unfiltered list. Record any zero-count tile. At 390px, navigation is one horizontally scrolling row with icons, keyboard focus reveals an off-screen link, and Incidents is absent; the account row has no avatar, truncates long identity text with an ellipsis, and keeps role, Account security and Sign out visible. Checks has the visible hint 'Scroll sideways to see all columns.' and scrolls inside the named region at 390px; its headers at 1280px are Check, Target, State, Actions. /tokens/new has four cards, none initially checked, with the shared admin-access note above them. /team shows On or Off in the 2FA column. Fix inaccurate prose or hold for a material spec/runtime contradiction; do not change fixtures or code. Do not publish fixture credentials."
+        },
+        {
+          "command": "sed -n '46,102p' src/overview.ts; cat src/overview.test.ts",
+          "expected": "Manual source/assertion review confirms that zero checks shows 'No checks yet' and 'Reload' without tiles; no-token, rejected-token and failed-read views also have no tiles. The docs include those exceptions, retain state tiles with count 0 on a nonempty successful read, and define counts as entries of the API /checks answer, excluding shadowed definitions. Total can be smaller than the unfiltered Checks row count; state filters exclude shadowed rows."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- README.md docs/configuration.md",
+          "expected": "Manually review against Required behavior, every Counterexample and the cited main sources. README explains overall state, the five filtered tiles plus unfiltered Total, empty/failure exceptions, desktop sidebar and mobile navigation, and links to configuration. Configuration covers tile counts and exceptions; sticky desktop sidebar with its own scroll, mobile header/719px breakpoint, icons/focus/non-interactive chevron or fallback-shadow hints, screen-reader Instance heading and Signed in as prefix, role-visible entries and route authorization, and the desktop email wrapping/mobile ellipsis distinction. Checks documents all four columns and their contents, role/source actions, named focusable scroll region, mobile hint and long-value clipping with full values retained in markup/detail. Tokens/Probes retain headers and scroll inside their boxes; Team uses On/Off and a dash announced as No actions. Token cards have no initial selection, correct descriptions/scopes or a link to docs/tokens.md, the shared admin-access note and missing-scope disabling text. Forms describe the 40rem/12rem/24rem limits and narrow-screen fit, compact Copy buttons requiring JavaScript and one-line recovery codes. Relevant detail links to docs/checks.md, docs/tokens.md and docs/team.md work. No fixed grid-column guarantee or unrelated cleanup is introduced; the settings/endpoints tables and link-color sentence remain unchanged. All counterexamples are false for the draft, and all named labels, links, breakpoints and scopes match the independently cited source."
+        },
+        {
+          "command": "git diff origin/main...HEAD -- README.md docs/configuration.md; git diff --name-only origin/main...HEAD | sort",
+          "expected": "Final manual security and PR-evidence review: no secrets or fixture credentials in the docs or PR body; Security impact remains no, with only the two Markdown paths changed. The PR names issue #791, lists README.md and docs/configuration.md as the complete diff, records bun run check's result and the manual fixture command, widths (1280px/390px), dark-scheme observations, tile destinations/filter/count checks, navigation/account/table/preset/Team observations, and any known browser limitation such as static shadows without scroll-driven animations. No code, tests, styles, dependencies, CSP, routes, roles or other docs change."
+        }
+      ]
+    }
+  ]
+}
