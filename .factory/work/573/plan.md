@@ -121,6 +121,33 @@ notifies its operator channels exactly as before.
   - **Notify file list.** The notify `Files:` list is now the complete inventory of the notify
     tasks. It names `test/index.test.ts` and `test/metrics.test.ts` (changed) and every new
     module and test file, and each check names the file it runs in.
+- The next `spec/plan-review` of this version named two defects, fixed here:
+  - **Two timers of 2000 ms.** The timing test required exactly one registered `2000` ms timer,
+    but the subscribe call used `requestJson` with the same scheduler and `timeoutMs = 2000`, and
+    `interruptible` registers the call's own timeout timer on that scheduler in the same
+    synchronous step (`contract/src/client.ts:184-185`, called from `:331-339`). The subscribe
+    call now has its own timeout `SUBSCRIBE_CALL_TIMEOUT_MS = 1500`, below the release. A request
+    that calls notify registers exactly two timers, in this order: the release timer (`2000`),
+    then the call's timeout timer (`1500`); a request skipped by L0 registers only the release
+    timer. The timing checks name both by delay and order. Firing the call's timer ends the call
+    as a `timeout` and writes nothing; only the release writes the answer (R2 "Release", D22, R8
+    "Timing", "Response timing (D22)").
+  - **L9 had no reservation.** The cap counted answers waiting for release but was checked before
+    the body was read, so with frozen release timers any number of slow-body requests could pass
+    the check while the count was still `0`. L9 is now an admission cap: in the same synchronous
+    step as the check, before any `await` and before the body is read, an admitted
+    `POST /subscribe` takes one of `SUBSCRIBE_MAX_ADMITTED = 256` slots. It frees the slot exactly
+    once, when its response closes, for every outcome: a refusal after admission (`415`, `413`,
+    `400`, `500`), the subscribe answer at the release, or a client that goes away first. New
+    counterexample "Admission (L9), partial bodies" opens 257 requests with unfinished bodies and
+    expects exactly 256 admitted, then checks each way a slot is freed. The constant
+    `SUBSCRIBE_MAX_WAITING` of the previous version is renamed to `SUBSCRIBE_MAX_ADMITTED`, because
+    it now also counts requests whose body is still being read. Because a slot now lives while
+    the body is read, a slow sender could hold it for ever: status sets no `headersTimeout` or
+    `requestTimeout`, and the runtime defaults did not end an unfinished body within 3 s in a
+    probe of this run. So L9 gets a body deadline, `SUBSCRIBE_BODY_TIMEOUT_MS = 5000` on the
+    injected scheduler, which drops the request without an answer and so frees its slot. The
+    Risks paragraph no longer relies on "the existing `headersTimeout` and `requestTimeout`".
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` is
   answered `HTTP 404` in this run. So there are no findings yet, which is normal for a feature
   without children.
@@ -281,7 +308,7 @@ All seven clones have the same HEAD as for PR #816 (checked again in this run wi
   (R8).
 - **D16 No per-requester limit.** Status runs behind proxies whose client address it cannot
   trust (it never reads `X-Forwarded-*`, R2), so it has no per-IP limit. The bounds are global:
-  status's in-flight cap and its cap on answers waiting for release, notify's per-address
+  status's in-flight cap and its admission cap (L9, with its body deadline), notify's per-address
   cooldown and send cap, the global hourly window, the confirmation queue and the row and pending
   caps (R8 table). A flood can fill the window and
   delay real visitors' confirmation mails for up to an hour; it cannot grow the store past its
@@ -359,8 +386,11 @@ All seven clones have the same HEAD as for PR #816 (checked again in this run wi
   timer on its injected scheduler, with the delay `SUBSCRIBE_RELEASE_MS = 2000` (a status
   constant), in the same synchronous step in which the address passed and before it calls
   notify, and it writes the answer only when that timer fires. Nothing else writes that answer:
-  not notify's reply, not its error, not the end of the call. The notify call gets an abort
-  signal that fires at the release, so it never outlives the answer. The answer is the one
+  not notify's reply, not its error, not the end of the call. The notify call has its own,
+  shorter timeout `SUBSCRIBE_CALL_TIMEOUT_MS = 1500` (a status constant; `requestJson` registers
+  it on the same scheduler, `contract/src/client.ts:184-185`), so the two timers differ by delay
+  and by order, and it gets an abort signal that fires at the release, so it never outlives the
+  answer even when a scheduler never fires its timeout. The answer is the one
   subscribe answer of D15. This is the **release class** of the public route: the answer starts
   `SUBSCRIBE_RELEASE_MS` after the address passed, on status's clock, for a confirmed, pending or
   unknown address, below and at every limit. Requests refused before the address is read (origin,
@@ -493,7 +523,7 @@ When on:
 
 | Request | Checks, in this order | Answer |
 | --- | --- | --- |
-| `POST /subscribe` | origin (below) → `403`; 256 answers already wait for release (L9, below) → `503`, the body is not read; `content-type` not `application/x-www-form-urlencoded` (parameters allowed) → `415`; body over 2048 bytes → `413`; fields not exactly one `email` → `400`; `normalizeSubscriberEmail` fails → `400` with the form and the error `Enter a valid email address.`; then register the release timer (below), then call notify, unless status's in-flight cap is full (below) | always the same `200` page, the "subscribe answer" below, written when the release timer fires, for every notify outcome: `202`, `400`, `401`, `503`, any other code, a `3xx`, a timeout, a network error, a wire version mismatch, an invalid body, no answer before the release, or no call because of the in-flight cap (D15, D22, R8). |
+| `POST /subscribe` | origin (below) → `403`; 256 subscribe requests already admitted (L9, below) → `503`, the body is not read; else the request takes an admission slot in the same synchronous step (L9); `content-type` not `application/x-www-form-urlencoded` (parameters allowed) → `415`; body over 2048 bytes → `413`; fields not exactly one `email` → `400`; `normalizeSubscriberEmail` fails → `400` with the form and the error `Enter a valid email address.`; then register the release timer (below), then call notify, unless status's in-flight cap is full (below) | always the same `200` page, the "subscribe answer" below, written when the release timer fires, for every notify outcome: `202`, `400`, `401`, `503`, any other code, a `3xx`, a timeout, a network error, a wire version mismatch, an invalid body, no answer before the release, or no call because of the in-flight cap (D15, D22, R8). |
 | `GET` or `HEAD /subscribe/confirm?token=<t>` | exactly one `token` that matches `SUBSCRIPTION_CONFIRM_TOKEN_PATTERN`, else `400` page `This link is not valid. Request a new one on the status page.` | `200` page with `<form method="post" action="/subscribe/confirm">`, a hidden `token`, and `<button type="submit">Confirm subscription</button>`. No notify call. |
 | `POST /subscribe/confirm` | origin → `403`; content type → `415`; size → `413`; exactly one `token` with the confirm pattern, else `400` (invalid-link page); call notify | `200` → `200` page `Your subscription is confirmed.`; `404` → `400` page `This link is not valid or has expired. Request a new one on the status page.`; anything else → `503` |
 | `GET` or `HEAD /unsubscribe?token=<t>` | one `token` with the unsubscribe pattern, else `400` invalid-link page | `200` page with `<form method="post" action="/unsubscribe">`, hidden `token`, `<button type="submit">Unsubscribe</button>` |
@@ -511,18 +541,54 @@ When on:
   (`SUBSCRIBE_RELEASE_MS = 2000`, a constant exported by `src/subscribe-routes.ts`; `schedule` is
   a new `ServerOptions` member with the type of the contract's `FetchJsonOptions.schedule`,
   `contract/src/client.ts:40-41`, default `setTimeout` with a cancel). Only then does it start
-  the notify call. `release` aborts the call's signal, frees the call's in-flight slot if it
-  still holds one, and writes the subscribe answer. No other code path writes an answer for a
-  request that reached this point. When the client closes the connection before the release,
-  status cancels the timer, aborts the call and writes nothing. Status keeps no address after the
-  call was built: the timer closure holds the response object and the abort controller only.
-- **Waiting cap (L9).** At most 256 subscribe answers wait for their release at once (a status
-  constant, `SUBSCRIBE_MAX_WAITING = 256`). A `POST /subscribe` that finds 256 waiting, after the
-  origin check and before its body is read, gets at once `503` with the page `The status page is
-  busy. Try again in a minute.` and `cache-control: no-store`; status logs `subscription request
-  refused (busy)` (no address) at most once per minute. This answer depends only on the number
-  of waiting answers, never on an address, and `POST /subscribe/confirm` and `POST /unsubscribe`
-  are not counted or refused by it.
+  the notify call, which registers the second and last timer of the request on the same
+  scheduler, in the same synchronous step: the call's timeout of `SUBSCRIBE_CALL_TIMEOUT_MS =
+  1500` (also exported by `src/subscribe-routes.ts`; `interruptible` calls `schedule` inside the
+  `Promise` executor, `contract/src/client.ts:177-191`, so before `fetch` runs). So a request that
+  calls notify registers exactly two timers, `2000` then `1500`; a request skipped by L0
+  registers only the release timer. When the call's timer fires, the call ends as `timeout`
+  (logged as R2 "Notify call") and nothing is written. `release` aborts the call's signal (a
+  no-op when the call already ended), frees the call's in-flight slot if it still holds one, and
+  writes the subscribe answer. No other code path writes an answer for a request that reached
+  this point: not the call's end, not its timeout timer. When the client closes the connection
+  before the release, status cancels the release timer, aborts the call (whose `finally`
+  cancels its timeout timer, `contract/src/client.ts:187-190,206-207`) and writes nothing. Status keeps
+  no address after the call was built: the timer closure holds the response object and the abort
+  controller only.
+- **Admission cap (L9).** At most 256 `POST /subscribe` requests are admitted at once (a status
+  constant, `SUBSCRIBE_MAX_ADMITTED = 256`). "Admitted" covers a request from the moment it
+  passed the origin check, while its body is read, while it waits for its release, until its
+  response closes. The check and the reservation are one synchronous step at the start of the
+  route, after the origin check and before the first `await` of the request and before any body
+  byte is read: when `admitted >= 256` the request gets at once `503` with the page `The status
+  page is busy. Try again in a minute.` and `cache-control: no-store`, takes no slot, and status
+  logs `subscription request refused (busy)` (no address) at most once per minute; otherwise
+  status increments `admitted` and attaches one `res.once("close", free)`. `free` decrements
+  `admitted` exactly once per admitted request (a per-request flag guards it, so a second call
+  is a no-op). Node's `ServerResponse` emits `close` both after an answer has been sent and when
+  the connection ends before that (checked on Bun 1.4.0 with `node:http` in this spec run:
+  `res.writableEnded` is `true` in the first case and `false` in the second), so every outcome
+  of an admitted request frees its slot: a `415`, `413`, `400` (fields or address) or `500`
+  answer, the subscribe answer at the release, a client that closes the socket during the body
+  or during the wait, and a body read error that destroys the request. No path frees the slot
+  earlier than the close of its own response, and no other code changes `admitted`. Two requests
+  that arrive together are handled one after the other by the event loop, so the 257th request
+  always sees the 256 slots taken by earlier ones, whatever their bodies do. This answer depends
+  only on the number of admitted requests, never on an address, and `POST /subscribe/confirm` and
+  `POST /unsubscribe` are not counted or refused by it.
+- **Body deadline** (part of L9). A slow sender must not hold a slot for ever: status sets neither
+  `headersTimeout` nor `requestTimeout` (`grep -rn 'headersTimeout\|requestTimeout'
+  .repos/status/src` finds nothing), and a probe in this spec run on Bun 1.4.0 and Node 24 with
+  `requestTimeout = 1000` still had an unfinished body open after 3 s. So, after the content-type
+  check passed and before the size check and the first body byte, status registers one timer
+  `schedule(dropSlowBody, SUBSCRIBE_BODY_TIMEOUT_MS)` (`SUBSCRIBE_BODY_TIMEOUT_MS = 5000`, exported
+  by `src/subscribe-routes.ts`) and cancels it when the body has ended, when the request is
+  answered `413` (also when a `content-length` over 2048 is refused before reading), or when the
+  response closed.
+  When it fires, status destroys the request without writing a byte; the response's `close` then
+  frees the slot. A `403`, `503` or `415` registers no timer at all. The body timer is always
+  cancelled before the release timer is registered, so it never touches the answer of a request
+  that passed the address rule.
 - **In-flight cap (L0).** At most 8 notify calls of `POST /subscribe` run at once (a constant of
   status, not a setting). A request that finds 8 in flight makes no call and gets the subscribe
   answer at its release, like every other valid request; status counts it in a log line
@@ -539,10 +605,11 @@ When on:
   `method: "POST"`, the body `JSON.stringify(...)` of the validated shape,
   `Authorization: Bearer <token>`, `maxBytes: 4096`, `validate` = `validateSubscriptionAnswer`,
   and `schedule` = the server's `schedule`. For confirm and unsubscribe, `timeoutMs` =
-  `PULSE_STATUS_UPSTREAM_TIMEOUT_MS`. For subscribe, `timeoutMs` = `SUBSCRIBE_RELEASE_MS` and
-  `signal` = the release's abort signal (`RequestJsonOptions` at `contract/src/client.ts:231-235`
-  keeps `signal` and `schedule` of `FetchJsonOptions`, `:33-41`), so the call ends at the
-  release at the latest. A non-`2xx` answer, a timeout, a network error, a wire version
+  `PULSE_STATUS_UPSTREAM_TIMEOUT_MS`. For subscribe, `timeoutMs` = `SUBSCRIBE_CALL_TIMEOUT_MS`
+  (`1500`) and `signal` = the release's abort signal (`RequestJsonOptions` at
+  `contract/src/client.ts:231-235` keeps `signal` and `schedule` of `FetchJsonOptions`, `:33-41`),
+  so the call ends after 1500 ms by its own timer, and at the release at the latest when a
+  scheduler fires the release first. A non-`2xx` answer, a timeout, a network error, a wire version
   mismatch or an invalid body is mapped by the table above (for `/subscribe` always to the
   subscribe answer, written at the release, never earlier). The notify URL is never followed through a redirect (a `3xx` is an error).
   Status logs the failure kind and route, never the address, the token or the notify URL's
@@ -953,24 +1020,25 @@ cannot pass on a difference by mistake.
 | L5 | `PULSE_NOTIFY_SUBSCRIPTIONS_CONFIRM_PER_HOUR` mails per sliding hour | notify | none: `202`, no mail | release (notify: immediate) |
 | L6 | 100 queued confirmation jobs | notify | none: `202`, no mail | release (notify: immediate) |
 | L7 | 2048-byte form body; 1024-byte notify body | status; notify | `413` before the address is read, the same for every address | at once, before the address |
-| L8 | the notify call ends at the release (`timeoutMs` = `SUBSCRIBE_RELEASE_MS`, abort at release) | status | none: the subscribe answer | release |
-| L9 | 256 subscribe answers waiting for release | status | `503` busy page before the body is read, the same for every request | at once, before the address |
+| L8 | the notify call ends after `SUBSCRIBE_CALL_TIMEOUT_MS` (`1500`) by its own timer, and at the release at the latest (abort) | status | none: the subscribe answer | release |
+| L9 | 256 admitted `POST /subscribe` requests (body being read, for at most `SUBSCRIBE_BODY_TIMEOUT_MS` = 5000, or answer waiting for release; a slot is reserved before the body is read and freed when the response closes) | status | `503` busy page before the body is read, the same for every request | at once, before the address |
 
   The incident fan-out queue (the `events` table, worker 2) and the SMTP sends are not on the
   subscribe path: a subscribe request never reads or waits for them, so their state cannot
   change the answer or its time. The notify store error (`503`) is global, not per address, and
   status maps it to the subscribe answer at the release like every other notify outcome.
-- **Precedence.** Status: origin (`403`) → L9 (`503`) → content type (`415`) → L7 (`413`) → form
-  fields (`400`) → address rule (`400`) → release timer registered → L0 (no call) → notify call,
-  cut by L8. Notify: path (`404`) → method (`405`) → bearer (`401`) → content type (`415`) → L7
+- **Precedence.** Status: origin (`403`) → L9 check and slot reservation in one synchronous step
+  (`503`) → content type (`415`) → L7 (`413`) → form fields (`400`) → address rule (`400`) →
+  release timer registered → L0 (no call) → notify call (its timeout timer registered), cut by
+  L8 → release writes the answer → the response closes and frees the L9 slot. Notify: path (`404`) → method (`405`) → bearer (`401`) → content type (`415`) → L7
   (`413`) → JSON and validator (`400`) → R5 subscribe steps 1-5, where the first limit that
   applies is counted in the order L1, L2, L5, L6 for an absent address and L5, L6 for a pending
   one past L3 and L4. Each step before "release timer registered" reads only the request's
   bytes and global counters, never the store and never the address's membership.
-- **Before the address.** The origin check (`403`), the waiting cap L9 (`503`), content type
+- **Before the address.** The origin check (`403`), the admission cap L9 (`503`), content type
   (`415`), size (`413`), form fields (`400`) and the address rule (`400` with the form) run
   before any notify call and read nothing of the store. Their answers, and when they are sent,
-  depend only on the request's own bytes and on the global number of waiting answers.
+  depend only on the request's own bytes and on the global number of admitted requests.
 - **Confirm and unsubscribe stay usable at every subscribe limit.** L0, L9 and L1-L6 apply to
   `POST /subscribe` only. A `POST /unsubscribe` or `POST /subscribe/confirm` is neither counted
   nor refused by them, so a visitor can always leave, also during a subscribe flood.
@@ -980,11 +1048,14 @@ cannot pass on a difference by mistake.
   neither leaks nor revokes.
 - **Timing** (D22). Two classes, both defined on injected schedulers so that tests are exact:
   - *Release class* (status, every request that passed the address rule): exactly one release
-    timer is registered, with the delay `SUBSCRIBE_RELEASE_MS` = `2000`, in the synchronous step
-    in which the address passed and before the notify call starts; no byte of the answer is
-    written before that timer fires; the whole answer is written when it fires; the notify call
-    is aborted then if it is still open. The notify outcome (fast `202`, error, `3xx`, bad body,
-    no answer, no call) changes neither the delay nor the moment of writing.
+    timer is registered, with the delay `SUBSCRIBE_RELEASE_MS` = `2000`, as the first timer of
+    the request, in the synchronous step in which the address passed and before the notify call
+    starts; the notify call then registers exactly one more timer, its timeout of
+    `SUBSCRIBE_CALL_TIMEOUT_MS` = `1500`, and a request skipped by L0 registers none; no byte of
+    the answer is written before the release timer fires, also when the call's timer fired; the
+    whole answer is written when the release fires; the notify call is aborted then if it is
+    still open. The notify outcome (fast `202`, error, `3xx`, bad body, no answer, call timeout,
+    no call) changes neither the delay nor the moment of writing.
   - *Immediate class* (notify, every valid subscribe request): the answer is written in the
     synchronous step that runs `subscribe()`, after the body was parsed; no timer is registered
     and the injected clock is not read again between the decision and the write; no `sendMail`,
@@ -1027,7 +1098,8 @@ cannot pass on a difference by mistake.
   that address (at most 60 s, D12, D20), the keyed digest of that mailbox in the send guard for
   as long as that attempt runs (the key of the digest is random per process and never stored),
   and the queue times of the global window (no address). Status holds no address after it built
-  the notify call; its waiting answers (at most 256, for 2 s each) hold no address.
+  the notify call; its admitted requests (at most 256, each for at most 5 s of body reading plus
+  2 s of waiting) hold no address after the address rule ran.
   Nothing in logs or metrics. Events hold public incident content only.
 - **Retention**: pending rows and their queued jobs as R3 "Cleanup" (gone within 25 hours of the
   last confirmation mail while notify runs); confirmed rows until unsubscribe or `subscribers
@@ -1085,8 +1157,9 @@ cannot pass on a difference by mistake.
 - D-R11 Copies outside the live store (backups, mailboxes, SMTP provider logs, unsent WAL frames
   before a checkpoint) are not removed by a delete; the notice says so for backups and sent
   mail.
-- D-R12 Every valid subscribe answer arrives 2 s after the submit (D22), and a flood of more than
-  256 waiting answers gets the busy page for everyone (L9).
+- D-R12 Every valid subscribe answer arrives 2 s after the submit (D22), and while 256 subscribe
+  requests are admitted (body being read for at most 5 s, or answer waiting), every further
+  subscribe request gets the busy page (L9).
 - D-R13 The one-send-per-mailbox bound (D20) holds inside one notify process and its store; it
   does not cover the operator email channel or a second notify with another store.
 
@@ -1112,9 +1185,14 @@ cannot pass on a difference by mistake.
   that answers known and unknown addresses at different moments on purpose; status must still
   release both at the same scheduler step. Residual: network and CPU jitter around the release
   are not equalized, and a flood that fills L9 delays everyone alike.
-- **Held answers as a resource.** Each valid subscribe holds a socket and a timer for 2 s.
-  Mitigation: L9 (256 waiting answers, `503` before the body is read), L0 (8 notify calls),
-  and the existing `headersTimeout` and `requestTimeout` of the status server.
+- **Held answers as a resource.** Each valid subscribe holds a socket and a timer for 2 s, and a
+  slow body holds a socket while it is read. Mitigation: L9 (256 admitted requests, the slot
+  reserved before the body is read and freed when the response closes, `503` beyond), its body
+  deadline of 5 s on the injected scheduler, and L0 (8 notify calls). Status sets no
+  `headersTimeout` or `requestTimeout` of its own, and the runtime defaults (300 s request
+  timeout) do not bound a slow body in seconds, so the spec does not rely on them. Known limit: a
+  client that keeps 256 slow requests open refuses subscribe for everyone (the same busy page),
+  but never confirm or unsubscribe.
 - **A notice that is not true.** Mitigation: R10's inventory names the columns of R3; the times
   come from the contract constants that notify's cleanup uses; notify tests check cleanup at the
   literal boundaries 25 hours minus 1 ms and 25 hours. The in-memory confirmation queue follows
@@ -1155,8 +1233,8 @@ notify and status without the new variables (`api/bench/compose.bench.yaml:47-75
 
 With subscriptions on, notify holds one page of 100 rows and one message at a time, so its RSS grows
 by the SQLite page cache and not by the number of subscribers. The mailbox guard holds at most two
-entries (one per worker). Status, with subscriptions on, holds at most 256 waiting answers (one
-timer and one socket each) and 8 notify calls; a visitor's subscribe answer arrives 2 s after the
+entries (one per worker). Status, with subscriptions on, holds at most 256 admitted subscribe
+requests (one socket and at most two live timers each) and 8 notify calls; a visitor's subscribe answer arrives 2 s after the
 submit by design (D22). The deploy e2e scenario sends about 15 valid subscribe requests one after
 the other, so it runs about 30 s longer; that is not a bench metric.
 
@@ -1209,7 +1287,9 @@ Checklist items that apply:
   unknown addresses, and one timing class (D22), checked with injected schedulers.
 - **Body and size limits**: status 2048 bytes; notify `SUBSCRIPTION_MAX_BODY_BYTES` 1024; status
   reads at most 4096 bytes of a notify answer; row cap, pending cap, queue cap, window cap,
-  status in-flight cap, status waiting cap (L9), and the notify call cut at the release (L8).
+  status in-flight cap, status admission cap (L9: slot reserved synchronously before the body is
+  read, freed once when the response closes, body deadline 5 s), and the notify call's own
+  1500 ms timeout and its cut at the release (L8).
 - **Input validation**: the address rule (R1) at status and again at notify; token patterns;
   strict objects; exact form fields; no header injection (CR/LF rejected, one recipient per
   message, `To` built from the stored normalized address only); the contact setting (R6) is an
@@ -1313,16 +1393,74 @@ Checklist items that apply:
   `POST /subscribe` with a valid body → `503` with the busy page at once, and the fake notify
   gets no call for it; a wrong implementation that reads the body or checks the address first is
   caught by sending that 257th request with the body `email=not-an-address` → still `503`, not
-  `400`. Fire one release timer → the next `POST /subscribe` is taken again (its release timer is
-  registered).
+  `400`. Fire one release timer and wait for that response's `close` → the next
+  `POST /subscribe` is admitted again (its release timer is registered).
 - With L9 and L0 both full: `POST /unsubscribe` with a valid token → the fake notify gets the call
   and status answers `200 You are unsubscribed. You get no more emails.` at once (no release
   timer); `POST /subscribe/confirm` the same with `200`.
 - Client closes the socket before the release → the release timer is cancelled (the manual
-  scheduler shows it cancelled), the notify call's signal is aborted, and the waiting count is
-  back to its earlier value.
+  scheduler shows it cancelled), the notify call's signal is aborted, and its slot is free again
+  (the probe of "Admission (L9), partial bodies" below admits exactly one more request).
 - Feature off: `POST /subscribe` → `405`; `GET /subscribe/confirm?token=…` → `404`; the page has no
   `id="subscribe"`; the CSP has `form-action 'none'`.
+
+### Admission (L9), partial bodies
+
+Setup in `src/subscribe-routes.test.ts`: a real status server on `127.0.0.1:0` with the manual
+scheduler (nothing fires unless the test fires it) and a fake notify on port 0 that holds every
+`POST /subscriptions` call unanswered until the test ends it (so L0's 8 calls stay in flight and
+the number of calls does not depend on network timing) and answers confirm and unsubscribe calls
+`200` at once.
+The test adds its own `"request"` listener to the returned `Server` after `createStatusServer`
+returned. Node's `EventEmitter` calls listeners in the order they were added, so the test's
+listener runs right after status's handler has run its synchronous part for the same request
+(checked on Bun 1.4.0 in this spec run: the second listener saw `res.writableEnded === true` for a
+request the first had answered `503` synchronously, and `false` for one whose body was still
+open). In that listener the test records, per request, `admitted = !res.writableEnded` and, for a
+refused one, `res.statusCode`; it also adds `res.once("close", …)` to learn when a response
+closed (after status's own `close` listener, which frees the slot). Every request is a raw
+`node:net` socket that sends complete headers with `content-type:
+application/x-www-form-urlencoded` and `content-length: 30` and then only the 6 bytes `email=` of
+its body, and keeps the socket open. The "probe" used below sends two more such requests, one
+after the other, and expects the first `admitted` and the second refused with `503`, which shows
+that exactly one slot was free.
+
+- **The review's race.** 257 partial-body requests are written to 257 sockets in one loop,
+  without waiting between them. Expected, as literals in the test: exactly `256` requests
+  recorded `admitted`, exactly `1` recorded `503`, the `503` socket receives the busy page while
+  every other socket has received `0` bytes, the fake notify has `0` calls, and the scheduler has
+  exactly `256` timers, each of `5000` ms (body deadlines) and `0` of `2000` ms. Then the test
+  completes the 256 bodies (24 more bytes each, a valid address each): the scheduler now has
+  `256` release timers of `2000` ms and `8` call timers of `1500` ms (L0 lets 8 calls start; the
+  fake notify has `8` calls), and all `256` body timers are cancelled; a 258th request → `503`. A wrong implementation that counts only answers waiting for release (the check before
+  the body, the increment after it) records `257` admitted and `257` release timers, and fails.
+- **Freed exactly once, by each path.** Each path runs on a fresh server with 255 admitted
+  partial-body requests plus one request R of that path (256 admitted, checked by one request
+  that gets `503`). R frees its slot by the path; the test waits for R's response `close`, then
+  runs the probe (one admitted, the next `503`):
+  1. R is sent with `content-length: 20`, its first 6 bytes `email=` at once and then the rest
+     of `email=not-an-address` → `400` with the form;
+  2. R is sent with `content-length: 2049` and 2049 body bytes → `413`;
+  3. R's body has two `email` fields → `400`;
+  4. the client destroys R's socket during the body (no byte was written to it);
+  5. the client destroys R's socket after a complete valid body, before the release (its release
+     timer is then cancelled);
+  6. R's body deadline fires (the test fires that `5000` ms timer) → the server closes R's socket
+     with `0` bytes received;
+  7. R's release fires after a complete valid body → the subscribe answer;
+  8. R is sent with `content-type: text/plain` → with 255 others admitted it gets `415` at once
+     and registers no timer (the `415` check comes after admission, so R did take a slot, and
+     the slot is free again after its close); with 256 others admitted the same R gets `503`
+     (L9 comes first).
+  A wrong implementation that frees on both `finish` and `close`, or on both the release and
+  `close`, frees two slots for one request; the probe then admits two and fails. One that frees
+  only at the release keeps the slot after paths 1-6, and the probe's first request gets `503`.
+- **Count back to zero.** After all 256 sockets of a case were closed and every response's
+  `close` was seen, 256 new partial-body requests are admitted and the 257th gets `503` (literals
+  `256` and `1`).
+- **Not counted.** With 256 admitted, `POST /unsubscribe` and `POST /subscribe/confirm` with a
+  valid token → the fake notify gets the call and status answers `200` (as above), and a further
+  `POST /subscribe` afterwards still gets `503` at once (the count did not change).
 
 ### Notify listener
 
@@ -1561,9 +1699,9 @@ cases compare notify's answers; status cases compare status's answers.
 | L5 full | `CONFIRM_PER_HOUR = 1`, one mail queued | confirmed; pending past cooldown | neither gets a mail |
 | L6 full | 100 jobs queued (fake `sendMail` that never resolves) | confirmed; pending past cooldown | neither gets a mail |
 | L0 full (status) | fake notify that holds 8 calls | any | the 9th request makes no call |
-| L8 (status) | fake notify that never answers | any | same answer as for a `202`, written at the release; the fake sees its request aborted |
-| L9 full (status) | 256 answers waiting (manual scheduler, not fired) | any, valid or invalid address | both `503` busy pages byte-equal; the fake notify gets no call for either |
-| L9 one below (status) | 255 answers waiting | any | both take the release path (one release timer each) and are byte-equal at release |
+| L8 (status) | fake notify that never answers | any | same answer as for a `202`, written at the release; the fake sees its request aborted (when the test fires the call's `1500` timer, or at the release when it does not) |
+| L9 full (status) | 256 admitted: 128 answers waiting for release and 128 partial bodies (manual scheduler, not fired) | any, valid or invalid address | both `503` busy pages byte-equal; the fake notify gets no call for either |
+| L9 one below (status) | 255 admitted, the same mix with 127 partial bodies | any | both take the release path (one release timer each) and are byte-equal at release |
 | notify outcomes (status) | fake notify answers `202`, `400`, `401`, `429`, `503`, `302`, `200` with a bad body, `202` with `x-pulse-contract: 2`, a closed socket | — | all nine answers are byte-equal to each other |
 
 At status, "known" and "unknown" are simulated by the fake notify, which treats K and U
@@ -1579,28 +1717,43 @@ scheduler (`schedule` records each `(fn, ms)` with the manual clock's time and r
 nothing fires unless the test fires it) and a manual clock, and a fake notify on port 0 whose
 behavior per address is set by the case. The client uses a raw `node:net` socket so the test sees
 whether any byte arrived. For each case, the test sends K, P (pending) and U in this order and,
-from a fresh fixture, in the order U, P, K, and asserts, with the literals in the test:
+from a fresh fixture, in the order U, P, K. It sends them one at a time: it waits until the
+request's last expected timer is registered (and, when a call is expected, until the fake notify
+received it) before it sends the next, so every timer registered in between belongs to that
+request. The manual scheduler keeps cancelled timers in its record, marked cancelled, and never
+fires them. The test asserts, with the literals in the test:
 
-1. exactly one timer with `ms` `2000` was registered per request, at the clock value of the
-   request (`t0`), and it was registered before the fake notify received that request's call
-   (the fake records the scheduler's count when the call arrives);
+1. the request's timers, in registration order, are exactly `[5000, 2000, 1500]` for a request
+   that calls notify and exactly `[5000, 2000]` for a request skipped by L0. `5000` is the body
+   deadline: it is cancelled before `2000` is registered. `2000` is the release timer: it is
+   registered at the clock value at which the address passed (`t0`), before the call's timer and
+   before the fake notify received the call (the fake records the scheduler's count when the call
+   arrives). `1500` is the call's own timeout (`requestJson`, `SUBSCRIBE_CALL_TIMEOUT_MS`);
 2. after the fake notify finished with the request (answered, failed, redirected, closed, or, for
-   L0, after the 9th request was parsed) and after every other registered timer was fired, the
-   socket has received `0` bytes;
-3. when the test fires the release timer, the socket receives the whole answer, and the three
+   L0, after the request's two timers were registered) and after the test fired the request's
+   `1500` timer when it was not cancelled yet (the call then ends as a timeout, and the fake
+   sees that call aborted when it had not answered), the socket has received `0` bytes;
+3. when the test fires the `2000` timer, the socket receives the whole answer, and the three
    answers are byte-equal except `date`;
-4. when the fake notify had not answered, its request is aborted at the release.
+4. in the cases where the test fires the `2000` timer while the call is still open (the fake has
+   not answered and the `1500` timer was not fired), the fake sees the call aborted at the
+   release, and the `1500` timer is then marked cancelled.
 
 Cases: fake notify answers `202` at once for K and P and `202` for U only after the test's step
 `n` (a deliberate difference); answers `202` for K and closes the socket for U; answers `503` for
-P and `302` for U; answers `200` with a bad body for K; never answers for anyone; L0 full (8 calls
-held, so the three requests make no call); L9 one below (255 waiting). A wrong implementation that
-writes the answer when notify answers (an early return for K) fails check 2; one that registers
-the timer only after notify answered, or with another delay for one path, fails check 1.
+P and `302` for U; answers `200` with a bad body for K; never answers for anyone (run once with
+the `1500` timers fired before the release and once without); L0 full (8 calls held, so the
+three requests make no call); L9 one below (255 admitted). A wrong implementation that writes the
+answer when notify answers (an early return for K) fails check 2; one that writes it when the
+call's timeout fires fails check 2; one that registers the release timer only after notify
+answered, or after the call started, or with another delay for one path, fails check 1; one that
+keeps `timeoutMs = SUBSCRIBE_RELEASE_MS` for the call registers `[5000, 2000, 2000]` and fails
+check 1.
 
-Requests refused before the address (L9 full, `403`, `415`, `413`, `400` fields, `400` address)
-register no release timer and are answered without the test firing any timer (literal `0`
-timers), the same for every address.
+Requests refused before the address: L9 full, `403` and `415` register `0` timers; `413`, `400`
+fields and `400` address register exactly `[5000]`, cancelled when the body ended, and no `2000`
+or `1500` timer. All of them are answered without the test firing any timer, the same for every
+address.
 
 Notify cases (`test/subscriptions-enumeration.test.ts`): the real listener on `127.0.0.1:0` with a
 manual clock and a recording scheduler; the fake `sendMail` holds every call unresolved and the
@@ -1754,7 +1907,9 @@ R7; status variables of R6; notify variables of R3; the notify command `subscrib
 New in this version (status and notify internals, not contract exports), searched in this run with
 `grep -rn -- '<name>' .repos/contract/src .repos/config .repos/status/src .repos/status/public
 .repos/notify/src .repos/notify/test .repos/deploy`, each with no match: `SUBSCRIBE_RELEASE_MS`,
-`SUBSCRIBE_MAX_WAITING`, `subscription request refused`, `mailbox-guard`, `tryAcquire`,
+`SUBSCRIBE_MAX_ADMITTED` (the previous version's `SUBSCRIBE_MAX_WAITING`, renamed, which no clone
+holds either), `SUBSCRIBE_CALL_TIMEOUT_MS`, `SUBSCRIBE_BODY_TIMEOUT_MS`, `dropSlowBody`,
+`subscription request refused`, `mailbox-guard`, `tryAcquire`,
 `subscribe-timing`, `subscriptions-mailbox`, `subscriptions-support`. `grep -rn -i 'mailbox'
 .repos/notify/src .repos/status/src .repos/contract/src` finds nothing either. The `ServerOptions`
 member `schedule` of status is new there (`grep -n 'schedule' .repos/status/src/server.ts` finds
@@ -1814,7 +1969,9 @@ Completion evidence:
 Files:
 - `src/subscribe-routes.ts` (new: the routes of R2, origin check, form parsing, mapping of notify
   answers, the one subscribe answer, the release timer and `SUBSCRIBE_RELEASE_MS` (D22), the
-  waiting cap `SUBSCRIBE_MAX_WAITING` (L9), the in-flight cap)
+  admission cap `SUBSCRIBE_MAX_ADMITTED` with its synchronous reservation, its free on response
+  `close` and its body deadline `SUBSCRIBE_BODY_TIMEOUT_MS` (L9), the in-flight cap, and
+  `SUBSCRIBE_CALL_TIMEOUT_MS` (L8))
 - `src/subscribe-client.ts` (new: the call to notify with `requestJson`)
 - `src/subscribe-pages.ts` (new: the form section with the R10 notice and contact link, and the
   result pages)
@@ -1847,8 +2004,8 @@ Behavior change: yes. New public form, pages and `POST` routes when configured.
 
 Behavior: R2, R6, R7 (status parts), R8 (status side: one subscribe answer, L0, L7, L8, L9, the
 precedence), D22 (release class), R9 (status side), R10 (notice and contact). Off by default with
-today's answers; with subscriptions off no release timer, waiting count or `schedule` call exists
-on any path.
+today's answers; with subscriptions off no release timer, admission count or `schedule` call
+exists on any path.
 
 Shared finding: the exact text of the notify answers and the order of the notify checks are fixed
 by R1 and R4. If the status child finds a gap there, it records it as a shared finding; the notify
@@ -1877,13 +2034,20 @@ Checks:
   counterexamples with their literal outputs. The `400` invalid-address page holds the notice too.
 - `src/subscribe-timing.test.ts`: every status case of "Response timing (D22)" with checks 1-4,
   for K, P and U in both orders, below every limit, at L0 and one below L9, and the "before the
-  address" requests with `0` release timers. Expected values are literals in the test (`2000`,
-  `1` timer per request, `0` bytes before the release); none is read from
-  `src/subscribe-routes.ts`. A self-check in the same file runs the checks against a deliberately
-  wrong handler (written in the test: it answers as soon as the fake notify answers) and expects
-  check 2 to fail, so the check can fail.
+  address" requests with `0` timers (`403`, `415`, L9 full) or exactly `[5000]` (`413`, `400`).
+  Expected values are literals in the test (the timer lists `[5000, 2000, 1500]` and
+  `[5000, 2000]`, `0` bytes before the `2000` timer fires); none is read from
+  `src/subscribe-routes.ts`. A self-check in the same file runs the checks against two
+  deliberately wrong handlers written in the test (one answers as soon as the fake notify
+  answers, one calls `requestJson` with `timeoutMs: 2000`) and expects check 2 and check 1 to
+  fail, so the checks can fail.
 - The "Status routes" cases for L9, unsubscribe and confirm at full L0 and L9, and a closed client
-  socket, in `src/subscribe-routes.test.ts`.
+  socket, and every case of "Admission (L9), partial bodies" with its literals (`256` admitted
+  and `1` refused out of 257 partial bodies, `256` body timers of `5000` ms and `0` of `2000` ms
+  before the bodies end, the probe after each of the eight paths, back to `256` admitted after
+  all closed), in `src/subscribe-routes.test.ts`. Its self-check runs the 257-request race
+  against a wrong admission written in the test (check before the body, count after it) and
+  expects `257` admitted, so the check can fail.
 - Feature off: the four "Feature off" counterexamples.
 - `src/settings.test.ts`: URL without token file → startup error naming
   `PULSE_STATUS_SUBSCRIPTIONS_TOKEN_FILE`; URL without `PULSE_STATUS_PUBLIC_URL` → error naming it;
@@ -2529,10 +2693,13 @@ The feature is done when all of these hold. Every expected value is a literal in
     file's self-check with a row-keyed guard reaches `2`, so the check can fail.
 11. **Response timing (manager requirement 5).** `src/subscribe-timing.test.ts` (status) shows,
     with a manual scheduler, that K, P and U requests, in both orders, below every limit, at L0
-    and one below L9, each register exactly `1` release timer of `2000` ms before the notify call
-    and receive `0` bytes before it fires, whatever the fake notify does per address (fast
-    `202`, error, `302`, bad body, closed socket, no answer); refusals before the address register
-    `0` timers. `test/subscriptions-enumeration.test.ts` (notify) shows that K, P and U, below
+    and one below L9, each register exactly the timers `[5000, 2000, 1500]` (body deadline,
+    release, the call's own timeout; `[5000, 2000]` when L0 skips the call), with the release
+    timer before the notify call, and receive `0` bytes before the `2000` timer fires, also when
+    the `1500` timer fired, whatever the fake notify does per address (fast `202`, error, `302`,
+    bad body, closed socket, no answer); refusals before the address register `0` timers
+    (`403`, `415`, L9 full) or only the cancelled body deadline `[5000]` (`413`, `400`).
+    `test/subscriptions-enumeration.test.ts` (notify) shows that K, P and U, below
     every limit and at L1, L2, L5 and L6, in both orders, are answered with `0` timers and an
     unmoved manual clock while every SMTP send and the fan-out are held. Deploy steps 5a and 5b
     see each real answer after at least `2.000` s.
@@ -2540,6 +2707,13 @@ The feature is done when all of these hold. Every expected value is a literal in
     notify tasks, including `test/index.test.ts` and `test/metrics.test.ts`, and every notify check
     names its file from that list; the breakdown's mechanical path check compares the task paths
     with this list in both directions.
+13. **Admission cap under slow bodies (L9).** `src/subscribe-routes.test.ts` (status), block
+    "Admission (L9), partial bodies": 257 requests whose bodies are still open give exactly `256`
+    admitted and `1` busy `503` with the release timers frozen; each of the eight paths (`400`
+    address, `413`, `400` fields, disconnect during the body, disconnect while waiting, body
+    deadline, release, `415`) frees exactly one slot (the probe admits `1` and refuses the next);
+    after all requests closed, `256` are admitted again. The self-check with a check-before-body,
+    count-after-body admission reaches `257`, so the check can fail.
 
 Issue review checks (third review, 1-14) map to: 1 → items 3 and 5 and the notify settings
 checks; 2 → item 4 (steps 3-6) and item 1; 3 → item 4 (steps 6-8) and the notify "Eligibility and
