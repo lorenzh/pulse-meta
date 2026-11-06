@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "The contract exports validated subscription messages and one email normalization rule",
+      "title": "The contract exports subscription messages, validators and the shared email normalization rule",
       "files": [
         "src/subscriptions.ts",
         "src/validate-subscriptions.ts",
@@ -23,7 +23,7 @@
         "package.json"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, entire section: R1, D8, D13, Contract fields, Address rule counterexamples, Checks and Completion evidence; applicable Security impact items and Performance impact. Keep constants, normalization, schemas, validators, exports, fixtures and generated dist in one additive change. Validators never throw and return the original validated object; the wire email is already normalized, schemas are strict, and token patterns are anchored without flags. Keep WIRE_VERSION = 1 and use the next minor after contract main at merge (2.4.0 before #806 or 2.5.0 after its 2.4.0). Capture the starting-main SHA for the performance comparison. Document the full R1 shapes, limits and routes. No consumer pin changes occur here.",
+      "spec": "## Repository: contract, entire section: R1, D8, D13, Contract fields, Address rule counterexamples, Checks and Completion evidence; applicable Security impact items and Performance impact. Keep constants, normalization, schemas, validators, exports, fixtures and generated dist in one additive change. Validators never throw and return the original validated object; the wire email is already normalized, schemas are strict, and token patterns are anchored without flags. Keep WIRE_VERSION = 1 and use the next minor after contract main at merge (D13). The current clone is c5ce6685ce8b563a243823bca451032291b81adb at 2.4.0 after #806, so use 2.5.0 unless main advances again; preserve all existing #570 runtime-settings/channel/resend exports. Capture the starting-main SHA for the performance comparison. Document the full R1 shapes, limits and routes. No consumer pin changes occur here.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions.test.ts",
