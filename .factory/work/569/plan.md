@@ -40,6 +40,12 @@ through the existing pulse-api routes: this feature adds no API, contract or sta
   from `/admin/config` (whose `maintenance` holds no database window identities, api
   `src/config-write.ts:183,583-588`); and every count in this spec now says whether it counts all
   pulse-api requests or only writes (section "Request counting"), with each route's reads listed.
+- Third plan-review (two changes, applied): incident text lengths follow the pinned contract
+  validator, which counts **code points**, not UTF-16 units (section 9, "Text lengths"); and an
+  incident whose title has no visible character (whitespace only, or only zero-width or
+  combining characters) is shown as `Untitled incident #<id>` and is deleted by typing
+  `Incident <id>` (section 9, "Untitled incidents"), including incidents created outside the
+  console.
 
 ### What this spec builds on (do not redo)
 
@@ -177,9 +183,12 @@ route from the fake api's per-route, per-method counters.
 - Body limits (`maxFormBytes`): `/incidents/new`, `/incidents/update`, `/incidents/resolve`
   32768 bytes (`MAX_INCIDENT_FORM_BYTES`); `/maintenance/new`, `/maintenance/edit` 131072 bytes
   (`MAX_MAINTENANCE_FORM_BYTES`); every other new POST keeps `MAX_FORM_BYTES` 8192
-  (`src/forms.ts:4`). 32768 holds the largest valid incident form: title 200 and message 2000
-  UTF-16 units at 9 URL-encoded bytes each (19800), 50 component ids of 64 ASCII characters
-  with their names (≈3.6 KiB) and the hidden fields.
+  (`src/forms.ts:4`). 32768 holds the largest valid incident form. The contract counts code
+  points (section 9, "Text lengths"), so the worst case is title 200 and message 2000 code points
+  of 4 UTF-8 bytes each, 12 URL-encoded bytes per code point (`%F0%9F%98%80`): 2400 + 24000 =
+  26400 bytes, plus 50 `&component=<64 ASCII>` pairs (3750) and the hidden fields (csrf,
+  form token, impact, status, action: under 500), about 30650 bytes in total. The JSON of that
+  input is about 12.2 KiB (8800 bytes of text, 3350 of ids, keys), under the 16384 contract limit.
 - Before a write the console checks the built JSON with the contract limit of its
   route (`MANUAL_INCIDENT_MAX_BODY_BYTES` 16384, contract `src/schema.ts:854`;
   `ADMIN_MAX_BODY_BYTES` for maintenance, `isWithinApiBodyLimit`, `src/check-write.ts:25-27`).
@@ -220,7 +229,7 @@ rows and no MTTR.
 
 **Rows.** One row per manual incident of the manual read and per automatic incident of the
 automatic read. Each row shows: a kind label (`Manual` or `Automatic`); the title (manual
-`title`; automatic: the check name from `/admin/config` `checks[].name`, falling back to the
+`title`, or `Untitled incident #<id>` for an untitled one, section 9; automatic: the check name from `/admin/config` `checks[].name`, falling back to the
 check id, then ` — ` and the `reason` or `no reason`); for manual rows `Impact: <impact>`; the
 state (manual `status` word; automatic `open` or `resolved`); the start time (manual
 `createdAt`, automatic `openedAt`); and the duration (`resolvedAt - start` when resolved, else
@@ -284,7 +293,8 @@ values.
 Reads: `GET /manual-incidents/<n>`, `/admin/config` (component names). `404` from pulse-api:
 the shell `404` with `This incident does not exist or is not public.`
 
-- Header: title, `Impact: <impact>`, `Status: <status>`, affected components (names from
+- Header: title (an untitled incident: `Untitled incident #<id>` as the heading and page
+  title, section 9), `Impact: <impact>`, `Status: <status>`, affected components (names from
   `/admin/config` `components`, falling back to the id; `No component` when empty), started
   (`createdAt`), resolved (`resolvedAt` or `open`), duration (section 6).
 - Timeline: every update in **response array order** (oldest first). The array index is the
@@ -368,16 +378,41 @@ A resolved incident cannot be reopened.`
 already sent cannot be recalled.`, `action` `/incidents/delete`, `hidden` `[["incident",
 "<id>"]]`, `revision` the incident's update count as text (the field `confirmForm` always
 writes, `src/confirm.ts:83`; the POST declares it as a known field and does not compare it, as
-the delete sends no `If-Match`), `targetName` the title with `.trim()` (as check delete,
-`src/check-routes.ts:686`), `submitLabel` `Delete incident`, `busyLabel` `Deleting…`,
-`cancelHref` the detail page. The typed text is checked with the shipped `typedNameError` and
-`isTypedNameConfirmed` (`src/confirm.ts:47-57`, "Decision 7" in its doc comment, unchanged): both values
-trimmed and NFC-normalized, case-sensitive, inner whitespace counts. The POST takes the title
-from its one read, `GET /manual-incidents/<id>` (never from a posted field); that read answering
-`404` gives the shell `404` `This incident does not exist or is not public.` with zero writes. A
-mismatch or blank: `422` with the `typedNameError` text, the typed value kept, **zero writes**
-(exactly 1 API request: that read). A match sends `DELETE /manual-incidents/<id>` (2 API
-requests, 1 write); success redirects to `/incidents?deleted=1`. Works without JavaScript.
+the delete sends no `If-Match`), `targetName` the **confirm name** (below) with `.trim()` (as
+check delete, `src/check-routes.ts:686`), `submitLabel` `Delete incident`, `busyLabel`
+`Deleting…`, `cancelHref` the detail page. The typed text is checked with the shipped
+`typedNameError(typed, confirmName)` and `isTypedNameConfirmed` (`src/confirm.ts:47-57`,
+"Decision 7" in its doc comment, unchanged): both values trimmed and NFC-normalized,
+case-sensitive, inner whitespace counts. The POST takes the title from its one read,
+`GET /manual-incidents/<id>` (never from a posted field), and derives the confirm name from it;
+that read answering `404` gives the shell `404` `This incident does not exist or is not public.`
+with zero writes. A mismatch or blank: `422` with the `typedNameError` text, the typed value
+kept, **zero writes** (exactly 1 API request: that read). A match sends
+`DELETE /manual-incidents/<id>` (2 API requests, 1 write); success redirects to
+`/incidents?deleted=1`. Works without JavaScript.
+
+**Untitled incidents.** The contract accepts a title without any visible character: title
+`"   "`, `"　"` or `"​"` passes `validateManualIncidentInput` (it refuses only control
+characters and empty strings, contract `src/schema.ts:868-881`), so pulse-api can hold such an
+incident, created through `curl` or another client. With the title as the confirm name it could
+never be deleted: `typedNameError` answers every blank entry with `Type the name to confirm.` and
+every non-blank entry mismatches a title that trims to `""` (`src/confirm.ts:53-57`).
+**Decision:**
+- `isUntitledIncident(title)` (new, `src/incident-form.ts`) is true when the title contains no
+  character of the Unicode categories letter, number, punctuation or symbol:
+  `!/[\p{L}\p{N}\p{P}\p{S}]/u.test(title)`. True for `"   "`, `"　"`, `"​"`, `"́"`;
+  false for ` Slow`, `😀`, `-`.
+- The **confirm name** of an incident is `Incident <id>` (for example `Incident 12`) when
+  `isUntitledIncident(title)`, else the title. The delete page then shows `Type Incident 12 to
+  confirm`; typing `Incident 12` (or ` Incident 12 `) deletes it. A titled incident keeps its
+  title as the confirm name: typing `Incident <id>` for it is a mismatch.
+- Wherever the console shows a manual title as a link text, heading or page title (list row,
+  detail heading, resolve and delete pages), an untitled incident shows `Untitled incident
+  #<id>`, so no link or heading is without an accessible name. The preview and the posted body
+  keep the raw title, as the status page shows it.
+- The composer refuses a new untitled title: `422` field error `The title needs at least one
+  letter, digit, punctuation mark or symbol.`, input kept, zero writes (its 1 read). This is the
+  one console text rule beyond the contract; it does not trim or change any other title.
 
 **Input handling (all incident forms).**
 - `message`: every `\r\n` and every remaining `\r` become `\n` before validation (browsers send
@@ -388,6 +423,21 @@ requests, 1 write); success redirects to `/incidents?deleted=1`. Works without J
   validator with `status: "resolved"`. A failure re-renders the form with `422`, a field error
   from the contract message, and **all input kept** (title, impact, status, components,
   message). No browser-only length check replaces the contract check (no `maxlength`).
+- **Text lengths. Decision:** the console adds no length check of its own for incident text; a
+  title or message is accepted exactly when the pinned contract validator accepts it, which is
+  what pulse-api runs too (api `src/manual-incidents.ts:15-17,134,403,428`). That validator
+  counts **code points**, not UTF-16 units: `plainBody` uses Zod `.max()` (contract
+  `src/schema.ts:868-881`), and Zod 4.6.7 (contract `package.json:39`) counts code points, as
+  the contract notes for other fields (`src/schema.ts:90`, `src/admin.ts:258`). The contract's
+  comment `Lengths count UTF-16 code units` (`src/schema.ts:848`) does not match its own
+  behavior; that is a contract matter outside this feature (no contract change here). Verified
+  with zod 4.6.7: `"😀".repeat(1000)+"x"` (2001 UTF-16 units, 1001 code points), `"😀".repeat(2000)`
+  (4000 units) and `"a".repeat(1999)+"😀"` (2001 units, 2000 code points) pass a 2000 limit;
+  `"a".repeat(2000)+"😀"` (2001 code points) and `"😀".repeat(2001)` fail. A console that counted
+  `String.length` would refuse incidents pulse-api accepts and could not re-render them.
+  `docs/incidents.md` states the limits as "characters (Unicode code points, as pulse-api counts
+  them)". The maintenance note is different: its contract schema adds a `v.length <= 500` refine
+  (contract `src/admin.ts:258-262`), so it is UTF-16 units (section 13).
 - A posted `component` id that is not in the current `/admin/config` components: `422`
   `Component <id> is not configured any more.`, input kept, zero writes.
 - `action=preview`: re-render the same form with the server preview of the posted input and a
@@ -511,7 +561,8 @@ Fields:
   by index and without window ids (api `src/config-write.ts:182-183,583-588`), so it has no
   database window at all.
 - `note`: one-line text. Validated only by the contract (`validateAdminMaintenanceWindowInput`):
-  1–500 UTF-16 units, no control characters, no leading or trailing whitespace. No trimming.
+  1–500 UTF-16 units (the contract's `v.length` refine, `src/admin.ts:258-262`), no control
+  characters, no leading or trailing whitespace. No trimming.
 
 POST:
 1. Reads. Create: `/admin/config` (1 read). Edit: `/admin/maintenance`, then `/admin/config`
@@ -609,7 +660,8 @@ Checklist items that apply:
   authorization; `405` for automatic-incident writes.
 - **Body and size limits:** `maxFormBytes` 32768 / 131072; list field limits; JSON size checked
   against the contract limits before sending.
-- **Input validation:** contract validators for every body; CRLF normalisation; UTC time parsing
+- **Input validation:** contract validators for every body (lengths in code points, exactly as
+  pulse-api); the untitled-title refusal; CRLF normalisation; UTC time parsing
   with round-trip; ids by regex before they reach a URL (`apiIdSegment`, `src/api-path.ts`).
 - **Accessor execution:** upstream incident items are filtered with `isPublicManualIncident`
   (reads own data descriptors only) before validation.
@@ -648,13 +700,19 @@ redirects, as today); file writes (none); Dockerfiles (unchanged).
 | Timeline ties | updates #1 and #2 with equal `at` | #1 shown before #2 |
 | CRLF | message `a\r\nb\rc` | body message `a\nb\nc`, accepted |
 | No trim | title ` Slow` | sent as ` Slow`; preview shows ` Slow` |
-| Contract length | message of 2001 UTF-16 units; 1000 `😀` (2000 units) | 422 with input kept; accepted |
+| Contract length (code points) | message `"x".repeat(2001)`; `"a".repeat(2000)+"😀"` (2001 code points); `"😀".repeat(2001)` | `422` with the contract message `must be 1..2000 characters`, input kept, zero writes |
+| Contract length, mixed emoji | message `"😀".repeat(1000)+"x"` (2001 UTF-16 units, 1001 code points); `"a".repeat(1999)+"😀"` (2001 units, 2000 code points); `"😀".repeat(2000)` (4000 units); title `"😀".repeat(200)` | accepted: 1 write, `303`. A wrong implementation that checks `String.length <= 2000` (or `<= 200`) refuses each with `422` |
+| Contract length, title | title `"😀".repeat(201)` | `422` on the title field, input kept |
 | HTML input | title `<script>alert(1)</script>` | preview and pages show the text; no `<script>` element; status shows the same text |
 | Forged resolve via update | `POST /incidents/update` `status=resolved` | `422`, zero writes, exactly 2 reads (`/manual-incidents/<id>`, `/admin/config`) |
 | Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes (2 reads); GET resolve page `409` without form; detail page has no forms |
 | Resolve race | the fake api resolves the incident between the console's read and its write | 2 reads, exactly 1 write; pulse-api `409` shown with input kept |
 | Delete typed title | for title `Slow checkout`: typed `slow checkout`; `Slow  checkout` (two inner spaces); blank `   ` | `422` (`The name does not match. Type Slow checkout exactly.` / same / `Type the name to confirm.`), zero writes, exactly 1 API request (the title read `GET /manual-incidents/<id>`); a wrong implementation that takes the title from a posted field makes 0 reads and is caught by the read count |
 | Delete typed title, trim | typed `Slow checkout ` (trailing space) or `Café` typed decomposed (`Cafe` + U+0301) for title `Café` | accepted: `isTypedNameConfirmed` trims and NFC-normalizes both (`src/confirm.ts:47-50`); a wrong implementation that compares raw strings refuses it |
+| Untitled delete | incident #12 seeded in the fake api with title `"   "` (as if created by `curl`, never through the composer); also `"\u200B"` | list and detail show `Untitled incident #12`; delete page shows `Type Incident 12 to confirm`; typed `Incident 12` or ` Incident 12 ` → `303`, exactly 1 read and 1 write; typed blank → `Type the name to confirm.`; typed `incident 12` → `The name does not match. Type Incident 12 exactly.`; both `422`, zero writes, 1 read. A wrong implementation that keeps the title as the confirm name refuses every entry |
+| Titled incident, fallback text | title `Slow checkout`, id 12, typed `Incident 12` | `422` `The name does not match. Type Slow checkout exactly.`, zero writes |
+| Untitled predicate | `"   "`, `"\u3000"`, `"\u200B"`, `"\u0301"` / ` Slow`, `😀`, `-` | untitled / titled |
+| Untitled composer | composer publish with title `"   "` | `422` `The title needs at least one letter, digit, punctuation mark or symbol.`, input kept, zero writes, 1 read; title ` Slow` still accepted and sent untrimmed |
 | Roles | Member `POST /incidents/delete` or `/maintenance/delete`; Viewer `POST /incidents/new`, `/incidents/update`, `/maintenance/new` | `403` from the dispatcher, zero API requests (0 reads, 0 writes) |
 | Role lowered mid-request | Member's role set to Viewer after the form token was accepted, before the write (the fake api holds the handler's last read open with a gate and the test
 lowers `users.role` while it waits, as console `src/server.checks-write.test.ts:478-492`; no
@@ -689,6 +747,7 @@ names and the searches that show they do not collide (run from `.target/.repos`)
 | routes `/incidents…`, `/maintenance…` | `grep -rn -F '"/incidents' contract/src config` ; `grep -rn -F '/maintenance/new' contract/src config` ; `grep -rn -F '/incidents/new' contract/src config` | 0 hits each. Console hits only the planned nav paths (`src/navigation.ts:30,37`) and `src/navigation.test.ts:87`, which this change updates. The api's own `/maintenance` and `/incidents` are pulse-api routes on another origin. |
 | People actions `manual-incident.create/update/resolve/delete`, `maintenance.create/replace/delete` | `grep -rn -F 'manual-incident.create' contract/src config` (same for each) | 1 hit each, contract `src/audit.ts:13-20`: the api audit names, reused on purpose. Console `maintenance.create` also exists as a matrix action (`src/permissions.ts:11`), a different type (`MatrixAction`); no clash. |
 | People target kinds `incident`, `maintenance` | `grep -rn -F '"incident"' console/src` | 0 hits; `target_kind` has no CHECK (`src/database.ts:106-121`) |
+| `isUntitledIncident`, texts `Untitled incident #<id>`, confirm name `Incident <id>` | `grep -rn -F 'isUntitledIncident' contract/src config console/src` ; `grep -rn -F 'Untitled incident' contract/src config console/src` ; `grep -rn -F 'untitled' contract/src config console/src` | 0 hits each (console-only function and texts; no wire name) |
 | `listFields`, `lists` | `grep -rn -F 'listFields' contract/src config console/src` | 0 hits |
 | `data-preview`, `data-part`, `data-preview-form` | `grep -rn -F 'data-part' contract/src config console/src` ; same for `data-preview` | 0 hits |
 | `MAX_INCIDENT_FORM_BYTES`, `MAX_MAINTENANCE_FORM_BYTES` | `grep -rn 'MAX_INCIDENT_FORM_BYTES\|MAX_MAINTENANCE_FORM_BYTES' console/src contract/src` | 0 hits |
@@ -704,7 +763,7 @@ Files:
 - `src/check-write.ts` (export the shared sender and People-row helper with per-resource texts)
 - `src/incident-read.ts`, `src/incident-read.test.ts` (new)
 - `src/incident-list.ts`, `src/incident-list.test.ts` (new: filters, order, MTTR, `durationText`)
-- `src/incident-form.ts`, `src/incident-form.test.ts` (new: parse, CRLF, bodies, field errors)
+- `src/incident-form.ts`, `src/incident-form.test.ts` (new: parse, CRLF, bodies, field errors, `isUntitledIncident`, confirm name)
 - `src/incident-preview.ts`, `src/incident-preview.test.ts` (new: server preview)
 - `src/incident-write.ts`, `src/incident-write.test.ts` (new: outcome mapping)
 - `src/incident-pages.ts`, `src/incident-routes.ts` (new)
@@ -735,7 +794,9 @@ public manual incidents (ids from 1, own counter), validates bodies with
 (resolved → `409`, 100 updates → `409`), keeps database windows with the shared revision
 (`If-Match` missing `428`, stale `412`, `*` `400`; duplicate id, shadowed replace, file id `409`;
 unknown `404`), computes `phase` from an injected `now`, serves file and shadowed rows from
-fixtures (a database window can be seeded with any epoch, for example start `1793959200123`), and
+fixtures (a database window can be seeded with any epoch, for example start `1793959200123`; a
+public manual incident can be seeded with any contract-valid title, for example `"   "` or
+`"​"`, standing for an incident created outside the console), and
 records every request it receives as `{method, path}` so a test can count reads and writes per
 route separately. A reply can be held open with a gate (as the existing `test/fake-api.ts`
 `replyTo(..., {gate})`), for the role-lowered and session-removed cases. A switch makes the
@@ -745,7 +806,9 @@ incident after its next read, so the console's following write meets pulse-api's
 
 **Checks.**
 - Unit: `incident-list.test.ts` (every MTTR, duration, order, filter and bound counterexample),
-  `incident-form.test.ts` (CRLF, no trim, contract errors to fields, forged resolve status),
+  `incident-form.test.ts` (CRLF, no trim, contract errors to fields, forged resolve status,
+  the code-point length rows with their literal strings, the untitled predicate and confirm
+  name rows),
   `incident-preview.test.ts` (the literal parts below), `incident-write.test.ts` (every row of
   the section 10 table), `maintenance-form.test.ts` (time parse/keep, selection, sizes, ids),
   `maintenance-view.test.ts` (phase sections, order, missing checks, file/shadowed actions per
@@ -763,7 +826,7 @@ incident after its next read, so the console's following write meets pulse-api's
   (`writeGuardProblem`: zero writes and the exact read count of the "Request counting" table);
   for every route of that table one test asserts its reads and writes on the success path;
   `action=preview` makes zero writes and no People row; maintenance edit time keep (stored
-  `1793959200123` sent back unchanged, 2 reads, 1 write) and its changed and raced rows; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; every outcome
+  `1793959200123` sent back unchanged, 2 reads, 1 write) and its changed and raced rows; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; the untitled rows against fake-api incidents seeded with titles `"   "` and `"​"` (list and detail text, delete by `Incident <id>`, blank and wrong entries refused with 1 read and zero writes, the titled-fallback mismatch) and the composer's untitled refusal; the mixed-emoji length rows end to end (accepted ones reach the fake api, which validates with the same contract); every outcome
   row of section 10 and the maintenance outcomes (`409`, `412`, `422`, `404`, timeout, unknown)
   with input kept; private items never rendered; old-api Maintenance state; a scan of every
   response, log line and the test database for the sentinel admin token and the test titles,
@@ -809,7 +872,8 @@ checked with `diff -q` against `gh api …?ref=04108fa…`):
 incident writes and `checks` for maintenance writes; README line 20 today names only `read` or
 `checks` and `admin`). `docs/configuration.md`: the signed-in pages list (line 121), the list
 field step and limits in the POST order (line 115). `docs/incidents.md`: routes, roles, MTTR
-populations and formula, preview meaning and its limits (time excluded, container layout not
+populations and formula, text limits in code points (as pulse-api counts them), untitled
+incidents and their `Incident <id>` delete confirmation, preview meaning and its limits (time excluded, container layout not
 compared), the automatic shortcut, draft interaction (an update keeps a private draft, a resolve
 discards it), outcome texts. `docs/maintenance.md`: UTC times, selection snapshot, stale rule,
 file/shadowed rows, phases. `docs/index.md` links both. `AGENTS.md`: the new `server.*.test.ts`
@@ -950,10 +1014,14 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
 5. Roles and confirmations: console HTTP tests: zero API requests on every dispatcher refusal;
    zero writes and exactly the reads of the "Request counting" table on every handler refusal
    (literal counts in the Counterexamples).
-8. Request counts: one console HTTP test per row of the "Request counting" table asserts its
+6. Request counts: one console HTTP test per row of the "Request counting" table asserts its
    literal read and write counts from the fake api's request record.
-6. Mobile: console browser check at 390 px (no sideways scroll, axe).
-7. Secrets: console HTTP scan and deploy step 12 (0 hits).
+7. Mobile: console browser check at 390 px (no sideways scroll, axe).
+8. Secrets: console HTTP scan and deploy step 12 (0 hits).
+9. Text limits and untitled incidents: console unit and HTTP tests with the literal strings of
+   the "Contract length" and "Untitled" Counterexamples rows (expected outcomes written in the
+   rows; the code-point behavior was checked against zod 4.6.7, the contract's pinned
+   dependency, not derived from console code).
 
 ## Risks
 
@@ -971,5 +1039,10 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
 - **Automatic list bound.** More than 1000 automatic incidents in 14 days hides the automatic
   MTTR and shows the first 200 rows only; an automatic incident older than 14 days has no detail
   page.
+- **Contract length counting.** If contract later makes incident lengths count UTF-16 units (to
+  match its comment), stored incidents above 2000 units would fail `validateManualIncident` in
+  the console's reads after a pin bump. The console follows the contract by its pin; that change
+  belongs to a contract feature, which must handle stored data. This spec's length tests then
+  fail on purpose and show the change.
 - **Unknown outcomes.** A timed-out publish may have published; the console says so and does not
   retry. A person can find it in the list.
