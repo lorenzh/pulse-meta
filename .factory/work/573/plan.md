@@ -39,8 +39,13 @@ notifies its operator channels exactly as before.
   - adds its own e2e overlay and scenario, as #570 does.
   #573 does not wait for #570. A child that starts after the #570 part of its repository merged
   rebases onto it and keeps the rules above.
+- The `spec/plan-review` comment on the first version of this spec named three defects. This
+  version fixes them: the e2e negative mail checks wait for a detection barrier and a settled
+  fan-out (deploy step "Barriers"); the fan-out pass budget is stored and survives restarts (R3
+  `events.passes`, R5 "Pass budget"); and the one place where a token appears in an HTTP answer
+  is defined once (R7 "Token exception") and used the same way in R2 and the security checks.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` answered
-  `HTTP 404` in this run. So there are no findings yet, which is normal for a feature without
+  `HTTP 404` in this run too. So there are no findings yet, which is normal for a feature without
   children.
 
 ### Clone heads read for this spec
@@ -246,8 +251,11 @@ When on:
 - **Pages.** Each result page is server-rendered HTML with the page's title, wordmark, theme and
   CSS, `cache-control: no-store`, the headers of today (CSP, `x-content-type-options`,
   `x-frame-options`, `referrer-policy: no-referrer`), and a link back to `/`. All text from a
-  request is escaped with `escapeHtml`; no address or token is echoed, except the token in the
-  hidden field of the confirm and unsubscribe forms.
+  request is escaped with `escapeHtml`. No page echoes an address. No page echoes a token, with
+  one exception (R7 "Token exception"): the `200` answer of `GET /subscribe/confirm` and
+  `GET /unsubscribe` holds the request's own, pattern-checked token once, as
+  `<input type="hidden" name="token" value="<token>">`. Every other answer, including the
+  `400` invalid-link pages and every `POST` result page, holds no token.
 - **Routes.**
 
 | Request | Checks, in this order | Answer |
@@ -309,7 +317,10 @@ When on:
     confirmed_at INTEGER)`;
   - `events(key TEXT PRIMARY KEY, manual_id INTEGER NOT NULL, status TEXT NOT NULL CHECK (status
     IN ('seeded','pending','done')), detected_at INTEGER NOT NULL, payload TEXT, settled_at
-    INTEGER)`;
+    INTEGER, passes INTEGER NOT NULL DEFAULT 0, next_pass_at INTEGER)`. `passes` is the number
+    of fan-out passes started for the event; `next_pass_at` is the earliest start of the next
+    pass (`NULL` before the first pass). Both are durable, so a restart never resets the pass
+    budget (R5 "Pass budget");
   - `deliveries(event_key TEXT NOT NULL, subscription_id TEXT NOT NULL, status TEXT NOT NULL CHECK
     (status IN ('sent','failed')), attempts INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY
     (event_key, subscription_id))`;
@@ -367,7 +378,7 @@ Times come from the injected `now`.
   `mac` → `404`. A right `mac`: delete the row with that id and its delivery rows, if any →
   `200`. A right `mac` whose row is gone (already cancelled, or pruned) → `200`.
 - **Confirmation mail** (worker 1, in memory, FIFO, at most 100 jobs, one send at a time, up to 3
-  attempts with the `retryDelay` of `notify/src/delivery.ts:43-45`):
+  attempts with the `retryDelay` of `notify/src/delivery.ts:41-43`):
   - `From` = the setting, `To` and envelope = the address only, `Subject` =
     `<prefix> Confirm your subscription`, `Message-ID` = `<sha256("confirm:" + id + ":" +
     confirm_sends) first 32 hex>@<from domain>`;
@@ -389,11 +400,20 @@ Times come from the injected `now`.
     `detected_at = now`, and set `manual_baseline_at = now`, in one transaction. Send nothing.
   - else: `detectManualEvents(incidents, key => store has key)`; store each as `pending` with
     `detected_at = now` and the payload of `buildManualNotification`
-    (`notify/src/notifier.ts:150-178`), then wake worker 2.
+    (`notify/src/notifier.ts:150-178`), all in one transaction, then wake worker 2.
+  - After that transaction committed (also for the seeding one, and also when it stored no new
+    key), the poll adds 1 to `pulse_notify_subscriber_detections_total`. A failed transaction
+    adds nothing and logs an error. This counter, not `pulse_notify_polls_total`, is the e2e
+    barrier for "notify has read the feed after a write": `pollDone` counts a poll before its
+    detection runs (`notify/src/notifier.ts:401`).
+  - Polls run one after the other: the next poll is scheduled only after the previous `tick`
+    settled (`notify/src/notifier.ts:340-366`). So when the counter reads `d` at some moment, the
+    poll that makes it `d + 2` fetched the feed after that moment.
   - The input is the `incidents` of `fetchManualIncidents`, which are already public projections
     (`notify/src/api.ts:301-308`). Nothing from `/admin` is read.
-- **Fan-out** (worker 2, one event at a time, in `detected_at` order, also the `pending` events
-  found at start):
+- **Fan-out** (worker 2, one event at a time, ordered by `detected_at` and then `key`, also the
+  `pending` events found at start; the e2e scenario does not rely on this order, see deploy
+  "Barriers"):
   - A pass reads the eligible subscriptions in pages of 100 by `id`: `state = 'confirmed'`,
     `confirmed_at <= detected_at`, and no delivery row for this event. For each one, right before
     the send, it reads the row again by id; if the row is gone or not `confirmed`, it skips it
@@ -417,16 +437,31 @@ Times come from the injected `now`.
       Unsubscribe: <STATUS_URL>/unsubscribe?token=<unsubscribe token>
       ```
     - no reason, check name, component id or other subscriber.
-  - Outcome per send: success → delivery `sent`; `PermanentDeliveryError` or a refused recipient
-    → delivery `failed`; another error → the subscription stays for the next pass.
-  - After a pass with no subscription left, the event is `done` (`settled_at = now`). Else the
-    next pass starts after `retryDelay(pass, PULSE_NOTIFY_RETRY_DELAY_MS,
-    PULSE_NOTIFY_RETRY_MAX_DELAY_MS)`. After `N` passes, the subscriptions still left get
-    delivery `failed` with `attempts = N` and the event is `done`. `N` is
-    `PULSE_NOTIFY_RETRY_ATTEMPTS`, and `12` when that is `0`, so one failing address never holds
-    the queue for ever.
+  - Outcome per send: success → delivery `sent` with `attempts` = the event's `passes`;
+    `PermanentDeliveryError` or a refused recipient → delivery `failed` with the same
+    `attempts`; another error → no delivery row, the subscription stays for the next pass.
+  - **Pass budget.** `N` is `PULSE_NOTIFY_RETRY_ATTEMPTS`, and `12` when that is `0`, so one
+    failing address never holds the queue for ever. The budget is stored, not held in memory:
+    1. Before a pass sends anything, worker 2 checks `passes`. When `passes >= N`, it does not
+       send: in one transaction it writes delivery `failed` with `attempts = passes` for every
+       eligible subscription without a delivery row, and sets the event `done` (`settled_at =
+       now`). This is the "finalize" step.
+    2. Else, when `next_pass_at` is set and `now < next_pass_at`, it sleeps until
+       `next_pass_at` (the remaining time, not a new full delay).
+    3. Then, in one committed transaction and before the first send, it sets `passes = passes +
+       1`. So a pass counts as soon as it starts, also when a stop or crash ends it before any
+       send; a restart can never run more than `N` passes for one event.
+    4. After the pass: no eligible subscription without a delivery row → the event is `done`.
+       Else it sets `next_pass_at = now + retryDelay(passes, PULSE_NOTIFY_RETRY_DELAY_MS,
+       PULSE_NOTIFY_RETRY_MAX_DELAY_MS)` (`notify/src/delivery.ts:41-43`) and goes back to step
+       1. The `next_pass_at` write and the event's state change are each one transaction.
+  - **Recovery after a restart.** Worker 2 starts with the oldest `pending` event and goes
+    through steps 1-4 with the stored `passes` and `next_pass_at`. An event whose last allowed
+    pass was started before the stop (`passes = N`) is finalized at once and sends nothing. The
+    next event then starts. Events after it wait at most for `N` pass starts plus their delays
+    in total, whatever the number of restarts.
   - Stop aborts the sleep and any send in flight. The event stays `pending` and the next start
-    resumes it.
+    recovers it as above. An aborted send writes no delivery row.
   - Worker 2 never blocks the channel workers or worker 1.
 - Subscriber mail never goes through the ledger, the channel deliveries or `failed list|resend`.
 
@@ -443,10 +478,23 @@ bad value fails startup with exit `2` and one line that names the variable.
 ### R7 Logs and metrics
 
 - No log line, error text, metric label or HTTP answer of status or notify holds an address, a
-  token, the key, the bearer token or an SMTP password. Logs carry counts and fixed reasons.
+  token, the key, the bearer token or an SMTP password, with the one exception below. Logs carry
+  counts and fixed reasons. Status logs a failed request with `url.pathname` only, never the
+  query (`status/src/server.ts:673-681,873`), so a token in a link's query never reaches a log;
+  the new routes keep that.
+- **Token exception** (the only one). The `200` answer of `GET`/`HEAD /subscribe/confirm` and
+  `GET`/`HEAD /unsubscribe` on status holds the token of that same request's query once, in the
+  hidden `token` field of its form, after the token matched its pattern and through
+  `escapeHtml`. That answer has `cache-control: no-store` and `referrer-policy: no-referrer`.
+  Nothing else holds a token: not the `400` page of a bad link, not a `POST` result page, not
+  the `GET /` page, not a notify JSON answer (including `400`, `404` and `503`), not a log line,
+  not a metric. Addresses have no exception.
 - Notify metrics (registered only when subscriptions are on):
   - `pulse_notify_subscribers{state="pending"|"confirmed"}` (gauge, read at scrape);
-  - `pulse_notify_subscriber_events_pending` (gauge);
+  - `pulse_notify_subscriber_events_pending` (gauge, read from the store at scrape: the number of
+    events with `status = 'pending'`; an event leaves `pending` only after its last pass ended,
+    so `0` means no incident send is in flight or due);
+  - `pulse_notify_subscriber_detections_total` (counter, R5 "Detection");
   - `pulse_notify_subscriber_mails_total{kind="confirmation"|"incident",outcome="success"|"failure"}`;
   - `pulse_notify_subscription_requests_total{route="subscribe"|"confirm"|"unsubscribe",outcome="ok"|"invalid"|"limited"|"unauthorized"|"error"}`.
 - Status adds no metric. Its `pulse_status_http_requests_total` counts the new routes by status
@@ -531,8 +579,11 @@ input, new secrets, file writes, and CI changes.
 Checklist items that apply:
 
 - **Secrets in errors, logs and responses**: R7; startup errors name the variable only; the
-  status pages never echo the address; the e2e scenario scans logs for addresses, tokens and
-  secrets.
+  status pages never echo the address; a token appears in exactly one kind of answer, the `200`
+  `GET`/`HEAD` page of the confirm and unsubscribe links, in its hidden form field (R7 "Token
+  exception"), which is `no-store` and `no-referrer`; every other status page and every notify
+  answer holds no token (status checks and notify security test); the e2e scenario scans logs
+  for addresses, tokens and secrets.
 - **Auth order and status codes**: notify R4 (path, method, then auth before any body read);
   status R2 (origin before body); exact codes in R1 and R2.
 - **Body and size limits**: status 2048 bytes; notify `SUBSCRIPTION_MAX_BODY_BYTES` 1024; status
@@ -613,6 +664,12 @@ Checklist items that apply:
 - `GET /subscribe/confirm?token=<valid>` changes nothing: the fake notify gets 0 calls.
 - `HEAD /unsubscribe?token=<valid>` → `200`, 0 notify calls.
 - `GET /subscribe/confirm?token=<43 chars>&token=<43 chars>` → `400`.
+- Token exception (R7), with the literal token `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`
+  (43 `A`): the `200` answer of `GET /subscribe/confirm?token=<it>` holds it exactly once, inside
+  `name="token" value="…"`; the `400` answer of `GET /subscribe/confirm?token=<it>B` (44
+  characters) holds neither the 43- nor the 44-character string; the `POST /subscribe/confirm`
+  result pages for notify `200`, `404` and `503` do not hold it. A wrong implementation that
+  echoes the bad token on the error page, or the token on the result page, fails here.
 - Notify answers `302` → `503`, the `Location` is not followed (the fake's second server gets 0
   requests).
 - Notify answers `202` without `x-pulse-contract` → accepted (absent tolerated, as `requestJson`
@@ -629,6 +686,9 @@ Checklist items that apply:
 - `GET /subscriptions` → `405`, `allow: POST`; `POST /subscriptions/other` → `404`.
 - `{"email":"a@example.com","extra":1}` → `400` (strict).
 - `{"token":"<44 characters>"}` on confirm → `400`.
+- No notify answer body holds the request's token or address: confirm with an unknown valid
+  token → `404 {"error":"invalid token"}` exactly; subscribe with a valid address → `202
+  {"status":"accepted"}` exactly.
 
 ### Lifecycle and timing (injected clock `t`, in ms)
 
@@ -680,6 +740,23 @@ Checklist items that apply:
 - Row 1 refused with 550 → delivery `failed` after 1 attempt; row 2 still gets the message.
 - `PULSE_NOTIFY_RETRY_ATTEMPTS = 0` and row 1 always temporarily failing → after 12 passes row 1 is
   `failed` and the next event starts.
+- Pass budget across restarts (`PULSE_NOTIFY_RETRY_ATTEMPTS = 3`, `RETRY_DELAY_MS = 1000`,
+  `RETRY_MAX_DELAY_MS = 60000`, row 1 always temporarily failing, a second event E2 pending
+  behind E1). The expected numbers are literals in the test:
+  - Passes 1 and 2 run (row 1: 2 send attempts); stop during the sleep before pass 3; start a new
+    worker on the same store → `passes` reads `2`; pass 3 runs (1 more attempt, 3 in total);
+    row 1 is `failed` with `attempts = 3`; E1 is `done`; no 4th attempt; E2 starts.
+  - Stop during pass 3, after `passes = 3` was committed and while the send to row 1 is in
+    flight (the fake `sendMail` waits for the abort); start again → 0 sends for E1, row 1 is
+    `failed` with `attempts = 3`, E1 is `done`, and E2's first send happens before any sleep.
+  - The wrong implementation that keeps the pass count in memory makes a 4th, 5th, … attempt on
+    each restart; this test catches it by counting the fake's calls for row 1 (`3`, not more).
+  - Stop at `t = T` during the sleep before pass 2, whose `next_pass_at` is `T + 400`
+    (stored after pass 1 at `T - 600` with `retryDelay(1, 1000, 60000) = 1000`); start again at
+    `t = T + 100` → pass 2 starts at `t = T + 400` (the injected sleep is asked for `300` ms),
+    not at `T + 1100`.
+  - Ten restarts in a row, each right after the worker started → E1 still gets at most 3 pass
+    starts and is `done` when `passes = 3`.
 - 250 confirmed rows → the store is read in 3 pages; every row gets one send; no two sends for one
   row.
 - Restart after an event is `done` → 0 new sends for it.
@@ -808,7 +885,8 @@ Checks:
   `/subscriptions` (literals in the test); the confirm and unsubscribe `POST`s send `{"token":…}`
   to their routes; every page has `cache-control: no-store`, the CSP with `form-action 'self'`,
   `referrer-policy: no-referrer`; no answer body contains the submitted address; a hostile address
-  text `<script>` is never echoed.
+  text `<script>` is never echoed; the "Token exception" counterexample with its literal token:
+  only the `200` `GET` link pages hold it, once, in the hidden field.
 - Feature off: the four "Feature off" counterexamples.
 - `src/settings.test.ts`: URL without token file → startup error naming
   `PULSE_STATUS_SUBSCRIPTIONS_TOKEN_FILE`; URL without `PULSE_STATUS_PUBLIC_URL` → error naming it;
@@ -872,7 +950,14 @@ Checks (fake `sendMail` from `test/smtp-stub.ts`, injected clock and sleep, `mkd
 - `test/subscriptions-security.test.ts`: the store file and its lock are mode `0600`; no log line
   (captured logger) holds the address, a token, the key or the bearer token after a full flow with
   a failing SMTP; the metric output holds no address; a confirmation and an incident message have
-  exactly one `To` address and no CR/LF in `Subject`.
+  exactly one `To` address and no CR/LF in `Subject`; no listener answer body (every route, every
+  status code of R1) holds the request's token or address.
+- Pass budget: every "Pass budget across restarts" counterexample, each with a real stop and a
+  new worker over the same `mkdtemp` store file (not the same object), and the fake's call count
+  per row as a literal.
+- `pulse_notify_subscriber_detections_total`: grows by 1 per poll whose manual read answered
+  (also a seeding poll and a poll with no new key); does not grow on a manual-feed error or a
+  404; grows only after the event rows are readable from a second connection to the store.
 - Settings: each required variable missing → exit `2` naming it; a key of 63 or 65 hex
   characters, or with upper case → error; `off` opens no file (the test passes a state directory
   without write permission).
@@ -967,35 +1052,68 @@ Behavior:
      subject ends with `Confirm your subscription`, whose `To` has one address, and whose text
      holds `http://status.e2e.invalid/subscribe/confirm?token=` and
      `http://status.e2e.invalid/unsubscribe?token=`.
-  4. Repeat `POST /subscribe` for A → `200`. Then subscribe a fourth address D and wait for D's
-     confirmation (FIFO barrier); A still has exactly 1 message.
+  **Barriers.** A mail that is expected proves nothing about a mail that must not come: fan-out
+  sends in `id` order, and the ids are random, so C's message can arrive before or after a
+  wrong send to A; and a later incident can be detected in the same poll as an earlier one. So
+  no step uses "another recipient's mail arrived" or "a later incident's mail arrived" as proof
+  of absence. Every incident step instead ends with `settle`, a shell function of
+  `e2e/subscriptions.sh` that reads notify's metrics the way `notify_polls_ok` does
+  (`e2e/compose-e2e.sh:635-640`, a `fetch` of `http://127.0.0.1:9100/metrics` inside the notify
+  container):
+  - S1 Right after the step's last api write answered its success code, read
+    `d0 = pulse_notify_subscriber_detections_total`.
+  - S2 Wait (bounded, `T_NOTIFY`) until that counter is at least `d0 + 2`. The poll that makes it
+    `d0 + 2` fetched the feed after the write and committed its detection (R5 "Detection").
+  - S3 Wait (bounded) until `pulse_notify_subscriber_events_pending` is `0`: every event of the
+    step has finished its last pass, so no send is in flight or due.
+  - S4 Compare `pulse_notify_subscriber_mails_total{kind="incident",outcome="success"}` with its
+    value before the step: the difference must equal the step's literal `sent` number, and the
+    `outcome="failure"` series must not have grown. A send to an address that must not get mail
+    makes this difference too big, whatever the order of the sends.
+  - S5 Wait (bounded) until mailpit holds the step's expected messages; then read the step's
+    negative counts. Then wait for one more detection (`d >= current + 1`) and
+    `events_pending 0` again, and read the negative counts a second time; both reads must give
+    the literal `0` (or the literal count).
+  The `docker compose restart notify` of step 11 runs only after step 10's `settle` passed, so
+  the restart cannot cancel a wrong send that was still due. After the restart the counters
+  start at `0` again; the script reads its "before" values after the restart.
+  4. Repeat `POST /subscribe` for A → `200`. Notify decides "no mail" (R5 subscribe step 3)
+     before it answers, so no job for A exists. Then subscribe a fourth address D and wait for
+     D's confirmation (worker 1 is one FIFO queue, so every job queued before D's has been
+     handled). A still has exactly 1 message, and
+     `pulse_notify_subscriber_mails_total{kind="confirmation",outcome="success"}` is exactly `4`.
   5. For A and C: take the path and query of the confirm link, `GET` it on
      `127.0.0.1:<status port>` → `200` with a form; `POST /subscribe/confirm` with that token →
      `200`. B and D stay pending.
   6. Publish public manual incident P1 (`POST /manual-incidents`, title `e2e-sub-p1-5d2`), add
-     an update with message `e2e-sub-p1-upd-5d2`, resolve it. Wait until A and C each have the
-     three incident messages (subjects `New incident: e2e-sub-p1-5d2`, `Update: …`,
-     `Resolved: …`), each with one `To` address and a text that holds `/unsubscribe?token=`.
-     A's messages do not contain C's address and the other way round. B and D have exactly 1
-     message (the confirmation).
+     an update with message `e2e-sub-p1-upd-5d2`, resolve it. `settle` with `sent = 6` (3 events
+     × A and C). A and C each have the three incident messages (subjects
+     `New incident: e2e-sub-p1-5d2`, `Update: …`, `Resolved: …`), each with one `To` address and
+     a text that holds `/unsubscribe?token=`. A's messages do not contain C's address and the
+     other way round. Negative counts: B and D have exactly 1 message (the confirmation).
   7. Private activity on the api's admin routes (as in `e2e/compose-e2e.sh:715-745`): draft D2
      with marker `e2e-sub-draft-9a7`, internal incident I2 with `e2e-sub-internal-9a7` published,
      public incident P2 (title `e2e-sub-p2-9a7`, its opened mail is expected) with a note
      `e2e-sub-note-9a7` and a saved draft update `e2e-sub-dupd-9a7`. Each write must answer its
-     success code (positive control). Wait for P2's opened mail to A and C. Wait for two more good
-     notify polls and `pulse_notify_subscriber_events_pending 0`. Then mailpit search for each of
-     the four private markers returns 0 messages.
-  8. Publish P2's draft update → A and C each get exactly one message holding `e2e-sub-dupd-9a7`.
-     Publish D2 → A and C each get its `New incident` message. Resolve I2 through its draft and
-     publish (as at `:835-836`), then publish P3 `e2e-sub-p3-9a7` as barrier; when P3 arrived,
-     `e2e-sub-internal-9a7` still has 0 messages.
+     success code (positive control). `settle` with `sent = 2` (P2 opened × A and C). Negative
+     counts: a mailpit search for each of the four private markers returns 0 messages.
+  8. Publish P2's draft update, publish D2, and resolve I2 through its draft and publish (as at
+     `:835-836`). `settle` with `sent = 4` (P2 update and D2 opened × A and C). A and C each have
+     exactly one message holding `e2e-sub-dupd-9a7` and one `New incident` message of D2.
+     Negative count: `e2e-sub-internal-9a7` has 0 messages.
   9. A: take the unsubscribe link of A's last message; `GET` → `200` with a form; `POST
      /unsubscribe` → `200`; again → `200`. B: unsubscribe through its confirmation mail → `200`;
-     then `POST /subscribe/confirm` with B's old confirm token → `400`.
-  10. Publish P4 `e2e-sub-p4-9a7`; wait for C's message (barrier); A and B have 0 messages with
-      `e2e-sub-p4-9a7`.
-  11. `docker compose restart notify`; wait for a good poll; publish P5 `e2e-sub-p5-9a7`; wait for
-      C's message; C has exactly 1 message with `e2e-sub-p4-9a7` (no resend after restart).
+     then `POST /subscribe/confirm` with B's old confirm token → `400`. Notify answers `200` only
+     after the delete committed (R5), so no barrier is needed here.
+  10. Publish P4 `e2e-sub-p4-9a7`. `settle` with `sent = 1` (C only). C has 1 message with
+      `e2e-sub-p4-9a7`. Negative counts: A and B have 0 messages with `e2e-sub-p4-9a7`.
+  11. `docker compose restart notify`; wait until healthy and
+      `pulse_notify_subscriber_detections_total` is at least `2`, then
+      `pulse_notify_subscriber_events_pending` is `0` and
+      `pulse_notify_subscriber_mails_total{kind="incident",outcome="success"}` is `0` (nothing
+      resent). Publish P5 `e2e-sub-p5-9a7`; `settle` with `sent = 1`. C has exactly 1 message
+      with `e2e-sub-p4-9a7` and 1 with `e2e-sub-p5-9a7`. Negative counts: A and B have 0
+      messages with either marker.
   12. Hostile requests: `POST /subscribe` with `email=a%40e2e.invalid%0D%0ABcc%3Ax%40e2e.invalid`
       → `400`; with `Origin: https://evil.example` → `403`; from inside the status container,
       `POST http://notify:9300/subscriptions` without a token → `401`.
@@ -1005,7 +1123,9 @@ Behavior:
       (`up -d --no-deps --force-recreate status notify`), stop and remove mailpit, and print
       `ok: email subscriptions`.
   Each `ok:` line names its literal expectation. Waits are bounded by the script's `T_*` timeouts;
-  every negative check runs only after a positive barrier of the same or a later event.
+  every negative mail check of an incident step runs only after that step's `settle` (S1-S5)
+  passed, never after another recipient's or a later incident's mail alone. A `settle` that
+  times out fails the scenario with the metric values it read (no address or token in them).
 - `README.md`: the two new secrets, the `PULSE_SECRETS_SUBSCRIPTIONS` switch, the mailpit port of
   the subscription overlay in the port table, and the new scenario.
 - `scripts/check-setup.sh`: `compose_args` gets `e2e-subs` (`-f full/compose.yaml -f
@@ -1023,6 +1143,11 @@ Checks:
   write nothing; no output holds a value; `off` writes none of the files.
 - `bash scripts/init-secrets.test.sh`, `bash e2e/subscriptions.test.sh`,
   `scripts/check-setup.sh`, `bash scripts/check-setup.test.sh`.
+- `e2e/subscriptions.test.sh` also drives `settle` with a fake metrics reader that replays fixed
+  metric texts (literals in the test): it fails when the detections counter grows by only 1
+  after the write, when `events_pending` stays `1`, when the incident success difference is
+  `2` for an expected `1`, and when the failure series grew; it passes for a replay that meets
+  S2-S4 and whose second negative read is still `0`.
 - Shell lint, helper syntax and JSON syntax of the `lint` job (`ci.yml:34-40`, commands in
   `deploy/AGENTS.md`, "Commands"), run from the repository root.
 - `E2E_SETUP=dev bash e2e/compose-e2e.sh` with sibling checkouts of the merged status and notify
@@ -1043,7 +1168,9 @@ The feature is done when all of these hold. Every expected value is a literal in
 
 1. Notify tests (notify section): an unconfirmed address gets 0 incident sends while a confirmed
    one gets 3; after unsubscribe 0 sends; a draft, a draft update, a note and an internal incident
-   give 0 sends, and publishing the draft gives 1 per confirmed address.
+   give 0 sends, and publishing the draft gives 1 per confirmed address; with
+   `PULSE_NOTIFY_RETRY_ATTEMPTS = 3`, an always failing address gets exactly 3 send attempts
+   across restarts, also when a restart falls inside the last allowed pass.
 2. Status tests: every status counterexample with its literal status code and notify call count.
 3. Contract tests: every address-rule row with its literal result.
 4. The `e2e-dev` CI run of deploy after the deploy PR shows the line `ok: email subscriptions`, with
