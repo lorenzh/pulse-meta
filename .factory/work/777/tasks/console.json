@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Keep table headers and actions on one line and restore the approved type scale with regression evidence",
+      "files": [
+        "src/styles.ts",
+        "src/check-pages.ts",
+        "src/team-pages.ts",
+        "src/token-pages.ts",
+        "src/probe-pages.ts",
+        "src/server.test.ts",
+        "src/server.checks.test.ts",
+        "src/server.team.test.ts",
+        "src/server.tokens.test.ts",
+        "src/server.probes.test.ts",
+        "e2e/design-matrix.ts",
+        "e2e/run.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — Behavior, Checks and Completion evidence 1–6; Required behavior R1–R4, Risks, Counterexamples, Security impact and Acceptance evidence (feature). Implement the shared header/action nowrap rules, actions-cell markup and wrapping cell-note prose, the body/h1/h2 scale, and all HTTP/browser assertions together. Preserve existing assertions and constraints; hold with needs-input if an unrelated assertion breaks rather than weakening it.",
+      "acceptance": [
+        {
+          "command": "bun test src/server.test.ts src/server.checks.test.ts src/server.team.test.ts src/server.tokens.test.ts src/server.probes.test.ts",
+          "expected": "Follow the section's TDD requirement: before the fix, new CSS and action-cell/cell-note assertions fail for the missing rules/markup; after the fix, 0 test failures. Assert the literal CSS substrings and absent font-size: 1.75rem from Checks, the action links within td.actions-cell on all four routes, and the literal <span class=\"cell-note\"><strong>This console</strong> while retaining the existing strong assertion. A focused run's coverage exit is not its acceptance result; the full coverage gate is bun run check."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 with the repository's lint, root/e2e typecheck and full tests green; retain the 0.8 line coverage threshold and paste summary lines in the PR."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Red proof, typography group alone: run the new assertions with src/styles.ts restored locally to 00ef91c, as Completion evidence 2 requires. Exit nonzero with a labeled mismatch for body 16 versus 15 px, h1 28 versus 39.04 px at 1280, or h2 18 versus 23.52 px at 1280. Record the failing message in the PR; local group selection must not be committed."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Separate red proof, action group alone: use the new markup/tests with 00ef91c styles and temporarily skip typography assertions locally. Exit nonzero with a message naming /checks at 1280 px, Actions or an action label, and a measured line count greater than the literal 1. Record this second failure in the PR, then restore final styles and all assertions."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Final tree exits 0. R4 uses document.fonts.ready and Range rect line counting excluding visually-hidden suffixes, with literal expected values in e2e/design-matrix.ts. For light/dark at 1280/390, Checks headers equal [Name, Id, Type, Target, Source, State, Last result, Actions], each at 1 line; long-url has exactly [View, Edit, Export, Delete], each at 1 line. At 390 the row's Actions cell is inside the box within 0.5 px after assertChecksBoxEnd. Body/h1/#people-heading sizes are 15/39.04/23.52 px at 1280 and 15/32/20 px at 390 within 0.01 px; h1 line-height is 42.944/35.2 px and letter-spacing -0.7808/-0.64 px within 0.05 px; h1/h2 weights are 700/500. Other tables match their literal R4 header lists: Sessions [Signed in, Last used, empty] measures 1/1/0 lines; other headers and Team member/invite, Tokens and Probes action links measure 1 line at the specified existing harness widths. Tokens has more than 0 Rotate links; Probes has more than 0 of each Rotate this token and Revoke this token. Print labeled ok lines for these checks. Preserve axe, 0 CSP violations, 0 other-origin requests, fonts, colors, assertFits, assertNoSidewaysScroll, all assertChecksBoxEnd checks including the 2 px outline, check-detail checks, hostile text, 1-line email and shell geometry. Report any changed literal and change it only when required by this spec."
+        },
+        {
+          "command": "git diff --stat 00ef91c",
+          "expected": "Only paths in the console section's Files list change. PR evidence includes this scope check; no token values, routes, roles, forms, stored data, dependencies, root font size or component-specific heading sizes change, as required by Non-goals and Security impact."
+        },
+        {
+          "command": "git diff --exit-code 00ef91c -- package.json bun.lock src/server.ts",
+          "expected": "Exit 0 with no diff: dependencies, lockfile and CSP implementation are unchanged."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "Fixture service starts; manually open /checks at 1280 px and confirm View Edit Export Delete each occupy 1 line and the page title is approximately 39 px. Report the command and observed result in the PR per Completion evidence 5 and console AGENTS.md."
+        },
+        {
+          "command": "gh pr checks",
+          "expected": "The console PR's check, docker, deploy-dev and browser CI jobs are green, as required by Acceptance evidence (feature). The existing deploy-dev job supplies the Compose end-to-end check; do not change deploy or weaken CI."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR body names #777 and Closes lorenzh/pulse-meta#<child> using the actual child issue number, lists checks run and known limits, and records Completion evidence 1–5: full-check summaries, both distinct red messages, final browser success for the required schemes/widths/tables, scope/unchanged-file evidence and the manual smoke result. State Security impact: no consistently with the spec."
+        }
+      ]
+    }
+  ]
+}
