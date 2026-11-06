@@ -20,8 +20,12 @@ This spec fixes these in console only, with markup, CSS and browser checks. The 
 
 ## Sources
 
-- Issue #780 and its one comment (the issue-review run). Issue review:
-  `.factory/work/780/issue-review.md`. It found no blocking question. This spec adopts its
+- Issue #780 and its comments. Issue review: `.factory/work/780/issue-review.md`. It found no
+  blocking question. The plan-review comment named two defects of the first spec, and this
+  revision fixes both. First, the spec now has no mid-word break at all: overlong unbroken
+  Checks values are cut with an ellipsis (R1, R2), and an unbroken fixture row tests this case.
+  Second, the presence test of the word check now matches the exact text of a descendant
+  element, then measures units separately (browser check 2). This spec adopts its
   working assumptions 1 to 10 and picks the concrete layouts they left open (Checks columns,
   field widths, compact account row, scroll hints).
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/780` answered
@@ -173,23 +177,45 @@ Expected values in the checks are literals written from this spec, never read fr
   `col.col-actions` about `15rem`. Check and Target share the rest equally. The implementer may
   tune these two widths. The R8 checks must hold: actions on one line inside their cell, and no
   sideways scroll at 1280.
-- `.cell-title` and `.cell-sub` are `display: block`. `.cell-sub` is muted, at `0.8125rem`
-  (`0.75rem` when also `.mono`). `.cell-target` is `display: block; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;`. A long URL shows on one line with an ellipsis,
-  and its full text stays in the DOM and on the detail page (View).
+- `.cell-title` and `.cell-sub` are `display: block; overflow: hidden; text-overflow: ellipsis;`
+  and keep `white-space: normal`. `.cell-sub` is muted, at `0.8125rem` (`0.75rem` when also
+  `.mono`). They wrap at natural points (R2). A single unbroken word wider than its column is
+  never split: it stays on its line and is cut at the cell edge with an ellipsis. This is the
+  fallback for an overlong unbroken name or id. The api allows any non-empty string for both
+  (contract `src/schema.ts:19–21` `nonEmpty`, `:400–401` `id: nonEmpty, name: text`), so the
+  case is real. `.cell-target` is `display: block; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;`. A long URL shows on one line with an ellipsis. The full name, id and
+  target stay in the DOM text and on the detail page (View).
 - `.table-scroll table.checks { min-width: 56rem }` stays. It is the fallback: below a 896 px
   box (viewport under about 1200 px) the box scrolls. Remove the line-185 rule, because R2
   supersedes it.
 - At 1280 × 800 (box 978 px) the table fits the box with no sideways scroll, in both schemes,
-  with the matrix data (`long-url`, a 300-character `long-name`, `hostile`).
+  with the matrix data. The data is `long-url`, a 300-character hyphenated `long-name`,
+  `hostile`, and a new fourth row `unbroken` (below).
+- New `MATRIX_CHECKS` row in `e2e/run.ts:2197–2201`:
+  `{ id: "unbroken" + "x".repeat(56), name: "Unbroken" + "n".repeat(92), url: "https://example.com/u" }`.
+  The id is 64 characters and the name 100, both without a space, `-` or `/`. At 1280 the Check
+  column is about (978 − 208 − 240) / 2 ≈ 265 px before padding, so both values are wider than
+  it: the name at 15 px sans is far over 600 px, and the id is 64 × 0.6 × 12 = 460.8 px in mono.
+  So the row exercises the ellipsis fallback at both widths.
 
 ### R2. No break inside a word in tables
 
-- After the table rules, add `td, td a, td code { overflow-wrap: break-word; word-break: normal; }`.
-  `break-word` breaks inside a word only when the word alone is wider than its line, and it does
-  not lower the min-content width. So an auto-layout table never squeezes a column below its
-  longest word. It only reaches a mid-word break in the fixed Checks columns, for a single
-  unbroken word wider than the column, such as a 100-character name without a hyphen.
+- After the table rules, add `td, td * { overflow-wrap: normal; word-break: normal; }`. It comes
+  after lines 41 and 49 and has at least their specificity: (0,0,1) for `td *` against `a`, `p`
+  and `code`. So it overrides `anywhere` and `break-all` on everything inside a cell, including
+  `pre` (line 50, also a type selector). Some class rules set `anywhere` with a higher
+  specificity: `.secret` (line 49), `.account-email` (105), `.type-choice li.panel` (163),
+  `.settings dd` (191) and `.confirm-target` (198). No `td` holds any of them. They are used
+  only at `src/account-pages.ts:91–93`, `src/shell.ts:97` and `src/confirm.ts:102` and in their
+  own rules. With `normal`, no cell ever breaks inside a word:
+  - In an auto-layout table (Tokens, Probes, Team, the detail tables) each column is at least as
+    wide as its longest word, and the table grows and scrolls inside its box.
+  - In the fixed Checks table, a word wider than its column is cut with an ellipsis (R1). It is
+    not split.
+
+  No rule in this spec allows a break inside a word. `overflow-wrap: break-word` and `anywhere`
+  must not appear on `td` or its descendants.
 - `td.cell-nowrap { white-space: nowrap; }` (and `td.cell-nowrap code` the same) on short
   values:
   - Tokens: Id, Created, Last used.
@@ -397,7 +423,20 @@ moves.
   that measured whole cells would wrongly fail a name that wraps at a space. A check that only
   read computed `overflow-wrap` would pass a `word-break: break-all` left on `td code`.
 - **Units must exist.** If the Tokens page had no `ci-deploy` token, "every unit is 1 line" would
-  pass trivially. Each table check first asserts its literal required texts (below) exist.
+  pass trivially. Each table check first asserts its literal required texts (below) exist. Each
+  one must equal the trimmed `textContent` of some element inside a `td`, or of the `td` itself.
+  A presence test against units would wrongly fail: `long-url` splits into the units `long-` and
+  `url`. A presence test against whole cells would also wrongly fail, because the R1 Check cell
+  holds name, id and source together. After the presence test, the helper splits the matched
+  text into units and measures them like all others.
+- **Unbroken overlong value.** A hyphenated name such as `long-name` never needs a mid-word
+  break, so it cannot catch `overflow-wrap: break-word` or `anywhere` left on the Checks cells.
+  The `unbroken` row (R1) has a 100-character name and a 64-character id, both without a natural
+  break, each wider than the Check column. A wrong implementation splits them over 2 or more
+  lines, and the unit check catches that. One that sets `overflow-wrap: normal` without
+  `overflow: hidden` lets the word spill into the Target column. The check catches that too: the
+  `.cell-title` and `.cell-sub` rects must end inside their `td`, and their computed
+  `overflow-x` must be `hidden` and `text-overflow` `ellipsis`.
 - **Dates in 3 or 4 lines.** On `5cdc34b` a token Created date can take 3 lines. A fix that only
   keeps each unit intact would still allow `2026-01-01` / `00:00:00` / `UTC` on three lines,
   because the spaces are natural breaks. So each `td.cell-nowrap` must also measure exactly 1
@@ -488,7 +527,8 @@ Files:
   breaks (update the literal to the new markup; never delete the assertion)
 - `e2e/design-matrix.ts` (new helpers and literal expectations; `HEADERS.checks`; Checks row
   selector)
-- `e2e/run.ts` (call sites, fixture rows for the word checks)
+- `e2e/run.ts` (call sites, the `unbroken` `MATRIX_CHECKS` row, fixture rows for the word
+  checks)
 - `docs/checks.md` (list columns), `docs/tokens.md` (presets), `docs/development.md` (browser
   check list)
 
@@ -543,10 +583,10 @@ TDD: write each check first and see it fail on `5cdc34b` for the stated reason.
 
 Unit/HTTP (`bun run check`), each with literal expected substrings from this spec:
 - `/console.css` contains `table-layout: fixed`,
-  `td, td a, td code { overflow-wrap: break-word; word-break: normal; }`,
+  `td, td * { overflow-wrap: normal; word-break: normal; }`, `text-overflow: ellipsis`,
   `td.cell-nowrap`, `#recovery-codes code`, `.sidebar-inner`, `scroll-timeline: --main-nav x`,
   `.state-tiles`, `input-narrow`, `input-medium` and `button[data-copy]`. It no longer contains
-  `ul.counts` or `.table-scroll table.checks td { overflow-wrap: normal`.
+  `ul.counts`, `.table-scroll table.checks td { overflow-wrap: normal` or `break-word`.
 - `/checks`:
   - headers `Check`, `Target`, `State`, `Actions`, in this order;
   - a row `<span class="cell-title">Long URL</span><span class="cell-sub"><code>long-url</code> <span class="tag tag-info">Console</span></span>`
@@ -590,17 +630,29 @@ before measuring.
    Export, Delete, 1 line each). At 390 keep `assertChecksBoxEnd` (it scrolls to Actions, shows
    the hint and the 2 px outline) and the "Actions cell inside the box" check.
 2. **Table words.** A helper `assertWordsIntact(page, tableSelector, required, label)`:
-   - first assert each literal in `required` is the exact text of some unit or cell;
-   - then for every text node in `td` (skip `.visually-hidden`), split it into units as in
-     Counterexamples, and assert each unit has 1 line;
-   - also assert every `td.cell-nowrap` has 1 line as a whole.
+   - First, presence. For each entry in `required` (a string or a RegExp), assert that some
+     element inside a `td` of the table, or a `td` itself, has a trimmed `textContent` equal to
+     the string or fully matching the RegExp. The failure message names the missing entry. For
+     example, `long-url` matches the `<code>` in the Check cell, not the whole cell and not a
+     unit.
+   - Then, units. For every text node in a `td` (skip `.visually-hidden`), split it into units
+     as in Counterexamples, and assert each unit has 1 line (`measureLines` on a Range over the
+     unit). This includes the texts that matched the presence test: `long-url` is measured as
+     `long-` and `url`.
+   - Also assert every `td.cell-nowrap` has 1 line as a whole.
 
    Run it in these places:
    - Checks (matrix, both schemes, 1280 and 390): required `long-url`, `hostile`, `Maintenance`,
-     `Console`.
+     `Console`, and the literal `unbroken` name `"Unbroken" + "n".repeat(92)` and id
+     `"unbroken" + "x".repeat(56)` (R1). On the `unbroken` row, also assert:
+     - its `.cell-title` and its `.cell-sub` each have computed `overflow-x` `hidden` and
+       `text-overflow` `ellipsis`;
+     - `scrollWidth > clientWidth` for both, which proves that the fixture hits the fallback;
+     - both rects end at or before their `td` right − padding-right + 0.5;
+     - the full name and id are still the `textContent` of the `.cell-title` and the `code`.
    - Team (matrix `/team`, both schemes, 1280 and 390). Before measuring, create one invite with
      role `admin` (the owner may) in addition to the existing member invite. Required `Owner`,
-     `Admin`, `Member`, and one of `On`/`Off`. Required also: an invite Expires cell matching
+     `Admin`, `Member`, and `/^(On|Off)$/`. Required also: an invite Expires cell matching
      `/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/`, and `pending`.
    - Tokens (`checkTokenLayout`, 1280 and 390). Before measuring, add two rows to the fake api
      with `setTokens`:
@@ -706,7 +758,8 @@ JS-off and busy-button flows. Do not weaken lint, typecheck or the coverage thre
    alone with the others skipped in the local run only (never committed). Report one failing
    message for each:
    - Checks fit: `scrollWidth 12xx > 978`, or the action right past the box;
-   - words: a unit with 2 or more lines in Tokens;
+   - words: a unit with 2 or more lines in Tokens, and the `unbroken` name with 2 or more lines
+     in Checks;
    - recovery codes: a code with 2 lines;
    - preset cards: radio center offset;
    - sidebar: bottom < `scrollHeight`;
@@ -726,7 +779,8 @@ JS-off and busy-button flows. Do not weaken lint, typecheck or the coverage thre
      width (one-row nav with hints, compact account row);
    - report the command and the result in the PR, and name the stray Team divider's cause (R9).
 6. The PR names #780, the checks that ran, and the known limits:
-   - the Target ellipsis on the list;
+   - the Target ellipsis on the list, and the ellipsis on an unbroken name or id wider than the
+     Check column (full text in the DOM and on the detail page);
    - the scroll-hint fallback in browsers without scroll-driven animations (static shadows only);
    - Tokens and Probes tables may still scroll inside their box.
 
@@ -735,8 +789,8 @@ JS-off and busy-button flows. Do not weaken lint, typecheck or the coverage thre
 - **Markup assertions in many suites.** The Checks row, Overview list, shell account line, Copy
   button and preset markup are asserted as literals in several HTTP suites. Update each literal
   to the new markup from this spec. Never drop an assertion or a permission case.
-- **`break-word` on all `td`.** Check detail tables (`src/check-detail-pages.ts`) lose
-  `anywhere`. A long unbroken value there makes its auto table wider, and it scrolls inside its
+- **`overflow-wrap: normal` on all cells.** Check detail tables (`src/check-detail-pages.ts`)
+  lose `anywhere`. A long unbroken value there makes its auto table wider, and it scrolls inside its
   `.table-scroll` box. The existing detail checks (300-character name at 390) must stay green.
   If a detail page overflows the document, hold with `needs-input` instead of changing that page.
 - **Fixed Checks columns.** If 15rem does not hold `View Edit Export Delete` in the fonts on CI,
@@ -754,7 +808,8 @@ JS-off and busy-button flows. Do not weaken lint, typecheck or the coverage thre
 - Console PR merged with `Closes lorenzh/pulse-meta#<child>`. CI jobs `check`, `docker`,
   `deploy-dev` and `browser` are green.
 - The browser log shows, for light and dark at 1280 px:
-  - Checks box `scrollWidth ≤ clientWidth` with the matrix data;
+  - Checks box `scrollWidth ≤ clientWidth` with the matrix data, including the `unbroken` row,
+    whose name and id are each on 1 line and cut with an ellipsis inside their cell;
   - Team, Tokens and Probes word units and `cell-nowrap` cells at 1 line each, with the literal
     required texts found;
   - 10 recovery codes of 39 characters at 1 line each, at 1280 and 390;
