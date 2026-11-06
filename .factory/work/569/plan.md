@@ -107,6 +107,25 @@ All pages are signed-in shell pages. Routes compare the raw path byte for byte (
 for POST, as on the Checks pages. Every time is shown with `utcTime` from
 `src/check-format.ts:24-28` (`YYYY-MM-DD HH:MM:SS UTC`) inside `<time datetime="<ISO>">`.
 
+**The shell's Sign out form stays on every page.** Every signed-in shell page, error and
+`409` pages included, carries the shell's Sign out form: `<form method="post"
+action="/sign-out">` with its own `csrf` and `form_token` inputs (console `src/shell.ts:99-103`),
+and that token is issued for every shell page (`signedInPage`, `src/server.ts:357-372`, reached
+from `sendShell`, `:947`). It sits in the sidebar `<header>`, before `<main id="main">`
+(`src/shell.ts:91-108`). This feature does not change the shell. So in this spec **"no form"**
+(and "without form") always means no form of the screen itself: no `<form>` inside
+`<main id="main">…</main>`, and no form whose `action` is the screen's route (for example
+`action="/incidents/resolve"`). It never means that the whole page has no form or no
+`name="form_token"` input. Every absence check is written that way:
+- unit and HTTP tests slice the body to `<main id="main">…</main>`, the way
+  `src/server.security.test.ts:782-784` already does, and require 0 `<form` and 0
+  `name="form_token"` there (literals);
+- for the whole body, they require exactly **1** `name="form_token"` input (literal, the Sign
+  out form), exactly 1 `action="/sign-out"`, and 0 hits of the screen's own `action="…"`.
+
+A check that requires 0 `name="form_token"` in the whole body can never pass, because the shell
+always adds the Sign out token.
+
 ### Request counting
 
 Every count in this spec uses one of three words, and every test asserts the word it names:
@@ -388,7 +407,11 @@ A resolved incident cannot be reopened.`
 - GET of an open incident: that form, `200`, with a fresh form token. Every GET issues a new
   token (`src/form-tokens.ts:87-98`; up to 100 unused tokens per session, `FORM_TOKEN_BINDING_MAX`, `:8`), so two open
   tabs hold two usable tokens.
-- GET of a resolved incident: `409` `This incident is already resolved.` with no form.
+- GET of a resolved incident: `409` `This incident is already resolved.` with no resolve form
+  and no resolve form token. The shell's Sign out form and its token stay (Required behavior,
+  "The shell's Sign out form stays on every page"). Inside `<main id="main">` there are 0
+  `<form` and 0 `name="form_token"`. The whole body has 0 `action="/incidents/resolve"` and
+  exactly 1 `name="form_token"`, the one inside `action="/sign-out"`.
 - POST (update and resolve alike) first reads `GET /manual-incidents/<id>` and `/admin/config`
   (the preview head and the re-rendered form need them). If that read shows `status:
   "resolved"`: `409` `This incident is already resolved.` with the posted message kept as
@@ -754,7 +777,7 @@ redirects, as today); file writes (none); Dockerfiles (unchanged).
 | Contract length, title | title `"😀".repeat(201)` | `422` on the title field, input kept |
 | HTML input | title `<script>alert(1)</script>` | preview and pages show the text; no `<script>` element; status shows the same text |
 | Forged resolve via update | `POST /incidents/update` `status=resolved` | `422`, zero writes, exactly 2 reads (`/manual-incidents/<id>`, `/admin/config`) |
-| Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes (2 reads); GET resolve page `409` without form; detail page has no forms |
+| Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes (2 reads); GET resolve page `409` with 0 `<form` and 0 `name="form_token"` inside `<main id="main">`, 0 `action="/incidents/resolve"` and exactly 1 `name="form_token"` (the shell's Sign out form) in the whole body; the resolved detail page has 0 `action="/incidents/update"` and 0 resolve links. A wrong check that requires 0 `name="form_token"` in the whole body fails on every shell page, because of the Sign out form (`src/shell.ts:99-103`) |
 | Resolve race | the fake api resolves the incident between the console's read and its write | 2 reads, exactly 1 write; pulse-api `409` shown with input kept |
 | Delete typed title | for title `Slow checkout`: typed `slow checkout`; `Slow  checkout` (two inner spaces); blank `   ` | `422` (`The name does not match. Type Slow checkout exactly.` / same / `Type the name to confirm.`), zero writes, exactly 1 API request (the title read `GET /manual-incidents/<id>`); a wrong implementation that takes the title from a posted field makes 0 reads and is caught by the read count |
 | Delete typed title, trim | typed `Slow checkout ` (trailing space) or `Café` typed decomposed (`Cafe` + U+0301) for title `Café` | accepted: `isTypedNameConfirmed` trims and NFC-normalizes both (`src/confirm.ts:47-50`); a wrong implementation that compares raw strings refuses it |
@@ -888,7 +911,7 @@ incident after its next read, so the console's following write meets pulse-api's
   (`writeGuardProblem`: zero writes and the exact read count of the "Request counting" table);
   for every route of that table one test asserts its reads and writes on the success path;
   `action=preview` makes zero writes and no People row; maintenance edit time keep (stored
-  `1793959200123` sent back unchanged, 2 reads, 1 write) and its changed and raced rows; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; the untitled rows against fake-api incidents seeded with titles `"   "` and `"​"` (list and detail text, delete by `Incident <id>`, blank and wrong entries refused with 1 read and zero writes, the titled-fallback mismatch) and the composer's untitled refusal; the mixed-emoji length rows end to end (accepted ones reach the fake api, which validates with the same contract); every outcome
+  `1793959200123` sent back unchanged, 2 reads, 1 write) and its changed and raced rows; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes; the GET resolve page of a resolved incident answers `409` with 0 `<form` and 0 `name="form_token"` inside `<main id="main">`, 0 `action="/incidents/resolve"`, and exactly 1 `name="form_token"` and 1 `action="/sign-out"` in the whole body (literals; the shell's Sign out form stays, Required behavior); every other "no form" page of this spec (old-api Maintenance state, shadowed or file edit GET, resolved detail without update form) is checked the same way, never with 0 `name="form_token"` in the whole body; and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; the untitled rows against fake-api incidents seeded with titles `"   "` and `"​"` (list and detail text, delete by `Incident <id>`, blank and wrong entries refused with 1 read and zero writes, the titled-fallback mismatch) and the composer's untitled refusal; the mixed-emoji length rows end to end (accepted ones reach the fake api, which validates with the same contract); every outcome
   row of section 10 and the maintenance outcomes (`409`, `412`, `422`, `404`, timeout, unknown)
   with input kept; private items never rendered; old-api Maintenance state; a scan of every
   response, log line and the test database for the sentinel admin token and the test titles,
@@ -1014,8 +1037,12 @@ Behavior change: yes. A new end-to-end step and CI requirement.
   7. Sends `POST /incidents/resolve` `action=publish` with the **second**, still unused token
      from step 6 → `409` (literal; the console's read sees the incident resolved). Then
      `GET /manual-incidents/<n>` on the api still lists exactly 4 updates (literal) and
-     `status: "resolved"`. Separately, `GET /incidents/resolve?id=<n>` answers `409` and its
-     body holds no `name="form_token"` input.
+     `status: "resolved"`. Separately, `GET /incidents/resolve?id=<n>` answers `409`, and its
+     body has no resolve form: 0 hits of `action="/incidents/resolve"` (literal), and exactly 1
+     `name="form_token"` input (literal), which is the shell's Sign out token. The body also
+     holds exactly 1 `action="/sign-out"` (literal). Every signed-in console page carries that
+     Sign out form (console `src/shell.ts:99-103`, `src/server.ts:357-372`), so the script never
+     requires 0 `name="form_token"` in the whole body.
   8. Records `sha256sum` of `/config-rw/checks.json` in the api container. Plans window
      `e2e-window` with checks `e2e-tcp`, `e2e-post`, component `web`, start = now + 1 day,
      end = start + 2 h (UTC `datetime-local` text), note `E2E planned window` → `303`. Requires
@@ -1107,6 +1134,12 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
     serialization.
 11. Unaddressable check ids: console HTTP test of the "Unaddressable check id" row (literal
     2 reads, no `/checks/` request).
+12. "No form" pages keep the shell's Sign out form: console HTTP tests and deploy step 7
+    require, on the resolved incident's resolve page, 0 `action="/incidents/resolve"` and
+    exactly 1 `name="form_token"` and 1 `action="/sign-out"` in the whole body (literals). The
+    console tests also require 0 `<form` inside `<main id="main">`. The expected single token
+    comes from the unchanged shell (console `src/shell.ts:99-103`), not from the incident pages
+    under test.
 
 ## Risks
 
