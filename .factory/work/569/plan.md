@@ -46,6 +46,15 @@ through the existing pulse-api routes: this feature adds no API, contract or sta
   combining characters) is shown as `Untitled incident #<id>` and is deleted by typing
   `Incident <id>` (section 9, "Untitled incidents"), including incidents created outside the
   console.
+- Fourth plan-review (three changes, applied):
+  - The maintenance time keep compares **parsed epochs**, not text (section 13, "Time keep").
+    Chromium submits an untouched `2026-11-06T10:00:00` field as `2026-11-06T10:00`, and a
+    real-browser test covers start and end.
+  - `textareaField` writes one line feed right after `<textarea>`, so a message that starts
+    with a newline survives preview → publish without JavaScript (section 9, "Textarea values").
+    `src/html.ts` and `src/html.test.ts` are in the Files list.
+  - An automatic incident whose check id is `.` or `..` skips the results read and shows the
+    shipped `unaddressableText` (section 8). The request counts say so.
 
 ### What this spec builds on (do not redo)
 
@@ -118,7 +127,7 @@ needs undoing.
 | --- | --- | --- |
 | `GET /incidents` | `/manual-incidents?status=all`, `/incidents?since=…&limit=1000`, `/admin/config` | 0 |
 | `GET /incidents/manual` | `/manual-incidents/<id>`, `/admin/config` | 0 |
-| `GET /incidents/automatic` | `/incidents?…`, `/admin/config`, `/checks/<checkId>/results?…` (only when the id is found) | 0 |
+| `GET /incidents/automatic` | `/incidents?…`, `/admin/config`, then `/checks/<segment>/results?…` only when the id is found **and** `apiIdSegment(checkId)` is defined (check id `.` or `..`: 2 reads, section 8) | 0 |
 | `GET /incidents/new` | `/admin/config`; with `from`: `/incidents?…` first | 0 |
 | `POST /incidents/new` | `/admin/config` | 0 (preview, refusal) or 1 `POST /manual-incidents` |
 | `GET /incidents/resolve`, `GET /incidents/delete` | `/manual-incidents/<id>`, `/admin/config` (resolve only) | 0 |
@@ -319,6 +328,21 @@ Reads: the automatic list (section 3; the same 14-day, 1000-item read as the lis
   `GET /checks/<checkId>/results?limit=20`, with `&before=<resolvedAt + 1>` when resolved, newest
   first. A results `404` (the check was removed) shows `The check no longer exists; no results.`
   instead of a failure state.
+- **Unaddressable check id. Decision:** the results path is built only with
+  `apiIdSegment(checkId)` (`src/api-path.ts:1-9`). A contract check id is any non-empty string
+  (contract `src/schema.ts:270`, incident `checkId` `:540`), so an automatic incident can name
+  check `.` or `..`. `apiIdSegment` returns `undefined` for exactly those two, because every URL
+  parser turns them into a dot segment. A request built with them would reach another endpoint:
+  `/checks/./results` becomes `/checks/results`, and `/checks/../results` becomes `/results`.
+  For such an id the page sends **no** results read: 2 reads, `/incidents?…` and `/admin/config`.
+  In the results section it shows the shipped text `unaddressableText(checkId)` of
+  `src/check-detail-pages.ts:34-36` (`pulse-api cannot address the id "<id>" in a URL path, so
+  its results, per-location uptime and latency cannot be read. Rename the check to use them.`),
+  with `200` and no failure state. This is the same handling as the check detail page
+  (`src/check-read.ts:222-243`, `src/check-detail-pages.ts:220-221`). The rest of the page (check
+  link `/checks/check?id=<encodeURIComponent(checkId)>` in the query, reason, times, duration,
+  `Post a public update`) is unchanged. The composer's `from=` preselection compares
+  `checkIds` by equality and builds no path, so it works for these ids too.
 - Text: `Automatic incidents are opened and resolved by pulse-api from check results. They cannot
   be edited here.`
 - Member+: `Post a public update` links to `/incidents/new?from=<n>`.
@@ -418,6 +442,19 @@ every non-blank entry mismatches a title that trims to `""` (`src/confirm.ts:53-
 - `message`: every `\r\n` and every remaining `\r` become `\n` before validation (browsers send
   textarea newlines as CRLF; CR is a control character the contract refuses). No trimming of
   `title` or `message`: the stored text is what the person typed.
+- **Textarea values. Decision:** `textareaField` (`src/html.ts:94-99`) changes in one place. It
+  writes one LF (`\n`) right after the `<textarea …>` start tag, before the escaped value:
+  `<textarea id=… name=… rows="4"…>\n<escaped value></textarea>`. The reason is an HTML
+  parsing rule: when a LF comes right after a `textarea` start tag, the parser drops it ("in
+  body" insertion mode, start tag `textarea`, WHATWG HTML Living Standard, "Parsing HTML documents"). Today
+  the value comes right after the tag, so a message that starts with a newline loses it on
+  every re-render. `\nLine one` comes back as `Line one`, and preview → publish without
+  JavaScript would store a different text than the person typed. With the added LF, the parser
+  drops only that one, and the textarea's value is the escaped value for every input, including
+  `\n\nx`. All three incident forms (composer, update, resolve) use this helper for `message`.
+  `grep -rn textareaField src e2e` finds no other caller than `src/html.test.ts:84-90`, so no
+  existing page changes. Its expected string gains the `\n` after the start tag. `confirm.ts`
+  keeps its own markup and does not change.
 - The body is built and validated with the contract: `validateManualIncidentInput` (composer),
   `validateManualIncidentUpdateInput` (update); for resolve the message rules of the update
   validator with `status: "resolved"`. A failure re-renders the form with `422`, a field error
@@ -455,7 +492,7 @@ every non-blank entry mismatches a title that trims to `""` (`src/confirm.ts:53-
 | `status` | `Status: <status>` | `manualHead` |
 | `title` | the title | `manualHead` |
 | `affects` | `Affects: <name>, <name>` (names joined by `, `, id when unknown); element has `hidden` when no component | `manualComponents`, lines 648-652 |
-| `update` (one per shown update) containing `update-status` (status word), `time` and `message` (pre-wrap) | | `manualUpdate`, lines 668-676 |
+| `update` (one per shown update) containing `update-status` (status word), `time` and `message` (a `<p>`, pre-wrap, as status `<p class="manual-message">`; never `<pre>` or `<textarea>`, whose parsers drop a leading LF) | | `manualUpdate`, lines 668-676 |
 
 - Open preview (composer, update form): the head uses the new status; one `update` part, the new
   one (status `renderManualIncidents` shows only the latest update, lines 683-704).
@@ -552,11 +589,20 @@ Fields:
   as **UTC**, never as the browser's or server's local time. Accepted:
   `^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$`; the parts must round-trip through
   `Date.UTC` (so `2026-02-30T10:00` is refused). Epoch ms = `Date.UTC(...)`. Edit prefill: the
-  stored value as `YYYY-MM-DDTHH:MM:SS` UTC (milliseconds dropped). **Time keep:** on the edit
-  POST, the stored `start` and `end` come from the POST's own `GET /admin/maintenance` read (step
-  1 below): the database row whose `id` equals `target`. When a posted text equals the prefill
-  text of that stored value, the stored epoch is sent exactly (milliseconds included); otherwise
-  the parsed text is sent (milliseconds 0). The stored epochs never come from a posted or hidden
+  stored value as `YYYY-MM-DDTHH:MM:SS` UTC (milliseconds dropped). **Time keep. Decision:** on
+  the edit POST, the stored `start` and `end` come from the POST's own `GET /admin/maintenance`
+  read (step 1 below): the database row whose `id` equals `target`. The comparison is of
+  **parsed epochs, never of text**, because a browser does not send the prefill text back as
+  written. Chromium serializes an untouched `datetime-local` value `2026-11-06T10:00:00` as
+  `2026-11-06T10:00` (the HTML "valid normalized local date and time string" omits zero
+  seconds). That was reproduced in plan-review. For each of `start` and `end` separately:
+  `parsed` = `Date.UTC(...)` of the posted text by the rule above (whole seconds, ms 0);
+  `storedSecond` = `stored - (stored % 1000)` (contract times are integers `0..` the maximum,
+  contract `src/admin.ts:229,248-251`, so this is the stored value with its milliseconds
+  dropped). If `parsed === storedSecond`, the stored epoch is sent exactly, milliseconds
+  included. Otherwise `parsed` is sent. So `2026-11-06T10:00` and `2026-11-06T10:00:00` keep a
+  stored `1793959200123`, and `2026-11-06T10:00:01` sends `1793959201000`. A posted text the
+  rule refuses gives `422` as for a create; it is never compared. The stored epochs never come from a posted or hidden
   field, and never from `/admin/config`: its `maintenance` holds only the checks file's windows,
   by index and without window ids (api `src/config-write.ts:182-183,583-588`), so it has no
   database window at all.
@@ -633,7 +679,8 @@ request, from sections 4–13: at most **four** pulse-api requests. The worst ca
 maintenance form GET (section 13): `/admin/maintenance` and `/admin/config`, and when their
 revisions differ both once more (4 reads). The incident list and the automatic detail make 3
 reads (the list: `/manual-incidents`, `/incidents?since=…&limit=1000`, `/admin/config`; the
-automatic detail: `/incidents?…`, `/admin/config`, `/checks/<id>/results`); every other GET
+automatic detail: `/incidents?…`, `/admin/config`, `/checks/<id>/results`, the last one skipped
+for a check id `.` or `..`); every other GET
 makes 1 or 2. A POST makes at most two reads and one write, 3 API requests (update, resolve and
 maintenance edit: two reads, then the write; composer and maintenance create: `/admin/config`,
 then the write; incident delete: `/manual-incidents/<id>` for the typed title, then the write;
@@ -699,6 +746,8 @@ redirects, as today); file writes (none); Dockerfiles (unchanged).
 | List order | manual and automatic open, same start | manual row first |
 | Timeline ties | updates #1 and #2 with equal `at` | #1 shown before #2 |
 | CRLF | message `a\r\nb\rc` | body message `a\nb\nc`, accepted |
+| Leading newline | composer message `\nLine one` (LF, then `Line one`). In Chromium with JavaScript off: `Update preview`, then `Publish incident` from the re-rendered form | the fake api's recorded `POST /manual-incidents` body has message `"\nLine one"` (literal). `textareaField` output contains `>\n\nLine one</textarea>`. A wrong implementation that writes the value right after the start tag publishes `"Line one"` |
+| Unaddressable check id | automatic incidents #31 with `checkId` `.` and #32 with `checkId` `..` seeded in the fake api | `GET /incidents/automatic?id=31` and `?id=32` answer `200` with `unaddressableText` for that id, exactly 2 reads, and no request whose path starts with `/checks/` or is `/results`. A wrong implementation requests `/checks/./results`, which reaches pulse-api as `/checks/results` (or `/results` for `..`) |
 | No trim | title ` Slow` | sent as ` Slow`; preview shows ` Slow` |
 | Contract length (code points) | message `"x".repeat(2001)`; `"a".repeat(2000)+"😀"` (2001 code points); `"😀".repeat(2001)` | `422` with the contract message `must be 1..2000 characters`, input kept, zero writes |
 | Contract length, mixed emoji | message `"😀".repeat(1000)+"x"` (2001 UTF-16 units, 1001 code points); `"a".repeat(1999)+"😀"` (2001 units, 2000 code points); `"😀".repeat(2000)` (4000 units); title `"😀".repeat(200)` | accepted: 1 write, `303`. A wrong implementation that checks `String.length <= 2000` (or `<= 200`) refuses each with `422` |
@@ -725,7 +774,9 @@ production hook), on `POST /incidents/new` `action=publish` and on `POST /mainte
 | Time parse | `2026-11-06T10:00` | start `1793959200000` (not shifted by the browser time zone) |
 | Time parse | `2026-02-30T10:00`; `10000-01-01T00:00` | `422` |
 | Time keep | database window `db-upgrade` stored with start `1793959200123` (`2026-11-06T10:00:00.123Z`) in the fake api's `/admin/maintenance`; edit POST with `start` `2026-11-06T10:00:00` (the prefill) | PUT start `1793959200123`; the edit POST made exactly 2 reads, `/admin/maintenance` among them. A wrong implementation that looks the window up in `/admin/config` (which has no database window) or re-parses the text sends `1793959200000` |
+| Time keep, browser form | the same window with end `1793966400456` (`2026-11-06T12:00:00.456Z`); `start` posted as `2026-11-06T10:00` and `end` as `2026-11-06T12:00` (what Chromium sends for the untouched prefills `…T10:00:00` and `…T12:00:00`) | PUT start `1793959200123`, end `1793966400456`. A wrong implementation that compares the posted text with the prefill text sends `1793959200000` and `1793966400000` |
 | Time keep, changed | the same window, `start` posted as `2026-11-06T10:00:01` | PUT start `1793959201000` |
+| Time keep, other second | the same window, `start` posted as `2026-11-06T09:59:59` | PUT start `1793959199000` (`parsed` ≠ `storedSecond`; never the stored ms added to a new time) |
 | Time keep, edit raced | another write changes the revision between the edit GET and POST | stale page from the POST's `/admin/maintenance` read, zero writes, no third read |
 | Span | end equal to start | `422` `End must be after start.` |
 | Selection | checks `e2e-tcp`, `e2e-post` and component `web` (`status-page`, `e2e-post`) | `checkIds` `["e2e-tcp","e2e-post","status-page"]` |
@@ -759,6 +810,7 @@ Files:
 - `package.json`, `bun.lock` (contract pin)
 - `src/navigation.ts`, `src/navigation.test.ts`
 - `src/protected-route.ts`, `src/server.ts`, `src/forms.ts`, `src/forms.test.ts`
+- `src/html.ts`, `src/html.test.ts` (`textareaField`: one LF after the start tag, section 9)
 - `src/api-failure.ts`, `src/people-log.ts`, `src/people-log.test.ts`
 - `src/check-write.ts` (export the shared sender and People-row helper with per-resource texts)
 - `src/incident-read.ts`, `src/incident-read.test.ts` (new)
@@ -781,7 +833,10 @@ Behavior change: yes. New screens, routes, a dispatcher list-field rule and a sc
 **Behavior.** Required behavior sections 1–14. The routes are registered in `protectedRoutes`
 (`src/server.ts:1149-1163`) beside `checkRoutes`. `src/confirm.ts` and `src/confirm.test.ts` do not change: the resolve page is composed in
 `src/incident-pages.ts` from `src/html.ts` helpers (section 9), and both deletes use the
-existing `typedConfirmPage`/`plainConfirmPage` fields. The contract pin in `package.json:32` moves
+existing `typedConfirmPage`/`plainConfirmPage` fields. The one change to an existing
+`src/html.ts` helper is the LF after the `textareaField` start tag (section 9, "Textarea
+values"). The automatic detail reuses `apiIdSegment` and the exported `unaddressableText`
+without changing them (section 8). The contract pin in `package.json:32` moves
 from `66818a24…` to contract `main` at a full SHA that contains 2.3.0 (`c4a2eb5214d48d40d0c1afbae5e3e49463185e15`
 or later); the only commits between the two are `22acb5d` and `96336b3` (additive maintenance
 schemas), so existing reads keep validating. Run `bun install` to update `bun.lock`.
@@ -796,9 +851,11 @@ public manual incidents (ids from 1, own counter), validates bodies with
 unknown `404`), computes `phase` from an injected `now`, serves file and shadowed rows from
 fixtures (a database window can be seeded with any epoch, for example start `1793959200123`; a
 public manual incident can be seeded with any contract-valid title, for example `"   "` or
-`"​"`, standing for an incident created outside the console), and
-records every request it receives as `{method, path}` so a test can count reads and writes per
-route separately. A reply can be held open with a gate (as the existing `test/fake-api.ts`
+`"​"`, standing for an incident created outside the console; an automatic incident can be
+seeded with any contract-valid `checkId`, for example `.` and `..`), and
+records every request it receives as `{method, path}`, plus the parsed JSON body of each write,
+so a test can count reads and writes per route separately and assert the exact body sent
+(time keep, leading newline). A reply can be held open with a gate (as the existing `test/fake-api.ts`
 `replyTo(..., {gate})`), for the role-lowered and session-removed cases. A switch makes the
 public list also return a private-looking item (section 3 filtering test); another resolves an
 incident after its next read, so the console's following write meets pulse-api's `409`
@@ -812,7 +869,12 @@ incident after its next read, so the console's following write meets pulse-api's
   `incident-preview.test.ts` (the literal parts below), `incident-write.test.ts` (every row of
   the section 10 table), `maintenance-form.test.ts` (time parse/keep, selection, sizes, ids),
   `maintenance-view.test.ts` (phase sections, order, missing checks, file/shadowed actions per
-  role), `forms.test.ts` (list fields, limits), `people-log.test.ts` (new targets, no text).
+  role), `forms.test.ts` (list fields, limits), `people-log.test.ts` (new targets, no text),
+  `html.test.ts` (`textareaField` with value `\nLine one` contains
+  `rows="4">\n\nLine one</textarea>`; the existing `</textarea>` escape case at `:84-90` updated
+  to the added LF). `maintenance-form.test.ts` covers every "Time keep" row with its literal
+  epochs, including the posted texts `2026-11-06T10:00` and `2026-11-06T12:00` against the
+  stored `1793959200123` and `1793966400456`.
 - Preview literals (independent source: status `src/render.ts` lines 648-728 at `8b6d431`, cited
   in section 9): input title `<b>Checkout</b> slow`, impact `major`, components `web` ("Web")
   and `public-api` ("Public API"), status `investigating`, message `Line 1\nLine <2>` → parts
@@ -830,13 +892,29 @@ incident after its next read, so the console's following write meets pulse-api's
   row of section 10 and the maintenance outcomes (`409`, `412`, `422`, `404`, timeout, unknown)
   with input kept; private items never rendered; old-api Maintenance state; a scan of every
   response, log line and the test database for the sentinel admin token and the test titles,
-  messages and notes in log lines and People rows (0 hits).
+  messages and notes in log lines and People rows (0 hits); the "Unaddressable check id" row
+  (automatic incidents with `checkId` `.` and `..`: `200`, `unaddressableText`, exactly 2 reads,
+  no results request) and a `from=31` composer that still preselects components that contain
+  check `.`.
 - Browser (`bun run check:browser`, Playwright and axe as today, `e2e/run.ts`): at 390 px and
   1280 px the pages of section 14 with long text (no sideways scroll, axe clean, focus order);
   live preview: typing into title, impact, status, components and message changes the parts and
   the fake api counts zero writes; the JS preview parts equal the server preview parts after
   `Update preview` for the same input (two independent renderers); no CSP violation; with
   JavaScript off: publish, post update, resolve and delete confirmation work.
+  - Real-browser submissions (Chromium does the HTML parsing and form serialization, so these
+    are not derived from console code). The expected values are the literals of the
+    Counterexamples rows.
+  - **Leading newline:** with JavaScript off, for the composer and for post update, Playwright
+    `fill`s the message `\nLine one`, clicks `Update preview`, then the publish button of the
+    re-rendered form. The fake api's recorded write body has message `"\nLine one"`.
+  - **Time keep:** with JavaScript on and with it off, the fake api holds database window
+    `db-upgrade` with start `1793959200123` and end `1793966400456`. The test opens
+    `/maintenance/edit?id=db-upgrade`, changes only the note to `Edited in the browser`, and
+    submits. It expects `303`, and the fake api's recorded `PUT /admin/maintenance/db-upgrade`
+    body has `start` `1793959200123` and `end` `1793966400456`. A second run changes the start
+    field to `2026-11-06T10:00:01` and expects start `1793959201000` with end still
+    `1793966400456`.
 - `src/navigation.test.ts`: Incidents and Maintenance visible for every role; 2 entries remain
   unavailable (Activity, System).
 - Manual agent-browser check against `bun e2e/run.ts --serve` (fixture console and the stateful
@@ -1022,6 +1100,13 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
    the "Contract length" and "Untitled" Counterexamples rows (expected outcomes written in the
    rows; the code-point behavior was checked against zod 4.6.7, the contract's pinned
    dependency, not derived from console code).
+10. Browser round trips: the console browser check submits real Chromium forms. The untouched
+    maintenance edit keeps start `1793959200123` and end `1793966400456`. A message
+    `\nLine one` survives preview → publish with JavaScript off. The literals are in the
+    "Time keep, browser form" and "Leading newline" rows, and Chromium does the parsing and
+    serialization.
+11. Unaddressable check ids: console HTTP test of the "Unaddressable check id" row (literal
+    2 reads, no `/checks/` request).
 
 ## Risks
 
@@ -1044,5 +1129,11 @@ the CI run) in the PR; README "e2e" section and `AGENTS.md` (commands table, CI 
   the console's reads after a pin bump. The console follows the contract by its pin; that change
   belongs to a contract feature, which must handle stored data. This spec's length tests then
   fail on purpose and show the change.
+- **Browser form serialization.** Browsers rewrite form values: datetime seconds, textarea
+  newlines (CRLF) and the textarea's leading LF. The spec handles each one at parse time (epoch
+  comparison, CRLF normalization, the added LF), and real-Chromium tests check them. With
+  `step="1"` and a seconds-only prefill, a conforming browser sends the normalized form, which
+  drops zero seconds and never carries a fraction. A client that sends a fraction
+  (`…T10:00:00.000`) gets `422` from the accepted pattern, so nothing is stored wrongly.
 - **Unknown outcomes.** A timed-out publish may have published; the console says so and does not
   retry. A person can find it in the list.
