@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "step",
+      "title": "Check details show readable labels, precise sample times and safe reason, budget and heartbeat text",
+      "files": [
+        "src/check-format.ts",
+        "src/check-format.test.ts",
+        "src/check-detail-pages.ts",
+        "src/check-routes.ts",
+        "src/server.checks.test.ts",
+        "test/check-fixtures.ts",
+        "e2e/run.ts",
+        "docs/checks.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Tasks of this section items 1-2, item 4 detail reason/labels and heartbeat display/copy checks, and item 5 Settings, Recent results, heartbeat and Display formats docs; Required behavior R1-R3, R5-R6 and their Counterexamples; Acceptance evidence 1-2 and the detail/heartbeat parts of 4. Keep formatters and their page callers in this task, including the existing HTTP/browser expectations that change with them. Add fixtures or per-test overrides without changing existing fixture exports. Remove DetailContext.apiUrl and its route argument only after confirming it has no remaining rendering reader; API reads keep using the saved URL. Preserve the non-goals, including escaping, stored data, row identity, exact paging cursors and utcTime on other screens. If a separate same-location/same-timestamp double render is reproduced, record its cause and fix it where it occurs as R3 requires. Start regressions red and retain evidence for final handoff.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-format.test.ts",
+          "expected": "0 fail. R1 counterexamples round 1501.4197810000041 to 1501 and 1501.5 to 1502, preserve integral and unrelated reasons, and change only the anchored latency decimal. utcTimeMs(1762343970123) is '2025-11-05 11:59:30.123 UTC' and utcTimeMs(1762343970987) is '2025-11-05 11:59:30.987 UTC'; utcTime keeps second precision. Budgets -87400, -0.04 and -12.25 return 'Error budget exceeded'; 0, 42.26 and 100 return '0.0 % of the error budget left', '42.3 % of the error budget left' and '100.0 % of the error budget left'; 100.5 returns 'Error budget not available'. Focused coverage may fall below the global threshold; the full coverage gate belongs to T2."
+        },
+        {
+          "command": "bun test src/server.checks.test.ts",
+          "expected": "0 fail. Real detail HTTP responses show 'latency 1501ms over objective 500ms' in State, Locations and Recent results without the raw float; null Last reason is 'None'; '<b>latency</b> 2.5ms' is escaped exactly once, and the API fixture reason stays unchanged. All 21 labels match the literal R2 table across HTTP, TLS, TCP, DNS, domain and heartbeat views, including the shadowed settings path, with no raw known key in a dt. An extra fooBar key built directly into a page-test view remains 'fooBar'. Row order, values, Id/Source and Header/Body/Secret markers remain correct. Recent results renders two eu samples at .123 and .987, and two rows for eu/us at '2025-11-05 11:59:30.000 UTC'; its explanatory paragraph appears only with rows. The unchanged webResults fixture renders 21 rows and Older results uses before=1793878830000; Newest results and second-precision State/Locations still work. Heartbeat displays the R5 placeholder curl line and exact substitution note, omits the fake API origin from usage, and keeps the dot-id and quoting protections. Both -87400 and -0.04 display 'Error budget exceeded' without a negative number; absent/no-results SLO wording stays correct. Focused coverage is not the full-suite gate."
+        },
+        {
+          "command": "bun run lint && bun run typecheck",
+          "expected": "exit 0; the existing Biome, ESLint complexity, workflow and root/e2e TypeScript checks pass without weakening configuration."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0. The web fixture renders 'latency 1501ms over objective 500ms', 'Interval (ms)' and 'Retry delay (ms)', without '1501.4197810000041' or a raw intervalMs settings label. The displayed and copied heartbeat text equals the independent literal: curl -fsS -X POST -H 'Authorization: Bearer <secret>' '<pulse-api-url>/heartbeat/nightly-backup'. Existing narrow-screen, JavaScript-off, design-matrix, axe and CSP checks remain green."
+        },
+        {
+          "command": "git diff -- docs/checks.md",
+          "expected": "The Settings, Recent results, heartbeat example/note and Display formats sections describe R1-R3 and R5-R6: readable known labels with raw unknown-key fallback, one row per result and UTC milliseconds only for Recent results, both heartbeat placeholders, and the three budget ranges. No claim of deduplicating equal times or changing stored values is introduced."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "kind": "final",
+      "title": "HTTP create and edit expose the same fields and the complete polish passes verification",
+      "files": [
+        "src/check-editor-page.ts",
+        "src/check-editor-page.test.ts",
+        "e2e/run.ts",
+        "docs/checks.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Tasks of this section item 3, item 4 create/edit field-parity browser flow and preservation of existing browser checks, and item 5 Editor fields docs; Required behavior R4 and its Counterexamples; Completion evidence and Acceptance evidence 3-5 for the whole change, including T1 evidence. Always open the outer Headers and JSON assertions disclosures in both modes, retaining More rows, row limits, identity differences and stored-value intents. Tests belong with this markup change; leave write/validation tests unchanged. Update docs/checks.md and inspect README.md, changing README only if a sentence becomes wrong as its Files entry specifies. Finish after T1 so the complete regression suite, manual checks and PR evidence cover all six requirements. Preserve every non-goal and the Security impact: no assessment.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-editor-page.test.ts src/server.checks-write.test.ts src/server.checks-change.test.ts",
+          "expected": "0 fail. Both create and edit of HTTP checks without stored headers/assertions contain '<details open>\n<summary>Headers</summary>' and '<details open>\n<summary>JSON assertions</summary>'. Both keep 20 header rows, 10 assertion rows, the first max(existing + 3, 5) header rows and the inner More rows disclosure. Existing identity, Keep/Replace/Remove, validation, revision, form-token and write-payload tests pass unchanged. Focused coverage may fall below the global threshold; the full check below enforces coverage. Record the new visibility regressions failing before this task's markup change and passing afterward."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, root/e2e typechecks and the full test suite pass, with at least 80 % line coverage and all R1-R6 regressions. Tooling, thresholds and the existing write/validation tests are not weakened."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0. Without opening a summary, HTTP create accepts header_0_name=X-E2E, kind=plain, value=1; header_1_name=X-E2E-Token, kind=env, value=PULSE_HEADER_E2E; and assert_0_pointer=/ok, mode=exists. The fake API POST has headers exactly {\"X-E2E\":\"1\",\"X-E2E-Token\":{\"env\":\"PULSE_HEADER_E2E\"}} and jsonAssert exactly [{\"pointer\":\"/ok\",\"exists\":true}]. The same fields on edit of an HTTP check without headers/assertions are visible and fillable without opening a summary. Both forms work with JavaScript off. T1's rounded reason, labels and literal heartbeat display/copy checks, plus all existing narrow-screen, design-matrix, axe and CSP checks, pass."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "The fixture console starts; sign in and open /checks/check?id=web, /checks/check?id=nightly-backup, /checks/new?type=http and /checks/edit?id=web. Observe the rounded reason/readable labels, heartbeat placeholders and substitution note, and open Headers/JSON assertions on both forms; then stop the fixture process. Record the command and observations in PR evidence, together with red/green evidence for every new regression against console 5cdc34b and the successful full check/browser commands. Expected values come from this spec's literals rather than the page builder or formatter under test."
+        },
+        {
+          "command": "git diff --stat 5cdc34b && git diff 5cdc34b -- src/styles.ts src/check-form.ts src/check-write.ts src/server.ts src/permissions.ts package.json bun.lock && git diff 5cdc34b -- docs/checks.md README.md",
+          "expected": "The seven protected paths have no diff across the whole change. docs/checks.md covers the detail text and editor disclosures; README.md changes only if an existing sentence is made wrong. PR evidence confirms Security impact: no, escaping remains exactly once, heartbeat shell quoting and both placeholders remain intact, and roles, routes, CSRF/form tokens, POST guard order, revisions, validation, payloads and stored data are unchanged. No restyle, dependency/lockfile, API, contract, probe or deploy edits appear."
+        },
+        {
+          "command": "gh pr checks --json name,state --jq '.[] | select(.name == \"deploy-dev\")'",
+          "expected": "After the console PR opens, the existing deploy-dev CI job reports {\"name\":\"deploy-dev\",\"state\":\"SUCCESS\"}. As console AGENTS.md requires, that job starts pulse-deploy main's dev Compose stack with this console checkout and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml. Record its result in PR evidence; a deploy-side two-factor failure is held for deploy rather than fixed from console or bypassed by weakening CI."
+        }
+      ]
+    }
+  ]
+}
