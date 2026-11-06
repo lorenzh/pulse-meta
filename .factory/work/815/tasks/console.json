@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Console forms adopt contract 2.4.1 address and client-name validation",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/notification-form.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, R7, all Tests and Completion evidence; Rollout steps 1-2; Security impact dependency pins; Acceptance evidence 5. After contract merges, use the same full 2.4.1 main merge SHA as api and regenerate bun.lock. Add the three parseChannelForm regressions first and observe their assertion failures against c5ce6685ce8b563a243823bca451032291b81adb. Keep the existing errors mapping and all console production code unchanged. The final checks include the existing browser and deploy-dev compose CI checks required by AGENTS.md.",
+      "acceptance": [
+        {
+          "command": "bun test src/notification-form.test.ts",
+          "expected": "After the bump, 0 fail: smtp_client_name pulse_console returns isOk false and error text channel.smtp.clientName: must be a host name; from Ops <ops@example.test> trailing returns isOk false; from Ops < ops@example.test > returns isOk true. Each new assertion fails on the 2.4.0 pin. A focused run may fail only global coverage; its exit status is not the acceptance result."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0; the updated dependency pin and lockfile agree."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with the existing 80% line coverage gate."
+        },
+        {
+          "command": "rg -n 'pulse-contract' package.json bun.lock",
+          "expected": "package.json and bun.lock's workspace dependency contain the same full 40-character SHA of the merged pulse-contract main commit implementing R1-R6 (version 2.4.1), independently verified from that contract PR; the lockfile resolution matches that commit."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with Chromium installed using the existing CI setup; existing browser checks pass."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "Before committing, the only changed paths are package.json, bun.lock and src/notification-form.test.ts."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0; required console CI checks pass, including browser and deploy-dev. The existing deploy-dev job starts the pulse-deploy main stack using this console checkout, waits for readiness and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml in pulse-deploy; no target repository is edited to make this pass."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Records the three old-pin assertion failures and new-pin results, the independently verified 2.4.1 merge SHA and lockfile, full checks/browser/compose CI results and applicable Security impact dependency-pin review. Includes the AGENTS.md bun start/manual changed-form check command and result."
+        }
+      ]
+    }
+  ]
+}

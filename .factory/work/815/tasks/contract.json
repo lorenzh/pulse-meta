@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 2.4.1 enforces the notify rules and documents the patch",
+      "files": [
+        "src/notify-channels.ts",
+        "test/notify-channels.test.ts",
+        "docs/index.md",
+        "package.json",
+        "dist/notify-channels.js",
+        "dist/notify-channels.d.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, R1-R6, test items 1-6 and Completion evidence; Required behavior R1-R6; Counterexamples; Security impact; Performance impact; Acceptance evidence 1-3. Write the regression tests first and record assertion failures against c5ce6685ce8b563a243823bca451032291b81adb before implementation. In the shared validator module, change only viewText's six report text positions to string.length refinements, copy notify c79f0b7's anchored extraction and trimming and private EHLO predicate, and enforce empty failed/zero failedTotal for never in the specified issue order. Preserve all other bounds, messages, getter safety, never-throw and same-object guarantees, the 200 clientName cap, WIRE_VERSION 1, dependencies and export inventory. Include all boundary, nested validator, from/to, identity, optional clientName, actual NUL and fresh/stale tests from items 1-4; release and hostile-input checks from items 5-6. Update every R5 documentation bullet, set only package.json version to 2.4.1 and rebuild dist; include dist/notify-channels.d.ts only if the build changes it.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "exit 0; the updated dependency pin and lockfile agree."
+        },
+        {
+          "command": "bun test test/notify-channels.test.ts",
+          "expected": "After implementation, 0 fail: all six text positions accept 200/300 UTF-16 units and reject 202/302 and empty text; mixed 200/201-unit boundaries and nested report/admin views agree with the spec. All R2/R3 input rows, same-object returns and exact error literals pass. The R4 never contradictions give view.failed: must be empty when state is never or view.failedTotal: must be 0 when state is never, in the specified order; valid never/fresh/stale controls pass. Both 100000-character hostile inputs reject without throwing, each under 50 ms. Before implementation, record assertion failures for each runtime defect on c5ce668; existing valid controls continue to pass. A focused run may fail only the global coverage gate; do not treat its exit status as the test result."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck, full tests and the unchanged 80% line coverage gate pass, including getter safety, adversarial input and smoke tests."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after committing the rebuilt artifacts; a fresh build makes no further change to tracked dist."
+        },
+        {
+          "command": "git diff c5ce6685ce8b563a243823bca451032291b81adb -- src/index.ts package.json",
+          "expected": "src/index.ts has no diff; package.json changes only version from 2.4.0 to 2.4.1, with no dependency change."
+        },
+        {
+          "command": "bun test test/version.test.ts",
+          "expected": "0 fail; WIRE_VERSION === 1 remains true. A focused run's coverage exit status is not the acceptance result."
+        },
+        {
+          "command": "rg -n 'NotifyFailedEvent|ResendCommandState|2\\.4\\.1|UTF-16|code points|failedTotal|clientName' docs/index.md",
+          "expected": "R5 documents NotifyFailedEvent's eight NOTIFY_FAILED_EVENTS literals and ResendCommandState's nine RESEND_COMMAND_STATES literals, the six UTF-16 report text limits versus other code-point limits, the empty never invariant, final angle-bracket extraction/trimming, host-name/address-literal rule with 200 cap, and the 2.4.1 patch with wire version 1."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0; contract CI checks pass, including frozen install and the committed-dist check."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "Contains baseline assertion failures and passing results for test items 1-4, release/docs evidence, and the complete R2/R3 table from the spec run through the new public validateNotifyChannelDefinition with booleans matching the independent notify c79f0b7 column. Includes bun test wall times before and after (no A/B bench required) and the applicable Security impact checklist: input validation/getter safety, fixed secret-free error texts, UTF-16/body limits and hostile-input timings, and unchanged dependency/export inventory."
+        }
+      ]
+    }
+  ]
+}
