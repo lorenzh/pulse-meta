@@ -55,8 +55,17 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
   verdict }`), `samples.json` (`{ refs, samples }`) and `table.md` to `bench-out/`, uploaded as
   the `bench-out` artifact. Exit 1 = a gating failure (tables are written), exit 2 = harness error.
 - `.github/workflows/bench.yml` lines 7-20: `workflow_dispatch` inputs `a`, `b`, `others`;
-  line 31 `runs-on: ubuntu-24.04`; line 53 `bun bench/run.ts "${args[@]}" --out bench-out`;
-  concurrency group `bench` without cancelling, so dispatched runs queue.
+  line 31 `runs-on: ubuntu-24.04`; line 53 `bun bench/run.ts "${args[@]}" --out bench-out`.
+- Concurrency: `.github/workflows/bench.yml` lines 25-27 set `group: bench` and
+  `cancel-in-progress: false`, with no `queue` key. `cancel-in-progress: false` only keeps the
+  *running* run alive. GitHub allows at most one running and one pending run per concurrency
+  group, and a newly queued run cancels the run that is already pending in the group and takes
+  its place ([workflow syntax, `concurrency`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)).
+  So runs do **not** queue: dispatching three runs back to back leaves the first running, cancels
+  the second, and keeps only the third pending. The same applies to the nightly (line 6, cron
+  `17 2 * * *`): a nightly queued while a dispatched run is pending cancels that run, and a run
+  dispatched while the nightly is pending cancels the nightly. The workflow file stays as it is
+  (Non-goals); the task dispatches one run at a time (Required behavior 1).
 - Earlier Factory children dispatched this workflow on their branches (for example run
   41586621885 on `factory/654-…`, run 41606716663 on `factory/657-…`), so a child can dispatch it.
 - Recent hosted numbers for api `test_cpu_s` (from the plan hold comment, run pages on
@@ -91,14 +100,32 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
 ## Required behavior
 
 1. **Measurement runs.** Read the full SHA of api `main` at the start of the task
-   (`gh api repos/lorenzh/pulse-api/commits/main --jq .sha`) and call it `M`. Dispatch the Bench
-   workflow on ref `main` three times (two are acceptable only if a third cannot complete; say so
-   in the PR):
+   (`gh api repos/lorenzh/pulse-api/commits/main --jq .sha`) and call it `M`. Get three counted
+   measurement runs of the Bench workflow on ref `main` (two are acceptable only if a third cannot
+   complete; say so in the PR), each with
    `gh workflow run bench.yml -R lorenzh/pulse-api --ref main -f a=<M> -f b=<M> -f others=main`.
-   All measurement runs use the same `M`. A run counts only when it completed the harness (exit 0
-   or 1, a `bench-out` artifact with `table.json`); a run that exits 2 or is cancelled does not
-   count and is replaced. Its `FAIL budget` on api `test_cpu_s` (against the old 5.6 s) is
-   expected and does not invalidate it.
+   All measurement runs use the same `M`.
+
+   **One run at a time** (see Evidence, Concurrency). Never dispatch a run while another run of
+   `bench.yml` is queued, pending or in progress. For each run, in order:
+   1. Wait until the group is idle: `gh run list -R lorenzh/pulse-api -w bench.yml --json
+      databaseId,status -L 20 --jq '[.[] | select(.status != "completed")] | length'` prints `0`.
+      This also keeps the task from cancelling a pending nightly.
+   2. Note the time `t0` (UTC, ISO 8601), then dispatch once with the command above.
+   3. Find the run id: the single run in `gh run list -R lorenzh/pulse-api -w bench.yml -e
+      workflow_dispatch -b main --json databaseId,createdAt -L 10` with `createdAt >= t0`. Retry the
+      lookup for a short while if it is not listed yet; if more than one run matches (someone else
+      dispatched), hold with `needs-input` and the ids instead of guessing. Record the id.
+   4. Wait for that run to complete by polling `gh run view <id> -R lorenzh/pulse-api --json
+      status,conclusion` until `status == "completed"` (a run takes about 40 minutes; do not use
+      `gh run watch --exit-status` as a success test, the run concludes `failure` on any gating
+      failure). Only then go to the next run.
+
+   A run counts only when it completed the harness (exit 0 or 1, a `bench-out` artifact with
+   `table.json`); a run that exits 2 or is cancelled (for example replaced by a nightly that was
+   queued while it was pending) does not count and is replaced by a new run with the same
+   procedure. Its `FAIL budget` on api `test_cpu_s` (against the old 5.6 s) is expected and does
+   not invalidate it.
 2. **Value.** From each counted run, take the `b` field of the `table.json` row with
    `service == "api"` and `metric == "test_cpu_s"` (the B median in seconds, at the full precision
    of `table.json`; never the two-decimal `table.md`). Statistic, exactly:
@@ -139,7 +166,10 @@ baseline-versus-main all `ok`), which the owner moved out of scope.
    workflow's own checkout (`bench/run.ts` line 223, `join(BENCH_DIR, "budgets.json")`), so a run
    dispatched on the task branch checks the new budget against api `main` before the merge.
    Commit the two files, push the task branch, read api `main` again as `M1` (equal to `M` unless
-   main moved), and dispatch once:
+   main moved), and dispatch once, after the last measurement run has completed and with the same
+   one-run-at-a-time procedure as Required behavior 1 (idle group, `t0`, run id from
+   `gh run list … -e workflow_dispatch -b <task branch>`, poll until completed; a cancelled run is
+   replaced):
    `gh workflow run bench.yml -R lorenzh/pulse-api --ref <task branch> -f a=<M1> -f b=<M1> -f others=main`.
    The branch head at dispatch must be the commit with the new budget (check `headSha` with
    `gh run view <id> --json headSha`). This run is separate from the measurement runs and is not
@@ -216,6 +246,13 @@ service behavior changes.
   acceptance check below.
 - **Budget comparison is strict.** In a confirmation run, a B median equal to the new budget is
   `ok` (`judge` fails only on `b > budget`); a B median 1 µs above it is `FAIL budget`.
+- **Dispatching back to back.** Three `gh workflow run` calls in one loop (or a dispatch while
+  another `bench.yml` run is pending): the first runs, the second is pending and is cancelled
+  when the third is queued, the third runs after the first. Only two runs complete, not three. A wrong
+  implementation then cites the cancelled run id or computes from two runs while claiming three.
+  Each run must be dispatched only after the previous one has `status == "completed"`, and each
+  cited run must have a `bench-out` artifact with `table.json` (Check 3). A cancelled run is
+  never cited as a measurement.
 - **Confirmation on the wrong ref.** A pre-merge confirmation dispatched on ref `main` (old
   budget 5.6 s) or on a branch head that lacks the commit with the new budget checks the old
   value and does not count; nor does a measurement run reused as the confirmation.
@@ -249,9 +286,12 @@ One final task. Follow Required behavior 1-6 above: dispatch the measurement run
 value, edit the two files, push the task branch, dispatch the pre-merge confirmation run on it,
 and write the PR description with the post-merge handoff of Required behavior 7. The task ends
 before the merge; Required behavior 7 is the owner's step, not part of this task. Waiting for
-runs: each run takes about 40 minutes and runs queue in the `bench` concurrency group
-(`.github/workflows/bench.yml` lines 25-27, no cancelling), so four runs take about three hours;
-the nightly at 02:17 UTC (line 6) can queue in between.
+runs: each run takes about 40 minutes. The `bench` concurrency group
+(`.github/workflows/bench.yml` lines 25-27) keeps at most one pending run and cancels an older
+pending run when a new one is queued, so the task dispatches strictly one run at a time and waits
+for each to complete (Required behavior 1): three measurement runs plus the confirmation run take
+about three hours in sequence. A run cancelled by the nightly (02:17 UTC, line 6) or by another
+dispatch is replaced, not counted.
 
 ### Tool facts
 
@@ -288,7 +328,11 @@ the nightly at 02:17 UTC (line 6) can queue in between.
    maximum, apply the integer computation of Required behavior 2 (reference `bun -e` line), and
    compare with `jq .api.test_cpu_s.budget bench/budgets.json` at `H`. They must be equal. Also
    `jq -c '[.refs.a.api, .refs.b.api]' samples.json` must show the same full SHA `M` on both
-   sides, and the run's log line `[bench] A:` must show `others` at `main`.
+   sides, and the run's log line `[bench] A:` must show `others` at `main`. Each cited run has
+   `gh run view <id> -R lorenzh/pulse-api --json status,conclusion,event,headBranch` with
+   `status` `"completed"`, `conclusion` not `"cancelled"`, `event` `"workflow_dispatch"` and
+   `headBranch` `"main"` (literals), and the PR lists exactly three run ids (or two with the stated
+   reason), all distinct.
 4. Pre-merge confirmation: for the run of Required behavior 6, `gh run view <id> -R
    lorenzh/pulse-api --json headBranch,headSha` shows the task branch and `H` (or a later head
    whose `bench/budgets.json` equals `H`'s); its downloaded `table.json` row api `test_cpu_s`
@@ -324,6 +368,10 @@ All of it exists before the merge; nothing in the task's completion waits for th
   owner's "Done when" depends on the person who merges running Required behavior 7. The pre-merge
   confirmation (same harness change, same `a`/`b`/`others` shape) makes a post-merge failure
   unlikely unless `main` or the runner speed changed in between.
+- **Pending runs get cancelled.** The `bench` concurrency group replaces a pending run when
+  another is queued (Evidence, Concurrency). Dispatching one run at a time after the group is
+  idle avoids self-cancellation; a nightly or a person's dispatch can still cancel a pending
+  task run, which then is replaced. Sequential runs make the task take about three hours.
 - **Other rows fail.** With `others=main`, rows outside scope (probe `test_cpu_s` 2.32 s vs 2.3 s
   in the last nightly) can fail and make the workflow conclude `failure`. The "Done when" only
   requires the api `test_cpu_s` row to be `ok`; the PR lists the other failures.
