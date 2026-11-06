@@ -14,7 +14,7 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, secrets-init/init-secrets behavior and the related checks; D14; R10 operator-managed password and data duties; Acceptance evidence 9. Reusable secrets provisioning is independently testable before the Compose consumers in T2. Generate the two new host secrets only; copy the optional operator-supplied SMTP password in files mode, never generate it. Validate all inputs and mounted destinations before the first write; preserve off/generate behavior as specified and update the secrets-model docs.",
+      "spec": "## Repository: deploy, secrets-init/init-secrets behavior and the related checks; D14; R10 operator-managed password and data duties; Acceptance evidence 9. Reusable secrets provisioning is independently testable before the Compose consumers in T2. Generate the two new host secrets only; copy the optional operator-supplied SMTP password in files mode, never generate it. Validate all inputs and mounted destinations before the first write; preserve off/generate behavior as specified and update the secrets-model docs. Keep input validation, permission checks, atomic copies and absent-password removal together; Compose wiring follows in T2.",
       "acceptance": [
         {
           "command": "bash scripts/init-secrets.test.sh",
@@ -56,7 +56,7 @@
         "full/README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: deploy, all remaining Compose/operator override/scenario/static-check/CI/documentation behavior, all checks and Completion evidence; R8 (steps 5a/5b), D22 real release lower bound, R9 root/prefix refusal, R10 notice/operator deletion; Barriers S1-S5; Acceptance evidence 4-11; applicable Security impact checklist. Depends on T1 and merged status/notify children. Implement e2e steps 1-14, including 5a/5b/11a/12a, as one integrated scenario with mailpit; never separate stages of settle or the scenario into tasks. Full keeps its published-images skip; dev requires exact ok line.",
+      "spec": "## Repository: deploy, all remaining Compose/operator override/scenario/static-check/CI/documentation behavior, all checks and Completion evidence; R8 (steps 5a/5b), D22 real release lower bound, R9 root/prefix refusal, R10 notice/operator deletion; Barriers S1-S5; Acceptance evidence 4-11; applicable Security impact checklist. Depends on T1 and merged status/notify children. Implement e2e steps 1-14, including 5a/5b/11a/12a, as one integrated scenario with mailpit; never separate stages of settle or the scenario into tasks. Full keeps its published-images skip; dev requires exact ok line. Admission and exact timer-order regression checks belong to the status child; the integrated scenario checks only the real 2.000 s lower bound.",
       "acceptance": [
         {
           "command": "bash e2e/subscriptions.test.sh",

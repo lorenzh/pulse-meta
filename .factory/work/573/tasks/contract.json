@@ -24,7 +24,7 @@
         "package.json"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1; D13; Contract fields; Counterexamples: Address rule; Acceptance evidence 3, 5. Update the existing exact export inventory in test/smoke.test.ts alongside the new exports so the full suite remains green. Keep every existing export and WIRE_VERSION = 1.",
+      "spec": "## Repository: contract, all behavior, checks and completion evidence; R1; D13; Contract fields; Counterexamples: Address rule; Acceptance evidence 3, 5. Keep the additive contract in one task with its build artifacts and documentation. Update the existing exact export inventory in test/smoke.test.ts alongside the new exports so the full suite remains green. Keep every existing export and WIRE_VERSION = 1.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions.test.ts",
@@ -32,7 +32,7 @@
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, build, typecheck (including new type fixtures), all tests and at least 80% line coverage pass. The package-entry smoke test independently enumerates the additive exports and the existing exports; WIRE_VERSION stays 1. Documentation specifies membership-free 202 replies and the retention constants. Version follows D13: 2.5.0 after main 2.4.0 or 2.4.1."
+          "expected": "exit 0; lint, build, typecheck (including new type fixtures), all tests and at least 80% line coverage pass. test/smoke.test.ts adds subscriptions and validate-subscriptions to its fresh-dist comparison and independently enumerates the additive exports and the existing exports; WIRE_VERSION stays 1. Documentation specifies membership-free 202 replies and the retention constants. Version follows D13: 2.5.0 after main 2.4.0 or 2.4.1."
         },
         {
           "command": "bun run build && git diff --exit-code -- dist",

@@ -21,7 +21,7 @@
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, settings/store/deletion layer and its tests; R3, R5 subscribers delete (command implementation, entry-point routing in T4), D18, D21 store primitives, R9 notify, R10 data inventory/retention; Counterexamples: subscribers delete, Cleanup boundaries, Root hosting. Pin the merged contract full SHA. Build the complete store schema and synchronous transactional operations, including guarded completion/finalize primitives and durable pass fields; T3 implements the entire fan-out algorithm over them. Expose cleanup cancellation to the lifecycle consumer added in T2. Production service remains off until T4; update the corresponding docs as capabilities land.",
+      "spec": "## Repository: notify, settings/store/deletion layer and its tests; R3, R5 subscribers delete (command implementation, entry-point routing in T4), D18, D21 store primitives, R9 notify, R10 data inventory/retention; Counterexamples: subscribers delete, Cleanup boundaries, Root hosting. Pin the merged contract full SHA. Build the complete store schema and synchronous transactional operations, including guarded completion/finalize primitives and durable pass fields; T3 implements the entire fan-out algorithm over them. Expose cleanup cancellation to the lifecycle consumer added in T2. Production service remains off until T4; update the corresponding docs as capabilities land. This is the independently testable persistence/settings seam; listener and confirmation work follow in T2.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions-settings.test.ts",
@@ -66,7 +66,7 @@
         "docs/channels/email.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, private listener, synchronous subscribe/confirm/unsubscribe, token/message builders and the complete confirmation worker; R4; R5 Subscribe, Confirm, Unsubscribe, Confirmation mail and One send per mailbox (guard and worker 1); R7 optional metrics; R8 L1-L7 and immediate class of D22; D8-D12, D19, D20 guard. Counterexamples: Notify listener, Lifecycle and timing, Confirmation queue, No enumeration and guard unit cases of One send per mailbox. T3 adds the incident worker, the two-worker sequence tests and held-fan-out timing variants; T4 wires the modules into main. Do not create an incident-worker placeholder or split its algorithm across tasks.",
+      "spec": "## Repository: notify, private listener, synchronous subscribe/confirm/unsubscribe, token/message builders and the complete confirmation worker; R4; R5 Subscribe, Confirm, Unsubscribe, Confirmation mail and One send per mailbox (guard and worker 1); R7 optional metrics; R8 L1-L7 and immediate class of D22; D8-D12, D19, D20 guard. Counterexamples: Notify listener, Lifecycle and timing, Confirmation queue, No enumeration and guard unit cases of One send per mailbox. T3 adds the incident worker, the two-worker sequence tests and held-fan-out timing variants; T4 wires the modules into main. Do not create an incident-worker placeholder or split its algorithm across tasks. The entire confirmation selection/cancel/expiry/retry algorithm belongs here; do not split its stages into later tasks.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions-server.test.ts test/subscriptions-store.test.ts",
@@ -110,7 +110,7 @@
         "docs/channels/email.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, complete incident detection/fan-out/recovery algorithm and its regression checks; R5 Detection, Fan-out, Pass budget, Recovery, Completion write and One send per mailbox; D5/D6/D11/D12/D20/D21; R3 event retention; R7 detection/events/mail metrics; D22 notify timing with both workers held. All Counterexamples: One send per mailbox, Late completion after delete, Eligibility and privacy, Fan-out failures. Add an optional notifier hook for each successful non-404 manual projection and listedIds, after channel work; production main opts in only in T4. Retain unchanged operator-channel and ledger behavior. This task implements every stage of the incident algorithm together.",
+      "spec": "## Repository: notify, complete incident detection/fan-out/recovery algorithm and its regression checks; R5 Detection, Fan-out, Pass budget, Recovery, Completion write and One send per mailbox; D5/D6/D11/D12/D20/D21; R3 event retention; R7 detection/events/mail metrics; D22 notify timing with both workers held. All Counterexamples: One send per mailbox, Late completion after delete, Eligibility and privacy, Fan-out failures. Add an optional notifier hook for each successful non-404 manual projection and listedIds, after channel work; production main opts in only in T4. Retain unchanged operator-channel and ledger behavior. This task implements every stage of the incident algorithm together. Keep immediate-class response checks separate from worker scheduler timers: only the subscribe response path must register 0 timers.",
       "acceptance": [
         {
           "command": "bun test test/subscriptions-fanout.test.ts",
@@ -195,7 +195,7 @@
         },
         {
           "command": "git diff --check",
-          "expected": "exit 0; PR supplies full checks, Docker build, security checklist, manual run, contract SHA and both performance measurements. Docs include root-hosting sentence, data inventory/25-hour cleanup/one-email mailbox boundary, immediate queue cancellation, D21 late-write behavior, deletion/contact procedure, secure backups, key rotation and all known limits D-R1..D-R13. Read/publish shared findings for any wire gap as the section requires."
+          "expected": "exit 0; PR supplies full checks, Docker build, security checklist, manual run, contract SHA and both performance measurements. Docs include root-hosting sentence, data inventory/25-hour cleanup/one-email mailbox boundary, immediate queue cancellation, D21 late-write behavior, deletion/contact procedure, secure backups, key rotation and all known limits D-R1..D-R13, including D-R12's admitted bodies (5 s) and release delay (2 s) at status. Read/publish shared findings for any wire gap as the section requires."
         }
       ]
     }
