@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Contract 2.4.0 defines and validates runtime settings, channels and resend",
+      "files": [
+        "src/runtime-settings.ts",
+        "src/notify-channels.ts",
+        "src/resend.ts",
+        "src/validate-runtime.ts",
+        "src/tokens.ts",
+        "src/audit.ts",
+        "src/index.ts",
+        "test/runtime-settings.test.ts",
+        "test/notify-channels.test.ts",
+        "test/resend.test.ts",
+        "test/tokens.test.ts",
+        "test/audit.test.ts",
+        "test/smoke.test.ts",
+        "test/types.fixture.ts",
+        "dist/",
+        "package.json",
+        "README.md",
+        "docs/index.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, all Files, Behavior, Checks and Completion evidence; R1; Decisions 9, 12, 14-16; Contract fields; Counterexamples; Security impact; Performance impact procedure 1; Acceptance evidence 1 and 7. Release all schemas, inferred types, never-throw same-object validators, exact constant/export inventory, sole scopes and audit enums together as 2.4.0 with committed dist and unchanged WIRE_VERSION. Include complete service-state/never-null invariants, reference-only definitions, database-only admin channels with file views only in service.report, failed view without the full report, report totals and all enumerated resend states. Enforce radius 32, component ids 64 ASCII characters, printable-ASCII https logo without userinfo, settings 65536 bytes and channel definition 16384 bytes; export/document aggregate 262144-byte measure for API enforcement. Smoke/type fixtures cover all four modules and literal exports/key lists, including status 8b6d431's 20 colors. Apply the current R1 NotifyFailedEvent/isManual shapes and literal NOTIFY_FAILED_EVENTS export, including type fixtures; report text limits are validated here and normalized by notify. Acceptance evidence 8 applies to these contract boundaries. The complete R1 report normalization boundary uses UTF-16 code-unit limits; only notify normalizes display text. Keep the package release, export inventory, fixtures and committed dist in one task so no consumer sees a partial 2.4.0. The current Decision 6/R1 split is part of this release: export ServiceNotifyChannelsEnvelope and validateNotifyChannelRecord; validateServiceNotifyChannels returns Validation<ServiceNotifyChannelsEnvelope> after checking only top-level keys, revision, array count and each plain object's valid distinct own id. It must preserve the input object and accept an otherwise-invalid element; definition/record validators enforce every field and the per-definition byte limit separately. A ServiceNotifyChannels is valid only when BOTH levels pass. Keep these type/export/dist changes with the rest of the release.",
+      "acceptance": [
+        {
+          "command": "bun test test/runtime-settings.test.ts test/notify-channels.test.ts test/resend.test.ts test/tokens.test.ts test/audit.test.ts",
+          "expected": "0 fail; focused coverage may fail its global threshold. Validators never throw and preserve identity. Literal failures: duplicate order message 'componentOrder[1]: must not repeat an id', 61-character name, #12, 4pt, null, 33-character radius, 65-character/uppercase order id, logo space/non-ASCII/userinfo, PULSE_API_TOKEN ref, ../x, literal url, DB type file and Ops id. File view accepts file. Definition 16384 bytes accepted and 16385 refused ('channel: must be at most 16384 bytes as JSON'); four 200x200 routing lists refused. Reports reject 201 failed entries, 201 file channels and 101 shadowed ids; never/non-null report refused. Admin channels with file view refused; failed view carries no full report. queued/claimed result refused; admission/final outcomes accepted. status+read rejected with 'status must be the only scope'; status/notify location refused; notify metadata and older scopes accepted. notify-channel.create/check audit-kind mismatch refused. Largest valid settings below 40000 bytes; constants/export lists match the literals of Contract fields and status theme-config.ts at 8b6d431. NotifyFailedDelivery accepts event:'update'/isManual:true; event:'manual', event:'warning' and absent isManual are refused. NOTIFY_FAILED_EVENTS is exactly ['opened','update','resolved','reminder','budget-low','tls-expiry','domain-expiry','unknown'] (notify src/types.ts at c79f0b7 is the independent source for the first seven). File-view refs of 201 code units are refused and 200 ending in '…' accepted; no cut is performed by the validator. Envelope fixture with a valid revision and records a (valid webhook), b (16385-byte definition) and c (valid slack): validateServiceNotifyChannels accepts all 3 and preserves identity; validateNotifyChannelRecord accepts a/c and rejects b with 'channels[1]: must be at most 16384 bytes as JSON'. Envelope rejects 101 elements with 'channels answer.channels: must hold at most 100 channels', duplicate a at index1 with 'channels answer.channels[1].id: must not repeat an id', missing/uppercase id, array element, top-level extra and missing revision. Element-only invalid content never rejects the envelope; unknown element fields fail the record validator. Type fixtures and literal smoke exports include ServiceNotifyChannelsEnvelope and validateNotifyChannelRecord."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, build, typecheck, type fixtures, full tests and the 80% coverage gate pass; smoke tests compare the exact Contract fields export inventory and all four new dist modules to a fresh build."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after the rebuilt dist is committed; no dist difference remains."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR includes check/dist output, new tests failing on ebf6bbc for missing exports then passing, applicable Security impact checklist and no new runtime package. Performance impact procedure 1 runs BEFORE contract merges without the API harness: independent main-merge-base worktree A and branch B, frozen installs, bash time user+system of bun run test/build, 5 rounds. Record full SHAs, all 10 raw values per metric, independently computed 3rd-smallest medians, FAIL regression when B-A exceeds max(A*0.10,floor), floors 2 s test/0.2 s build, FAIL budget above 9.0/6.4 s; committed dist is last B build and final dist diff is empty."
+        }
+      ]
+    }
+  ]
+}

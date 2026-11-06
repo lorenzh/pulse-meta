@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Compose E2E proves console settings and resend across live services",
+      "files": [
+        "e2e/compose.runtime.yaml",
+        "e2e/hook.mjs",
+        "e2e/runtime-settings.sh",
+        "e2e/runtime-settings.test.sh",
+        "e2e/compose-e2e.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "full/README.md",
+        "dev/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, all Files, Behavior, Checks and Completion evidence; Rollout order; Decisions 4, 10-14; Counterexamples (Deploy resend); Security impact (CI/secrets); Acceptance evidence 9. ONE integrated overlay/receiver/parsing-test/scenario/CI task: reuse common bun-tools and read-only token/secret mounts, bind e2e-hook:8080 only on127.0.0.1, configure notify retry attempts2/delay500ms without changing setup defaults or image pins. Receiver counts per idempotency-key seen (all) and accepted (200 only), with POST /control status500|200 and GET /counts?key. Scenario creates sole-scope tokens in0700 temp dir, recreates status/notify/e2e-hook once under overlay, signs in Owner and changes name/showLatency within30s through console without another restart. Create e2e-db-hook via console; wait fresh/appliedRevision==revision before manual incident A; A's manual:<A>:opened must reach seen1/accepted1. Switch receiver to500 BEFORE creating distinct incident B; wait <=60s for failed channel e2e-db-hook/key manual:<B>:opened, then capture receiver seen=n0>=1/accepted0. Switch to200, press Resend ONCE for B only; wait accepted1 and failed row gone, wait15000ms more (three claim intervals), then receiver B seen=n0+1/accepted1 and A still seen1/accepted1. These independent receiver counts are the expected source, never notify/API counters. Verify showChecks env-lock text, no token output; cleanup deletes channel/resolves BOTH incidents and restores services without overlay even after failure. Full exact published-images skip; dev probes admin channels then feature-skip or success. Explicit CI lint invocation of new helper test and e2e-dev grep -qx 'ok: runtime settings'; docs console-first/tokens/files/env override/recreate once/full-dev showChecks lock. Final task owns all checks of touched lint/e2e-dev jobs, security checklist and PR logs. Keep receiver control, exact channel/key matching, parsing fixtures and explicit CI wiring in this same task; all scenario expectations come from receiver counts. The API/UI/report protocol exercised here is the current R1/R2 version, including isManual on failed rows and fresh/applied feedback. The receiver, failure-before-B ordering and exact channel/key match form one end-to-end scenario; splitting them would leave no independently useful acceptance.",
+      "acceptance": [
+        {
+          "command": "bash e2e/runtime-settings.test.sh",
+          "expected": "exit 0; scenario parsing helpers run on fixed independent fixtures: counts {seen:3,accepted:0} ->3 and0; failed e2e-db-hook/manual:7:opened is found, other/manual:7:opened is not; differing appliedRevision/revision ->not applied. Docker compose config --quiet succeeds with runtime overlay and full/dev bases, including token/secret mounts, retry attempts2/delay500ms and receiver. Receiver /control accepts status500/200 and /counts reports seen/accepted separately for each key."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x && git ls-files -z '*.sh' | xargs -0 -n 1 bash -n && git ls-files -z '*.mjs' | xargs -0 -n 1 node --check && git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "exit 0 from repository root with all new files tracked; all tracked shell/receiver/JSON files pass the lint-job syntax checks, including the new e2e files outside Biome's cli-only scope."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full suite pass with at least 80% line coverage."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "exit 0 with all four merged feature services built from main; exact line 'ok: runtime settings'. Console name/showLatency change within30000ms and 0 restarts after overlay setup; wait fresh/applied before A. Independent receiver key manual:<A>:opened has seen1/accepted1. Receiver500 is set BEFORE creating separate B; within60000ms failed view matches BOTH e2e-db-hook and manual:<B>:opened; receiver baseline n0>=1/accepted0. Receiver200, one console Resend for B ->failed row gone; after an additional15000ms B accepted1 and seen=n0+1, A still seen1/accepted1. All counts come from receiver GET /counts, 0 delivered-A resends. Text 'Set by PULSE_STATUS_SHOW_CHECKS'; 0 token values in output; both incidents resolved/channel deleted, services restored and later persistence steps pass."
+        },
+        {
+          "command": "E2E_SETUP=full bash e2e/compose-e2e.sh",
+          "expected": "exit 0 on published images; exact line 'skip: runtime settings (published images)' and remaining full-stack scenarios stay green."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/console-setup.test.sh && bash e2e/snippet.test.sh && bash e2e/dev-console-prefills.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "exit 0; every existing helper/static/secrets test of the touched CI lint job passes alongside the new runtime-settings.test.sh acceptance. CI explicitly invokes that new test and e2e-dev requires the literal 'ok: runtime settings' line."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "PR includes bun run check output, CI lint log explicitly running bash e2e/runtime-settings.test.sh and CI e2e-dev log 'ok: runtime settings', plus full published-images skip evidence. Document the independent receiver counts: A1/1, failed B n0/0, B after one resend and15000ms n0+1/1 with A unchanged. Applicable Security impact checklist covers read-only token/secret mounts, temp-dir0700, no token output, receiver bound only127.0.0.1, no new action/permission or altered setup defaults/image pins, cleanup/restoration and console-first override rollout. The PR also includes the exact command and result for the new helper test and explicit CI wiring; no successful delivered-A event is used to manufacture the failed resend precondition."
+        }
+      ]
+    }
+  ]
+}
