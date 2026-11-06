@@ -48,8 +48,10 @@ notifies its operator channels exactly as before.
   their published updates, and notify filters private items before validation
   (`notify/src/api.ts:301-308`, `isPublicManualIncident` and `publicManualIncident` of the
   contract, `contract/src/manual-incident-public.ts`).
-- #570 (in flight). Its contract child #806 is merged (contract `2.4.0`); #807-#811 (api,
-  console, status, notify, deploy) are open, and #815 (contract `2.4.1`, a patch) is open. #570
+- #570 (in flight). Its contract child #806 is merged (contract `2.4.0`), and since the
+  previous run of this spec its api child #807 and console child #808 are closed (api `main` is
+  now `b6f1d53`); #809-#811 (status, notify, deploy) are open, and #815 (contract `2.4.1`, a
+  patch) is open. #570
   makes status settings and notify channels editable from the console, moves the notify ledger to
   format 5, and adds an e2e scenario. Status, notify and deploy `main` do not have #570 yet. To
   stay apart from #570, this spec:
@@ -126,10 +128,12 @@ notifies its operator channels exactly as before.
     but the subscribe call used `requestJson` with the same scheduler and `timeoutMs = 2000`, and
     `interruptible` registers the call's own timeout timer on that scheduler in the same
     synchronous step (`contract/src/client.ts:184-185`, called from `:331-339`). The subscribe
-    call now has its own timeout `SUBSCRIBE_CALL_TIMEOUT_MS = 1500`, below the release. A request
-    that calls notify registers exactly two timers, in this order: the release timer (`2000`),
-    then the call's timeout timer (`1500`); a request skipped by L0 registers only the release
-    timer. The timing checks name both by delay and order. Firing the call's timer ends the call
+    call now has its own timeout `SUBSCRIBE_CALL_TIMEOUT_MS = 1500`, below the release. After
+    the address passed, a request that calls notify registers exactly two more timers, in this
+    order: the release timer (`2000`), then the call's timeout timer (`1500`); a request skipped
+    by L0 registers only the release timer then. (The full registration list, with the body
+    deadline added in the same run, is `[5000, 2000, 1500]`; see the next entry.) The timing
+    checks name both by delay and order. Firing the call's timer ends the call
     as a `timeout` and writes nothing; only the release writes the answer (R2 "Release", D22, R8
     "Timing", "Response timing (D22)").
   - **L9 had no reservation.** The cap counted answers waiting for release but was checked before
@@ -148,14 +152,36 @@ notifies its operator channels exactly as before.
     probe of this run. So L9 gets a body deadline, `SUBSCRIBE_BODY_TIMEOUT_MS = 5000` on the
     injected scheduler, which drops the request without an answer and so frees its slot. The
     Risks paragraph no longer relies on "the existing `headersTimeout` and `requestTimeout`".
+- The next `spec/plan-review` named two more defects, fixed here:
+  - **Timer counts disagreed.** R2 "Release" and R8 "Timing" still said the release timer is the
+    first timer of the request and that a request registers only two timers, while R2 "Body
+    deadline" and the timing tests require the registrations `[5000, 2000, 1500]` (or
+    `[5000, 2000]` at L0). The text now separates **registrations** (every `schedule` call,
+    cancelled ones included: `[5000, 2000, 1500]`) from **live timers** (at most `2`: the body
+    deadline is cancelled before the release timer is registered). The release timer is the
+    first timer registered after the address passed. Timing check 1 also asserts at most `2`
+    live timers (R2 "Release", D22, R8 "Timing", "Response timing (D22)", acceptance item 11).
+  - **Worker 1 could spin on an elapsed deadline.** A queued job held only by a busy mailbox
+    has `notBefore = 0` (or a passed retry time), so waiting for "the earliest `notBefore`"
+    could sleep `0` or less again and again. New R5 "Wake rule": worker 1 sleeps only until the
+    earliest *future* `notBefore`, waits on `guard.waitFor` for each held key, never calls the
+    sleep with a value below `1`, and aborts the previous round's sleep and waits before the next
+    selection step. New case "Held mailbox: no elapsed wake, other mailboxes progress" in
+    `test/subscriptions-mailbox.test.ts` with literal sleep records `[]`, `[1000]`,
+    `[1000, 542]`, `selections` growth `0` while held, and progress of another mailbox, plus a
+    self-check against a worker that sleeps until the earliest `notBefore` of all jobs.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/573` is
   answered `HTTP 404` in this run. So there are no findings yet, which is normal for a feature
   without children.
 
 ### Clone heads read for this spec
 
-All seven clones have the same HEAD as for PR #816 (checked again in this run with
-`git -C .repos/<target> rev-parse HEAD`), so the line references below hold at these SHAs.
+Six of the seven clones have the same HEAD as for PR #816 (checked again in this run with
+`git -C .repos/<target> rev-parse HEAD`), so the line references below hold at these SHAs. The
+api clone moved to `b6f1d53` (the merge of #570's api child #807). This spec changes nothing in
+the api and cites only its bench files; `api/bench/budgets.json:179-183,216-221` and
+`api/bench/compose.bench.yaml:47-75` were read again at `b6f1d53` and still say what the
+"Performance impact" section quotes, and `bench/run.ts:2,73` now has `--b-ref`.
 
 | Target | HEAD | What matters here |
 | --- | --- | --- |
@@ -163,7 +189,7 @@ All seven clones have the same HEAD as for PR #816 (checked again in this run wi
 | status | `8b6d4315fcb989a7a8d74c063ab08d97c18a7d2d` | pins contract `9ab7e249…` (version `2.1.0`, `package.json:34`) |
 | notify | `c79f0b7cb5e25ada96e6314220e69cf4f5279b32` | pins contract `9ab7e249…` (`package.json:30`), ledger format 4 (`src/ledger.ts:31`) |
 | deploy | `e754d468a2c445e76d5017692096428bff179f28` | e2e on `full` or `dev`; mailpit pinned in `common/services.yaml` for the demo |
-| api | `3b29fa0ce29890248ade4294a55812cc77ed951c` | read only; not changed |
+| api | `b6f1d53c7c6e819741ef853fbada637895c29e71` | read only; not changed (moved since PR #816 by #807; only bench files are cited) |
 | kit | `536133f3e8b708179fa01feeb02395a0e1961e07` | status and notify pin `236df214…`, which exports `readBody`, `readJsonBody`, `sendJson`, `readSecretFile` and `escapeHtml` (checked with `gh api` at that ref, `src/index.ts:12,14,42`) |
 | config | `bc870498cc8e2539a132ce2aac35a09db1deabd8` | read only; not changed |
 
@@ -388,8 +414,10 @@ All seven clones have the same HEAD as for PR #816 (checked again in this run wi
   notify, and it writes the answer only when that timer fires. Nothing else writes that answer:
   not notify's reply, not its error, not the end of the call. The notify call has its own,
   shorter timeout `SUBSCRIBE_CALL_TIMEOUT_MS = 1500` (a status constant; `requestJson` registers
-  it on the same scheduler, `contract/src/client.ts:184-185`), so the two timers differ by delay
-  and by order, and it gets an abort signal that fires at the release, so it never outlives the
+  it on the same scheduler, `contract/src/client.ts:184-185`), so the release timer and the
+  call's timeout differ by delay and by order (with the body deadline of R2, which is cancelled
+  before the release timer is registered, the registrations are `[5000, 2000, 1500]`; at most
+  two of them are live at once, R2 "Release"), and it gets an abort signal that fires at the release, so it never outlives the
   answer even when a scheduler never fires its timeout. The answer is the one
   subscribe answer of D15. This is the **release class** of the public route: the answer starts
   `SUBSCRIBE_RELEASE_MS` after the address passed, on status's clock, for a confirmed, pending or
@@ -541,12 +569,23 @@ When on:
   (`SUBSCRIBE_RELEASE_MS = 2000`, a constant exported by `src/subscribe-routes.ts`; `schedule` is
   a new `ServerOptions` member with the type of the contract's `FetchJsonOptions.schedule`,
   `contract/src/client.ts:40-41`, default `setTimeout` with a cancel). Only then does it start
-  the notify call, which registers the second and last timer of the request on the same
-  scheduler, in the same synchronous step: the call's timeout of `SUBSCRIBE_CALL_TIMEOUT_MS =
-  1500` (also exported by `src/subscribe-routes.ts`; `interruptible` calls `schedule` inside the
-  `Promise` executor, `contract/src/client.ts:177-191`, so before `fetch` runs). So a request that
-  calls notify registers exactly two timers, `2000` then `1500`; a request skipped by L0
-  registers only the release timer. When the call's timer fires, the call ends as `timeout`
+  the notify call, which registers one more timer on the same scheduler, in the same synchronous
+  step: the call's timeout of `SUBSCRIBE_CALL_TIMEOUT_MS = 1500` (also exported by
+  `src/subscribe-routes.ts`; `interruptible` calls `schedule` inside the `Promise` executor,
+  `contract/src/client.ts:177-191`, so before `fetch` runs). This spec counts timers in two ways,
+  and the tests check both:
+  - **Registrations** (every `schedule` call of the request, cancelled ones included, in order).
+    A request that passed the address rule and calls notify registers exactly three timers:
+    the body deadline `5000` (below, registered after the content-type check and cancelled when
+    the body ended), then the release timer `2000`, then the call's timeout `1500`. So the
+    registration list is `[5000, 2000, 1500]`; a request skipped by L0 registers
+    `[5000, 2000]`. The release timer is the first timer registered *after the address passed*,
+    and the call's timeout is the last timer of the request.
+  - **Live timers** (registered and neither fired nor cancelled). The body deadline is cancelled
+    before the release timer is registered, so a request never has more than two live timers:
+    the release timer and the call's timeout while the call is open, the release timer alone
+    for an L0 request or after the call ended.
+  When the call's timer fires, the call ends as `timeout`
   (logged as R2 "Notify call") and nothing is written. `release` aborts the call's signal (a
   no-op when the call already ended), frees the call's in-flight slot if it still holds one, and
   writes the subscribe answer. No other code path writes an answer for a request that reached
@@ -760,10 +799,31 @@ Times come from the injected `now`.
     drops every stale job it passes (Job expiry, below) and starts the first job that is
     *ready*: `notBefore <= now` and no `inFlight` entry for its mailbox key. That step reads the
     row, adds the `inFlight` entry and calls `sendMail` (D12, D20). A job that is not ready keeps
-    its place. When no job is ready, worker 1 waits for the first of: the earliest `notBefore`
-    (the injected sleep), the settle of an `inFlight` entry whose key a queued job has, a new job,
-    a cancel, or stop. So a job that waits for its retry delay, or for a busy mailbox, never
-    holds back a ready job of another mailbox.
+    its place. So a job that waits for its retry delay, or for a busy mailbox, never holds back a
+    ready job of another mailbox.
+  - **Wake rule** (future deadlines only). When the selection step finds no ready job, it reads
+    `now` once and sorts every queued job that is not in flight into one of two kinds:
+    *timed* (`notBefore > now`) and *held* (`notBefore <= now`, not ready only because the
+    guard holds its mailbox key). A held job has no deadline: its `notBefore` (`0` when queued,
+    or a retry time that has passed) is never used as a wake time. Worker 1 then waits for the
+    first of:
+    - the injected sleep for `min(notBefore of the timed jobs) - now` ms, only when there is at
+      least one timed job. Times are integers, so that value is at least `1`; worker 1 never
+      calls the sleep with `0` or a negative value, and it calls no sleep at all when every
+      waiting job is held;
+    - `guard.waitFor(key, signal)` for each distinct key of a held job (D20);
+    - the queue's wake signal (a new job, a cancel);
+    - stop.
+    Every wait has its own `AbortController`, linked to stop and passed as `signal` to the sleep
+    and to each `waitFor`; when one of them ends the wait, worker 1 aborts that controller before
+    it runs the next selection step, so no sleep or wait of an earlier round stays pending. A
+    wait ends only on one of these four events, so a queue whose waiting jobs are all held runs
+    no further selection step until an entry settles, a job arrives, a cancel happens or stop
+    begins: no busy loop, and no timer of `0` ms. When the sleep ends while the injected clock
+    has not reached the deadline yet, the next selection step finds the job still timed and
+    sleeps again for the remaining time, which is again at least `1`. The worker counts its
+    selection steps in a read-only `selections` number on the worker object (tests only; not a
+    metric).
   - After a temporary error the job stays in its place with attempts + 1 and `notBefore = now +
     retryDelay(attempts, PULSE_NOTIFY_RETRY_DELAY_MS, PULSE_NOTIFY_RETRY_MAX_DELAY_MS)`; after
     the third attempt, or a `PermanentDeliveryError`, it leaves the queue with a `failure`.
@@ -926,7 +986,9 @@ Times come from the injected `now`.
   - a worker calls `sendMail` only after `tryAcquire` returned an owner, in the same synchronous
     step as its last row read; the attempt's settle (success, error, the D12 timeout, the stop
     abort) calls `release(key, owner)` in a `finally`;
-  - worker 1 defers a job whose key is held and sends another ready job (R5 "Selection");
+  - worker 1 defers a job whose key is held and sends another ready job (R5 "Selection"); while
+    it has no ready job it waits on `waitFor` for each held key and sleeps only until a future
+    `notBefore`, never for `0` or less (R5 "Wake rule");
   - worker 2 waits on `waitFor` and then re-reads the row (R5 "Fan-out");
   - a cancel (D19), a delete, a confirm or a new subscribe of the same address never removes or
     replaces an entry; the entry ends with its attempt, at most 60 s after it started (D12);
@@ -1047,11 +1109,16 @@ cannot pass on a difference by mistake.
   `confirmed` address that subscribes again gets no mail, and its consent is kept, so a repeat
   neither leaks nor revokes.
 - **Timing** (D22). Two classes, both defined on injected schedulers so that tests are exact:
-  - *Release class* (status, every request that passed the address rule): exactly one release
-    timer is registered, with the delay `SUBSCRIBE_RELEASE_MS` = `2000`, as the first timer of
-    the request, in the synchronous step in which the address passed and before the notify call
-    starts; the notify call then registers exactly one more timer, its timeout of
-    `SUBSCRIBE_CALL_TIMEOUT_MS` = `1500`, and a request skipped by L0 registers none; no byte of
+  - *Release class* (status, every request that passed the address rule): the request's timer
+    registrations, cancelled ones included, are exactly `[5000, 2000, 1500]`, or `[5000, 2000]`
+    when L0 skips the call (R2 "Release"). `5000` is the body deadline, registered before the
+    body was read and cancelled when it ended, before the address rule ran. Exactly one release
+    timer is registered, with the delay `SUBSCRIBE_RELEASE_MS` = `2000`, as the first timer after
+    the address passed, in the synchronous step in which the address passed and before the
+    notify call starts; the notify call then registers exactly one more timer, its timeout of
+    `SUBSCRIBE_CALL_TIMEOUT_MS` = `1500`, and a request skipped by L0 registers none after the
+    release timer. At most two timers of a request are live at once (release and call timeout);
+    no byte of
     the answer is written before the release timer fires, also when the call's timer fired; the
     whole answer is written when the release fires; the notify call is aborted then if it is
     still open. The notify outcome (fast `202`, error, `3xx`, bad body, no answer, call timeout,
@@ -1627,6 +1694,36 @@ and the test key with its own `node:crypto` HMAC. Every expected value is a lite
 - **Worker 1 is not blocked by another mailbox**: M1 is confirmed, E1 is detected, and the fake
   holds the incident send to M; then N subscribes → N's confirmation call is the fake's next call
   at once, and the largest in-flight count stays `1` for both addresses.
+- **Held mailbox: no elapsed wake, other mailboxes progress** (R5 "Wake rule"). In this case the
+  injected sleep is a recording sleep: it records each `ms` it is called with and the number of
+  its calls that are still pending; for `ms <= 0` it resolves at once (as `setTimeout` does),
+  else it waits until the test resolves it or its `signal` aborts. "Let the loop run" means
+  `100` turns of `await new Promise((r) => setImmediate(r))`. Steps, with literals:
+  1. M subscribes at `t=0` (M1); the fake resolves its confirmation at once; confirm M1 at
+     `t=10`. Incident E1 is detected at `t=20`; the fake holds M1's incident send. Unsubscribe
+     M1 at `t=30` → `200`; re-subscribe M at `t=40` → `202` (row M2, `notBefore = 0`, held by
+     M's entry). Let the loop run, read worker 1's `selections` as `s0`, let the loop run again:
+     `selections` is still `s0` (growth `0`), the sleep record is `[]`, and the fake has no
+     call for M2.
+  2. N subscribes at `t=41` → `202`; let the loop run: N's confirmation is the fake's next call.
+     The fake rejects it at `t=42` with a temporary error, so N's `notBefore` is
+     `42 + 1000 = 1042`. Let the loop run: the sleep record is exactly `[1000]` (`1042 - 42`), one
+     sleep is pending, and `selections` does not grow over a further run of the loop.
+  3. Set the clock to `t=500` and resolve the pending sleep; let the loop run: the record is
+     `[1000, 542]`, N has made no attempt 2, and no call for M2 exists.
+  4. Set the clock to `t=1042` and resolve the pending sleep; let the loop run: N's attempt 2 is
+     the fake's next call and the record stays `[1000, 542]` (at the exact deadline the job is
+     ready, so no sleep of `0`). Resolve N's attempt 2 with success.
+  5. Settle M1's incident send with success at `t=1100`; let the loop run: M2's confirmation is
+     the fake's next call, started by the guard's settle and not by a sleep (the record stays
+     `[1000, 542]`), and the largest in-flight count for M is `1`.
+  Over the case: every recorded value is at least `1`, at most `1` sleep is pending at any
+  check, and `0` sleeps are pending after stop. A wrong implementation that sleeps until the
+  earliest `notBefore` of every waiting job calls the sleep with `0 - 40 = -40` (or `0`) in
+  step 1, so its record is not `[]` and, because such a sleep resolves at once, `selections`
+  keeps growing across the loop run; it fails both literals. One that waits only on the sleep,
+  without `waitFor`, does not start M2 in step 5 and fails there. One that does not abort the
+  previous round's sleep leaves `2` pending in step 3.
 - **Stop while worker 2 waits on M's entry**: stop ends the wait, E1 stays `pending`, no delivery
   row is written for M, and the fake has no incident call for M.
 - **Owner check** (guard unit cases, literal values): `tryAcquire(k)` → owner `1`;
@@ -1728,9 +1825,12 @@ fires them. The test asserts, with the literals in the test:
    deadline: it is cancelled before `2000` is registered. `2000` is the release timer: it is
    registered at the clock value at which the address passed (`t0`), before the call's timer and
    before the fake notify received the call (the fake records the scheduler's count when the call
-   arrives). `1500` is the call's own timeout (`requestJson`, `SUBSCRIBE_CALL_TIMEOUT_MS`);
+   arrives). `1500` is the call's own timeout (`requestJson`, `SUBSCRIBE_CALL_TIMEOUT_MS`). The
+   list counts registrations, cancelled ones included; the number of the request's live timers
+   (registered, not fired, not cancelled) is never more than the literal `2`, read after each
+   registration;
 2. after the fake notify finished with the request (answered, failed, redirected, closed, or, for
-   L0, after the request's two timers were registered) and after the test fired the request's
+   L0, after the request's two registrations `[5000, 2000]` were recorded) and after the test fired the request's
    `1500` timer when it was not cancelled yet (the call then ends as a timeout, and the fake
    sees that call aborted when it had not answered), the socket has received `0` bytes;
 3. when the test fires the `2000` timer, the socket receives the whole answer, and the three
@@ -1910,7 +2010,10 @@ New in this version (status and notify internals, not contract exports), searche
 `SUBSCRIBE_MAX_ADMITTED` (the previous version's `SUBSCRIBE_MAX_WAITING`, renamed, which no clone
 holds either), `SUBSCRIBE_CALL_TIMEOUT_MS`, `SUBSCRIBE_BODY_TIMEOUT_MS`, `dropSlowBody`,
 `subscription request refused`, `mailbox-guard`, `tryAcquire`,
-`subscribe-timing`, `subscriptions-mailbox`, `subscriptions-support`. `grep -rn -i 'mailbox'
+`subscribe-timing`, `subscriptions-mailbox`, `subscriptions-support`, and (added with R5 "Wake
+rule") the worker field `selections`. The guard method `waitFor` matches only an unrelated
+method of the test logger (`.repos/notify/test/reminders.test.ts:175,278,282`); the guard's
+method lives on the guard object of `src/mailbox-guard.ts`, so the two do not meet. `grep -rn -i 'mailbox'
 .repos/notify/src .repos/status/src .repos/contract/src` finds nothing either. The `ServerOptions`
 member `schedule` of status is new there (`grep -n 'schedule' .repos/status/src/server.ts` finds
 none); it reuses the type of the contract's existing `FetchJsonOptions.schedule`
@@ -2035,8 +2138,9 @@ Checks:
 - `src/subscribe-timing.test.ts`: every status case of "Response timing (D22)" with checks 1-4,
   for K, P and U in both orders, below every limit, at L0 and one below L9, and the "before the
   address" requests with `0` timers (`403`, `415`, L9 full) or exactly `[5000]` (`413`, `400`).
-  Expected values are literals in the test (the timer lists `[5000, 2000, 1500]` and
-  `[5000, 2000]`, `0` bytes before the `2000` timer fires); none is read from
+  Expected values are literals in the test (the registration lists `[5000, 2000, 1500]` and
+  `[5000, 2000]`, cancelled timers included, at most `2` live timers per request, `0` bytes
+  before the `2000` timer fires); none is read from
   `src/subscribe-routes.ts`. A self-check in the same file runs the checks against two
   deliberately wrong handlers written in the test (one answers as soon as the fake notify
   answers, one calls `requestJson` with `timeoutMs: 2000`) and expects check 2 and check 1 to
@@ -2153,7 +2257,12 @@ literal expected codes, outputs, row counts and send counts in the test. Per fil
   largest in-flight count per address (literal `1`) asserted after every step, and the orphan
   invariant of D21 after every case. A self-check in the same file swaps in a guard keyed by row
   id (written in the test) for the mirrored case and expects the largest count `2`, so the check
-  can fail.
+  can fail. The case "Held mailbox: no elapsed wake, other mailboxes progress" asserts the sleep
+  records `[]`, `[1000]`, `[1000, 542]` (literals), no recorded value below `1`, `selections`
+  growth `0` while every waiting job is held, and N's calls and M2's call in the stated order. A
+  second self-check runs step 1 against a worker written in the test that sleeps until the
+  earliest `notBefore` of all waiting jobs, bounded to `1000` selection steps, and expects the
+  record to be non-empty with a value below `1`, so the check can fail.
 - `test/subscriptions-security.test.ts`: the security check below.
 - `test/index.test.ts` (it already starts the service with `main(env, deps)`,
   `src/index.ts:138`, and spawns the entry point, `test/index.test.ts:4,318`): with
@@ -2690,11 +2799,15 @@ The feature is done when all of these hold. Every expected value is a literal in
     failure, timeout, stop); the new row's confirmation call starts after the old attempt
     settled; another mailbox (`sub-n@example.com`) gets its confirmation call while M waits; the
     guard's `size()` is `0` after every case; and the owner check ignores a late release. The
-    file's self-check with a row-keyed guard reaches `2`, so the check can fail.
+    file's self-check with a row-keyed guard reaches `2`, so the check can fail. While M's
+    mailbox is held and M2 waits with an elapsed `notBefore`, worker 1 calls no sleep (record
+    `[]`) and runs no further selection step (growth `0`); a retry of N then sleeps only for
+    future time (`[1000, 542]`, every value at least `1`), and M2 starts when M's entry settles.
 11. **Response timing (manager requirement 5).** `src/subscribe-timing.test.ts` (status) shows,
     with a manual scheduler, that K, P and U requests, in both orders, below every limit, at L0
     and one below L9, each register exactly the timers `[5000, 2000, 1500]` (body deadline,
-    release, the call's own timeout; `[5000, 2000]` when L0 skips the call), with the release
+    release, the call's own timeout; `[5000, 2000]` when L0 skips the call; registrations,
+    cancelled ones included), never have more than `2` live timers, with the release
     timer before the notify call, and receive `0` bytes before the `2000` timer fires, also when
     the `1500` timer fired, whatever the fake notify does per address (fast `202`, error, `302`,
     bad body, closed socket, no answer); refusals before the address register `0` timers
