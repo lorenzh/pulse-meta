@@ -353,6 +353,32 @@ These decisions settle the open points of the issue review and the plan-review c
    - A valid answer becomes active atomically when the poll that read it finishes. A malformed,
      oversized or wire-mismatched answer, or an api outage, keeps the last good snapshot. The
      report then names the rejection, and polling goes on.
+   - "Malformed" has two levels for the notify channels answer, and one for everything else.
+     The status settings answer, the resend claim answer and every other `/service/*` answer
+     are validated whole: one bad field rejects the whole answer. The notify channels answer
+     (`GET /service/notify/channels`) is validated in two steps (R1,
+     `validateServiceNotifyChannels` and `validateNotifyChannelRecord`):
+     - **Envelope**, whole answer: body size, wire version, the top-level object `{revision,
+       channels}` with no other key, `revision` a valid revision, `channels` an array of
+       0..100 elements (`NOTIFY_CHANNEL_MAX`), each element a plain object whose own `id` is a
+       string matching the database id pattern (Decision 12), and no id twice. A failure keeps
+       the whole last good set, the stored ETag and the persisted rows (Decision 17) unchanged,
+       and reports one `rejected` entry `{channelId: null, reason: "channels answer: <validator
+       error>"}`; `appliedRevision` stays the earlier one.
+     - **Per channel**, after a valid envelope: each element is checked on its own with
+       `validateNotifyChannelRecord`, which includes the 16 384-byte definition limit, the
+       type set and the reference rules. A valid element is a candidate for Decision 13. An
+       invalid element is reported as `{channelId: <its id>, reason: "channels[<i>]: <validator
+       error>"}` (cut by the R1 cut rule) and is handled like a channel whose secret cannot be
+       resolved (Decision 13): its last good version, the one installed before this answer,
+       stays installed if one exists; otherwise that id is not installed. The other channels
+       of the answer apply.
+     - With a valid envelope the answer is applied: its `revision` becomes `appliedRevision`
+       and its ETag is stored, even when some channels were rejected. The next poll therefore
+       gets `304`, and the rejections stay in every report until the api serves a changed
+       answer. The console shows them per channel (R3, `rejected`).
+     - Notify does not re-check the 262 144-byte aggregate (`NOTIFY_CHANNELS_MAX_BYTES`); the
+       api applies it on writes, and the 1 048 576-byte answer limit bounds what notify reads.
 7. **Status local file.** A new optional `PULSE_STATUS_SETTINGS_FILE` holds a JSON document of the
    same `StatusSettings` shape as the database.
    - A key that is present is file-origin. An absent key is not set.
@@ -613,10 +639,14 @@ These decisions settle the open points of the issue review and the plan-review c
 17. **Notify ledger format 5.** Format 5 is format 4 (`src/ledger.ts:37-63`) plus two `STRICT`
     tables, with `PRAGMA user_version = 5` (`LEDGER_VERSION`, `:31`):
     - `remote_channels (id TEXT PRIMARY KEY, definition TEXT NOT NULL, revision TEXT NOT NULL,
-      applied_at INTEGER NOT NULL)`: one row per database channel of the last applied channel
-      answer (Decision 13), `definition` its canonical JSON (references only, never a resolved
-      value), `revision` the notify revision of that answer. A reconcile replaces all rows in one
-      transaction.
+      applied_at INTEGER NOT NULL)`: one row per database channel that is installed after the
+      last applied channel answer (Decision 13), `definition` its canonical JSON (references
+      only, never a resolved value), `revision` the notify revision of the answer it came from.
+      A channel taken from that answer has that answer's revision; a channel whose element was
+      rejected, or whose secret could not be resolved, and whose last good version stays
+      installed keeps its earlier row, revision and `applied_at` unchanged; a rejected id with
+      no last good version has no row. A reconcile replaces all rows in one transaction. An
+      answer whose envelope fails (Decision 6) changes no row.
     - `resend_commands (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, key TEXT NOT NULL, state
       TEXT NOT NULL CHECK (state IN ('admitted','delivered','failed','dropped','not-failed',
       'no-payload','channel-unavailable')), posted_state TEXT CHECK (posted_state IS NULL OR
@@ -720,6 +750,19 @@ All objects are `strictObject`. "Absent" means not set; `null` is not accepted f
   - **`NotifyChannelRecord`**: a definition plus `createdAt` and `updatedAt`.
 - **`ServiceNotifyChannels`** (answer of `GET /service/notify/channels`): `{revision, channels:
   NotifyChannelRecord[]}`, all database channels, shadowed ones included, in creation order.
+  This is the type the api builds and serves.
+  - **`ServiceNotifyChannelsEnvelope`**: `{revision, channels: ReadonlyArray<{id: string} &
+    Record<string, unknown>>}`, the result of the envelope step of Decision 6.
+  - `validateServiceNotifyChannels(value, path = "channels answer")` checks only the envelope
+    of Decision 6 and returns `Validation<ServiceNotifyChannelsEnvelope>`; it does not look
+    inside an element beyond its `id`. Envelope errors include `channels answer.channels: must
+    hold at most 100 channels` and `channels answer.channels[3].id: must not repeat an id`.
+  - `validateNotifyChannelRecord(value, path)` checks one element: a definition (the same
+    rules as `validateNotifyChannelDefinition`, including `NOTIFY_CHANNEL_DEFINITION_MAX_BYTES`
+    measured on the definition without `createdAt` and `updatedAt`) plus those two fields.
+  - An answer is a valid `ServiceNotifyChannels` exactly when the envelope passes and every
+    element passes `validateNotifyChannelRecord`. The api's tests check its own answers that
+    way; notify uses the two steps separately (Decision 6).
 - **`NotifyFileChannelView`**: `{source: "file", id (1..200 characters), type:
   "webhook"|"file"|"slack"|"teams"|"email", refs: string[] (0..6, each 1..200 characters)}`.
   `refs` are the reference names (`SLACK_OPS`, `hook.txt`), never values. A file channel id longer
@@ -927,7 +970,9 @@ carries the new `etag`.
     - `/notifications`: list. File channels are read-only with id, type, reference names and
       "From the notify channel file". When `fileChannelsTotal` > the listed count, the page says
       how many more exist. Shadowed database copies are marked "Shadowed by the channel file" and
-      allow only Delete.
+      allow only Delete. A database channel named in a fresh report's `rejected` (Decision 6,
+      per channel) is marked "Rejected by pulse-notify: <reason>"; an entry with `channelId:
+      null` is shown as a banner above the list.
     - `/notifications/new`;
     - `/notifications/edit?id=`;
     - `/notifications/delete?id=`;
@@ -1100,10 +1145,25 @@ differ only in the repository it measures. So:
    - Answers of the token creation:
      - side B: `201` for both tokens is required; any other answer is a harness error (exit
        `2`, `service tokens: <status> on b`). There is no silent fallback on B;
-     - side A: `201` turns the simulation on for A too. A `400` whose error starts with
-       `scopes` (an api without the new scopes, `src/token-routes.ts:232-233`) turns it off for
-       A, with the log line `service traffic: not available on a`. Any other answer on A is a
-       harness error (exit `2`).
+     - side A: `201` turns the simulation on for A too. The only answer that turns it off for A
+       is the one an api without the new scopes gives: status `400` and a JSON body whose
+       `error` starts with `token.scopes[0]: must be one of ` and does not contain the requested
+       scope in quotes (`"status"` for the status token, `"notify"` for the notify token). Then
+       the run logs `service traffic: not available on a` and A runs without the simulation.
+       Source of that text: `src/token-routes.ts:232-233` passes the validator error through
+       unchanged as `{"error": …}` (`sendError`, `:142-150`); the validator at the api's
+       contract pin `c4a2eb5` builds it as `<path>: <message>` with base path `token`
+       (`validate-tokens.ts:30-34`, `validate-core.ts:23-43`) and the enum message
+       `must be one of "read", "checks", "incidents", "admin", "probe"` (`tokens.ts:30-32`).
+       Reproduced on `c4a2eb5`: `validateTokenCreateInput({name:"bench status",
+       scopes:["status"]})` returns `{"ok":false,"error":"token.scopes[0]: must be one of
+       \"read\", \"checks\", \"incidents\", \"admin\", \"probe\""}`, and the same text for
+       `["notify"]`. The bench sends `scopes` with the one new scope only, so the first failing
+       element is always `scopes[0]`. Any other answer on A (another status, another `error`
+       text such as `token.name: is required` or `scopes: …`, a body that is not JSON, or an
+       error that lists the requested scope) is a harness error (exit `2`, `service tokens:
+       <status> on a`). Side B never uses this rule: on B every answer other than `201` is exit
+       `2`, including this exact `400`.
    - Schedule, in ms from the window start `t = 0`: status settings reads and notify channel
      reads at 0, 15 000, 30 000 and 45 000 (4 each); claims at 0, 5 000, …, 55 000 (12); one
      status report and one notify report at 0 and one of each after the window's last load
@@ -1318,8 +1378,22 @@ Checklist items that apply:
   main`, a `main` of kit that moves between round 1 and round 2: both sides of every round still
   run the SHA resolved before round 1. A B worktree of notify at a SHA other than the resolved
   one: `ref mismatch: notify b`.
+- **Notify channels answer, two levels (Decision 6):** an answer with valid `a`, a 16 385-byte
+  `b` and valid `c`, after an earlier answer with all three valid: `a` and `c` apply, `b` keeps
+  its earlier version, `rejected` names only `b`, and `appliedRevision` is the new revision. An
+  implementation that rejects the whole answer because one element is invalid is wrong (`c`
+  never applies), and so is one that drops `b`'s earlier version. The opposite case: an answer
+  with 101 elements, or with one id twice, is malformed as a whole, changes nothing, and keeps
+  `appliedRevision`; an implementation that applies the first 100 elements, or the first of two
+  equal ids, is wrong.
 - **Traffic counts:** in the 60 s window, 2 status reports and 2 notify reports, 4 in total; a
   count of 2 reports in total (one per service) is exit `2`.
+- **Bench baseline token answer:** api `main` (`4b3e9b1`, contract `c4a2eb5`) answers a
+  `scopes:["status"]` create with `400` `{"error":"token.scopes[0]: must be one of \"read\",
+  \"checks\", \"incidents\", \"admin\", \"probe\""}`. A predicate that requires the error to
+  start with `scopes` never matches it and makes procedure 2 exit `2` on A, so it is wrong. A
+  predicate that turns A off on any `400` is wrong too: `400` `token.name: is required` (a bench
+  bug) must be exit `2`. The same baseline `400` on B is exit `2`.
 - **Deploy resend:** the event resent is `manual:<B>:opened`, which failed because the receiver
   answered `500` while it was sent. Resending `manual:<A>:opened`, delivered in step 5, gives
   `409` `not a failed delivery`; a scenario that switches the receiver to `500` after a
@@ -1415,14 +1489,15 @@ Every name below gave **0** hits, except where a count is given:
 
 - Types: `StatusSettings`, `StatusTheme`, `ServiceStatusSettings`, `StatusServiceReport`,
   `StatusLockedField`, `StatusServiceState`, `AdminStatusSettingsView`, `NotifyChannelDefinition`,
-  `NotifyChannelRecord`, `ServiceNotifyChannels`, `NotifyFileChannelView`, `NotifyDatabaseChannelView`,
+  `NotifyChannelRecord`, `ServiceNotifyChannels`, `ServiceNotifyChannelsEnvelope`,
+  `NotifyFileChannelView`, `NotifyDatabaseChannelView`,
   `NotifyRejectedChannel`, `NotifyFailedDelivery`, `NotifyFailedEvent`, `NotifyServiceReport`,
   `NotifyServiceState`,
   `AdminNotifyChannelsView`, `AdminNotifyFailedView`, `ResendRequest`, `ResendCommand`,
   `ResendCommandState`, `ResendClaimResponse`, `ResendResultInput`.
 - Validators: `validateStatusSettings`, `validateServiceStatusSettings`,
   `validateStatusServiceReport`, `validateAdminStatusSettingsView`,
-  `validateNotifyChannelDefinition`, `validateServiceNotifyChannels`,
+  `validateNotifyChannelDefinition`, `validateNotifyChannelRecord`, `validateServiceNotifyChannels`,
   `validateNotifyServiceReport`, `validateAdminNotifyChannelsView`, `validateAdminNotifyFailedView`,
   `validateResendRequest`, `validateResendCommand`, `validateResendClaimResponse`,
   `validateResendResultInput`.
@@ -1545,7 +1620,10 @@ Behavior: R1 exactly.
   "email"`.
 - The file view accepts `file` too.
 - The channel validators check one definition, including its 16 384-byte limit
-  (`NOTIFY_CHANNEL_DEFINITION_MAX_BYTES`). The aggregate byte limit is a constant that the api
+  (`NOTIFY_CHANNEL_DEFINITION_MAX_BYTES`). `validateNotifyChannelRecord` does the same for one
+  element of a channels answer. `validateServiceNotifyChannels` checks only the envelope of
+  Decision 6 (top-level keys, revision, 0..100 elements, each a plain object with a valid,
+  distinct `id`) and never fails because of the content of an element. The aggregate byte limit is a constant that the api
   applies over all channels; the contract exports it and documents the measure (UTF-8 bytes of
   `JSON.stringify(definition)`).
 - The `StatusSettings` validator checks the radius limit (32), the `componentOrder` id rule of
@@ -1572,6 +1650,15 @@ Checks (tests in `test/`, as the existing suites):
   - a 33-character radius, a 65-character order id, a `logoUrl` with a space;
   - a channel definition of 16 384 bytes (accepted) and of 16 385 bytes (refused), built in the
     test from literal lengths;
+  - a channels answer `{revision: "r1", channels: [<valid webhook "a">, <webhook "b" of 16 385
+    bytes>, <valid slack "c">]}` (the revision in the format the contract defines):
+    `validateServiceNotifyChannels` accepts it with three elements; `validateNotifyChannelRecord`
+    accepts elements 0 and 2 and refuses element 1 with `channels[1]: must be at most 16384
+    bytes as JSON`;
+  - envelope refusals (literal texts): 101 elements (`channels answer.channels: must hold at
+    most 100 channels`); two elements with id `a` (`channels answer.channels[1].id: must not
+    repeat an id`); an element without `id`, or with id `Ops`; an element that is an array; a
+    top-level key `extra`; a missing `revision`;
   - an `AdminNotifyChannelsView` with a file view in `channels` (refused: only database views);
   - a `NotifyFailedDelivery` with `event: "update"` and `isManual: true` (accepted), with
     `event: "manual"` or `"warning"` (refused), and without `isManual` (refused);
@@ -1739,6 +1826,9 @@ Checks (real server at `127.0.0.1:0`, `mkdtemp` database, injected `now`):
   798 932 bytes and holds no file view outside `service.report`; `GET /service/notify/channels`
   is at most 274 344 bytes; `GET /service/status/settings` of the largest valid settings is at
   most 65 656 bytes. The limits are the literals of R1.
+- Every `GET /service/notify/channels` answer of the tests passes `validateServiceNotifyChannels`
+  and, element by element, `validateNotifyChannelRecord` of contract `2.4.0` (R1: that is what
+  a valid `ServiceNotifyChannels` means).
 - Resend: every Counterexample under "Resend" that touches the api, with a fake clock: idempotency,
   `requestId` conflict, open-command reuse for each open state, the lost `200` after reuse (a
   second command must not appear; literal command count `1`), the `409` for a request whose
@@ -1761,8 +1851,23 @@ Checks (real server at `127.0.0.1:0`, `mkdtemp` database, injected `now`):
     and equal SHAs pass; the existing cases (`check-refs.ts:25-40`) keep passing;
   - `check-runtime-fixture.ts`: `--service-tokens` with `201` on both sides writes both files and
     sets both variables; `--service-tokens` with `400` on A is exit `2`;
-    `--simulate-services` with `400` `scopes: …` on A turns A off with the log line, and with
-    `400` on B, `500` on A, or `401` on A is exit `2`; `--expect-report` with a `stale` B report
+    `--simulate-services` with the baseline answer on A, status `400` and body
+    `{"error":"token.scopes[0]: must be one of \"read\", \"checks\", \"incidents\", \"admin\",
+    \"probe\""}` (literal, the text reproduced on contract `c4a2eb5`, see procedure 2), turns A
+    off with the log line `service traffic: not available on a` and the run goes on; the same
+    literal `400` on B is exit `2`; on A, `400` `{"error":"scopes: must be one of …"}`, `400`
+    `{"error":"token.name: is required"}`, `400` `token.scopes[0]: must be one of "read",
+    "status"` (lists the requested scope), `400` with a body that is not JSON, `500` and `401`
+    are each exit `2`;
+  - the literal above is checked against the real baseline outside the self-test, because the
+    branch's own api (contract `2.4.0`) can no longer produce it: the PR shows (a) the output of
+    `bun -e 'import {validateTokenCreateInput} from "@lorenzh/pulse-contract"; console.log(JSON.stringify(validateTokenCreateInput({name:"bench status",scopes:["status"]})))'`
+    run inside a worktree of api `main` (`4b3e9b1`, contract `c4a2eb5`) after `bun install`,
+    which must print the literal error text above, and (b) the log of the real procedure-2
+    run with A at api `main`, which must contain `service traffic: not available on a`, then
+    `service traffic (b): 4 status reads, 4 channel reads, 12 claims, 2 status reports, 2
+    notify reports`, and end with exit `0`. A predicate that does not match the real baseline
+    answer fails (b) with exit `2`; `--expect-report` with a `stale` B report
     is exit `2`, with a `fresh` but unapplied B report exit `2`, with a `never` A report a log
     line only; both options together are exit `2`;
   - `check-runtime-traffic.ts`: in a fake 60 s window it sends exactly 4 status settings
@@ -1888,6 +1993,12 @@ Checks (real console server, fake api on `127.0.0.1:0`):
     state with the input kept.
 - Each state: `412` keeps the input; token rejected; old api (`404`); stale report; rejected
   apply; zero channels; `422` channel limit; `503` resend.
+- A fresh notify report with `rejected: [{channelId: "b", reason: "channels[1]: must be at most
+  16384 bytes as JSON"}]` and `appliedRevision` equal to `revision`: the row of channel `b`
+  contains the literal text "Rejected by pulse-notify: channels[1]: must be at most 16384 bytes
+  as JSON", the rows of the other channels do not, and no "Saved, not yet applied" banner is
+  shown; a `rejected` entry with `channelId: null` and reason `channels answer: x` is shown as a
+  banner with that text.
 - A repeated Resend post after a fake api timeout sends the same `requestId` (the fake api sees
   two equal values).
 - No secret value field exists in any form, and a forged `url` field is not forwarded (fake api
@@ -2058,8 +2169,9 @@ Files:
 - `src/config.ts` (changed: token, database-only mode, `PULSE_NOTIFY_SECRET_DIR`, poll settings,
   webhook `urlEnv`/`urlFile`, resolving one channel at a time)
 - `src/channel-schema.ts` (changed: webhook references, exactly one of `url`, `urlEnv`, `urlFile`)
-- `src/remote-channels.ts` (new: poll of `/service/notify/channels`, database channel validation
-  with the notify-local reference rules, secret directory resolution)
+- `src/remote-channels.ts` (new: poll of `/service/notify/channels`, the two-level validation of
+  Decision 6 (envelope, then each element), per-id fallback to the last good version, database
+  channel validation with the notify-local reference rules, secret directory resolution)
 - `src/channel-set.ts` (new: effective set, shadowing, per-id diff)
 - `src/notifier.ts` (changed: reconcile: install, replace, remove workers; live enqueue of a
   resent key)
@@ -2209,8 +2321,23 @@ Checks (fake api and fake receivers on `127.0.0.1:0`, fake clock and timers, `mk
 - Partial SMTP failure: a resend retries only the refused recipients (fake SMTP).
 - Report trimming of Counterexamples: at most 524 288 bytes measured with `Buffer.byteLength`,
   `failed` trimmed first, then `fileChannels`, then `rejected`, totals kept.
-- A database channel over 16 384 bytes in a channels answer (an api that does not apply the
-  limit) is not installed and is reported as rejected; the other channels apply.
+- Two-level validation of the channels answer (Decision 6), in a new
+  `test/remote-channels.test.ts` case table with a fake api; the expected values are literals:
+  - answer r1 `[a (webhook), b (slack), c (webhook)]`, all valid: three installed,
+    `appliedRevision` r1, `rejected` `[]`;
+  - answer r2 where `b` is 16 385 bytes (an api that does not apply the limit) and `c` changed
+    its routing: `a` unchanged, `c` changed, `b` keeps its r1 version (its worker still sends to
+    the r1 destination); `rejected` is exactly `[{channelId: "b", reason: "channels[1]: must be
+    at most 16384 bytes as JSON"}]`; `appliedRevision` r2; the next poll sends the r2 ETag and
+    gets `304`; the ledger's `remote_channels` rows are `a` r2, `b` r1, `c` r2;
+  - the same r2 answer on a fresh ledger with no r1 (cold start): `b` is not installed and has
+    no row, `a` and `c` are installed;
+  - answer r3 with 101 elements, or with id `a` twice: nothing changes (`a`, `b`, `c` as
+    before, rows unchanged, stored ETag unchanged), `rejected` is one entry with `channelId:
+    null` and a reason starting with `channels answer`, `appliedRevision` stays r2;
+  - answer r4 where `b` is valid again: `b` takes the r4 version, `rejected` `[]`.
+  A wrong implementation that rejects the whole r2 answer fails the `c` and `appliedRevision`
+  checks; one that drops `b`'s r1 version fails the `b` check.
 - Ledger format 5 (`test/ledger.v5.test.ts`, Decision 17):
   - a valid format-4 file with three entries (one `failed` with payload and recipients) and two
     `alert_state` rows migrates: `ledger.migration` is `{ from: 4, entries: 3, backup:
