@@ -30,6 +30,11 @@ through the existing pulse-api routes: this feature adds no API, contract or sta
   them; the screens use the existing shell, states, tables, callouts and confirmations.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/569`
   answered `HTTP 404` on 6 November 2026: no findings yet.
+- Plan-review of this spec (four changes, applied): the typed-title rule now follows the shipped
+  trim/NFC `isTypedNameConfirmed` and its counterexamples match it; the resolve page is composed
+  from `src/html.ts` helpers, so `confirm.ts` stays unchanged; deploy step 7 uses a second
+  unused resolve token kept from step 6 and checks the later GET `409` separately; the
+  performance bound is four pulse-api requests per console request.
 
 ### What this spec builds on (do not redo)
 
@@ -289,18 +294,41 @@ once and sends notifications. Sent notifications cannot be recalled.`
 `action` `preview|publish` (`Post update`). `status=resolved` (forged) answers `422` `Use
 Resolve to resolve an incident.` with zero API requests.
 
-**Resolve (`/incidents/resolve`).** GET of an open incident: a plain confirmation (`src/confirm.ts`
-`plainConfirmPage`, tone `safe`) with `message` prefilled `Resolved.`, the preview (resolved
-form, below) and `action` `preview|publish` (`Resolve incident`). Text: `Resolving ends the
-incident on the status page and discards any unpublished draft update of it. A resolved
-incident cannot be reopened.` GET of a resolved incident: `409` `This incident is already
-resolved.` with no form. POST sends `POST /manual-incidents/<id>/resolve` `{"message": ...}`.
+**Resolve (`/incidents/resolve`).** **Decision:** the resolve page is an incident form built in
+`src/incident-pages.ts`, the same composition as the post-update form, not `plainConfirmPage`:
+`src/confirm.ts:74-108` has no slot for a field, a preview or two named buttons, and this
+feature does not change `confirm.ts`. The page is built only from the existing `src/html.ts`
+helpers: `csrfField` and `formTokenField` (`:42-50`), hidden `incident`, `textareaField`
+(`:95`) for `message` prefilled `Resolved.`, `formErrorSummary` (`:121`), the preview section
+(resolved form, below) and two `submitButton`s (`:106-118`, which take `name` and `value`):
+`name="action" value="preview"` (`Update preview`) and `name="action" value="publish"`
+(`Resolve incident`, busy label `Resolving…`), with a `Cancel` link to the detail page. Text:
+`Resolving ends the incident on the status page and discards any unpublished draft update of it.
+A resolved incident cannot be reopened.`
+- GET of an open incident: that form, `200`, with a fresh form token. Every GET issues a new
+  token (`src/form-tokens.ts:87-98`; up to 100 unused tokens per session, `FORM_TOKEN_BINDING_MAX`, `:8`), so two open
+  tabs hold two usable tokens.
+- GET of a resolved incident: `409` `This incident is already resolved.` with no form.
+- POST (update and resolve alike) first reads `GET /manual-incidents/<id>` and `/admin/config`
+  (the preview head and the re-rendered form need them). If that read shows `status:
+  "resolved"`: `409` `This incident is already resolved.` with the posted message kept as
+  text and **zero** writes (the form token was already used by the dispatcher). Otherwise `action=publish`
+  sends `POST /manual-incidents/<id>/resolve` `{"message": ...}`. If the incident is resolved
+  between that read and the write, pulse-api's `409` is shown (section 10), input kept.
 
-**Delete (`/incidents/delete`, Admin+).** `typedConfirmPage` (`src/confirm.ts:92-105`): the
-person types the exact title (`isTypedNameConfirmed`); text `Deleting removes the incident from
-the status page and feeds. Notifications already sent cannot be recalled.` Mismatch: `422` with
-`typedNameError`, zero API requests. POST sends `DELETE /manual-incidents/<id>`; success
-redirects to `/incidents?deleted=1`. Works without JavaScript.
+**Delete (`/incidents/delete`, Admin+).** `typedConfirmPage` (`src/confirm.ts:92-104`) with
+`consequence` `Deleting removes the incident from the status page and feeds. Notifications
+already sent cannot be recalled.`, `action` `/incidents/delete`, `hidden` `[["incident",
+"<id>"]]`, `revision` the incident's update count as text (the field `confirmForm` always
+writes, `src/confirm.ts:83`; the POST declares it as a known field and does not compare it, as
+the delete sends no `If-Match`), `targetName` the title with `.trim()` (as check delete,
+`src/check-routes.ts:686`), `submitLabel` `Delete incident`, `busyLabel` `Deleting…`,
+`cancelHref` the detail page. The typed text is checked with the shipped `typedNameError` and
+`isTypedNameConfirmed` (`src/confirm.ts:47-57`, "Decision 7" in its doc comment, unchanged): both values
+trimmed and NFC-normalized, case-sensitive, inner whitespace counts. A mismatch or blank: `422`
+with the `typedNameError` text, the typed value kept, zero API requests. POST sends
+`DELETE /manual-incidents/<id>`; success redirects to `/incidents?deleted=1`. Works without
+JavaScript.
 
 **Input handling (all incident forms).**
 - `message`: every `\r\n` and every remaining `\r` become `\n` before validation (browsers send
@@ -457,7 +485,9 @@ POST:
 **Delete (`/maintenance/delete`, Admin+).** GET: `plainConfirmPage` tone `danger` for an
 unshadowed or shadowed database id (`Delete maintenance window <id>?`; for a shadowed one
 `Delete the database copy of <id>? The file window stays in force.`), hidden `target` and
-`revision` (from `/admin/maintenance`). A file id or unknown id: `404`. POST sends
+`revision` (from `/admin/maintenance`). It uses only the fields `plainConfirmPage` supports today
+(`consequence`, `action`, `revision`, `hidden`, labels, `tone`, `cancelHref`, `notice`;
+`src/confirm.ts:13-34`); `confirm.ts` does not change. A file id or unknown id: `404`. POST sends
 `DELETE /admin/maintenance/<target>` with `If-Match`; `303` `/maintenance?deleted=1`.
 
 ### 14. Layout and accessibility
@@ -476,8 +506,16 @@ unshadowed or shadowed database id (`Delete maintenance window <id>?`; for a sha
 None expected for any metric of api `bench/budgets.json` (`startup_cpu_ms`, `load_cpu_s`,
 `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, `cold_read_cpu_ms`, `eod_read_cpu_ms` and the
 reported `startup_wall_ms`, `p95_*`, `rps`, `image_mb`, `cold_*`, `eod_*`): the api code does not
-change, and the console adds only person-paced reads of existing routes (at most three per page
-view: `/manual-incidents`, `/incidents?since=…&limit=1000`, `/admin/config`). The budgets file
+change, and the console adds only person-paced requests to existing routes. Bound per console
+request, from sections 4–13: at most **four** pulse-api requests. The worst case is the
+maintenance form GET (section 13): `/admin/maintenance` and `/admin/config`, and when their
+revisions differ both once more (4 reads). The incident list and the automatic detail make 3
+reads (the list: `/manual-incidents`, `/incidents?since=…&limit=1000`, `/admin/config`; the
+automatic detail: `/incidents?…`, `/admin/config`, `/checks/<id>/results`); every other GET
+makes 1 or 2. A POST makes at most two reads and one write (update and resolve:
+`/manual-incidents/<id>`, `/admin/config`, then the write; composer and maintenance:
+`/admin/config`, then the write; incident delete: `/manual-incidents/<id>` for the typed title, then the write; maintenance delete: the write only); a refused form is re-rendered from
+those reads and the posted input, with no further read. The budgets file
 has no console entry (keys: api, config, contract, kit, notify, probe, status). No A/B run is
 needed.
 
@@ -539,8 +577,10 @@ redirects, as today); file writes (none); Dockerfiles (unchanged).
 | Contract length | message of 2001 UTF-16 units; 1000 `😀` (2000 units) | 422 with input kept; accepted |
 | HTML input | title `<script>alert(1)</script>` | preview and pages show the text; no `<script>` element; status shows the same text |
 | Forged resolve via update | `POST /incidents/update` `status=resolved` | `422`, zero API requests |
-| Resolved incident | update or resolve POST on a resolved incident | API `409` shown with input kept; GET resolve page `409` without form; detail page has no forms |
-| Delete typed title | typed `Slow checkout ` for title `Slow checkout` | `422`, zero API requests |
+| Resolved incident | update or resolve POST (with a second unused form token) on an incident already resolved | console read sees `resolved`: `409` `This incident is already resolved.`, message kept as text, **zero** writes; GET resolve page `409` without form; detail page has no forms |
+| Resolve race | the fake api resolves the incident between the console's read and its write | one write; pulse-api `409` shown with input kept |
+| Delete typed title | for title `Slow checkout`: typed `slow checkout`; `Slow  checkout` (two inner spaces); blank `   ` | `422` (`The name does not match. Type Slow checkout exactly.` / same / `Type the name to confirm.`), zero writes |
+| Delete typed title, trim | typed `Slow checkout ` (trailing space) or `Café` typed decomposed (`Cafe` + U+0301) for title `Café` | accepted: `isTypedNameConfirmed` trims and NFC-normalizes both (`src/confirm.ts:47-50`); a wrong implementation that compares raw strings refuses it |
 | Roles | Member `POST /incidents/delete` or `/maintenance/delete`; Viewer `POST /incidents/new`, `/incidents/update`, `/maintenance/new` | `403`, zero API requests |
 | Role lowered mid-request | Member's role set to Viewer after the form token was accepted, before the write | `403`, zero API requests |
 | List field | `component=web&component=web` | `400` |
@@ -602,7 +642,9 @@ Files:
 Behavior change: yes. New screens, routes, a dispatcher list-field rule and a script behavior.
 
 **Behavior.** Required behavior sections 1–14. The routes are registered in `protectedRoutes`
-(`src/server.ts:1149-1163`) beside `checkRoutes`. The contract pin in `package.json:32` moves
+(`src/server.ts:1149-1163`) beside `checkRoutes`. `src/confirm.ts` and `src/confirm.test.ts` do not change: the resolve page is composed in
+`src/incident-pages.ts` from `src/html.ts` helpers (section 9), and both deletes use the
+existing `typedConfirmPage`/`plainConfirmPage` fields. The contract pin in `package.json:32` moves
 from `66818a24…` to contract `main` at a full SHA that contains 2.3.0 (`c4a2eb5214d48d40d0c1afbae5e3e49463185e15`
 or later); the only commits between the two are `22acb5d` and `96336b3` (additive maintenance
 schemas), so existing reads keep validating. Run `bun install` to update `bun.lock`.
@@ -616,7 +658,8 @@ public manual incidents (ids from 1, own counter), validates bodies with
 (`If-Match` missing `428`, stale `412`, `*` `400`; duplicate id, shadowed replace, file id `409`;
 unknown `404`), computes `phase` from an injected `now`, serves file and shadowed rows from
 fixtures, and counts every write per route. A switch makes the public list also return a
-private-looking item (section 3 filtering test).
+private-looking item (section 3 filtering test); another resolves an incident after its next
+read, so the console's following write meets pulse-api's `409` (resolve race).
 
 **Checks.**
 - Unit: `incident-list.test.ts` (every MTTR, duration, order, filter and bound counterexample),
@@ -635,7 +678,7 @@ private-looking item (section 3 filtering test).
   the fake api): routes, roles and `405`; Viewer/Member/Admin/Owner views and forged POSTs with
   zero writes; CSRF failure, form-token replay (`409 Already submitted`, one write), role and
   session removed before the write (`writeGuardProblem`); `action=preview` makes zero writes and
-  no People row; publish/update/resolve/delete happy paths and their People rows; every outcome
+  no People row; publish/update/resolve/delete happy paths and their People rows; a second open resolve form posted after the resolve answers `409` with zero writes, and the fake api's race switch (resolve between read and write) shows pulse-api's `409` after exactly one write; typed-title delete with the trim/NFC and mismatch rows of the Counterexamples; every outcome
   row of section 10 and the maintenance outcomes (`409`, `412`, `422`, `404`, timeout, unknown)
   with input kept; private items never rendered; old-api Maintenance state; a scan of every
   response, log line and the test database for the sentinel admin token and the test titles,
@@ -734,10 +777,18 @@ Behavior change: yes. A new end-to-end step and CI requirement.
      independently rendered artifacts).
   5. Posts `identified` and `monitoring` updates through `/incidents/update`, previewing the
      second and comparing it with the status card as in step 4.
-  6. Opens `/incidents/resolve?id=<n>`, previews, resolves (`303`), and compares the preview with
-     the status resolved item (all four updates: messages literal `Line one\nLine <b>two</b>`,
-     the two update messages of step 5, and `Resolved.`).
-  7. A second resolve POST (fresh form) answers `409`; the api still lists 4 updates.
+  6. Opens `GET /incidents/resolve?id=<n>` **twice** and keeps both form tokens and CSRF values
+     (`form_token_args` reads the last body, so the script saves the first token before the
+     second GET; each GET issues its own token, console `src/form-tokens.ts:87-96`). With the
+     first token it sends `action=preview` (`200`); that answer carries a fresh token
+     (section 9), with which it sends `action=publish` (`303`). It
+     compares the preview with the status resolved item (all four updates: messages literal
+     `Line one\nLine <b>two</b>`, the two update messages of step 5, and `Resolved.`).
+  7. Sends `POST /incidents/resolve` `action=publish` with the **second**, still unused token
+     from step 6 → `409` (literal; the console's read sees the incident resolved). Then
+     `GET /manual-incidents/<n>` on the api still lists exactly 4 updates (literal) and
+     `status: "resolved"`. Separately, `GET /incidents/resolve?id=<n>` answers `409` and its
+     body holds no `name="form_token"` input.
   8. Records `sha256sum` of `/config-rw/checks.json` in the api container. Plans window
      `e2e-window` with checks `e2e-tcp`, `e2e-post`, component `web`, start = now + 1 day,
      end = start + 2 h (UTC `datetime-local` text), note `E2E planned window` → `303`. Requires
