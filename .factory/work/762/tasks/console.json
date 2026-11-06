@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Check edits keep exact JSON pointers, with editor checks, documentation and production smoke evidence",
+      "files": [
+        "src/check-form.ts",
+        "src/check-form.test.ts",
+        "src/server.checks-change.test.ts",
+        "e2e/run.ts",
+        "AGENTS.md",
+        "docs/checks.md",
+        "README.md",
+        "docs/configuration.md",
+        "docs/development.md",
+        "src/styles.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Tasks 1-7 and Completion evidence; Required behavior 1-8; Counterexamples; Security impact; Acceptance evidence 1-7. Implement the bounded follow-up together. src/styles.ts is conditional: change only a focus rule when the new Task 2 check proves a missing 2px solid outline, or only an editor layout rule when Task 3 proves it does not fit 1280 px; never hide overflow. Name the triggering failed check in the PR body. A Tab-order mismatch requires needs-input with the observed sequence, not a changed expected sequence. Preserve the contract and kit pins, routes, roles, permission matrix, form tokens, dispatcher/CSRF order, CSP, tooling, thresholds and all unrelated parsing. No new dependencies or committed smoke harness.",
+      "acceptance": [
+        {
+          "command": "bun test src/check-form.test.ts",
+          "expected": "RED, before changing src/check-form.ts: the newly added name-only edit regression uses editInputOf(view).values with only name changed, for a stored HTTP view with jsonAssert [{ pointer: \"/status \", equals: \"ok\" }, { pointer: \"/ready \", exists: true }]. It fails because the old parser returns \"/status\" instead of the literal \"/status \" (and drops the space from \"/ready \" too). Record the command and relevant assertion output. Report the focused run's coverage-threshold result separately from its assertion result. Do not use a coverage failure as the proof of RED."
+        },
+        {
+          "command": "bun test src/check-form.test.ts src/server.checks-change.test.ts",
+          "expected": "GREEN: 0 failing assertions after removing only .trim() from the assert_<i>_pointer read in assertRow. Focused coverage may fail the 80% line gate and must be reported separately; this command does not require exit 0. Parser tests preserve the literal stored Equals/Exists array through editInputOf and a name-only edit; create preserves \"/a b\\t\"; \" /status\" and \"   \" in exists mode give assert_0_pointer the fixed message 'Enter a JSON pointer such as /status, or leave it empty for the whole body.'; empty pointer remains { pointer: \"\", exists: true }; mode none ignores \"/x \". Name \" Web shop 2 \" still becomes \"Web shop 2\" and URL \" https://example.com/ \" still parses. HTTP tests replace, rather than append to, checkConfig's web entry; GET renders assert_0_pointer value=\"/status \" and assert_1_pointer value=\"/ready \" before submission. The name-only POST answers 303 with Location /checks/check?id=web&saved=1; after the helper clears the opening GET's calls, calls are exactly GET /admin/config then PUT /admin/checks/web, with name \"Web shop 2\" and jsonAssert equal to the literal stored array, never an expected value derived from the parser. A leading-space exists pointer answers 422 with the same field message and no PUT."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Exit 0. In checkScreensWith, JavaScript on and off each run a committed Tab check at 1280 x 800 for /checks/new?type=http and /checks/edit?id=web. Reach the first form control by bounded Tab presses from the page top, then one Tab per stop, comparing control identity and checked radio value against the literal sequences of Task 2 (including closed More rows, stored header/body intents and Copy on edit only with JavaScript on), never a list derived from the DOM. Every stop has outlineStyle solid and outlineWidth 2px; Tab after Create check or Save check leaves form.check-editor. An unexpected order means needs-input with the observed sequence; a missing outline alone allows only the conditional focus-rule fix. The output names the new Tab check, for example 'Tab through the HTTP create and edit editors reaches each control with a 2px solid outline and leaves the form after Submit', in both modes."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "The same final browser run exits 0 and prints '12 editors fit 1280 px' for JavaScript on and off. After navigation to each of the 12 EDITORS at a literal 1280 x 800 viewport, assertFits(page, 1280, ...) succeeds and form.check-editor has width > 0, left >= 0, right <= 1280 and width <= 1280. Root scrollWidth 1281, form right 1281, or hidden overflow on html/body fails. Keep assertQuorumText, axe, design-matrix/assertEditorWidths, 390 px list/detail, CSP and write-flow checks. A demonstrated width failure permits only that editor's conditional layout-rule fix, without hiding overflow."
+        },
+        {
+          "command": "cat AGENTS.md",
+          "expected": "The new check-module guide under This repository covers all names and jobs in Task 4: check-routes, check-pages, check-detail-pages, check-editor-page/editInputOf, check-form/parseCreateForm/parseEditForm, check-read/readCheckList/readCheckConfig/readCheckExport, check-write/sendCheckWrite with If-Match, check-outcome/checkOutcome, check-format, check-filters, check-export, and shellQuote/hostBindingLine/heartbeatLine in shell-line. It describes exact untrimmed pointers, ProtectedRoute/routeRole and form tokens, never rendering write-only stored values, the module and server Checks tests with fake-api/check-fixtures, and checkScreensWith/checkWriteFlowsWith with the new Tab and width checks. Stored literal headers and body offer Keep / Replace / Remove; the heartbeat secret offers Keep / Replace only. These literal choice lists are independently specified in Task 4 and the cited template, not inferred from the new guide. No route, role or token changes."
+        },
+        {
+          "command": "rg -n -i 'pointer|keyboard|focus|1280|tab' README.md docs/configuration.md docs/checks.md docs/development.md",
+          "expected": "All four documents are updated per Task 5. README.md's Checks passage says an edit keeps unchanged fields including JSON pointers with spaces, with keyboard focus outline and 1280 px fit. docs/configuration.md says pointers are sent as posted without trimming, other text parsing is unchanged, and describes or links to keyboard focus and 1280 px fit. docs/checks.md explains exact pointers, spaces belonging to keys, stored /status with its trailing space surviving edit, nonempty pointers starting with /, and leading-space/spaces-only errors; Editor pages describes Tab traversal, a 2 px solid outline and every create/edit form fitting 1280 px without sideways scroll. docs/development.md's browser-check list names HTTP create/edit Tab traversal with outline and all 12 editors fitting 1280 px, with JavaScript on and off. No document says pointers are trimmed or the heartbeat secret can be removed."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 on the final PR commit: repository lint, root and e2e typechecks, and the full test suite pass with at least the unchanged 80% line coverage threshold. Capture final pass/fail counts and the All files row; copy % Funcs as function coverage and % Lines as line coverage exactly as Bun prints them. This is the coverage gate; focused test runs are not substitutes."
+        },
+        {
+          "command": "PULSE_API_URL=<fixture-url> PULSE_CONSOLE_DB=$S/console.db PULSE_CONSOLE_PORT=<free-loopback-port> PULSE_CONSOLE_ADMIN_TOKEN_FILE=$S/token PULSE_CONSOLE_SECRET_KEY_FILE=$S/key bun start",
+          "expected": "MANDATORY production smoke following Task 6, not --serve or an in-process test: create a disposable directory outside the checkout for the temporary fixture API/HTTP driver, valid disposable admin token, 64-lowercase-hex key, database and logs. Import startFakeApi/jsonReply and fixture modules by absolute checkout path. Serve valid /admin/config with web's literal [{ pointer: \"/status \", equals: \"ok\" }, { pointer: \"/ready \", exists: true }], /checks, /admin/tokens/self and a saved PUT /admin/checks/web reply, recording the PUT to $S/put.json. Read deploy e2e/console-setup.sh steps 1-8 and e2e/totp.mjs without editing deploy. Complete /setup and /setup/owner action=complete, generate/enrol/confirm the authenticator using #totp-secret and TOTP through normal routes; send each POST with its normal Origin, cookie, CSRF and form token. No direct session-row insertion, test route or roleOf override. GET /checks/edit?id=web answers 200 and renders value=\"/status \" and value=\"/ready \". Submit every rendered non-secret field, checked radio, selected option, textarea and hidden revision/CSRF/form token, changing only name to Web shop 2. Expect 303, Location /checks/check?id=web&saved=1. Inspect the recorded PUT: name is \"Web shop 2\" and jsonAssert is exactly [{\"pointer\":\"/status \",\"equals\":\"ok\"},{\"pointer\":\"/ready \",\"exists\":true}]. Record actual commands, the 303 location and JSON.stringify of recorded jsonAssert in PR evidence, replacing all secrets with placeholders. Stop both processes and remove $S; commit no smoke harness, database, secret or evidence-note file."
+        },
+        {
+          "command": "git diff main -- src/check-form.ts src/check-form.test.ts src/server.checks-change.test.ts src/check-editor-page.ts src/server.ts src/permissions.ts src/form-tokens.ts",
+          "expected": "Security impact checklist evidence covers input validation, error/log texts carrying external data, unchanged auth/status order, and smoke secrets. The only production parser change removes the pointer trim. Invalid nonempty leading-space/spaces-only pointers are rejected with fixed field text, 422, no PUT and no form-token consumption. Retained untrusted input still uses existing escapeHtml; no raw pointer appears in error/log/header text. Existing session, Origin, content-type, body-size, repeated-field, CSRF, role and form-token gates stay in their existing order. Document relevant test/inspection commands and results and the unaffected checklist items with reasons. Disposable token/key/password/setup code/TOTP seed or code/cookies/form tokens never enter commits or PR evidence."
+        },
+        {
+          "command": "git diff main -- package.json bun.lock src/permissions.ts src/form-tokens.ts src/server.ts",
+          "expected": "Empty diff; contract and kit pins, roles, form tokens and dispatcher order are unchanged. No dependency, tooling, threshold or CI changes."
+        },
+        {
+          "command": "git diff main --name-only",
+          "expected": "Only src/check-form.ts, src/check-form.test.ts, src/server.checks-change.test.ts, e2e/run.ts, AGENTS.md, docs/checks.md, README.md, docs/configuration.md and docs/development.md change. src/styles.ts is additionally allowed only when Task 2 proves a missing 2px solid focus outline or Task 3 proves an editor does not fit 1280 px; each failing check and resulting narrow rule fix is named in the PR body. Without such a failure src/styles.ts is unchanged. No other files change, including no committed temporary smoke files."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "Exit 0. PR body follows Task 7: Closes lorenzh/pulse-meta#<child>, checks and known limits, parser RED/GREEN commands and relevant output with focused coverage reported separately, final bun run check test counts and correctly labelled function/line coverage from its All files row, final browser result with both new checks' ok lines in both modes, mandatory bun start smoke commands and recorded outbound pointers with secrets replaced, and each conditional CSS fix with its triggering failed check."
+        }
+      ]
+    }
+  ]
+}
