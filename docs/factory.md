@@ -89,7 +89,7 @@ The security checklist covers secrets and server texts in errors, logs and respo
 **Audit issues.** `factory-audit.yml` opens audit issues of four kinds. `.github/audits/open-issue.sh` holds the rules, and `.github/audits/<kind>.md` the issue text:
 
 - `security`: daily, one target repository per run in rotation. The issue asks for an audit of `main` with hostile inputs along the security checklist.
-- `performance`: Tuesday and Friday, one service or library repository per run in rotation (every target except config and deploy). The issue asks for measurements with numbers and commands: `EXPLAIN QUERY PLAN` for the request path and startup, a startup CPU profile, costs that grow with data, memory over a long run, test CPU per file, and for the website the JS/CSS budget and Lighthouse; compared with `bench/budgets.json` where it applies.
+- `performance`: Tuesday and Friday, one service or library repository per run in rotation (every target except config, deploy and agent). The issue asks for measurements with numbers and commands: `EXPLAIN QUERY PLAN` for the request path and startup, a startup CPU profile, costs that grow with data, memory over a long run, test CPU per file, and for the website the JS/CSS budget and Lighthouse; compared with `bench/budgets.json` where it applies.
 - `quality`: Monday, one target repository per run in rotation (the security list, one repository per week). The issue asks for code quality measured with the repository's own scripts and pulse-config's shared configuration, no new tools: lint and typecheck findings, cognitive complexity hot spots, duplicated logic across files or repositories, dead code (found with `grep` and `tsc`), test quality (coverage, untested risky branches, tests that assert nothing), swallowed errors and inconsistent error shapes, consistency with `AGENTS.md` and the other services, and docs that contradict the code. Every finding cites file and line; style-only items are notes, not issue candidates.
 - `architecture`: Thursday, one issue for the whole system, naming every repository. The issue asks for machine checks: pin drift of contract, kit and config, the largest files and functions, duplicated helpers that belong in kit, docs that no longer match the code, earlier findings that are still true, and the dependency direction.
 
@@ -150,7 +150,7 @@ Owner setup:
 
 1. Register an App under [Developer settings → GitHub Apps](https://github.com/settings/apps/new) with these permissions.
 2. Disable its webhook. These workflows need no webhook server or user authorization.
-3. Install it on `lorenzh`. Select the 11 repositories in `.factory/config.yaml`: `pulse-meta`, `pulse-contract`, `pulse-probe`, `pulse-api`, `pulse-status`, `pulse-notify`, `pulse-config`, `pulse-kit`, `pulse-website`, `pulse-console`, `pulse-deploy`.
+3. Install it on `lorenzh`. Select the 12 repositories in `.factory/config.yaml`: `pulse-meta`, `pulse-contract`, `pulse-probe`, `pulse-api`, `pulse-status`, `pulse-notify`, `pulse-config`, `pulse-kit`, `pulse-website`, `pulse-console`, `pulse-deploy`, `pulse-agent`.
 4. Generate a private key. Store the full PEM in the pulse-meta Actions secret `FACTORY_APP_PRIVATE_KEY`.
 5. Pause active runs. Set the pulse-meta Actions variable `FACTORY_GITHUB_ACTOR` to `<app-slug>[bot]`.
 6. Set the pulse-meta Actions variable `FACTORY_APP_ID` to the numeric App ID to enable App mode.
