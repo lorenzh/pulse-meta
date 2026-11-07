@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Settings reports meet the heartbeat deadline with serialized polls and cancellable shutdown",
+      "files": [
+        "src/settings-poll.ts",
+        "src/settings-poll.heartbeat.test.ts",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, all Behavior bullets, Checks (harness and tests 1-8), and Completion evidence; Decisions D1-D4; Required behavior R1-R7; Counterexamples C1-C8; Performance impact; Security impact; Acceptance evidence (feature). Implement the poll-start/report-start deadlines, 6000 ms read reserve, bounded pollNow lane and per-poll request cancellation together. Preserve SettingsPollDeps/SettingsPoll signatures and synchronous stop, payload/endpoints/settings/public behavior, timeout 5000 and heartbeat 60000. Document the earlier read cadence above 54000 ms and confirm README's summary remains true. All tests and evidence belong to this single poller lifecycle change.",
+      "acceptance": [
+        {
+          "command": "bun test src/settings-poll.heartbeat.test.ts",
+          "expected": "RED before changing the poller: run the new suite against src/settings-poll.ts from 469a6cec495d541ab393a23637fe1fbc72f74a42 or the merge base. The 60000/1000 and 60000/4000 regression cases fail report-start gap assertions with 62000 and 68000 against literal 60000. Checks 2, 3, 4, 5, 7b, 7c and 7d expose the baseline timing/overlap/shutdown defects; the four other matrix cases, check 6, 7a and 8 pass. Record baseline SHA, exact command and failing assertions for the PR. Install, compile and coverage-only errors are not red evidence."
+        },
+        {
+          "command": "bun test src/settings-poll.heartbeat.test.ts",
+          "expected": "GREEN on the fix: 0 failed tests; a focused run may still fail the global coverage threshold. Use the real exported poller, injected clock/timer queue, promise draining and abort-aware fetch (no real network or timer waits), including contract timeout timers. Checks 1-4 observe at least 4 report starts per case, maximum adjacent fetch-start gap <= 60000 and maximum in-flight requests 1. Cover pollMs 60000 and DEFAULT_SETTINGS_POLL_MS with latency 0, 1000 and 4000, asserting default === 15000; alternating read latency 0/4000 and 0/timeout at 5000; read 0 with report latency 4000 and report timeout at 5000; pollMs 120000 with latency 1000. Expectations use literals, never imported scheduling constants as their oracle."
+        },
+        {
+          "command": "bun test src/settings-poll.heartbeat.test.ts",
+          "expected": "0 failed tests for checks 5-8; coverage gate belongs to bun run check. At pollMs 1000, hold the second read, call pollNow three times, observe no overlapping GET, then exactly 1 fresh queued poll after release; all 3 promises resolve after its report completes and the next background GET occurs after advancing 1000. With resolve throwing after its first two calls, at most 4 GETs occur in 120000 ms. Stop while idle, reading or reporting, advance 300000 ms and release held work: request signals aborted, no later fetch/apply/rearm, timer queue empty and no 'status settings report failed' shutdown log. pollNow after stop and queued pollNow after stop make 0 requests; repeated stop does not throw. With token undefined, 0 fetches over 300000 ms, local rereads occur each poll with start gaps <= 60000. Preserve reports after apply attempts on read errors, timeouts, 304 and 404 through the new and existing suites."
+        },
+        {
+          "command": "bun test src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts",
+          "expected": "0 failed tests with all 3 existing files unchanged; a focused run may fail the global coverage threshold. Existing ETag, readiness, last-good settings, rejection, local reload, precedence and public response behavior remains covered."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; Biome, ESLint (cognitive complexity <= 15 per function), workflow lint, root/e2e typechecks and the full test suite pass with line coverage >= 0.8; public response suites pass unchanged and no gate is weakened."
+        },
+        {
+          "command": "git diff --exit-code main -- src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts src/start.ts src/main.ts src/runtime-settings.ts src/settings.ts",
+          "expected": "exit 0 and empty diff; existing regression suites, synchronous shutdown wiring, report construction and settings parsing remain unchanged."
+        },
+        {
+          "command": "git diff --check && git diff --name-only main && git diff main -- src/settings-poll.ts docs/configuration.md && rg -n 'Live page settings|SETTINGS_POLL_MS' README.md",
+          "expected": "Whitespace check exits 0; changed paths are exactly src/settings-poll.ts, src/settings-poll.heartbeat.test.ts and docs/configuration.md. Review D1-D4: due measured from poll/report starts, fallback anchor pollStart after a pre-report throw, cap min(pollMs, 60000), delay max(0, due-now), exported REPORT_LEAD_MS = SETTINGS_TIMEOUT_MS + 1000 (6000), updated heartbeat and reserve comments, at most 1 active/1 waiting poll, no catch-up loop, shared abort signal for GET/PUT and stopped checks. Configuration docs state report-start gap <= 60 s even with the 5000 ms read timeout and about 54 s reads above 54000. README summary is confirmed accurate. Security impact remains no: request contents, auth, headers, redirect manual, limits, dependencies and public responses are unchanged."
+        },
+        {
+          "command": "PULSE_API_URL=http://127.0.0.1:18080 PULSE_STATUS_API_TOKEN=heartbeat-smoke-token PULSE_STATUS_SETTINGS_POLL_MS=60000 bun start",
+          "expected": "With a local fake API first listening on 127.0.0.1:18080 and logging request start times, exercise the real service once: immediate first poll/report, second PUT /service/status/report starts < 60000 ms after the first, Ctrl-C exits cleanly with code 0. Record the fake API setup, command, two actual report timestamps and gap in the PR; use no external network or real credentials. Keep any smoke fixture temporary, outside the committed change."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun test",
+          "expected": "Run 3 times on baseline main and 3 times on the candidate; record user/system CPU times and compare baseline/candidate test CPU as specified under Performance impact. Added CPU time stays < 0.2 s. A full Docker A/B is optional; if run, follow the spec's api bench command with identical api SHAs, --others-ref main, --b-ref status=<branch SHA>, --service-tokens and --expect-report status, and keep status load_cpu_s/RSS within the named budgets."
+        },
+        {
+          "command": "gh pr view --json body,statusCheckRollup",
+          "expected": "PR body names #844 and includes actual red/green commands and assertion output, baseline/candidate SHAs, full check result, unchanged-suite/diff evidence, local startup command and both timestamps, CPU comparison and Security impact: no. CI check job is green on the PR head. No notify/shared-scheduler/pin work is included; #824 remains independent."
+        }
+      ]
+    }
+  ]
+}
