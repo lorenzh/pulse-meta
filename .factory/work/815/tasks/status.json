@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Status installs the merged contract patch after #809 and passes all checks",
+      "files": [
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, R7, all Precondition checks and Completion evidence; Rollout order step 2; Security impact and Acceptance evidence 5.",
+      "acceptance": [
+        {
+          "command": "gh issue view 809 --repo lorenzh/pulse-meta --json state",
+          "expected": "Before any edit, state is CLOSED. If OPEN, request a needs-input hold naming #809; do not race the in-flight pin work. Preserve the fan-out requirement that a person links this child as blocked by #809."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-status/contents/package.json?ref=main' --jq .content | base64 -d",
+          "expected": "Read main's actual contract pin before any edit; use it as PIN in the following compare commands, and use the merged contract child's patch commit as PATCH_SHA."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce668...${PIN}\" --jq .status && gh api \"repos/lorenzh/pulse-contract/compare/${PIN}...${PATCH_SHA}\" --jq .status",
+          "expected": "Before any edit, first status is ahead or identical and second is ahead. Otherwise request needs-input for an older/incompatible pin, or a hold if the patch is already present (second identical or behind)."
+        },
+        {
+          "command": "rg -n 'pulse-contract' package.json bun.lock",
+          "expected": "Both files pin the same full 40-character SHA of the merged pulse-contract main commit containing R1-R6, independently identified from the contract child's merged PR; preserve intervening merged features."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; frozen install, lint, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+        },
+        {
+          "command": "bunx playwright install chromium && bun run check:a11y",
+          "expected": "exit 0; Chromium accessibility suite passes (package.json:18; ci.yml:51,66,68)."
+        },
+        {
+          "command": "git diff origin/main --name-only && git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "Only package.json and bun.lock differ; whitespace check passes and CI check/a11y pass. PR records #809 and compare preconditions, full merged patch SHA, required-check evidence and applicable security checklist (full SHA, matching frozen lockfile). No new tests or source changes; no performance change or measurement required because main already pins 2.5.0. This task belongs to Rollout step 2; status reads no stored notify channels and creates no api reader-order precondition."
+        }
+      ]
+    }
+  ]
+}
