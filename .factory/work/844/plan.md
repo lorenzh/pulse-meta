@@ -1,0 +1,429 @@
+# Spec #844: status: schedule the settings report heartbeat from its start time
+
+Issue: [#844](https://github.com/lorenzh/pulse-meta/issues/844). Issue review:
+`.factory/work/844/issue-review.md`. Parent feature: #570 (child #809, merged as
+lorenzh/pulse-status#67).
+
+## Goal
+
+pulse-status sends `PUT /service/status/report` after every settings apply attempt and, as
+#570 Decision 5 requires, at least every 60 s. Today the settings poller in
+`src/settings-poll.ts` waits `min(pollMs, 60000)` after a poll and its report have *finished*.
+The HTTP time of the settings read and the report adds to every interval. With
+`PULSE_STATUS_SETTINGS_POLL_MS=60000` and 1000 ms requests, report starts are 62000 ms apart.
+The independent review of lorenzh/pulse-status#67 showed this with an injected clock
+(`AssertionError: report heartbeat 62000ms exceeds 60000ms`).
+
+This spec schedules the next poll from deadlines that are measured from the *start* of the
+previous poll and of its report. It reserves time for the settings read, so that report starts
+stay at most 60000 ms apart whatever the request latency is (within the existing 5000 ms
+request timeout). It also serializes `pollNow()` with the background loop and makes `stop()`
+cancel the report too, not only the read.
+
+## Sources and decisions this spec applies
+
+- Issue #844 and its comments. The only comments are Factory run notes; there are no earlier
+  owner decisions.
+- The issue review `.factory/work/844/issue-review.md`. It has no blocking question. This spec
+  takes its seven open points as follows:
+  1. **Target ownership.** Only pulse-status changes. "Fix both the same way" means the same
+     principle as #824 (notify): a deadline from the start time instead of a delay after the
+     end. #824 is a separate feature, in its own `plan` state at the time of this spec, with no
+     merged fix. This spec does not depend on it, copies nothing from it, and adds no shared
+     scheduler to pulse-kit.
+  2. **A report start** is the moment the poller calls the injected `fetch` for
+     `PUT /service/status/report`, whatever the answer is. The tests measure that moment, not
+     the response, not a timer delay and not the `at` field of the body.
+  3. **Varying latency.** A deadline from the poll start alone is not enough: a fast read and
+     then a slow read can still put reports 64000 ms apart (Counterexample C2). Decision D1
+     therefore also bounds the next poll start by the last report start minus a read reserve.
+  4. **Overdue work.** No catch-up: at most one poll runs, at most one `pollNow()` poll waits,
+     and a late timer runs one poll, not several. A suspended event loop or a fetch that
+     ignores both its signal and the contract's own timeout race is outside the bound.
+  5. **Serialization** covers the timer, `pollNow()` and the report. A settings read and its
+     report stay sequential inside one poll.
+  6. **Shutdown** is a requirement. `stop()` stays synchronous; it clears the timer and aborts
+     whichever request is in flight (read or report). A request that settles after `stop()`
+     applies, reports, logs and schedules nothing.
+  7. **Compatibility.** Report body, endpoints, methods, headers, redirects, timeouts, size
+     limits, ETag handling, readiness, precedence, last-good and rejection rules, local
+     reloads, the no-token path and the public responses do not change. The accepted range of
+     `PULSE_STATUS_SETTINGS_POLL_MS` (from 1000, default 15000) does not change.
+- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/844`
+  answered `HTTP 404` on 2026-11-07, so this feature has no shared findings yet.
+- Current code read at pulse-status `main` `469a6cec495d541ab393a23637fe1fbc72f74a42`, and
+  pulse-contract `src/client.ts` at the pinned SHA `b637302363b3f147a99280e5961396e6c9f22e7a`
+  (identical to the contract clone).
+
+## Current behavior (evidence)
+
+- `src/settings-poll.ts:196-204`: `tick()` awaits `pollOnce()` (settings read, local reread,
+  resolve, apply, report) and only then calls
+  `deps.setTimeout(() => void tick(), Math.min(deps.pollMs, REPORT_HEARTBEAT_MS))`.
+- `src/settings-poll.ts:17,19`: `SETTINGS_TIMEOUT_MS = 5000`, `REPORT_HEARTBEAT_MS = 60_000`.
+- `src/settings-poll.ts:103-125`: the read creates `abort = new AbortController()` and passes
+  `abort.signal` and `schedule` (built on `deps.setTimeout`) to `fetchJson`.
+- `src/settings-poll.ts:155-175`: `sendReport()` calls `requestJson` with `schedule` and
+  `timeoutMs: SETTINGS_TIMEOUT_MS`, but **no signal**: `stop()` cannot cancel a report.
+- `src/settings-poll.ts:177-194`: after an aborted read, `pollOnce()` goes on to reread the
+  local files, apply and report.
+- `src/settings-poll.ts:207-215`: `pollNow` is `pollOnce` itself, so a `pollNow()` during a
+  background poll runs a second poll at the same time. `stop()` sets `isStopped`, aborts the
+  read and clears the timer handle.
+- pulse-contract `src/client.ts:157-213` (pinned SHA): `requestJson` and `fetchJson` accept
+  `signal?: AbortSignal`; the call settles as soon as the timer fires or the caller aborts,
+  "even if fetch ignores the signal" (line 177). So a read or report lasts at most
+  `SETTINGS_TIMEOUT_MS` of timer time, and an abort settles it at once.
+- `src/settings.ts:16,19,205-208`: `PULSE_STATUS_SETTINGS_POLL_MS` has `min: MIN_POLL_MS`
+  (1000) and default `DEFAULT_SETTINGS_POLL_MS` (15000); there is no maximum.
+- `src/start.ts:147-167` wires `startSettingsPoll` with real timers and calls the synchronous
+  `poll.stop()` from the returned stop function; `src/main.ts:58-66` calls that on shutdown.
+- `src/settings-poll.test.ts:98-99` records timer delays without running them; the existing
+  tests drive `pollNow()`. No test runs the background loop or measures report starts.
+- `docs/configuration.md:32` promises reports "After every attempt, and at least every 60 s".
+
+## Decisions
+
+**D1. Next poll deadline.** When a poll ends (and the poller is not stopped and no `pollNow()`
+poll waits), the poller arms one timer for the next poll with
+`delay = max(0, due - now())`, where
+
+- `pollStart` = `now()` at the start of the poll that just ended;
+- `anchor` = `now()` read right before the report request of that poll; if that poll sent no
+  report (it threw before it), `anchor = pollStart`;
+- without a token: `due = pollStart + min(pollMs, REPORT_HEARTBEAT_MS)` (today's cap, now from
+  the start instead of the end);
+- with a token:
+  `due = min(pollStart + min(pollMs, REPORT_HEARTBEAT_MS), anchor + REPORT_HEARTBEAT_MS - REPORT_LEAD_MS)`.
+
+`REPORT_LEAD_MS = SETTINGS_TIMEOUT_MS + 1000` (6000): the read before the next report takes at
+most `SETTINGS_TIMEOUT_MS`; the extra 1000 ms covers the synchronous local file reread, resolve
+and apply, and a late timer. Hence the next report starts at most
+`anchor + 60000 - 6000 + 5000 = anchor + 59000` in timer time.
+
+Consequences that the docs state:
+- With `pollMs` up to 54000 the read cadence is unchanged in the ideal case (one poll every
+  `pollMs` from poll start to poll start), and no longer stretched by latency.
+- With `pollMs` above 54000, the settings read runs about every 54 s (at most 54000 ms after
+  the previous report start), not every 60 s. Today the poller already caps the interval at
+  60 s; this moves the cap earlier by the read reserve.
+- Since `anchor >= pollStart`, two poll starts are at least `min(pollMs, 54000)` apart unless a
+  poll itself lasts longer than that. A poll that lasts longer than its interval is followed by
+  the next poll at once (`delay = 0`), one at a time: "wait", never overlap, never catch up
+  more than one poll.
+
+**D2. One lane.** All polls (the first poll, timer polls and `pollNow()` polls) run in one
+lane: at most one poll is active at any time.
+- A poll start clears the pending timer, if any.
+- `pollNow()` while no poll is active starts a poll and resolves when that poll and its report
+  are done.
+- `pollNow()` while a poll is active waits for it and then runs one fresh poll (a fresh read,
+  so callers that changed the fake api see the change). All `pollNow()` calls made while that
+  fresh poll is still waiting share it. So at most one poll is active and at most one waits.
+- A timer that fires while a poll is active does nothing; the active poll arms the next timer
+  when it ends (D1).
+- After a `pollNow()` poll the timer is armed from that poll's start and report start (D1).
+- `pollNow()` keeps its signature `() => Promise<void>` and still never rejects for an error
+  inside the poll (it is logged as today: `status settings poll failed`).
+
+**D3. Shutdown.** `stop()` stays `() => void`, so `src/start.ts` and `src/main.ts` do not
+change.
+- Each poll has one `AbortController`; its signal goes to the settings read (`fetchJson`) and
+  to the report (`requestJson`). `stop()` sets the stopped flag, clears the timer and aborts
+  that controller.
+- After the read returns, and before the report, the poll checks the stopped flag; when stopped
+  it ends without rereading files, resolving, applying, reporting, logging a report failure or
+  arming a timer.
+- A stopped poller starts no poll: `pollNow()` after `stop()` resolves without a request, and a
+  `pollNow()` that waits for the active poll resolves without running its fresh poll.
+- A second `stop()` is harmless.
+
+**D4. Constants.** `SETTINGS_TIMEOUT_MS` (5000) and `REPORT_HEARTBEAT_MS` (60000) keep their
+names and values. `REPORT_LEAD_MS` is a new exported constant of `src/settings-poll.ts`
+(exported so the test can state the bound it checks; the test still uses literal values for its
+expectations, see Acceptance). The comment of `REPORT_HEARTBEAT_MS` is corrected: it is the
+maximum gap between report starts.
+
+## Scope
+
+- pulse-status `src/settings-poll.ts`: scheduling (D1), lane (D2), shutdown (D3), constants (D4).
+- New fake-clock test suite `src/settings-poll.heartbeat.test.ts`.
+- `docs/configuration.md`: describe the read cadence above 54000 ms and the 60 s report bound.
+
+## Non-goals
+
+- No change in pulse-notify: #824 owns the same defect class there.
+- No change in contract, api, kit, config, console, deploy, website, probe or agent.
+- No shared scheduler helper in pulse-kit.
+- No change of the report body (`buildReport`), the routes, the headers, `redirect: "manual"`,
+  `SETTINGS_TIMEOUT_MS`, `LOCAL_FILE_MAX_BYTES`, ETag or readiness logic, or the accepted range
+  and default of `PULSE_STATUS_SETTINGS_POLL_MS`.
+- No change of the browser poller (`src/poller.ts`) or the api poll (`POLL_MS`).
+- No guarantee while the event loop is blocked or the process is suspended.
+- `stop()` does not become asynchronous; `src/start.ts` and `src/main.ts` stay as they are.
+
+## Required behavior
+
+R1. With a token, for every `pollMs` in the accepted range and any read and report latency of
+0 to 5000 ms (including a read or report that times out at `SETTINGS_TIMEOUT_MS`), two adjacent
+report starts in normal timed operation are at most 60000 ms apart.
+
+R2. The first poll still runs at once at start and sends a report. Every poll that reaches the
+apply step sends one report after it ("after every apply attempt"), also when the read failed,
+timed out or answered `304`/`404`.
+
+R3. At no instant are two settings or report requests in flight, and at no instant are two
+polls active, whatever mix of timer polls and `pollNow()` calls.
+
+R4. Between two timer-started polls with no `pollNow()` in between, the second starts no
+earlier than `min(pollMs, 54000)` after the first, unless the first lasted longer than that
+(then it starts when the first ends). No poll starts in a tight loop when a poll throws before
+its report.
+
+R5. Without a token: no request to the service routes (as today), local files reread every
+`min(pollMs, 60000)` from poll start to poll start.
+
+R6. `stop()` while idle: the pending timer is cleared; no later request. `stop()` during the
+settings read: the read's signal is aborted; no apply, no report, no timer afterwards.
+`stop()` during the report: the report's signal is aborted; no timer afterwards and no
+`status settings report failed` log line. `pollNow()` after `stop()` makes no request.
+
+R7. Everything the existing suites check stays true: `src/settings-poll.test.ts`,
+`src/server.runtime-settings.test.ts`, `src/server.settings-churn.test.ts` and the public
+response suites pass unchanged.
+
+## Risks
+
+- **More settings reads for large intervals.** With `pollMs` above 54000, reads run about
+  every 54 s instead of 60 s: about 11 % more `GET /service/status/settings` requests in that
+  configuration, nearly all `304`. Default 15000 is unaffected. Documented in
+  `docs/configuration.md`.
+- **Back-to-back polls under a slow api.** With a small `pollMs` and slow answers, a poll may
+  follow the previous one at once (D1). Each poll is still bounded by two 5000 ms timeouts, so
+  the rate is at most one poll per request time, never parallel. Today's code waits `pollMs`
+  after the end instead; the difference is at most `pollMs` per cycle.
+- **pollNow semantics in tests.** `pollNow()` now waits for an active background poll before it
+  runs its own. Existing tests that call `pollNow()` right after `setup()` keep their read counts
+  (the waiting poll is still a fresh read); the implementer runs all three suites to confirm.
+- **Abort on shutdown.** A report in flight at shutdown is now cancelled instead of completed.
+  The api already handles a missing report: the next start reports again.
+- **Cognitive complexity.** The lane plus deadline logic must stay under the SonarJS limit of 15
+  per function (`config/eslint.config.js:16` at the pinned config SHA). Split helpers
+  (`nextDue`, `runPoll`) as needed, inside `src/settings-poll.ts`.
+
+## Performance impact
+
+The api repository's `bench/budgets.json` lists for `status`: `startup_cpu_ms`, `load_cpu_s`,
+`idle_rss_mib`, `peak_rss_mib`, `test_cpu_s` (gating) and `startup_wall_ms`, `image_mb`
+(reported).
+
+- `startup_cpu_ms`, `startup_wall_ms`, `idle_rss_mib`, `peak_rss_mib`, `image_mb`: none
+  expected. The poller keeps one timer and one controller; the first poll stays immediate.
+- `load_cpu_s`: none expected. The bench runs status with the default 15000 ms settings poll
+  (see `bench/compose.bench.yaml` in the api repository); with fast local answers the read
+  cadence in the 60 s window is unchanged (4 reads, 4 reports, plus at most one from timing).
+- `test_cpu_s` (status budget 3.4 s): up by a small amount, expected under 0.1 s. The new suite
+  runs with a fake clock and no real waits.
+- How to measure: in pulse-status run `bun test` on `main` and on the branch three times each
+  and compare the CPU time (`/usr/bin/time -f '%U %S' bun test`); the difference must stay
+  under 0.2 s. A full A/B is optional (about 40 minutes, Docker needed): in the api repository,
+  `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref status=<branch SHA> --service-tokens --expect-report status`
+  (api `bench/README.md:76,88,100`); `load_cpu_s` and the RSS metrics of `status` must stay
+  within their budgets.
+
+## Security impact
+
+Security impact: no
+Only the timing of existing requests and their cancellation change; no route, auth, parser,
+validator, header, redirect, log text, file write, dependency, Dockerfile or CI changes.
+
+## Rollout order
+
+One repository: only pulse-status changes. Its contract and kit pins stay as they are, and the
+report it sends has the same body and route, so every api version that accepts the report today
+keeps accepting it. pulse-notify (#824) is fixed independently and in any order.
+
+## Counterexamples
+
+Times are fake-clock milliseconds from the poller start; "latency" applies to each request.
+
+- **C1 (old code, delay after end).** `pollMs = 60000`, latency 1000 ms. Poll 1: read 0-1000,
+  report starts at 1000. Old code arms 60000 ms at 2000; poll 2 read 62000-63000, report starts
+  at 63000. Gap 62000 > 60000: must fail. With latency 4000: gap 68000: must fail. With latency 0
+  the old code gives 60000 and passes (control).
+- **C2 (deadline from poll start only).** `pollMs = 60000`. Poll 1 read latency 0, report starts
+  at 0. Next poll due at `pollStart + 60000 = 60000`; its read takes 4000 (or times out at 5000).
+  Report starts at 64000 (or 65000): gap > 60000. A fix that only uses
+  `pollStart + min(pollMs, 60000)` must be caught by the varying-latency test. Under D1 the next
+  poll is due at `min(60000, 0 + 54000) = 54000`, report at 58000 (59000 on timeout).
+- **C3 (default interval control).** `pollMs = 15000`, latency 4000: old code gives report gaps
+  of 23000 and passes; the fix gives 15000. The default cases must pass on both versions.
+- **C4 (overlap through pollNow).** `pollMs = 1000`, settings read held open. A `pollNow()` call
+  during the held read must not start a second `GET`; the old code starts it at once (two
+  requests in flight). Three `pollNow()` calls during the held read cause exactly one extra poll
+  after the held one, not three.
+- **C5 (tight loop).** With a token, `resolve` throws on every poll after the first. A fix that
+  computes `due` from the last *successful* report start would get `delay = 0` forever. Under D1
+  (`anchor = pollStart` when no report started) the polls in 120000 ms of fake time at
+  `pollMs = 60000` start at 0, 54000 and 108000: 3 settings reads. The test asserts `<= 4` reads
+  (a tight loop gives hundreds). The old code also passes this test (reads at 0, 60000,
+  120000); it guards against a wrong fix, not the old defect.
+- **C6 (interval above the heartbeat).** `pollMs = 120000`, latency 1000: report gaps stay
+  `<= 60000` (the cap applies); a fix that drops `min(pollMs, REPORT_HEARTBEAT_MS)` gives
+  121000 and must fail.
+- **C7 (shutdown during report).** Report held open; `stop()`; then advance the fake clock by
+  300000 ms and settle the held report. A wrong fix that does not pass the signal to the report
+  leaves the report fetch's signal not aborted (assert `signal.aborted === true`), and a wrong
+  fix that rearms after the report arms a timer (assert the fake timer queue holds no poll timer
+  and no further fetch happens).
+- **C8 (shutdown during read).** Read held open; `stop()`. The read's signal is aborted; no
+  `apply`, no report fetch follows, even after the clock advances 300000 ms.
+
+Statistic used by the tests: **report-start gap** = difference of the fake-clock times of two
+consecutive calls of the fake `fetch` with method `PUT` and path `/service/status/report`, in
+the order the calls happened. Sample set: all such gaps from the first report until the end of
+the run (the run lasts until at least 4 report starts, so at least 3 gaps, are recorded). The
+check is on the maximum of the gaps, compared with the literal 60000. No averages, no
+percentiles, no rounding (integer milliseconds of the fake clock).
+
+## Contract fields
+
+No new contract names. The only new name is the internal constant `REPORT_LEAD_MS` in
+pulse-status `src/settings-poll.ts`. Search, run on 2026-11-07:
+
+```sh
+grep -rn 'REPORT_LEAD_MS' .repos/contract/src .repos/config/src .repos/status/src
+# no output, exit 1
+```
+
+No route, wire field, header, environment variable or setting is added or renamed.
+
+## Repository: status
+
+Files:
+- `src/settings-poll.ts` (change)
+- `src/settings-poll.heartbeat.test.ts` (new)
+- `docs/configuration.md` (change)
+
+Behavior change: yes
+The background poll schedule, `pollNow()` serialization and the cancellation of the report on
+`stop()` change.
+
+### Tooling facts (cited)
+
+- Bun 1.4.0: `package.json:9` (`engines.bun`) and `package.json:38` (`packageManager`).
+- `bun run check` = `bun run lint && bun run typecheck && bun run test`: `package.json:19`.
+  `test` is `bun test` (`package.json:14`); `lint` is
+  `biome check . && pulse-eslint . && pulse-workflows` (`package.json:15`); `typecheck` runs
+  `tsc --noEmit` from `typescript7` on the root and `e2e` projects (`package.json:13`).
+- Biome `2.6.3`: `package.json:23`. `biome.json` only `extends` `@lorenzh/pulse-config/biome.json`;
+  the config pin is `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`package.json:24`). In that
+  pinned file `files.includes` is `**` minus `dist`, `node_modules`, `bun.lock`, `*.html`,
+  `test/fixtures` (lines 10-17), `noNonNullAssertion` is an error except in `**/*.test.ts`
+  (lines 45-46, 53-63), `noExplicitAny` is an error (line 49). The pinned file is identical to
+  the config clone.
+- ESLint: `eslint.config.js` extends `@lorenzh/pulse-config/eslint.config.js`; at the pinned SHA
+  line 16 sets `sonarjs/cognitive-complexity` to `["error", 15]` (identical to the clone).
+- Coverage: `bunfig.toml:2-3` enables coverage with a line threshold of 0.8.
+- CI: `.github/workflows/ci.yml:18` uses
+  `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`,
+  which runs `bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck`, `bun run test`
+  (pinned `check.yml` lines 25-38, identical to the clone).
+
+### Behavior
+
+Implement D1-D4 in `src/settings-poll.ts`:
+- Keep `SettingsPollDeps` and `SettingsPoll` unchanged (fields, types, `stop: () => void`).
+- One `AbortController` per poll, its signal passed to `fetchJson` (read) and `requestJson`
+  (report). Keep `redirect: "manual"`, `timeoutMs: SETTINGS_TIMEOUT_MS`, `schedule`, headers
+  and `buildReport` arguments as they are.
+- Record `pollStart` at the start of every poll and `anchor` right before the report request.
+- Stopped checks after the read and before the report (D3).
+- One lane for timer polls and `pollNow()` (D2); the timer is cleared when a poll starts and
+  armed with `max(0, due - now())` when the lane is idle after a poll (D1).
+- Update the comment on `REPORT_HEARTBEAT_MS` (maximum gap between report starts) and add a
+  one-line comment on `REPORT_LEAD_MS` (why the read reserve exists).
+
+`docs/configuration.md` line 32 (the paragraph on the settings read): add that the next read
+starts early enough that the report after it starts at most 60 s after the previous report,
+even when the read takes its full 5000 ms timeout; with `PULSE_STATUS_SETTINGS_POLL_MS` above
+54000 the read therefore runs about every 54 s. `README.md` needs no change (its summary
+stays true); the implementer confirms that.
+
+### Checks (new suite `src/settings-poll.heartbeat.test.ts`)
+
+Harness, in the test file only (no new export in `src/`):
+- A fake clock: `now()` returns `clock`; `setTimeout(fn, ms)` stores `{ id, due: clock + ms, fn }`;
+  `clearTimeout(id)` removes it. A `run(untilMs)` driver repeatedly drains promise jobs (enough
+  `setImmediate` rounds that no new job appears, as `settle()` in `src/settings-poll.test.ts:107`),
+  then takes the earliest timer, sets `clock = due`, removes and calls it, until the earliest
+  timer is later than `untilMs`. No real timers and no real network.
+- A fake `fetch` that records `{ method, path, at: clock, signal }` at call time, keeps an
+  in-flight counter (asserts it never exceeds 1), and answers after the configured latency via
+  the fake `setTimeout`; it rejects with an `AbortError` when its signal aborts. Settings answer:
+  `200`, body `{"revision": "sha256-<64 × '1'>", "settings": {}}`, `etag` `"e1"` and the wire
+  header `WIRE_VERSION_HEADER: "1"` (as `src/settings-poll.test.ts:61,76-77`); later reads may
+  answer `304`. Report answer: `204` with the wire header. A "hold" mode keeps a request open
+  until the test releases it or its signal aborts.
+- The real `startSettingsPoll` with `resolve` from `resolveSettings` and an empty file layer, as
+  in `src/settings-poll.test.ts:88-102`.
+
+Tests (expected values are literals in the test):
+1. **Six-case regression.** For `pollMs` in `[60000, 15000]` and latency in `[0, 1000, 4000]`
+   (same latency for read and report): run until at least 4 report starts are recorded (assert
+   `reports.length >= 4`); assert the largest report-start gap is `<= 60000`; assert in-flight
+   requests never exceeded 1. One case also asserts `DEFAULT_SETTINGS_POLL_MS === 15000` and
+   uses it for the 15000 cases. Old code: `60000/1000` (62000) and `60000/4000` (68000) fail;
+   the other four pass.
+2. **Varying read latency (C2).** `pollMs = 60000`, read latencies `0, 4000, 0, 4000, …` and
+   report latency 0; and a second case where every second read never answers (times out at
+   5000 via the contract's timer). Largest gap `<= 60000`, at least 4 reports.
+3. **Slow report.** `pollMs = 60000`, read 0, report 4000 and report timeout (held until the
+   5000 ms timer): largest gap `<= 60000`, never two requests in flight.
+4. **Interval above the cap (C6).** `pollMs = 120000`, latency 1000: largest gap `<= 60000`.
+5. **Small interval, held request (C4).** `pollMs = 1000`, read held open at its second poll;
+   call `pollNow()` three times; assert no second `GET` starts while the held one is open;
+   release it; assert exactly one extra poll runs (count of `GET` = held poll + 1), all three
+   `pollNow()` promises resolve after that poll's report fetch completed, and the background loop
+   continues afterwards (another `GET` after the clock advances 1000 ms).
+6. **No tight loop (C5).** `resolve` throws after its first two calls (the call at start and
+   the first poll); `pollMs = 60000`; run 120000 ms; assert at most 4 `GET` requests.
+7. **Shutdown.** (a) idle with a pending timer: `stop()`, run 300000 ms, zero new fetches, timer
+   queue empty. (b) during the read (C8): signal aborted, no report fetch, `apply` count
+   unchanged, timer queue empty after 300000 ms. (c) during the report (C7): report signal
+   aborted, no later fetch, timer queue holds no poll timer, no log line containing
+   `status settings report failed`. (d) `pollNow()` after `stop()` resolves with zero fetches;
+   a second `stop()` does not throw.
+8. **No token.** `token: undefined`, `pollMs = 60000`: zero fetches over 300000 ms and
+   `readLocal` is called on every poll, at poll starts at most 60000 ms apart.
+
+### Completion evidence
+
+- Red: the new suite run on the old `src/settings-poll.ts` (`main` at
+  `469a6cec495d541ab393a23637fe1fbc72f74a42` or the merge base) with
+  `bun test src/settings-poll.heartbeat.test.ts`: the two latency cases of test 1 at
+  `pollMs = 60000` fail with a gap assertion (62000 and 68000), and tests 2, 3, 4, 5, 7b, 7c
+  and 7d fail (old `pollOnce` reports after an aborted read, and old `pollNow` ignores
+  `stop()`); the 15000 controls and tests 6,
+  7a and 8 pass. A compile or install error is not red evidence. Record the command
+  and the failing assertion text in the PR.
+- Green: the same command passes on the branch.
+- `bun run check` passes (lint, typecheck, test with the 0.8 line coverage threshold).
+- `bun test src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts`
+  passes without changes to those files (`git diff --exit-code main -- src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts`).
+- `git diff --exit-code main -- src/start.ts src/main.ts src/runtime-settings.ts src/settings.ts`
+  is empty (no change outside the poller).
+- Start check: `bun start` with `PULSE_API_URL` pointing at a local fake api on `127.0.0.1`
+  that logs request times, `PULSE_STATUS_API_TOKEN` set and
+  `PULSE_STATUS_SETTINGS_POLL_MS=60000`; observe the first report at once and the second report
+  start less than 60000 ms after the first; stop with Ctrl-C and see a clean exit. Report the
+  command and the two timestamps in the PR.
+
+## Acceptance evidence (feature)
+
+- The PR in lorenzh/pulse-status shows the red run (old code fails the 60000 ms latency cases
+  of the new test with a report-start gap above the literal 60000) and the green run.
+- `bun run check` passes in pulse-status on the PR head; CI `check` job green.
+- The existing settings-poll and runtime-settings suites pass unchanged.
+- No file outside `src/settings-poll.ts`, `src/settings-poll.heartbeat.test.ts` and
+  `docs/configuration.md` changes in pulse-status.
