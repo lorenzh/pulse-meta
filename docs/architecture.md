@@ -1,6 +1,6 @@
 # Architecture
 
-pulse has five services, three shared libraries and a deployment repository.
+pulse has five services, three shared libraries, a deployment repository and a host agent.
 
 | Repository | Role |
 | --- | --- |
@@ -10,6 +10,7 @@ pulse has five services, three shared libraries and a deployment repository.
 | pulse-notify | Polls pulse-api and sends a notification when an incident opens or resolves, and, when a channel sets `remindEverySeconds`, reminders while it stays open. Channels: webhook, file, Slack, Teams and email. |
 | pulse-console | Admin web UI ([#460](https://github.com/lorenzh/pulse-meta/issues/460)): the fifth container of the Compose stack, for one organisation. Today it serves one server-rendered page and its ops routes, and validates `PULSE_API_URL` and an optional admin token. Later items add login and management through the pulse-api admin API, its only upstream. |
 | pulse-deploy | Docker Compose setups for the whole stack (#528): `minimal`, `full`, `demo` and `dev`. The non-dev setups run the published images, pinned by version and digest in one file (`common/services.yaml`). CI starts each setup and runs the Compose end-to-end test, which moved here from pulse-api. A `pulse` CLI setup wizard is planned (#529). Not a service. |
+| pulse-agent | Host agent in Rust, planned: runs on a Linux host and pushes its CPU, memory, swap, disk and network values to pulse-api for `host` checks. Not a container of the stack. The repository is a Factory target; it has no code yet. |
 | pulse-contract | The wire contract: zod schemas, the types and validators built from them, the wire version and the `fetchJson` client. Used by api, probe, status and notify. |
 | pulse-kit | Shared runtime helpers: env settings, shutdown, the ops server for `/healthz`, `/readyz` and `/metrics`, metrics and the JSON logger. Used by api, probe, status, notify and console. |
 | pulse-config | Shared Biome, tsconfig, ESLint and Lefthook configuration and the reusable CI workflow `check.yml`. |
