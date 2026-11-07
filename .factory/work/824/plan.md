@@ -24,6 +24,11 @@ Inputs read for this spec: issue #824 and its only comment (the Factory issue-re
 `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/824` answered HTTP 404 in this
 run, so there are no findings.
 
+Revision after the first plan-review: the held-report case (Counterexample 6, test case 4) now
+holds the report across two missed ticks, so it tells a coalesced follow-up from one request per
+missed tick. The performance section now accounts for the higher heartbeat rate when reports are
+slow.
+
 ## Current behavior (notify `5a44c5a`)
 
 - `REPORT_HEARTBEAT_MS = 60_000` (`src/index.ts:678`).
@@ -160,16 +165,47 @@ pending follow-up.
 `bench/budgets.json` of the api repository has a `notify` block with `startup_cpu_ms`,
 `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `test_cpu_s`, `startup_wall_ms` and `image_mb`.
 
+- Runtime CPU (the cost behind `load_cpu_s`): up when reports are slow, because the change
+  raises the heartbeat request rate. Today a heartbeat starts every `60000 + L` ms, where `L` is
+  the latency of the previous heartbeat report. After the change it starts every 60000 ms. The
+  heartbeat runs whatever the channel poll interval is, so this holds with the default 15000 ms
+  poll too. Rate increase = `(60000 + L) / 60000 - 1`:
+  - `L = 4000` ms (the issue's case): +6.7 %, 60 instead of 56.25 heartbeat reports per hour,
+    +3.75 requests per hour.
+  - `L = 5000` ms (upper bound, set by the 5000 ms `SERVICE_TIMEOUT_MS`, `src/api.ts:331`):
+    +8.3 %, 60 instead of about 55.4 per hour, about +4.6 requests per hour.
+  - `L` of a few ms (local api): below 0.01 %.
+  One report builds a small body from in-memory state, serializes it and sends one HTTP request,
+  roughly 1 ms of CPU or less. So the extra cost is about 5 ms of CPU per hour at most, far below
+  the 10 ms resolution of a 60 s window. Poll reports are unchanged in number. Reports that
+  collide now run one after the other instead of at the same time, which is the same number of
+  requests. Coalescing can only remove requests.
+- `load_cpu_s`: no measurable change expected. In the bench the api is local, so `L` is a few ms
+  and the rate change is below 0.01 %. The bench load window is 60 s and holds at most one
+  heartbeat on either side. The bench cannot exercise delayed reports, so a `bun bench/run.ts`
+  A/B would show nothing about this change and is not required.
 - `test_cpu_s`: up, by well under 0.5 s: one new test file that runs on fake time (no wall-clock
   sleeps; only bounded macrotask drains).
-- `load_cpu_s`, `startup_cpu_ms`, `startup_wall_ms`, `idle_rss_mib`, `peak_rss_mib`,
-  `image_mb`: none expected. The change replaces one timer re-arm and adds one boolean and one
-  promise to the loop; the request count stays about one heartbeat report per 60 s plus one per
-  poll (coalescing can only remove requests, never add them).
-- Measure: in notify, run `bun test` on `main` and on the branch and compare the CPU time
-  (`/usr/bin/time -v bun test`, "User time" + "System time"); state both numbers in the PR. A
-  bench A/B (`bun bench/run.ts --a <ref> --b <ref>` in api) is not needed for a change that
-  does not touch the load path.
+- `startup_cpu_ms`, `startup_wall_ms`, `idle_rss_mib`, `peak_rss_mib`, `image_mb`: none
+  expected. Startup still arms one poll and one heartbeat timer. The loop gains one boolean and
+  one shared promise, and the image gains no file or dependency.
+- Measure test CPU: in notify, run `/usr/bin/time -v bun test` on `main` and on the branch and
+  report "User time" + "System time" for each in the PR.
+- Measure runtime with delayed reports (this measurement makes the reports slow): run notify
+  from `main` and then from the branch with `bun run start`, each for 600 s of wall time,
+  against the same local fake API. The fake API is a small `Bun.serve` script kept outside the
+  repository, for example in a temp directory. It answers `GET /service/notify/channels` at once
+  with an empty channel list and answers `PUT /service/notify/report` with `204` after 4000 ms.
+  It logs the wall time at which each report request arrives. Use
+  `PULSE_NOTIFY_CHANNELS_POLL_MS=300000`, a fixture token and a fresh temp state directory.
+  Read the process CPU time (utime + stime from `/proc/<pid>/stat`) right after start and at
+  600 s. Report for each side: the number of report requests, the list of gaps between report
+  starts, and the CPU delta.
+  Expected, from the 60000 ms rule and `L = 4000`, not from the code: on `main` the heartbeat
+  gaps are about 64 s, and on the branch every gap is at most 61 s (60000 ms plus 1 s of
+  wall-clock tolerance). The branch has the same number of heartbeat reports as `main` or one
+  more. The CPU delta between the sides is within the 10 ms resolution of `/proc` (no threshold
+  gates it; state it).
 
 ## Security impact
 
@@ -207,12 +243,19 @@ yet been returned to notify.
    flight; both must fail.
 5. Stale follow-up body. In case 4 the follow-up's report body field `at` must equal the fake
    time at its start (`62000` relative), not the tick time `60000`.
-6. Catch-up burst. A heartbeat report held from 60000 until the test releases it at 125000 (poll
-   300000, others 0 ms latency, window `[0, 180000]`): the tick at 120000 queues one follow-up.
-   Expected starts `[0, 60000, 125000, 180000]`. An implementation that queues one request per
-   missed tick or re-arms on release (old code: `[0, 60000, 185000...]`, so `[0, 60000]` in the
-   window) must fail. The 65000 ms gap here is the documented exception: a request longer than a
-   tick, impossible in production because of the 5000 ms timeout.
+6. Catch-up burst. The heartbeat report that starts at 60000 is held until the test releases it
+   at 185000. Poll is 300000, other reports have 0 ms latency, and the window is `[0, 240000]`.
+   The ticks at 120000 and 180000 both find the held report in flight, so they share one
+   follow-up. Each tick arms the next timer (D1), so the 240000 tick still fires. Expected starts
+   are `[0, 60000, 185000, 240000]`, and the third body's `at` is 185000.
+   These implementations must fail:
+   - One queued request per missed tick: `[0, 60000, 185000, 185000, 240000]`, five starts.
+   - Old code, which re-arms on release: the next tick is at 245000, so the window holds only
+     `[0, 60000]`.
+   - Skip: `[0, 60000, 240000]`.
+   The release falls between ticks (185000 is not a multiple of 60000), so no deadline ties. The
+   125000 ms gap from 60000 to 185000 is the documented exception: a request that outlasts a
+   tick, which the 5000 ms service timeout prevents in production.
 7. Failure blocks the slot. The heartbeat report at 60000 fails (fetch rejects with a network
    error, 0 ms): expected starts `[0, 60000, 120000, 180000]` and one `service report failed` log
    line for it. An implementation that does not release the slot on failure stops at
@@ -316,8 +359,11 @@ Drive everything through the exported `main` with existing `MainDeps` seams, as
      every gap `<= 60000`; max in flight 1.
   3. Collision, poll 54000, latency 4000, window `[0, 100000]`: starts `[0, 58000, 62000]`, max in
      flight 1, the third body's `at` equals the fake clock at its start (relative 62000).
-  4. Held across a tick, poll 300000: the report at 60000 is held, release at 125000, window
-     `[0, 180000]`: starts `[0, 60000, 125000, 180000]`, max in flight 1.
+  4. Held across two ticks, poll 300000. Hold the report that starts at 60000. Advance to
+     185000, so the ticks at 120000 and 180000 run while it is held. Release it, drain, then
+     advance to 240000. Expected: starts `[0, 60000, 185000, 240000]` (exactly four, so a
+     second request for the second missed tick fails), max in flight 1, and the third body's
+     `at` equals relative 185000.
   5. Failure, poll 300000: the report at 60000 rejects; starts `[0, 60000, 120000, 180000]`, and
      the logger has a `service report failed` warning.
   6. Stop with a pending timer: zero latency, poll 300000; advance to 1000, `stop()`; advance to
@@ -342,6 +388,11 @@ Drive everything through the exported `main` with existing `MainDeps` seams, as
 - `git diff --stat` shows only the three files in `Files:`; `src/service-report.ts`, `src/api.ts`,
   `src/ledger.ts` and `src/config.ts` are unchanged.
 - The `bun test` CPU time on `main` and on the branch (see Performance impact).
+- The delayed-report runtime run from Performance impact, which also serves as the
+  `bun run start` smoke run that notify `AGENTS.md:82` requires. For `main` and the branch,
+  state the report count, the gaps between report starts and the CPU delta over 600 s. The
+  expected values are the literals of that section: about 64 s gaps on `main` and every gap
+  at most 61 s on the branch. Do not publish the fixture token.
 
 ## Acceptance evidence (feature)
 
