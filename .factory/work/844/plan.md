@@ -49,6 +49,11 @@ cancel the report too, not only the read.
      limits, ETag handling, readiness, precedence, last-good and rejection rules, local
      reloads, the no-token path and the public responses do not change. The accepted range of
      `PULSE_STATUS_SETTINGS_POLL_MS` (from 1000, default 15000) does not change.
+- The plan-review of the first version of this spec (issue comment of 2026-11-07) found three
+  defects. This version fixes them: the runtime request-rate increase and its CPU impact, with a
+  measurement under delayed answers (Risks, Performance impact, completion evidence); C6 and a
+  no-token `pollMs = 120000` case that protects the `min(pollMs, 60000)` cap (Counterexamples,
+  test 8); `README.md:34` in scope (Scope, Repository: status).
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/844`
   answered `HTTP 404` on 2026-11-07, so this feature has no shared findings yet.
 - Current code read at pulse-status `main` `469a6cec495d541ab393a23637fe1fbc72f74a42`, and
@@ -81,6 +86,10 @@ cancel the report too, not only the read.
 - `src/settings-poll.test.ts:98-99` records timer delays without running them; the existing
   tests drive `pollNow()`. No test runs the background loop or measures report starts.
 - `docs/configuration.md:32` promises reports "After every attempt, and at least every 60 s".
+- `README.md:34` says the server "polls pulse-api's `GET /service/status/settings` every
+  `PULSE_STATUS_SETTINGS_POLL_MS` (default 15000)". Under D1 this stops being true above
+  54000 ms, so the README changes too (status `AGENTS.md:87-88`: update `README.md` in the same
+  change when behavior or a setting changes).
 
 ## Decisions
 
@@ -111,6 +120,40 @@ Consequences that the docs state:
   poll itself lasts longer than that. A poll that lasts longer than its interval is followed by
   the next poll at once (`delay = 0`), one at a time: "wait", never overlap, never catch up
   more than one poll.
+- With a token the cap `min(pollMs, REPORT_HEARTBEAT_MS)` is masked by the report term:
+  `anchor - pollStart` is the read time plus the local work, at most about 5000 ms, so
+  `anchor + 54000 < pollStart + 60000` in practice. The cap is kept (it bounds the schedule if
+  the local work ever takes longer than 1000 ms) but is only observable without a token. Test 8
+  protects it there (C6, C9).
+- **Request rate under a slow api.** Today the gap between poll starts is
+  `min(pollMs, 60000) + d`, where `d` is the poll's duration (read + report, each up to 5000 ms).
+  Under D1 it is `max(due - pollStart, d)` with
+  `due - pollStart = min(min(pollMs, 60000), (anchor - pollStart) + 54000)`, which lies between
+  `min(pollMs, 54000)` and `min(pollMs, 60000)`. So a slow api now gets reads and reports at the
+  configured rate instead of a rate stretched by its own latency. Examples (both requests with
+  the same latency `L`):
+
+  | `pollMs` | `L` | old poll-start gap | new poll-start gap | new/old rate |
+  | --- | --- | --- | --- | --- |
+  | 15000 | 0 | 15000 | 15000 | 1.000 |
+  | 15000 | 1000 | 17000 | 15000 | 1.133 (+13.3 %) |
+  | 15000 | 4000 | 23000 | 15000 | 1.533 (+53.3 %) |
+  | 10000 | 5000 (both time out) | 20000 | 10000 | 2.000 (+100 %, the largest ratio) |
+  | 60000 | 0 | 60000 | 54000 | 1.111 (+11.1 %) |
+  | 60000 | 4000 | 68000 | 58000 | 1.172 (+17.2 %) |
+
+  The ratio never exceeds 2.0. For `pollMs <= 54000` it is `(pollMs + d) / max(pollMs, d)`,
+  which is at most 2, reached when `d = pollMs`. For `pollMs > 54000` it is at most
+  `(60000 + d) / 54000`, and `d` is at most about 11000 (two 5000 ms timeouts plus local work),
+  so at most about 1.31.
+  It is never more than one request in flight and never more than one poll per
+  `min(pollMs, 54000)` from poll start to poll start (R4). With fast answers (`L` near 0) the
+  rate is unchanged for `pollMs <= 54000`.
+  Alternative considered and rejected: arming `min(pollMs, 60000)` after the poll *end*, bounded
+  only by the report deadline. It keeps today's rate under a slow api, but the issue asks to
+  schedule from the start of the previous tick, and `README.md:34` and
+  `docs/configuration.md:32` promise a read "every `PULSE_STATUS_SETTINGS_POLL_MS`", which the
+  start-to-start schedule delivers.
 
 **D2. One lane.** All polls (the first poll, timer polls and `pollNow()` polls) run in one
 lane: at most one poll is active at any time.
@@ -149,6 +192,8 @@ maximum gap between report starts.
 - pulse-status `src/settings-poll.ts`: scheduling (D1), lane (D2), shutdown (D3), constants (D4).
 - New fake-clock test suite `src/settings-poll.heartbeat.test.ts`.
 - `docs/configuration.md`: describe the read cadence above 54000 ms and the 60 s report bound.
+- `README.md` (line 34, "Live page settings"): the read runs every
+  `PULSE_STATUS_SETTINGS_POLL_MS`, at most about 54 s apart, and the report at least every 60 s.
 
 ## Non-goals
 
@@ -181,7 +226,8 @@ earlier than `min(pollMs, 54000)` after the first, unless the first lasted longe
 its report.
 
 R5. Without a token: no request to the service routes (as today), local files reread every
-`min(pollMs, 60000)` from poll start to poll start.
+`min(pollMs, 60000)` from poll start to poll start; with `pollMs = 120000` that is every
+60000 ms, not every 120000 ms.
 
 R6. `stop()` while idle: the pending timer is cleared; no later request. `stop()` during the
 settings read: the read's signal is aborted; no apply, no report, no timer afterwards.
@@ -196,12 +242,22 @@ response suites pass unchanged.
 
 - **More settings reads for large intervals.** With `pollMs` above 54000, reads run about
   every 54 s instead of 60 s: about 11 % more `GET /service/status/settings` requests in that
-  configuration, nearly all `304`. Default 15000 is unaffected. Documented in
-  `docs/configuration.md`.
-- **Back-to-back polls under a slow api.** With a small `pollMs` and slow answers, a poll may
-  follow the previous one at once (D1). Each poll is still bounded by two 5000 ms timeouts, so
-  the rate is at most one poll per request time, never parallel. Today's code waits `pollMs`
-  after the end instead; the difference is at most `pollMs` per cycle.
+  configuration, nearly all `304`. With fast answers the default 15000 is unaffected. Documented
+  in `docs/configuration.md` and `README.md`.
+- **More reads and reports under a slow api.** Today a slow api slows the poller down: the
+  latency adds to every gap. Under D1 the poller keeps the configured rate (table in D1). At the
+  default 15000 ms with 4000 ms answers that is 53.3 % more reads and reports (gap 23000 ->
+  15000 ms); the worst ratio is 2.0 (`pollMs = 10000`, both requests timing out). Costs: in
+  pulse-status, per extra poll one small JSON parse and contract validation (or a `304`), one
+  reread of the local files, one resolve and one report body, a few ms of CPU at most; in
+  pulse-api, one more settings read and one report write per extra poll. An api that is slow
+  because it is overloaded gets no back-off from the latency any more. This stays bounded: one
+  request at a time, and never more than the rate the operator configured with
+  `PULSE_STATUS_SETTINGS_POLL_MS` (at most one poll per `min(pollMs, 54000)` start to start, R4).
+  Measured under delayed answers in the completion evidence (delayed-answer run).
+- **Back-to-back polls.** With a small `pollMs` and slow answers, a poll may follow the
+  previous one at once (D1, `delay = 0`). Each poll is still bounded by two 5000 ms timeouts, so
+  the rate is at most one poll per poll duration, never parallel.
 - **pollNow semantics in tests.** `pollNow()` now waits for an active background poll before it
   runs its own. Existing tests that call `pollNow()` right after `setup()` keep their read counts
   (the waiting poll is still a fresh read); the implementer runs all three suites to confirm.
@@ -219,17 +275,31 @@ The api repository's `bench/budgets.json` lists for `status`: `startup_cpu_ms`, 
 
 - `startup_cpu_ms`, `startup_wall_ms`, `idle_rss_mib`, `peak_rss_mib`, `image_mb`: none
   expected. The poller keeps one timer and one controller; the first poll stays immediate.
-- `load_cpu_s`: none expected. The bench runs status with the default 15000 ms settings poll
-  (see `bench/compose.bench.yaml` in the api repository); with fast local answers the read
-  cadence in the 60 s window is unchanged (4 reads, 4 reports, plus at most one from timing).
+- `load_cpu_s` (status budget 0.5 s): none expected in the bench. The bench runs status with
+  the default 15000 ms settings poll (see `bench/compose.bench.yaml` in the api repository) and
+  a local api that answers in a few ms; with `L` near 0 the read cadence in the 60 s window is
+  unchanged (4 reads, 4 reports, plus at most one from timing).
+- **Outside the bench: CPU under a slow api (not a budget key).** The bench does not delay the
+  api's answers, so it cannot show the rate change of D1. With a slow api, pulse-status does
+  more polls per minute (up to 1.533x at the default 15000 ms with 4000 ms answers, up to 2.0x
+  in the worst case; table in D1). Its CPU over a time window grows with the poll count; the
+  CPU per poll does not change. Expected: a few ms of CPU per poll, so at the default with
+  4000 ms answers about 6 extra polls per 300 s and well under 100 ms of extra CPU per 300 s.
+  pulse-api gets the same factor more settings reads and report writes from this service.
+  Measured by the delayed-answer run in the completion evidence of `Repository: status`.
 - `test_cpu_s` (status budget 3.4 s): up by a small amount, expected under 0.1 s. The new suite
   runs with a fake clock and no real waits.
-- How to measure: in pulse-status run `bun test` on `main` and on the branch three times each
-  and compare the CPU time (`/usr/bin/time -f '%U %S' bun test`); the difference must stay
-  under 0.2 s. A full A/B is optional (about 40 minutes, Docker needed): in the api repository,
-  `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref status=<branch SHA> --service-tokens --expect-report status`
-  (api `bench/README.md:76,88,100`); `load_cpu_s` and the RSS metrics of `status` must stay
-  within their budgets.
+- How to measure:
+  - `test_cpu_s`: in pulse-status run `bun test` on `main` and on the branch three times each
+    and compare the CPU time (`/usr/bin/time -f '%U %S' bun test`); the difference of the
+    medians must stay under 0.2 s.
+  - CPU under a slow api: the delayed-answer run (completion evidence of `Repository: status`),
+    status against a local fake api that delays every answer by 4000 ms, on `main` and on the
+    branch.
+  - A full A/B is optional (about 40 minutes, Docker needed): in the api repository,
+    `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref status=<branch SHA> --service-tokens --expect-report status`
+    (api `bench/README.md:76,88,100`); `load_cpu_s` and the RSS metrics of `status` must stay
+    within their budgets.
 
 ## Security impact
 
@@ -268,9 +338,20 @@ Times are fake-clock milliseconds from the poller start; "latency" applies to ea
   `pollMs = 60000` start at 0, 54000 and 108000: 3 settings reads. The test asserts `<= 4` reads
   (a tight loop gives hundreds). The old code also passes this test (reads at 0, 60000,
   120000); it guards against a wrong fix, not the old defect.
-- **C6 (interval above the heartbeat).** `pollMs = 120000`, latency 1000: report gaps stay
-  `<= 60000` (the cap applies); a fix that drops `min(pollMs, REPORT_HEARTBEAT_MS)` gives
-  121000 and must fail.
+- **C6 (interval above the heartbeat, with a token).** `pollMs = 120000`, latency 1000. Poll 1:
+  read 0-1000, `anchor = 1000`, report 1000-2000. Under D1 the next poll is due at
+  `min(0 + min(120000, 60000), 1000 + 54000) = 55000`; its report starts at 56000, gap 55000.
+  The old code arms 60000 ms at 2000; poll 2 reads 62000-63000 and its report starts at 63000:
+  gap 62000, which must fail. A fix that drops the cap
+  `min(pollMs, REPORT_HEARTBEAT_MS)` gives `min(0 + 120000, 55000) = 55000`, the *same* value:
+  with a token the report term masks the cap, so this case cannot detect the cap's removal. It
+  only guards R1 for intervals above 60000.
+- **C9 (the cap, without a token).** `token: undefined`, `pollMs = 120000`, no requests; local
+  reads run synchronously at poll start. Required (R5): `readLocal` call times over 300000 ms of
+  fake time are exactly `[0, 60000, 120000, 180000, 240000, 300000]`. A fix that drops
+  `min(pollMs, REPORT_HEARTBEAT_MS)` gives `[0, 120000, 240000]` (gap 120000) and must fail. The
+  old code gives the required list too (it applies the cap after the end, and the local poll
+  takes no fake time); this case guards against a wrong fix, not the old defect.
 - **C7 (shutdown during report).** Report held open; `stop()`; then advance the fake clock by
   300000 ms and settle the held report. A wrong fix that does not pass the signal to the report
   leaves the report fetch's signal not aborted (assert `signal.aborted === true`), and a wrong
@@ -304,6 +385,7 @@ Files:
 - `src/settings-poll.ts` (change)
 - `src/settings-poll.heartbeat.test.ts` (new)
 - `docs/configuration.md` (change)
+- `README.md` (change)
 
 Behavior change: yes
 The background poll schedule, `pollNow()` serialization and the cancellation of the report on
@@ -347,13 +429,19 @@ Implement D1-D4 in `src/settings-poll.ts`:
 `docs/configuration.md` line 32 (the paragraph on the settings read): add that the next read
 starts early enough that the report after it starts at most 60 s after the previous report,
 even when the read takes its full 5000 ms timeout; with `PULSE_STATUS_SETTINGS_POLL_MS` above
-54000 the read therefore runs about every 54 s. `README.md` needs no change (its summary
-stays true); the implementer confirms that.
+54000 the read therefore runs about every 54 s. Also say that the interval runs from the start
+of one read to the start of the next, so a slow api no longer stretches it.
+
+`README.md:34` ("Live page settings"): the sentence "polls pulse-api's
+`GET /service/status/settings` every `PULSE_STATUS_SETTINGS_POLL_MS` (default 15000)" becomes
+true again by adding that the reads are at most about 54 s apart and that the report to
+`PUT /service/status/report` is sent after every read and at least every 60 s. Keep the rest of
+the paragraph unchanged. No other README section changes.
 
 ### Checks (new suite `src/settings-poll.heartbeat.test.ts`)
 
 Harness, in the test file only (no new export in `src/`):
-- A fake clock: `now()` returns `clock`; `setTimeout(fn, ms)` stores `{ id, due: clock + ms, fn }`;
+- A fake clock: `clock` starts at 0; `now()` returns `clock`; `setTimeout(fn, ms)` stores `{ id, due: clock + ms, fn }`;
   `clearTimeout(id)` removes it. A `run(untilMs)` driver repeatedly drains promise jobs (enough
   `setImmediate` rounds that no new job appears, as `settle()` in `src/settings-poll.test.ts:107`),
   then takes the earliest timer, sets `clock = due`, removes and calls it, until the earliest
@@ -372,15 +460,18 @@ Tests (expected values are literals in the test):
 1. **Six-case regression.** For `pollMs` in `[60000, 15000]` and latency in `[0, 1000, 4000]`
    (same latency for read and report): run until at least 4 report starts are recorded (assert
    `reports.length >= 4`); assert the largest report-start gap is `<= 60000`; assert in-flight
-   requests never exceeded 1. One case also asserts `DEFAULT_SETTINGS_POLL_MS === 15000` and
-   uses it for the 15000 cases. Old code: `60000/1000` (62000) and `60000/4000` (68000) fail;
-   the other four pass.
+   requests never exceeded 1. Rate bound (R4): the smallest gap between two settings `GET`
+   starts is `>= 15000` in the 15000 cases and `>= 54000` in the 60000 cases (literals). One
+   case also asserts `DEFAULT_SETTINGS_POLL_MS === 15000` and uses it for the 15000 cases. Old
+   code: `60000/1000` (62000) and `60000/4000` (68000) fail; the other four pass.
 2. **Varying read latency (C2).** `pollMs = 60000`, read latencies `0, 4000, 0, 4000, …` and
    report latency 0; and a second case where every second read never answers (times out at
    5000 via the contract's timer). Largest gap `<= 60000`, at least 4 reports.
 3. **Slow report.** `pollMs = 60000`, read 0, report 4000 and report timeout (held until the
    5000 ms timer): largest gap `<= 60000`, never two requests in flight.
-4. **Interval above the cap (C6).** `pollMs = 120000`, latency 1000: largest gap `<= 60000`.
+4. **Interval above the heartbeat, with a token (C6).** `pollMs = 120000`, latency 1000:
+   largest gap `<= 60000`, at least 4 reports. This guards R1 only; with a token it cannot see
+   the `min(pollMs, 60000)` cap (C6), test 8 does.
 5. **Small interval, held request (C4).** `pollMs = 1000`, read held open at its second poll;
    call `pollNow()` three times; assert no second `GET` starts while the held one is open;
    release it; assert exactly one extra poll runs (count of `GET` = held poll + 1), all three
@@ -394,8 +485,11 @@ Tests (expected values are literals in the test):
    aborted, no later fetch, timer queue holds no poll timer, no log line containing
    `status settings report failed`. (d) `pollNow()` after `stop()` resolves with zero fetches;
    a second `stop()` does not throw.
-8. **No token.** `token: undefined`, `pollMs = 60000`: zero fetches over 300000 ms and
-   `readLocal` is called on every poll, at poll starts at most 60000 ms apart.
+8. **No token, and the cap (C9).** Two cases, `token: undefined`, `pollMs = 60000` and
+   `pollMs = 120000`, each run until 300000 ms of fake time: zero fetches, and the fake-clock
+   times of the `readLocal` calls equal exactly `[0, 60000, 120000, 180000, 240000, 300000]`
+   (literal list) in both cases. The `120000` case fails on a fix that drops
+   `min(pollMs, REPORT_HEARTBEAT_MS)` (it gives `[0, 120000, 240000]`).
 
 ### Completion evidence
 
@@ -405,7 +499,7 @@ Tests (expected values are literals in the test):
   `pollMs = 60000` fail with a gap assertion (62000 and 68000), and tests 2, 3, 4, 5, 7b, 7c
   and 7d fail (old `pollOnce` reports after an aborted read, and old `pollNow` ignores
   `stop()`); the 15000 controls and tests 6,
-  7a and 8 pass. A compile or install error is not red evidence. Record the command
+  7a and both cases of 8 pass (6 and 8 guard against a wrong fix, not the old defect). A compile or install error is not red evidence. Record the command
   and the failing assertion text in the PR.
 - Green: the same command passes on the branch.
 - `bun run check` passes (lint, typecheck, test with the 0.8 line coverage threshold).
@@ -413,11 +507,28 @@ Tests (expected values are literals in the test):
   passes without changes to those files (`git diff --exit-code main -- src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts`).
 - `git diff --exit-code main -- src/start.ts src/main.ts src/runtime-settings.ts src/settings.ts`
   is empty (no change outside the poller).
-- Start check: `bun start` with `PULSE_API_URL` pointing at a local fake api on `127.0.0.1`
-  that logs request times, `PULSE_STATUS_API_TOKEN` set and
-  `PULSE_STATUS_SETTINGS_POLL_MS=60000`; observe the first report at once and the second report
-  start less than 60000 ms after the first; stop with Ctrl-C and see a clean exit. Report the
-  command and the two timestamps in the PR.
+- **Delayed-answer run (start check and CPU under a slow api).** A fake api, a small Bun script
+  kept outside the repository (for example under `/tmp`, not committed), listens on
+  `127.0.0.1`. It answers `GET /service/status/settings` with `200`, the valid body and wire
+  header of the test harness and `etag: "e1"` (then `304` to `If-None-Match: "e1"`), and
+  `PUT /service/status/report` with `204` and the wire header, each after a fixed delay of
+  4000 ms. It logs the arrival time (ms) of every request. Start status on `main` (or the merge
+  base) and on the branch with `bun start`, `PULSE_API_URL=http://127.0.0.1:<port>`,
+  `PULSE_STATUS_API_TOKEN` set to a dummy value and a free `PORT`. Take the CPU time of the
+  status process as `utime + stime` (fields 14 and 15 of `/proc/<pid>/stat`, clock ticks; 10 ms
+  resolution) at the first settings `GET` and 300000 ms later. Expected values below are
+  literals derived from the timing in D1, not from the code under test; real timers add a few
+  ms per cycle, hence the ±1.
+  - Run A, `PULSE_STATUS_SETTINGS_POLL_MS=15000`, 300000 ms window, three runs per side:
+    settings `GET` starts in the window: `main` 14 ±1 (gap 23000), branch 20 ±1 (gap 15000);
+    report `PUT` count equals the `GET` count ±1. CPU: report the median CPU ms of each side and
+    the CPU ms per poll. Gate: the branch median exceeds the `main` median by at most 300 ms
+    (0.1 % of one core over 300 s); expected well under 100 ms.
+  - Run B, `PULSE_STATUS_SETTINGS_POLL_MS=60000`, until at least 4 report starts per side: the
+    first report starts at about 4000 ms (right after the first read); report-start gaps are
+    68000 ±50 on `main` and 58000 ±50 on the branch, so every branch gap is below the literal
+    60000. Stop with Ctrl-C and see a clean exit.
+  Report the commands, the request logs (times), the counts and the CPU numbers in the PR.
 
 ## Acceptance evidence (feature)
 
@@ -425,5 +536,8 @@ Tests (expected values are literals in the test):
   of the new test with a report-start gap above the literal 60000) and the green run.
 - `bun run check` passes in pulse-status on the PR head; CI `check` job green.
 - The existing settings-poll and runtime-settings suites pass unchanged.
-- No file outside `src/settings-poll.ts`, `src/settings-poll.heartbeat.test.ts` and
-  `docs/configuration.md` changes in pulse-status.
+- The PR shows the delayed-answer runs A and B with the literal expectations of the status
+  section (A: 14 ±1 vs 20 ±1 reads in 300 s, CPU difference at most 300 ms; B: report gaps
+  68000 ±50 on `main`, 58000 ±50 on the branch).
+- No file outside `src/settings-poll.ts`, `src/settings-poll.heartbeat.test.ts`,
+  `docs/configuration.md` and `README.md` changes in pulse-status.
