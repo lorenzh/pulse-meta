@@ -42,11 +42,14 @@ so there are no findings yet. The `main` SHAs of all seven repositories were rec
 (`gh api repos/lorenzh/pulse-<repo>/commits/main`) and equal the clones; #809, #811, #820 and #823
 are open.
 
-### Changes in this run
+### Changes in the last two plan runs
+
+Items 1-4 come from the plan run of 2026-11-07 that added `☃`; item 5 from this run, after the
+plan-review that followed it.
 
 1. **Literal `☃` (U+2603), manager decision.** The EHLO regression (contract item 3), the notify
    differential (notify `test/contract-parity.test.ts`) and the acceptance evidence now contain the
-   one-character `clientName` `☃` with the expected result *reject*. It was run in this plan state:
+   one-character `clientName` `☃` with the expected result *reject*. It was run by that plan run:
    notify `0464b90` rejects it, contract `b637302` accepts it (Evidence). `münchen.test` and
    `☃.example.test` are added as further non-ASCII rows; they do not replace `☃`.
 2. The version rule above is the manager's decision, no longer a spec proposal.
@@ -54,7 +57,15 @@ are open.
    child; the risk about it is removed.
 4. The `never` view case with an empty list now uses `failedTotal: 1` (the issue review's case),
    with `3` kept as a second case; `{never, [entry], 0}` is marked as a defect of its error text.
-5. Kept from the reviewed previous spec without change of substance: defect cases versus controls,
+5. **Rollback (plan-review of this spec).** The old rule normalized padded rows while the patched
+   api still accepted new ones, so a `POST` could store one again before console or notify rolled
+   back. Rollout order "Releases, deploy and rollback" now has api leave the patch first, so writes
+   of the newly accepted set stop. Only then are rows normalized through the api. The database is
+   checked with contract `c5ce668`'s `validateAdminNotifyChannelsView`, and notify's ledger with
+   `appliedRevision`, `rejected: []` and its `remote_channels` rows checked one by one. Only then
+   do console and notify roll back. A matching counterexample is added. This follows the issue
+   review's compatibility rule (`issue-review.md:67`).
+6. Kept from the reviewed previous spec without change of substance: defect cases versus controls,
    the readers-first rollout with checks M1-M4, the performance table, and the tool citations for
    console and status browser, Compose and accessibility checks.
 
@@ -67,9 +78,10 @@ failed views identically. "Fails on 2.4.0" below means fails on `c5ce668` and eq
 Both sides ran under Bun 1.4.0 with zod 4.6.7 (the exact version of contract `package.json:39` and
 of notify `package.json:33`), from copies of the clone sources in a scratch directory: notify
 `0464b90` `channelSchema("email")` of `src/channel-schema.ts:156` and contract `b637302` public
-validators from its committed `dist/`. The rows marked "(this run)" were run again in this plan
-state; the others were run by the previous run of this spec on the same SHAs (no clone changed
-since).
+validators from its committed `dist/`. The rows marked "(re-run 2026-11-07)" were run again by the plan run of
+2026-11-07 that added `☃`; the others by an earlier run of this spec. All ran on the same SHAs.
+This run rechecked that every clone and every `main` still has those SHAs, so the results still
+hold; it did not run the table again.
 
 Zod 4.6.7 string `.max()` counts code points, not UTF-16 units:
 `package/v4/core/checks.js:271-273` of the published `zod@4.6.7` tarball
@@ -83,23 +95,23 @@ one field varied (every address row was run for `from` and for `to[0]` with the 
 
 | Input | notify 0464b90 | contract 2.4.0 / 2.5.0 |
 | --- | --- | --- |
-| `from`/`to[0]` = `Ops <ops@example.test>` (this run) | accept | accept |
-| `from`/`to[0]` = `Ops < ops@example.test >` (this run) | accept | **reject** |
-| `from`/`to[0]` = `Ops <ops@example.test> trailing` (this run) | reject | **accept** |
+| `from`/`to[0]` = `Ops <ops@example.test>` (re-run 2026-11-07) | accept | accept |
+| `from`/`to[0]` = `Ops < ops@example.test >` (re-run 2026-11-07) | accept | **reject** |
+| `from`/`to[0]` = `Ops <ops@example.test> trailing` (re-run 2026-11-07) | reject | **accept** |
 | `from`/`to[0]` = `  ops@example.test  ` | accept | accept |
 | `from`/`to[0]` = `Ops <ops@example.test>  ` | accept | accept |
 | `from`/`to[0]` = `ops@example.test\r\n` | reject | reject |
 | `from`/`to[0]` = `Ops <>` | reject | reject |
-| `smtp.clientName` = `pulse.example.test` (this run) | accept | accept |
-| `smtp.clientName` = `[192.0.2.1]` (this run) | accept | accept |
+| `smtp.clientName` = `pulse.example.test` (re-run 2026-11-07) | accept | accept |
+| `smtp.clientName` = `[192.0.2.1]` (re-run 2026-11-07) | accept | accept |
 | `smtp.clientName` = `[IPv6:2001:db8::1]` | accept | accept |
 | `smtp.clientName` = `localhost` | accept | accept |
-| `smtp.clientName` = `pulse_console` (this run) | reject | **accept** |
-| `smtp.clientName` = `☃` (U+2603, `"☃"`, one character) (this run) | reject | **accept** |
-| `smtp.clientName` = `☃.example.test` (this run) | reject | **accept** |
-| `smtp.clientName` = `münchen.test` (this run) | reject | **accept** |
-| `smtp.clientName` = `pülse.example.test` (this run) | reject | **accept** |
-| `smtp.clientName` = `pulse\u0000.example.test` (a real NUL) (this run) | reject | **accept** |
+| `smtp.clientName` = `pulse_console` (re-run 2026-11-07) | reject | **accept** |
+| `smtp.clientName` = `☃` (U+2603, `"☃"`, one character) (re-run 2026-11-07) | reject | **accept** |
+| `smtp.clientName` = `☃.example.test` (re-run 2026-11-07) | reject | **accept** |
+| `smtp.clientName` = `münchen.test` (re-run 2026-11-07) | reject | **accept** |
+| `smtp.clientName` = `pülse.example.test` (re-run 2026-11-07) | reject | **accept** |
+| `smtp.clientName` = `pulse\u0000.example.test` (a real NUL) (re-run 2026-11-07) | reject | **accept** |
 | `smtp.clientName` = `-pulse.test` | reject | **accept** |
 | `smtp.clientName` = `pulse..test` | reject | **accept** |
 | `smtp.clientName` = `pulse.example.test.` | reject | **accept** |
@@ -122,7 +134,8 @@ Contract 2.5.0, other points (report base
 | failed view `{state:"never", receivedAt:null, failed:[entry], failedTotal:0}` | reject, R4 text | reject, **other text** `view.failedTotal: must be at least the number of failed entries` |
 | failed view `{state:"never", receivedAt:null, failed:[], failedTotal:0}` | accept | accept |
 
-All rows of this table were run again in this plan state on `b637302` with the same results.
+All rows of this table were run again on `b637302` by the plan run of 2026-11-07, with the same
+results.
 
 (`entry` = `{channelId:"mail", key:"1:opened", event:"opened", isManual:false, failedAt:1, hasPayload:true}`.)
 
@@ -416,12 +429,14 @@ change only refuses more, which a new reader handles (see "Rows stored before th
 Consumer pins today: api `c5ce668` (`package.json:31`), console `c5ce668` (`package.json:32`),
 status `b637302` (`package.json:34`, from #819), notify `c5ce668` (`package.json:30`, from #810),
 probe `7ce23aa`. Open work on the same files: #809 (status child of #570, in `implement`) and #820
-(notify child of #573, in `implement`, open PR notify #48; it bumps notify to `b637302`, 2.5.0).
-Both states were read in this run.
+(notify child of #573, in `task-review`, open PR notify #48; it bumps notify to `b637302`, 2.5.0).
+Both states and the open PR were read in this run.
 
 **Rule: readers first, writer last.** api may run the patch only where every console and notify
 that reads its channels runs the patch. Until then, api's old pin refuses the newly accepted set
-with 422, so no such row can exist.
+with 422, so no such row can exist. A rollback reverses the rule: api leaves the patch first, and
+console or notify leave it only after no row of the newly accepted set is stored in api's database
+or in notify's ledger ("Releases, deploy and rollback" below).
 
 1. **contract** merges R1-R6 to `main`. Nothing runs contract code by itself; every consumer keeps
    its old pin and keeps working.
@@ -494,12 +509,42 @@ Expected values are the literals above; none is read from the code under test.
   contain this patch whenever the api release contains it. Deploy is not changed by this spec; a
   person carries this rule into that deploy change. A release of api is cut after the console and
   notify releases that contain the patch, never before.
-- **Rollback** of console or notify below the patch while a new api runs: first rewrite every
-  database channel whose address is in the newly accepted set to the unpadded spelling
-  (`PUT /admin/notify/channels/<id>` with `Ops <ops@example.test>`), wait for notify's next sync
-  (its ledger row is replaced), then roll back. Otherwise the old console shows no channels and the
-  old notify refuses that channel and, if its ledger holds the row, exits 2 at start. Rolling back
-  api alone is safe: old api serves stored rows without a check.
+- **Rollback: writer first, readers last.** The readers-first rule holds in reverse. At no moment
+  may an old console or notify run while a row of the newly accepted set can be stored, or is
+  stored in api's database or in notify's ledger. So writes of that set stop before any cleanup,
+  and stay stopped until the readers are back on the patch:
+  1. **api leaves the patch first.** This step is always safe on its own. The old pin answers 422
+     to the newly accepted set on `POST` and `PUT` (`definitionOf`, api
+     `src/notify-channel-routes.ts:134-138`; check M1), so from now on no row of that set can be
+     written. The old api serves the rows it already holds without a check (`recordOf`, `:123-127`),
+     and the patched console and notify still accept them. To roll back only console or notify,
+     api still goes first. If api cannot leave the patch, for example because its release holds
+     other fixes, the readers stay on the patch.
+  2. **Normalize, only after step 1 runs everywhere api runs.** Rewrite each database channel whose
+     `from` or any `to` entry is in the newly accepted set with the unpadded spelling
+     (`Ops <ops@example.test>`): `PUT /admin/notify/channels/<id>` with `If-Match` set to the
+     current revision (`:293-295`). A row listed in `shadowed` answers 409 to `PUT` (`:300-302`)
+     and is removed with `DELETE /admin/notify/channels/<id>` (`:309-320`). No database or ledger
+     is edited by hand.
+  3. **Verify the database.** Run contract `c5ce668`'s `validateAdminNotifyChannelsView` on the
+     answer of `GET /admin/notify/channels`. It must give `ok: true`; that is exactly the old
+     console's read check (console `src/runtime-read.ts:98`).
+  4. **Verify notify's ledger.** First, the same admin view shows `service.report.appliedRevision`
+     equal to its `revision` (the service channels answer carries the same `revision()` as the admin view, api `:187`, `:335-342`)
+     and `service.report.rejected` equal to `[]`. A rejected id keeps its earlier ledger row
+     (notify `src/channel-sync.ts:279-283`), so a channel refused for another reason, such as a
+     missing secret, would keep a padded row. Then stop notify. With notify stopped, read
+     `SELECT id, definition FROM remote_channels` from its SQLite state file (`PULSE_NOTIFY_STATE`,
+     notify `src/config.ts:514`; table `src/ledger.ts:89-94`), and run contract `c5ce668`'s
+     `validateNotifyChannelDefinition` on each parsed `definition`. Every one must give
+     `ok: true`; that is the old notify's open check (`src/ledger.ts:509-514`, `:540-550`).
+  5. **Then roll back console and notify**, in any order. api returns to the patch only after both
+     readers run it again (forward rule).
+  If steps 3 or 4 cannot be shown to pass, keep the patched readers. Normalizing while the patched
+  api still runs is not enough: a later `POST` or `PUT` can store `Ops < ops@example.test >` again
+  between the check and the reader rollback (Counterexamples). Then the old console shows no
+  channels, and the old notify refuses that channel and exits 2 at start once the row is in its
+  ledger.
 
 ### Rows stored before the patch
 
@@ -564,6 +609,15 @@ Rollout order (readers first, writer last), wrong orders that must not happen:
   (`channels[0].from: must hold an email address`), so the channel never sends.
 - rolling notify back below the patch while its ledger holds the row `D` of check M3: the old
   notify exits 2 at start with `ledger <path> has an unsupported format`.
+- a rollback that normalizes the padded rows while the patched api still runs, and then rolls back
+  console and notify: a `POST /admin/notify/channels` with `E(P)` between the check and the reader
+  rollback answers 201 and stores the row again. The old console then reads the whole list as
+  invalid, and the old notify refuses the channel and, after its next sync and restart, exits 2.
+  The rollback rule forbids this order: api leaves the patch first, so the same `POST` answers 422.
+- a ledger check that only compares `appliedRevision` with the admin `revision`: a channel that
+  notify rejects for another reason (for example a missing secret) keeps its earlier padded row in
+  the ledger (notify `src/channel-sync.ts:279-283`). So the rule also requires
+  `service.report.rejected` to be `[]` and reads the ledger rows themselves.
 - a "readers first" check that only tests the tightened inputs (`trailing`, `pulse_console`) would
   miss all three: those are refused by every version that can store them.
 
@@ -916,7 +970,9 @@ available, numbers in the PR.
   rules refuse anyway.
 - Mixed versions outside Factory's merge order (a `dev` stack with an old console checkout and a
   new api, a later deploy image bump, a rollback): Rollout order "Releases, deploy and rollback"
-  gives the rule. Deploy is not changed here; a person carries the rule into the first deploy
+  gives the rule. A rollback reverses the order: api leaves the patch first, then padded rows are
+  normalized and checked in the database and in notify's ledger, then console and notify roll back.
+  If api cannot leave the patch, the readers stay on it. Deploy is not changed here; a person carries the rule into the first deploy
   change that ships #570's notify channels.
 - Rows stored before the patch in `dev` databases (`trailing`, `pulse_console`) make the new
   console show no channels until fixed: Rollout order "Rows stored before the patch".
