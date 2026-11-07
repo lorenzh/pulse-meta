@@ -5,66 +5,82 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Notify adopts the contract patch after #820 and proves parity with its own rules",
+      "title": "Notify matches the patched contract and preserves padded addresses through channel sync and ledger reopen",
       "files": [
         "package.json",
         "bun.lock",
         "test/contract-parity.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, R7, all preconditions, Test test/contract-parity.test.ts, existing tests and Completion evidence; Rollout step 3; Evidence R2/R3 table; Non-goals clientName cap; Security impact dependency pins; Acceptance evidence 4-5. Before any edit, require #820 closed, notify main's pin containing c5ce6685ce8b563a243823bca451032291b81adb, and the current-pin-to-patch compare ahead; otherwise apply the specified holds. #810 has merged; the prerequisite is now #820. Preserve the requested native blocked-by #820 rollout dependency for a person to link after fan-out. Once ready, add a parity test first and record assertion failures for exactly the bold Evidence rows on the old pin (after #820, b637302); all non-bold controls pass. For every R2/R3 Evidence row, vary only from, to[0] or smtp.clientName on the base email fixture and compare notify channelSchema('email').safeParse success with contract validateNotifyChannelDefinition ok and the literal expected notify 0464b90 boolean. Write rows explicitly, including actual NUL and the 64-character label; exclude 201..255-character clientName because contract keeps its 200 cap. Then bump package.json and bun.lock to the same full main patch merge SHA as other consumers (2.5.1 or next free patch). Notify's own rules and all src stay unchanged. Keep smtp-name and ledger tests passing, including ledger open/revalidation safety described in Rollout step 3.",
+      "spec": "## Repository: notify, R7, all preconditions, parity and M3 tests, existing tests and all Completion evidence; Rollout step 2 and M3, Releases/deploy/rollback; Evidence R2/R3 table; Non-goals clientName cap; Security impact; Performance impact; Acceptance evidence 4-8. Before editing require #820 closed, main's pin containing c5ce668 and current-pin-to-patch compare ahead; otherwise apply the specified holds. Preserve the native blocked-by #820 prerequisite for a person after fan-out. #810 has merged; after #820 expect b637302, not today's c5ce668. First write literal parity rows for every Evidence address (from and to[0]) and clientName input, including actual NUL and a written-out 64-character label: assert notify channelSchema success, contract public validator ok and literal notify 0464b90 boolean independently. Exclude the intentional 201..255-character cap difference. Before bump, exactly bold parity rows fail by contract-side assertion, non-bold controls pass. In the same file add both M3 cases: checkChannelsAnswer accepts the padded record with no rejection, and a temporary Ledger stores literal canonical D and returns the identical row after close/reopen. Both fail by assertion on old pin. Then bump package.json and bun.lock to the full main patch merge SHA (2.5.1 or next free patch). Notify's rules and all production src stay unchanged. Reader merges before api; retain existing SMTP-name and ledger checks. Include test CPU, startup import CPU/RSS, optional Docker full A/B or documented nightly fallback, and ledger/deployment/rollback evidence.",
       "acceptance": [
         {
           "command": "gh issue view 820 --repo lorenzh/pulse-meta --json state",
-          "expected": "Before any edit, state is CLOSED. OPEN requires a needs-input hold naming #820; do not edit while the prerequisite is open."
+          "expected": "Before any edit, state is CLOSED; OPEN requires a needs-input hold naming #820. A person links the native blocked-by prerequisite after fan-out; do not edit while it is open."
         },
         {
           "command": "git show origin/main:package.json",
-          "expected": "Before any edit, record the full @lorenzh/pulse-contract pin as CONTRACT_BASELINE_PIN for the following compare checks; use current main, not a hard-coded version equality."
+          "expected": "Before any edit, record current main's full contract pin as CONTRACT_BASELINE_PIN for the ancestry checks; do not use version equality."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce6685ce8b563a243823bca451032291b81adb...$CONTRACT_BASELINE_PIN\" --jq .status",
-          "expected": "Before any edit, status is ahead or identical; main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Any other result requires a needs-input hold."
+          "expected": "Before any edit, ahead or identical: main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Otherwise request a needs-input hold."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_BASELINE_PIN...$CONTRACT_PATCH_SHA\" --jq .status",
-          "expected": "Before any edit, with CONTRACT_PATCH_SHA independently obtained from the merged contract child PR, status is ahead. Identical or behind requires a hold because the patch is already present; do not proceed unless the precondition is established."
+          "expected": "Before any edit, ahead; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR). Identical or behind requires a hold because the patch is already present. Do not edit unless the precondition is established."
         },
         {
           "command": "bun test test/contract-parity.test.ts",
-          "expected": "On the patch pin, 0 fail: every R2/R3 Evidence row returns the literal notify 0464b90 boolean independently from notify and contract; address rows cover both from and to[0]. Before the bump, exactly the bold rows fail by contract-side assertion; all non-bold controls pass on both pins. Include actual NUL, CR/LF, empty, whitespace, host/literal cases and the 64-character label. Exclude the intentional 201..255-character cap difference. A focused run's global coverage exit status is not its test result."
+          "expected": "On patch, 0 fail. Every R2/R3 Evidence row gives notify 0464b90 literal boolean independently from notify and contract; address rows test from and to[0]. Include padded/plain/trailing/trailing-whitespace addresses, CR/LF, empty brackets, hostname/address-literals, localhost, underscore/non-ASCII/actual NUL/leading hyphen/empty label/trailing dot/[]/64-character label/empty/space clientName. Before bump exactly bold parity rows fail by assertion on the contract side, all non-bold controls pass on both. Exclude the intentional 201..255 cap difference. M3: valid-envelope padded record gives kind applied, one record with from === \"Ops < ops@example.test >\", rejected []; temp Ledger replaceRemoteChannels takes section literal D, revision sha256- plus 64 literal 1s, appliedAt 1, id mail without throwing; after close/reopen remoteChannels returns the identical row and definition === D. D is written literally, never derived as expected output from canonicalDefinition. Both M3 assertions fail on old pin (element rejected; LedgerRowError), then pass on patch. Focused coverage status is not its test result."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the manifest and committed lockfile agree."
+          "expected": "exit 0; package.json and committed bun.lock agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and full tests pass, including test/remote-channels.smtp-name.test.ts and ledger tests; the invalid SMTP name may now be rejected at element level as the existing test permits; the existing 80% line coverage gate passes."
+          "expected": "exit 0; lint, typecheck and full tests pass, including test/remote-channels.smtp-name.test.ts and ledger suites. Invalid mail/invalid may now fail at element level as the existing test permits (lines 46-50). Existing 80% coverage gate passes."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
+          "expected": "Both files pin the same full patch merge SHA; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR); the lockfile resolution matches that commit."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
-          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
+          "expected": "ahead or identical; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR), so the consumer pins a commit on contract main."
         },
         {
           "command": "git diff --exit-code origin/main -- src",
-          "expected": "exit 0; notify's own rules and all production source are unchanged."
+          "expected": "exit 0; notify's own channel/address/host rules and all production source are unchanged."
         },
         {
           "command": "git status --short",
-          "expected": "Before committing, only package.json, bun.lock and the new test/contract-parity.test.ts are changed or untracked."
+          "expected": "Before committing, only package.json, bun.lock and new test/contract-parity.test.ts are changed or untracked."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Performance impact: run five samples per side, alternating origin/main and branch with the matching dependencies installed; all full test runs pass. Report median user + system seconds per side and their delta in the PR, never substitute wall time. Expected test CPU increase about 0.1 s. A test CPU increase above 0.5 s is reported as a finding (Acceptance evidence 8)."
+        },
+        {
+          "command": "bun -e 'const t=process.cpuUsage(); await import(\"@lorenzh/pulse-contract\"); const c=process.cpuUsage(t); Bun.gc(true); console.log((c.user+c.system)/1000, process.memoryUsage().rss/1048576)'",
+          "expected": "Performance impact: 15 fresh-process samples per side, alternating origin/main and branch after bun install on each side; report median import CPU ms and RSS MiB for each side and delta. Account for eager subscription module/schema evaluation through dist/index.js, even if no subscription validator is called. After #820 (2.5.0 baseline), expected no measurable import delta; otherwise expect about +1.4 ms CPU and +0.1 MiB RSS from the 2.5.0 pin move. A delta above 10 ms CPU or 2 MiB RSS is a finding in the PR."
+        },
+        {
+          "command": "docker compose version",
+          "expected": "Determine whether Docker with Compose is available for Performance impact's full A/B. If unavailable, record the specific blocker and name api's nightly bench on main (.github/workflows/bench.yml) as the gating check after merge; still complete local test CPU and startup import measurements."
+        },
+        {
+          "command": "bun \"$API_BENCH_CHECKOUT/bench/run.ts\" --a \"$API_MAIN_SHA\" --b \"$API_MAIN_SHA\" --others-ref main --b-ref \"notify=$NOTIFY_BRANCH_SHA\" --service-tokens --expect-report notify --rounds 3",
+          "expected": "When Docker with Compose is available, run pulse-api main's documented bench harness in a separate writable scratch checkout (API_BENCH_CHECKOUT; never mutate the read-only context clone); API_MAIN_SHA and NOTIFY_BRANCH_SHA are independently recorded main/branch commits. exit 0: no gating regression, B notify report observed, refs and measured table recorded in PR. Without Docker, record the blocker and nightly-main bench gate instead, as Performance impact permits."
         },
         {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; required notify CI checks pass."
+          "expected": "exit 0; all required repository CI checks pass."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records #820 CLOSED and both pre-edit ancestry results; old-pin failures for exactly the bold parity rows, passing non-bold controls on both pins and full parity on the patch; both independent implementation results plus literal booleans for each row; the intentional 201..255-character exclusion; independently verified full main patch merge SHA/lockfile, full checks and unchanged src. Includes the applicable Security impact dependency-pin review and ledger safety: stored remote definitions already passed notify's unchanged local rules, so the newly tightened contract rules do not invalidate stored rows."
+          "expected": "Records #820 CLOSED and pre-edit ancestry outputs; old-pin failures for exactly bold parity rows plus both M3 cases, all non-bold controls passing on both, full patch pass, independent implementations plus literal booleans per row and intentional 201..255 exclusion. Includes full main patch merge SHA/lockfile, full checks and unchanged src; test CPU and startup import A/B samples/medians/deltas/findings and full Docker A/B or nightly-main fallback. Includes applicable Security impact dependency-pin/input-validation review and ledger safety: all preexisting stored remote definitions passed unchanged notify local rules, so stricter contract rules do not invalidate them. States notify merges before api; rollback below patch requires rewriting padded database addresses, waiting for sync to replace the ledger row, then rolling back (otherwise old notify exits 2 at open). Carry api/console/notify patched-image release/deploy rule into the first deploy change; no deploy edit here."
         }
       ]
     }

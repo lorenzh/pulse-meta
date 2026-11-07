@@ -5,54 +5,63 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Console forms use the contract patch's address and SMTP client-name rules",
+      "title": "Console accepts patched addresses in forms and stored-channel reads before the API writer updates",
       "files": [
         "package.json",
         "bun.lock",
-        "src/notification-form.test.ts"
+        "src/notification-form.test.ts",
+        "src/runtime-read.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, R7, all Tests and Completion evidence; Rollout steps 1-2; Security impact; Acceptance evidence 5. After contract merges, use the same full main patch merge SHA as api (2.5.1 or next free patch) and regenerate bun.lock. Add the three parseChannelForm defect tests first and record assertion failures on c5ce6685ce8b563a243823bca451032291b81adb; the existing pulse.example.com / Pulse <pulse@example.com> valid input is a control and passes on both pins. All new cases pass after the bump. Preserve the existing errors mapping and console production code. Final checks include check, browser, deploy-dev Compose CI and the manual changed-form check, using the tool facts cited in this section.",
+      "spec": "## Repository: console, R7, both Tests lists and all Completion evidence; Rollout step 2, M2, Releases/deploy/rollback and Rows stored before the patch; Security impact; Performance impact; Acceptance evidence 5-8. After contract merges, pin its full main patch merge SHA (2.5.1 or next free patch) and regenerate bun.lock. First add three parseChannelForm defect tests and two readNotifyChannels M2 tests on the old c5ce668 pin; each fails by assertion, existing valid form and webhook-read controls pass on both pins. M2 checks the stored padded address is ok and unchanged, trailing text invalid for the whole view. Preserve errors mapping and production source. This reader merges before api. Record dev-row validation/remediation and deployment/rollback rules from Rollout order. Include full check/browser/Compose CI, manual changed-form evidence and five-per-side test CPU A/B.",
       "acceptance": [
         {
-          "command": "bun test src/notification-form.test.ts",
-          "expected": "After the bump, 0 fail: smtp_client_name pulse_console yields isOk false with channel.smtp.clientName: must be a host name; from Ops <ops@example.test> trailing yields isOk false; from Ops < ops@example.test > yields isOk true. Each of these three defect assertions fails on the old 2.4.0 pin; the existing pulse.example.com / Pulse <pulse@example.com> control passes on both. A focused run's global coverage exit status is not its test result."
+          "command": "bun test src/notification-form.test.ts src/runtime-read.test.ts",
+          "expected": "On patch, 0 fail. Form: smtp_client_name pulse_console gives isOk false and channel.smtp.clientName: must be a host name; from Ops <ops@example.test> trailing gives false; from Ops < ops@example.test > gives true. M2: fake API notifyChannelsView with the literal database email record from the section gives kind ok and from === \"Ops < ops@example.test >\"; the same view with \"Ops <ops@example.test> trailing\" gives {kind:\"failed\",failure:{kind:\"invalid\"}}. Each of the five new cases fails by assertion on the old 2.4.0 pin (M2 gives invalid and ok), then passes on the patch; the existing pulse.example.com/Pulse <pulse@example.com> form and webhook channels-view controls pass on both pins. Focused coverage status is not its test result."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the manifest and committed lockfile agree."
+          "expected": "exit 0; package.json and committed bun.lock agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck (including e2e) and full tests pass; the existing 80% line coverage gate passes."
+          "expected": "exit 0; the repository's lint, typecheck and full test suite pass with the existing 80% line coverage gate; never weaken shared configuration."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
+          "expected": "Both files pin the same full patch merge SHA; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR); the lockfile resolution matches that commit."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
-          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
+          "expected": "ahead or identical; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR), so the consumer pins a commit on contract main."
         },
         {
           "command": "bunx playwright install chromium && bun run check:browser",
-          "expected": "exit 0; the existing browser checks pass with Chromium (package.json:19; AGENTS.md:24; ci.yml:291,306,308)."
+          "expected": "exit 0; existing Chromium browser checks pass (package.json:19; AGENTS.md:24; ci.yml:291,306,308)."
+        },
+        {
+          "command": "git diff --exit-code origin/main -- src ':(exclude)src/notification-form.test.ts' ':(exclude)src/runtime-read.test.ts'",
+          "expected": "exit 0; production source and the existing contract-error mapping stay unchanged."
         },
         {
           "command": "git status --short",
-          "expected": "Before committing, only package.json, bun.lock and src/notification-form.test.ts are changed or untracked."
+          "expected": "Before committing, only package.json, bun.lock, src/notification-form.test.ts and src/runtime-read.test.ts are changed or untracked."
         },
         {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; console check, browser and deploy-dev pass on the PR. deploy-dev starts pulse-deploy main's dev stack with this console checkout and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml (ci.yml:231,279). A failure where console follows the spec is a deploy defect: hold; never edit deploy or weaken the check."
+          "expected": "exit 0; console check, browser and deploy-dev pass. deploy-dev starts pulse-deploy main's dev stack and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml (ci.yml:231,279). A failure where console follows the spec is a deploy defect: hold; never edit deploy or weaken its check."
         },
         {
           "command": "bun e2e/run.ts --serve",
-          "expected": "The fixture console starts per AGENTS.md:25; manually attempt one email channel save with clientName pulse_console and observe channel.smtp.clientName: must be a host name. Record the command and shown error in the PR, then stop the fixture server."
+          "expected": "Fixture console starts (AGENTS.md:25); manually attempt an email channel save with clientName pulse_console, observe channel.smtp.clientName: must be a host name, record command/result in the PR and stop the fixture. PULSE_API_URL=http://localhost:3000 bun start is the alternative in the section."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Performance impact: run five samples per side, alternating origin/main and branch with the matching dependencies installed; all full test runs pass. Report median user + system seconds per side and their delta in the PR, never substitute wall time. Console has no budget key; still report the few added cases' CPU delta. A test CPU increase above 0.5 s is reported as a finding (Acceptance evidence 8)."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records all three old-pin assertion failures and new-pin results, the unchanged valid control passing on both pins, the independently verified main patch merge SHA/lockfile, full check/browser/Compose CI results and manual changed-form command/error. Includes the applicable Security impact dependency-pin/input-validation review."
+          "expected": "Records the three old-pin form assertion failures, both M2 failures (invalid/ok), unchanged valid controls passing on both and all passing on patch; independently verified full patch merge SHA/lockfile; check/browser/deploy-dev and manual command/error; test CPU A/B medians/delta and findings. Includes applicable Security impact dependency-pin/input-validation review. States console merges before api; an old api returns 422 to the padded address until its last bump. Carries the dev pre-activation check (GET /admin/notify/channels through the new validator; fix with PUT or DELETE any named old-invalid row), release/deploy rule (api/console/notify images contain patch together), and rollback rule (unpad stored addresses and wait for notify sync before rolling readers back). Do not edit deploy or live data as part of this code task."
         }
       ]
     }

@@ -5,46 +5,90 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "API adopts the contract patch and rejects invalid notify channels and reports",
+      "title": "API updates last and stores padded addresses unchanged while rejecting invalid notify channels and reports",
       "files": [
         "package.json",
         "bun.lock",
         "src/server.notify-channels.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: api, R7, all Tests and Completion evidence; Rollout steps 1-2; Security impact; Acceptance evidence 5. After the contract child merges, pin its full main merge SHA implementing R1-R6 (2.5.1 or the next free patch) and regenerate bun.lock. First add the three defect regressions and the emoji accept control to the existing real-server port-0 suite and run on the old c5ce6685ce8b563a243823bca451032291b81adb pin. The three reject cases fail by assertion, the control passes. Assert the clientName error literal and unchanged storage, revision and audit on rejection. No API production-source change. Include full checks, pin verification and PR evidence.",
+      "spec": "## Repository: api, R7, all preconditions, Tests and Completion evidence; Rollout step 3, M1/M4 and Releases/deploy/rollback; Security impact; Performance impact; Acceptance evidence 5-8. Writer runs last: targets.json depends on contract, console and notify; before ANY edit independently verify console main and notify main pins each contain the merged contract patch, otherwise needs-input hold naming the reader; api main must not already contain patch (hold if already present). Add three defect reject regressions, M4 padded-address round trip and unchanged 100-emoji accept control first in the real port-0 server suite; record old-pin assertion failures and controls passing. Old M4 actual 422 is mixed check M1, recorded as baseline. Then pin package.json and bun.lock to the full main patch merge SHA (2.5.1 or next free patch). No production-source change. Rejected clientName preserves storage, revision and audit. M4 creates with 201 and both admin/service GET routes return exact original padded spelling. Include full checks, reader-pin evidence, manual HTTP check, test CPU/startup CPU-RSS/full Docker A/B or nightly fallback, and readers-first activation/release/rollback rules.",
       "acceptance": [
         {
+          "command": "for reader in console notify; do gh api \"repos/lorenzh/pulse-$reader/contents/package.json?ref=main\" --jq .content | base64 -d | rg pulse-contract; done",
+          "expected": "Before any edit, independently read and record current console main's pin as CONSOLE_CONTRACT_PIN and notify main's pin as NOTIFY_CONTRACT_PIN; CONTRACT_PATCH_SHA comes from merged contract child PR. Both reader PRs are already merged per targets.json."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...$CONSOLE_CONTRACT_PIN\" --jq .status",
+          "expected": "Before any edit, identical or ahead: console main contains the patch. Otherwise needs-input hold naming console; api must not store padded addresses while its reader rejects the list."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...$NOTIFY_CONTRACT_PIN\" --jq .status",
+          "expected": "Before any edit, identical or ahead: notify main contains the patch. Otherwise needs-input hold naming notify; api must not store padded addresses while notify rejects the channel or its ledger at open."
+        },
+        {
+          "command": "git show origin/main:package.json",
+          "expected": "Before any edit, record api main's full contract pin as CONTRACT_BASELINE_PIN."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...$CONTRACT_BASELINE_PIN\" --jq .status",
+          "expected": "Before any edit, api main does not contain the patch: identical or ahead requires a hold because the behavior is already present; behind establishes today's old-pin precondition. Resolve any unestablished/diverged ancestry before editing."
+        },
+        {
           "command": "bun test src/server.notify-channels.test.ts",
-          "expected": "After the bump, 0 fail: POST /admin/notify/channels with pulse_console answers 422 and channel.smtp.clientName: must be a host name, preserving storage/revision/audit; a trailing-text from address answers 422; PUT /service/notify/report rejects 101 emoji in fileChannels[0].refs[0] with 422 and accepts 100 with 204. On the old 2.4.0 pin the three reject assertions fail with actual 201, 201 and 204; the 100-emoji control passes with 204 on both pins. A focused run's global coverage exit status is not its test result."
+          "expected": "On patch, 0 fail. POST /admin/notify/channels with pulse_console gives 422 and channel.smtp.clientName: must be a host name, with storage/revision/audit unchanged; trailing-text from gives 422. PUT /service/notify/report with fileChannels[0].refs[0] of 101 emoji (202 units) gives 422, and 100 emoji (200 units) gives 204. M4: POST literal E(\"Ops < ops@example.test >\") gives 201; GET /admin/notify/channels and GET /service/notify/channels return from === \"Ops < ops@example.test >\" unchanged. On old 2.4.0 pin the three reject cases and M4 fail by assertion (actual 201,201,204,422), the 100-emoji 204 control passes on both. The old padded-address 422 is M1; record error channel.from: must hold an email address and nothing stored. Full new-pin pass; focused global coverage status is not the test result."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the manifest and committed lockfile agree."
+          "expected": "exit 0; package.json and committed bun.lock agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and full tests pass; the existing 80% line coverage gate passes."
+          "expected": "exit 0; the repository's lint, typecheck and full test suite pass with the existing 80% line coverage gate; never weaken shared configuration."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
+          "expected": "Both files pin the same full patch merge SHA; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR); the lockfile resolution matches that commit."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
-          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
+          "expected": "ahead or identical; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR), so the consumer pins a commit on contract main."
+        },
+        {
+          "command": "git diff --exit-code origin/main -- src ':(exclude)src/server.notify-channels.test.ts'",
+          "expected": "exit 0; API production source is unchanged."
         },
         {
           "command": "git status --short",
           "expected": "Before committing, only package.json, bun.lock and src/server.notify-channels.test.ts are changed or untracked."
         },
         {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Performance impact: run five samples per side, alternating origin/main and branch with the matching dependencies installed; all full test runs pass. Report median user + system seconds per side and their delta in the PR, never substitute wall time. Expected test CPU increase about 0.1-0.3 s. A test CPU increase above 0.5 s is reported as a finding (Acceptance evidence 8)."
+        },
+        {
+          "command": "bun -e 'const t=process.cpuUsage(); await import(\"@lorenzh/pulse-contract\"); const c=process.cpuUsage(t); Bun.gc(true); console.log((c.user+c.system)/1000, process.memoryUsage().rss/1048576)'",
+          "expected": "Performance impact: 15 fresh-process samples per side, alternating origin/main and branch after bun install on each side; report median import CPU ms and RSS MiB for each side and delta. Account for eager subscription module/schema evaluation through dist/index.js, even if no subscription validator is called. Expected about +1.4 ms CPU and +0.1 MiB RSS for the move from 2.4.0 through eagerly loaded 2.5.0 subscription modules to the patch. A delta above 10 ms CPU or 2 MiB RSS is a finding in the PR."
+        },
+        {
+          "command": "docker compose version",
+          "expected": "Determine whether Docker with Compose is available for the full A/B. Without it, record the specific blocker and api nightly-main bench (.github/workflows/bench.yml) as gating check after merge; still complete local test CPU and startup import measurements."
+        },
+        {
+          "command": "bun bench/run.ts --a \"$API_MAIN_SHA\" --b \"$API_BRANCH_SHA\" --others-ref main --rounds 3",
+          "expected": "With Docker Compose available, exit 0; API_MAIN_SHA and API_BRANCH_SHA are independently recorded main/branch commits. Record controlled refs, measured table, budgets and regression results per Performance impact and bench/README.md:76-100. Expect about +1-2 ms startup CPU, +0.1 MiB RSS, +0.1-0.3 s test CPU, no measurable load/p95/rps/cold/eod change. Without Docker, record blocker and nightly-main bench gate instead."
+        },
+        {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; required API CI checks pass."
+          "expected": "exit 0; all required repository CI checks pass."
+        },
+        {
+          "command": "bun start",
+          "expected": "Using isolated valid config/database and required tokens as AGENTS.md describes, start the API and manually exercise changed notify validation once through HTTP; record exact startup/HTTP commands, literal 422 or 201 result and error/original spelling in the PR, then stop. Do not use a shared database."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records the three old-pin assertion failures, the passing control on both pins and the new-pin 422/204 results; the independently verified full main patch merge SHA and matching lockfile; bun run check and CI results; the applicable Security impact dependency-pin/input-validation review. Includes the AGENTS.md startup/manual HTTP check command and result for changed user-visible validation."
+          "expected": "Includes both reader main pins and compare identical/ahead outputs before editing, api baseline ancestry, full independent main patch merge SHA/lockfile, three reject-case old-pin assertion failures, M4's old-pin 422 M1 (with error and no stored row), 204 control passing on both, and patch 422/204/201 plus both GET original-spelling results. Includes full checks/CI/manual startup+HTTP evidence; test CPU A/B five alternating samples per side, startup import A/B 15 per side with medians/deltas/findings and full Docker A/B or documented nightly-main gate. Includes applicable Security impact dependency-pin/input-validation review. Records readers-first activation: this only writer merges/releases after console and notify; first deploy image update ships patched api/console/notify together; rollback readers first unpads stored addresses and waits for notify sync; dev old-invalid rows require validation/remediation before console activation. No deploy or live data edits here."
         }
       ]
     }

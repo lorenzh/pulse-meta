@@ -11,43 +11,43 @@
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, R7, all preconditions and Completion evidence; Rollout step 3; Security impact dependency pins; Acceptance evidence 5. Before any edit, require #809 closed, status main's pin containing c5ce6685ce8b563a243823bca451032291b81adb, and compare <pin>...<patch sha> status ahead; otherwise apply the specified holds. Today's status main pins b637302363b3f147a99280e5961396e6c9f22e7a, not c5ce668 exactly, so use ancestry rather than version equality. Preserve the requested native blocked-by #809 rollout dependency for a person to link after fan-out. After these checks and contract merge, bump only package.json and bun.lock to the same full main patch merge SHA as the other consumers (2.5.1 or next free patch). No new tests: status calls none of the changed validators. Include check, accessibility, CI and two-file-only evidence.",
+      "spec": "## Repository: status, R7, all preconditions and Completion evidence; Rollout step 2; Security impact dependency pins; Performance impact; Acceptance evidence 5. Before any edit require #809 closed, main's contract pin containing c5ce668, and current-pin-to-patch compare ahead; otherwise use the prescribed holds. Today's main already pins b637302 (2.5.0), so use ancestry rather than version equality. Preserve the native blocked-by #809 prerequisite for a person after fan-out. Change only package.json and bun.lock to the same full main patch merge SHA as other consumers (2.5.1 or next free patch). No added tests: status calls none of the changed validators and reads no notify channel; it has no ordering against api. Full check, accessibility and CI must pass, exactly two files change. Performance: none expected, no measurement required.",
       "acceptance": [
         {
           "command": "gh issue view 809 --repo lorenzh/pulse-meta --json state",
-          "expected": "Before any edit, state is CLOSED. OPEN requires a needs-input hold naming #809; do not edit while the prerequisite is open."
+          "expected": "Before any edit, state is CLOSED; OPEN requires a needs-input hold naming #809. A person links the native blocked-by prerequisite after fan-out; do not edit while it is open."
         },
         {
           "command": "git show origin/main:package.json",
-          "expected": "Before any edit, record the full @lorenzh/pulse-contract pin as CONTRACT_BASELINE_PIN for the following compare checks; use current main, not a hard-coded version equality."
+          "expected": "Before any edit, record current main's full contract pin as CONTRACT_BASELINE_PIN for the ancestry checks; do not use version equality."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce6685ce8b563a243823bca451032291b81adb...$CONTRACT_BASELINE_PIN\" --jq .status",
-          "expected": "Before any edit, status is ahead or identical; main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Any other result requires a needs-input hold."
+          "expected": "Before any edit, ahead or identical: main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Otherwise request a needs-input hold."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_BASELINE_PIN...$CONTRACT_PATCH_SHA\" --jq .status",
-          "expected": "Before any edit, with CONTRACT_PATCH_SHA independently obtained from the merged contract child PR, status is ahead. Identical or behind requires a hold because the patch is already present; do not proceed unless the precondition is established."
+          "expected": "Before any edit, ahead; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR). Identical or behind requires a hold because the patch is already present. Do not edit unless the precondition is established."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the manifest and committed lockfile agree."
+          "expected": "exit 0; package.json and committed bun.lock agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and full tests pass; the existing 80% line coverage gate passes."
+          "expected": "exit 0; the repository's lint, typecheck and full test suite pass with the existing 80% line coverage gate; never weaken shared configuration."
         },
         {
           "command": "bunx playwright install chromium && bun run check:a11y",
-          "expected": "exit 0; existing accessibility checks pass on the new pin (package.json:18; ci.yml:51,66,68)."
+          "expected": "exit 0; existing accessibility checks pass (package.json:18; ci.yml:51,66,68)."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
+          "expected": "Both files pin the same full patch merge SHA; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR); the lockfile resolution matches that commit."
         },
         {
           "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
-          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
+          "expected": "ahead or identical; CONTRACT_PATCH_SHA is the full 40-character merge SHA independently obtained from the merged contract child PR implementing R1-R6 on main (2.5.1 on today's main, or the next free patch literal named in that PR), so the consumer pins a commit on contract main."
         },
         {
           "command": "git diff --name-only",
@@ -63,7 +63,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records #809 CLOSED and both pre-edit ancestry compare results; the independently verified full main patch merge SHA and matching lockfile; bun run check, check:a11y and CI results; exactly two changed files; the applicable Security impact dependency-pin review."
+          "expected": "Records #809 CLOSED and both pre-edit ancestry compare statuses; independently verified full main patch merge SHA and matching lockfile; full check, check:a11y and CI results; exactly two changed files; applicable Security impact dependency-pin review. No new tests or performance measurement: status already pins 2.5.0 and calls no changed validator."
         }
       ]
     }

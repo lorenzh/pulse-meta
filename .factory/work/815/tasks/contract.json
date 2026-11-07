@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "The next contract patch matches notify's rules and documents the corrected limits",
+      "title": "The next contract patch validates notify inputs with notify's rules and correct UTF-16 report limits",
       "files": [
         "src/notify-channels.ts",
         "test/notify-channels.test.ts",
@@ -15,47 +15,55 @@
         "dist/notify-channels.d.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: contract, R1-R6, test items 1-6, Baseline rule and Completion evidence; Required behavior R1-R6; Evidence and Counterexamples; Security impact; Performance impact; Acceptance evidence 1-3. First write public-validator regression tests and run them on unchanged source (b637302 or later main with src/notify-channels.ts equal to c5ce668): every defect case must fail by assertion and every control must pass. Implement only the six viewText positions using string.length refinements; notify 0464b90's anchored address extraction and trimming; its private EHLO predicate with the existing 200-code-point cap; and never-view failed/failedTotal rules in R4's issue order. Cover every boundary, nested validator, from/to, identity, absent clientName, actual NUL, hostile input and never/fresh/stale case in items 1-6. Preserve other validators, bounds, existing messages, getter safety, never-throw/same-object guarantees, dependencies, src/index.ts exports and WIRE_VERSION 1. Complete every R5 docs bullet. Change only package.json's version to 2.5.1 on today's 2.5.0 main, or the next free patch after main if #823 merges first; name that literal in the PR. Rebuild and commit dist/notify-channels.js, and dist/notify-channels.d.ts only if the build changes it.",
+      "spec": "## Repository: contract, R1-R6, Tests items 1-6, Baseline rule and all Completion evidence; Required behavior R1-R6; Evidence and Counterexamples; Security impact; Performance impact; Acceptance evidence 1-4,8. Write public-validator tests first on unchanged src/notify-channels.ts (b637302 or later main, equal to c5ce668): every runtime defect in items 1-4 fails by assertion, all controls and hostile-input checks pass. Then change only viewText to refine string.length for its six positions; use notify 0464b90's anchored envelopeAddress extraction plus trimming; use its private isEhloName predicate while keeping text's 200-code-point cap; add both never-view rules in R4's issue order. Cover all boundaries, reused/nested validators, from/to[0], identity, absent clientName, actual NUL and never/fresh/stale cases. Preserve unrelated validators, existing messages, getter safety, never-throw/same-object guarantees, dependencies, exports and WIRE_VERSION 1. Complete all R5 docs bullets; package.json version only becomes 2.5.1 on today's 2.5.0 main or the next free patch after main if #823 merges first. Rebuild and commit dist/notify-channels.js and the .d.ts only if the build changes it. Record test CPU and build CPU A/B, not wall times. Contract merges first; consumers follow the readers-first rollout.",
       "acceptance": [
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the manifest and committed lockfile agree."
+          "expected": "exit 0; package.json and committed bun.lock agree."
         },
         {
           "command": "bun test test/notify-channels.test.ts",
-          "expected": "After implementation, 0 fail. Item 1 covers all six 200/300-unit positions, 202/302-unit emoji rejects, mixed 200/201-unit boundaries, empty-string rejects and the two nested admin validators. Items 2-3 cover all R2/R3 Counterexamples, including from and to[0], record/admin paths, same-object returns, actual NUL, absent clientName, 191-character accept and kept 255-character rejection. Item 4 covers all three never contradictions and never/fresh/stale controls, with the exact R4 error literals and ordering. On unchanged source, every defect case of items 1-4 fails by assertion (including changed error text where old code already rejects), every control and item 6 passes; fix any broken control fixture before implementing. Afterward all pass. Both 100000-character hostile inputs reject without throwing, each under 50 ms. Focused coverage exit status is not the test result."
+          "expected": "After implementation, 0 fail. Items 1-4: every defect case fails by assertion on unchanged source and every control passes there; after the patch all pass. R1 covers all six 200/300-unit fields with 200/300 accept, 202/302 emoji reject, empty reject and mixed 200/201 boundaries; also nested service.report.fileChannels[0].refs[0] in the admin channels view and failed[0].key in the failed view, with Counterexamples' literal errors. R2/R3 cover every Evidence/Counterexamples row for from and to[0], trailing/pulse_console also through record/admin paths, Object.is for accepts with original spelling, actual U+0000, absent clientName, the 191-character accept and intentional 255-character rejection with must be at most 200 characters. R4 gives exactly view.failed: must be empty when state is never for [entry]/1 and [entry]/0, and view.failedTotal: must be 0 when state is never for []/3; never/null/[]/0, fresh and stale controls pass. Existing empty/CRLF/cap rejects and unchanged accepts pass on both versions. Both 100000-character hostile inputs in item 6 reject without throwing, each under 50 ms. Focused coverage failure is not a failing test; the coverage gate belongs to the full suite."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, build, typecheck and full tests pass, including getter safety, adversarial inputs and smoke checks; the existing 80% line coverage gate passes."
+          "expected": "exit 0; lint, build, typecheck and full tests pass, including getter safety, adversarial inputs and dist smoke checks; the existing 80% line coverage gate passes."
         },
         {
           "command": "bun run build && git diff --exit-code -- dist",
-          "expected": "exit 0 after committing rebuilt artifacts; a fresh build produces no further tracked dist changes."
+          "expected": "exit 0 after rebuilt artifacts are committed; another build produces no tracked dist changes."
         },
         {
           "command": "git diff origin/main -- src/index.ts package.json",
-          "expected": "src/index.ts has no diff; package.json changes only version from 2.5.0 to 2.5.1 on today's main, or from the main version to the next free patch literal stated in the PR if another patch merges first. The dependency set stays unchanged."
+          "expected": "src/index.ts has no diff. package.json changes only the version line, 2.5.0 to 2.5.1 on today's main or main's version to the next free patch literal independently established from main and named in the PR. No export or dependency change."
         },
         {
           "command": "bun -e 'console.log((await Bun.file(\"package.json\").json()).version)'",
-          "expected": "Prints the literal 2.5.1, or the next free patch literal independently established from main and named in the PR per Goal/R6; the version never goes backwards and is a patch increment."
+          "expected": "Prints literal 2.5.1, or the next free patch literal independently established from main per Goal/R6 and named in the PR; no backwards or minor version change."
         },
         {
           "command": "bun test test/version.test.ts",
-          "expected": "0 fail; the existing assertion WIRE_VERSION === 1 stays true. Ignore only a focused-run global coverage failure; full-suite coverage is checked by bun run check."
+          "expected": "0 fail; existing WIRE_VERSION === 1 assertion remains true. Focused global coverage status is not the test result."
         },
         {
-          "command": "rg -n 'NotifyFailedEvent|ResendCommandState|UTF-16|code points|failedTotal|clientName|2\\.5\\.' docs/index.md",
-          "expected": "All R5 bullets are documented: NotifyFailedEvent's eight NOTIFY_FAILED_EVENTS literals; ResendCommandState's nine RESEND_COMMAND_STATES literals; six report text limits count UTF-16 units while the section's other text limits count code points; never means null receivedAt, empty failed and zero failedTotal; final angle-bracket extraction/trimming; the ASCII host-name or address-literal clientName rule and kept 200 cap; the chosen patch literal and wire version 1."
+          "command": "rg -n 'NotifyFailedEvent|ResendCommandState|UTF-16|code points|failedTotal|clientName|wire version' docs/index.md",
+          "expected": "All R5 bullets are present: NotifyFailedEvent with the eight literal NOTIFY_FAILED_EVENTS values and ResendCommandState with the nine literal RESEND_COMMAND_STATES values; six report text positions count UTF-16 units while the section's other text limits count code points; never means null receivedAt, empty failed and zero failedTotal; final angle-bracket extraction and trimming, ASCII hostname/address-literal clientName rule with the existing 200 cap, and chosen patch literal with wire version 1."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Performance impact: run five samples per side, alternating origin/main and branch with the matching dependencies installed; all full test runs pass. Report median user + system seconds per side and their delta in the PR, never substitute wall time. Expected test CPU increase about 0.1 s. A test CPU increase above 0.5 s is reported as a finding (Acceptance evidence 8)."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run build",
+          "expected": "Performance impact: three alternating origin/main/branch samples per side; builds pass. Report median user + system seconds per side and delta in the PR; expected no measurable build CPU change (<0.1 s)."
         },
         {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; contract CI check passes, including frozen install and the committed-dist check."
+          "expected": "exit 0; all required repository CI checks pass."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records every items 1-4 defect's assertion failure on unchanged source, explicitly states every control passed there, and records all passing after the change. Contains the full R2/R3 Evidence table run through the new public validateNotifyChannelDefinition, matching notify 0464b90's independent boolean column for each row, release/docs/dist evidence, and bun test wall times before/after (no A/B bench required). Includes the applicable Security impact checklist: input validation/getter safety; fixed secret-free errors; UTF-16/body limits and hostile-input timings; unchanged dependencies/exports."
+          "expected": "Includes each items 1-4 defect's failing assertion on unchanged source, every control passing there and all passing after the patch; the full R2/R3 Evidence table run through public validateNotifyChannelDefinition with the independent notify 0464b90 boolean per row; docs/release/unchanged WIRE_VERSION and exports/dependencies/dist evidence. Includes test CPU A/B (five alternating samples per side) and build CPU A/B (three), medians/deltas and findings. Includes applicable Security impact checklist: trust-boundary input/getter safety; fixed secret-free errors; UTF-16/body limits; hostile-input timings; unchanged dependencies/exports."
         }
       ]
     }
