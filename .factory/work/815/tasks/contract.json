@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Notify validators match notify's rules and ship the next patch after main",
+      "files": [
+        "src/notify-channels.ts",
+        "test/notify-channels.test.ts",
+        "docs/index.md",
+        "package.json",
+        "dist/notify-channels.js",
+        "dist/notify-channels.d.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Behavior R1-R6, test items 1-6 and Completion evidence; Required behavior, Counterexamples, Security impact, Performance impact and Acceptance evidence 1-4, 8.",
+      "acceptance": [
+        {
+          "command": "bun test test/notify-channels.test.ts",
+          "expected": "On unchanged current main (b637302 or later with the pre-fix validator), and against 2.4.0 c5ce6685ce8b563a243823bca451032291b81adb, every isolated defect case in items 1-4 fails by assertion of the literal ok/error, while all unchanged positive/negative controls and hostile-input cases pass. Record this baseline before implementation. After R1-R4 all tests pass, 0 fail; a focused run may exit nonzero only for whole-repository coverage. R1 checks all six viewText positions with 200/300-unit accepts and 202/302-unit emoji rejects, empty rejects, mixed ASCII/emoji boundaries, and containing admin views. R2 tests from and to[0], accepts 'Ops <ops@example.test>' and 'Ops < ops@example.test >', rejects 'Ops <ops@example.test> trailing', preserves trimming/CRLF/empty-address controls and Object.is identity; also reject trailing through record/admin view. R3 tests all Counterexamples, including literal clientName '☃' as its own case (U+2603), 'münchen.test', '☃.example.test', 'pülse.example.test', 'pulse_console', real U+0000, bad labels/literals; accepts the listed hostname/address literals, localhost, 191-character name and absent name; keeps the 200 cap. 'pulse_console' and '☃' reject through record/admin view too. Preserve rejected[0].channelId:null as an accepted control and all existing nullability and byte/list bounds."
+        },
+        {
+          "command": "bun test test/notify-channels.test.ts",
+          "expected": "R4: never/null/[entry]/1 and never/null/[entry]/0 reject with 'view.failed: must be empty when state is never'; never/null/[]/1 and /3 reject with 'view.failedTotal: must be 0 when state is never'. The entry/0 baseline fails by wrong error text, not by acceptance. Controls never/null/[]/0, fresh/3/[]/0 and stale/3/[entry]/500 pass on both versions. Existing receivedAt and total rules remain. Item 6 rejects '<'.repeat(50000)+'a'.repeat(50000) as an address and '.['.repeat(50000) as clientName without throwing, each under 50 ms. All tests pass, 0 fail after implementation, independently of a focused coverage exit."
+        },
+        {
+          "command": "bun test test/runtime-getters.test.ts test/security-adversarial.test.ts test/version.test.ts",
+          "expected": "All tests pass, 0 fail; focused coverage exit is not the acceptance gate. Validators remain nonthrowing, never execute getters, read own data properties and preserve strict object/size/reference checks; WIRE_VERSION === 1. Security checklist in the PR confirms fixed secret-safe errors, linear bounded validation, unchanged-object results, private notify-sourced helpers, no new dependency/export, and no changes to unrelated validators or string limits."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; frozen install, lint, build, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after staging/committing the rebuilt artifacts: dist matches a fresh build and smoke tests pass. Commit dist/notify-channels.js; include dist/notify-channels.d.ts only if the build changes it."
+        },
+        {
+          "command": "git show origin/main:package.json && git diff origin/main -- package.json src/index.ts && cat src/version.ts",
+          "expected": "Version is exactly the next patch after contract main when this merges: 2.5.1 on 2.5.0, or a later patch if main advances (including #823); never downgrade, minor or major. State the chosen literal and main SHA/version in the PR, matching the issue review and R6. package.json changes only version, src/index.ts has no diff, dependency set is unchanged, WIRE_VERSION remains the literal 1."
+        },
+        {
+          "command": "rg -n 'NotifyFailedEvent|ResendCommandState|UTF-16|code points|never|clientName' docs/index.md",
+          "expected": "Docs list NotifyFailedEvent's eight and ResendCommandState's nine literals exactly as R5, explain the six report lengths as string.length UTF-16 units and other section text limits as code points, anchored final-bracket address extraction/trimming without normalization, hostname/address-literal clientName with 200 cap, never/null/[]/0 and the selected next-patch release with wire version 1."
+        },
+        {
+          "command": "bun test test/notify-channels.test.ts",
+          "expected": "PR records the new public validateNotifyChannelDefinition result for every R2/R3 Evidence table row, addresses in both from and to[0], matching the independent notify 0464b90 column's literal booleans. In particular clientName '☃' gives false and error 'channel.smtp.clientName: must be a host name'; hostname and address-literal controls give true. Do not require parity above the retained 200 cap."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times per side, alternating origin/main and candidate with their installed pins, and report each side's median of user + system CPU seconds in the PR; wall time is not CPU. Expected about +0.1 s test CPU. Report an increase above 0.5 s as a finding."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run build",
+          "expected": "Run three alternating samples per side and report median user + system build CPU in the PR; expected no measurable change (<0.1 s). Apply the spec's budget/regression assessment without loosening budgets."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "exit 0; PR records the defect/control baseline and final pass, independent notify table output, literal release/version checks, security checklist and test/build CPU A/B. Required CI check passes. Only R1-R6 scope is implemented: .length refinement only in viewText, notify's exact address/EHLO rules with source comments, new never issues before the total issue, unchanged exports/WIRE_VERSION/dependencies."
+        }
+      ]
+    }
+  ]
+}
