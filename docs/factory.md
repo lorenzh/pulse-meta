@@ -150,7 +150,7 @@ Owner setup:
 
 1. Register an App under [Developer settings → GitHub Apps](https://github.com/settings/apps/new) with these permissions.
 2. Disable its webhook. These workflows need no webhook server or user authorization.
-3. Install it on `lorenzh`. Select the 12 repositories in `.factory/config.yaml`: `pulse-meta`, `pulse-contract`, `pulse-probe`, `pulse-api`, `pulse-status`, `pulse-notify`, `pulse-config`, `pulse-kit`, `pulse-website`, `pulse-console`, `pulse-deploy`, `pulse-agent`.
+3. Install it on `lorenzh`. Select the 12 repositories in `.factory/config.yaml`: `pulse-meta`, `pulse-contract`, `pulse-probe`, `pulse-api`, `pulse-status`, `pulse-notify`, `pulse-config`, `pulse-kit`, `pulse-website`, `pulse-console`, `pulse-deploy`, `pulse-agent`. The App must be installed on `pulse-agent` before its scope is added to the workflows. The token scopes in factory.yml, factory-run.yml and factory-unblock.yml list pulse-agent only after the App is installed on it.
 4. Generate a private key. Store the full PEM in the pulse-meta Actions secret `FACTORY_APP_PRIVATE_KEY`.
 5. Pause active runs. Set the pulse-meta Actions variable `FACTORY_GITHUB_ACTOR` to `<app-slug>[bot]`.
 6. Set the pulse-meta Actions variable `FACTORY_APP_ID` to the numeric App ID to enable App mode.
