@@ -20,7 +20,7 @@ Done when `gh api repos/lorenzh/pulse-<name> -q '.default_branch,.license.spdx_i
 ## 2. Branch and add the target
 
 Create a branch from `origin/main` named `chore/add-<name>-target`. Never use `factory/*`: those names belong to Factory runs.
-In `.factory/config.yaml`, copy the newest target block and change `url`, `repository` and `context`.
+Add the target with the Factory CLI, never by editing `.factory/config.yaml` by hand: `npx factory target add <name> --repository lorenzh/pulse-<name> --workflows build,merge --context <list>`, then run `npx factory validate`.
 `context` is always `meta`, plus `contract` if it uses the wire contract, `api` if it calls the API, and `config`/`kit` only for TypeScript repositories.
 Add the new name to the `context` of `meta`, `website`, and every target that builds on or deploys it (for example `deploy`).
 Done when `npx factory validate` prints `Valid` (needs `npm ci` with `GITHUB_PACKAGES_TOKEN`).
