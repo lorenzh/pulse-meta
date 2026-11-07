@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview on a phone · pulse Console</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<a class="brand" href="OverviewMobile.dc.html" aria-label="pulse console home" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"></a>
+<button type="button" class="org" aria-haspopup="menu" aria-expanded="false" style="border: 0; min-height: 44px; padding: 0 6px; width: auto;"><span class="org-t"><span class="org-n">Quillbird</span><span class="org-m">Team plan</span></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg><span class="la-sr">Switch organisation</span></button>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<button type="button" class="la-iconbtn" aria-label="Search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></button>
+</header>
+<main class="mb-body">
+<div class="spread" style="align-items: flex-end;">
+<h1 class="mb-title">Overview</h1>
+<span class="lbl">14:32 UTC</span>
+</div>
+
+<div class="la-callout la-callout--error" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">Partial outage · API</p><p class="la-callout__text">Invoice export is down from <span class="mono">2 of 4</span> locations since <span class="mono">14:02</span>.</p></div>
+</div>
+
+<a href="IncidentDetail.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none;">
+<span class="spread"><span class="lbl">#142 · open 30 min</span><span class="la-badge la-badge--error">major</span></span>
+<span style="font-weight: 600;">Invoice export API is down</span>
+<span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Identified · update 14:21</span></span>
+</a>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+<div class="la-panel kpi" style="padding: 14px;"><span class="eb">Checks up</span><span class="kpi-v" style="font-size: 26px;">29<small>/ 34</small></span><span class="kpi-m">1 down · 1 below quorum</span></div>
+<div class="la-panel kpi" style="padding: 14px;"><span class="eb">30 days</span><span class="kpi-v" style="font-size: 26px;">99.94<small>%</small></span><span class="kpi-m">target 99.9%</span></div>
+</div>
+
+<section class="la-panel" aria-labelledby="m-att">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="m-att">Needs attention</h2></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--down"><span class="la-status__mark"></span><span class="la-sr">Down</span></span><a href="CheckDetail.dc.html" style="flex: 1; min-width: 0; color: var(--text); text-decoration: none; font-weight: 500;">Invoice export API<span class="lbl" style="display: block;">Down · fra, ams · 30 min</span></a></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--degraded"><span class="la-status__mark"></span><span class="la-sr">Failing below quorum</span></span><a href="CheckDetail.dc.html" style="flex: 1; min-width: 0; color: var(--text); text-decoration: none; font-weight: 500;">Docs site<span class="lbl" style="display: block;">Failing from iad only · 1 of 4</span></a></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 16px;"><span class="la-status la-status--maintenance"><span class="la-status__mark"></span><span class="la-sr">Maintenance</span></span><span style="flex: 1; min-width: 0; font-weight: 500;">SMTP relay<span class="lbl" style="display: block;">Maintenance until 15:00</span></span></li>
+</ul>
+</section>
+
+<section class="la-panel" aria-labelledby="m-slo">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="m-slo">Error budget left</h2></div>
+<div class="stack" style="padding: 14px 16px; gap: 14px;">
+<div class="stack-8"><div class="spread"><span style="font-weight: 500;">API · 99.9%</span><span class="lbl warn-t">20% · empty in ~9 min</span></div><span class="meter" role="meter" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget left, API"><span class="meter__fill" style="width: 20%;"></span></span></div>
+<div class="stack-8"><div class="spread"><span style="font-weight: 500;">Website · 99.5%</span><span class="lbl">96%</span></div><span class="meter" role="meter" aria-valuenow="96" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget left, website"><span class="meter__fill" style="width: 96%;"></span></span></div>
+<div class="stack-8"><div class="spread"><span style="font-weight: 500;">Payments · 99.95%</span><span class="lbl">100%</span></div><span class="meter" role="meter" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget left, payments"><span class="meter__fill" style="width: 100%;"></span></span></div>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="m-al">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="m-al">Recent alerts</h2><a class="cs-pha" href="Notifications.dc.html">All</a></div>
+<ul role="list" style="margin: 0; padding: 4px 16px 10px;">
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="lbl">14:03 · webhook · incident-bridge</span><span style="display: block; font-size: var(--fs-small);">Invoice export API is down</span><span class="la-badge la-badge--error" style="margin-top: 4px;">failed · retry 3 of 5</span></li>
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="lbl">14:03 · slack · #ops-alerts</span><span style="display: block; font-size: var(--fs-small);">Invoice export API is down · delivered</span></li>
+<li style="padding: 8px 0;"><span class="lbl">14:00 · slack · #ops-alerts</span><span style="display: block; font-size: var(--fs-small);">Maintenance started · SMTP relay · delivered</span></li>
+</ul>
+</section>
+</main>
+<nav class="mb-tabs" aria-label="Main">
+<a href="OverviewMobile.dc.html" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a href="Checks.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks</a>
+<a href="Incidents.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents · 1</a>
+<a href="#more"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>More</a>
+</nav>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

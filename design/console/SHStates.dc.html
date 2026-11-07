@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI states and dialogs · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+.mini{display:grid;grid-template-columns:148px minmax(0,1fr);min-height:280px;background:var(--bg)}
+.mini--bare{grid-template-columns:minmax(0,1fr)}
+.mini-side{border-right:1px solid var(--rule);padding:12px 8px;display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--lead)}
+.mini-side .mn{padding:4px 8px;border-radius:var(--radius-sm)}
+.mini-side .mn-on{background:var(--tint);color:var(--text);font-weight:600}
+.mini-main{padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.mini-crumb{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.btn-danger{background:var(--error);border-color:var(--error);color:var(--bg)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<main class="content" style="max-width: 1400px; margin: 0 auto; gap: 32px;">
+<div class="page-head">
+<div>
+<h1 class="page-title">UI states and dialogs</h1>
+<p class="page-sub" title="Every state of the v1 shell, each in a small copy of the console. Confirmations are their own pages with a form, so they work without JavaScript.">Every state of the v1 shell, each in a small copy of the console. Confirmations are their own pages with a form, so they work without JavaScript.</p>
+</div>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</div>
+
+<section class="stack" style="gap: 16px;" aria-labelledby="g-empty">
+<h2 class="h3" id="g-empty" style="margin: 0;">Empty states</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;">
+<sc-for list="{{empties}}" as="e" hint-placeholder-count="8">
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">{{e.label}}</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">{{e.url}}</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{e.nav}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">{{e.crumb}}</span>
+<div class="la-callout cs-empty"><svg class="la-callout__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path></svg><div class="la-callout__body"><p class="la-callout__title">{{e.title}}</p><p class="la-callout__text">{{e.text}}</p></div></div>
+<div><a class="la-btn la-btn--primary" href="{{e.href}}">{{e.action}}</a></div>
+</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section class="stack" style="gap: 16px;" aria-labelledby="g-err">
+<h2 class="h3" id="g-err" style="margin: 0;">Errors and conflicts</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;">
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">pulse-api cannot be reached · timeout</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.overview}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">Quillbird monitoring / Overview</span>
+<div class="la-callout la-callout--error" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">pulse-api cannot be reached (timeout)</p><p class="la-callout__text">The request to <span class="mono">http://pulse-api:8080</span> timed out. This origin comes from <span class="mono">PULSE_API_URL</span>. Check PULSE_API_URL and the api container.</p></div></div>
+<p class="lbl" style="margin: 0;">The same page names the other causes: a network error (for example connection refused) or the HTTP status pulse-api answered with.</p>
+<div><a class="la-btn la-btn--secondary" href="SHOverview.dc.html">Try again</a></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">Console token rejected · banner</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/checks</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.checks}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<div class="la-callout la-callout--error" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg><div class="la-callout__body"><p class="la-callout__title">pulse-api rejected the console token.</p><p class="la-callout__text">Put a valid admin token in <span class="mono">PULSE_CONSOLE_ADMIN_TOKEN_FILE</span> and restart pulse-console.</p></div></div>
+<span class="mini-crumb">Quillbird monitoring / Checks</span>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Checks, incidents and settings stay empty until the token works. The token is never entered in the browser.</p>
+</div>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">403 · no access</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/probes</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.probes}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">Quillbird monitoring / Probe locations</span>
+<div class="la-callout la-callout--warning" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><div class="la-callout__body"><p class="la-callout__title">You do not have access to this page</p><p class="la-callout__text">Probe locations need the admin role. You are signed in as Priya Raman (member). Ask an admin or the owner for access.</p></div></div>
+<div><a class="la-btn la-btn--secondary" href="SHOverview.dc.html">Back to overview</a></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">Session expired · no sidebar</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/sign-in?next=/checks/invoice-export-api</span></div>
+<div class="mini mini--bare">
+<div class="mini-main" style="align-items: center; justify-content: center; text-align: center;">
+<img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28">
+<p style="margin: 0; font-weight: 600; font-size: 18px;">Your session has ended</p>
+<p class="lead" style="margin: 0; font-size: var(--fs-small); max-width: 420px;">You were signed out after 30 days without activity. Sign in again and you return to <span class="mono">/checks/invoice-export-api</span>.</p>
+<a class="la-btn la-btn--primary" href="SHSignIn.dc.html">Sign in</a>
+</div>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">404 · not found</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/checks/invoice-exprt</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.checks}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">Quillbird monitoring / Checks</span>
+<div class="la-callout"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><div class="la-callout__body"><p class="la-callout__title">Page not found</p><p class="la-callout__text">No check has the id <span class="mono">invoice-exprt</span>. It may have been deleted, or the link is wrong.</p></div></div>
+<div><a class="la-btn la-btn--secondary" href="SHChecks.dc.html">Go to checks</a></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">409 / 412 · changed since you opened it</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/checks/payments-callback/edit</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.checks}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<form class="mini-main" onSubmit="{{noop}}">
+<span class="mini-crumb">Checks / Payments callback / Edit</span>
+<div class="la-callout la-callout--warning" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg><div class="la-callout__body"><p class="la-callout__title">This changed since you opened it. Reload to see the current version.</p><p class="la-callout__text">Nothing was saved. Your input is kept below; copy what you need before you reload.</p></div></div>
+<div class="la-field"><label class="la-field__label" for="cf-n">Name</label><input class="la-input" id="cf-n" value="Payments callback (EU)"></div>
+<div class="la-field"><label class="la-field__label" for="cf-i">Every</label><input class="la-input mono" id="cf-i" value="30 s"></div>
+<div class="row"><a class="la-btn la-btn--primary" href="SHCheckEdit.dc.html">Reload</a></div>
+</form>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">422 · field message</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/checks/new</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.checks}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<form class="mini-main" onSubmit="{{noop}}">
+<span class="mini-crumb">Checks / Add check</span>
+<p class="err-t" role="alert" style="margin: 0; font-size: var(--fs-small); font-weight: 600;">pulse-api did not accept 1 field. Nothing was saved.</p>
+<div class="la-field"><label class="la-field__label" for="vf-n">Name</label><input class="la-input" id="vf-n" value="Checkout page"></div>
+<div class="la-field"><label class="la-field__label" for="vf-u">URL</label><input class="la-input mono" id="vf-u" value="htps://pay.quillbird.example/checkout/ping" aria-invalid="true" aria-describedby="vf-u-e" style="border-color: var(--error);"><p class="la-field__help err-t" id="vf-u-e">Enter a URL that starts with http:// or https://.</p></div>
+<div class="row"><button type="submit" class="la-btn la-btn--primary">Save check</button></div>
+</form>
+</div>
+</div>
+</div>
+
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">503 · checks file is read-only</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">pulse.quillbird.example/checks/new</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{nav.checks}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<form class="mini-main" onSubmit="{{noop}}">
+<span class="mini-crumb">Checks / Add check</span>
+<div class="la-callout la-callout--error" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">checks file is read-only</p><p class="la-callout__text">pulse-api answered 503 and saved nothing. Your input is kept. Try again later, or ask the person who runs the server.</p></div></div>
+<div class="la-field"><label class="la-field__label" for="rf-n">Name</label><input class="la-input" id="rf-n" value="Checkout page"></div>
+<div class="row"><button type="submit" class="la-btn la-btn--primary">Try again</button><a class="la-btn la-btn--ghost" href="SHChecks.dc.html">Back to checks</a></div>
+</form>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="stack" style="gap: 16px;" aria-labelledby="g-typed">
+<h2 class="h3" id="g-typed" style="margin: 0;">Confirm by typing the name</h2>
+<p class="lead" style="margin: 0;">For actions that cannot be undone. The server checks the typed name; the button works without JavaScript.</p>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;">
+<sc-for list="{{typed}}" as="c" hint-placeholder-count="6">
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">{{c.label}}</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">{{c.url}}</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{c.nav}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">{{c.crumb}}</span>
+<form class="la-panel" onSubmit="{{noop}}" style="border-color: var(--error);">
+<div class="la-panel__head"><p style="margin: 0; font-weight: 600;">{{c.title}}</p></div>
+<div class="la-panel__body stack" style="gap: 14px;">
+<p style="margin: 0; font-size: var(--fs-small);">{{c.text}}</p>
+<div class="la-field"><label class="la-field__label" for="{{c.id}}">{{c.field}}</label><input class="la-input mono" id="{{c.id}}" value="{{c.typed}}" autocomplete="off"></div>
+</div>
+<div class="la-panel__foot" style="justify-content: flex-end;"><a class="la-btn la-btn--ghost" href="{{c.back}}">Cancel</a><button type="submit" class="la-btn la-btn--primary btn-danger">{{c.button}}</button></div>
+</form>
+</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section class="stack" style="gap: 16px;" aria-labelledby="g-plain">
+<h2 class="h3" id="g-plain" style="margin: 0;">Plain confirmation</h2>
+<p class="lead" style="margin: 0;">One click on a page of its own: no typing.</p>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;">
+<sc-for list="{{plain}}" as="c" hint-placeholder-count="5">
+<div class="stack" style="gap: 10px; min-width: 0;">
+<h3 class="eb">{{c.label}}</h3>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">{{c.url}}</span></div>
+<div class="mini">
+<div class="mini-side"><sc-for list="{{c.nav}}" as="n" hint-placeholder-count="10"><span class="{{n.cls}}">{{n.label}}</span></sc-for></div>
+<div class="mini-main">
+<span class="mini-crumb">{{c.crumb}}</span>
+<form class="la-panel" onSubmit="{{noop}}">
+<div class="la-panel__head"><p style="margin: 0; font-weight: 600;">{{c.title}}</p></div>
+<div class="la-panel__body"><p style="margin: 0; font-size: var(--fs-small);">{{c.text}}</p></div>
+<div class="la-panel__foot" style="justify-content: flex-end;"><a class="la-btn la-btn--ghost" href="{{c.back}}">Cancel</a>
+<sc-if value="{{c.danger}}" hint-placeholder-val="{{false}}"><button type="submit" class="la-btn la-btn--primary btn-danger">{{c.button}}</button></sc-if>
+<sc-if value="{{c.safe}}" hint-placeholder-val="{{true}}"><button type="submit" class="la-btn la-btn--primary">{{c.button}}</button></sc-if>
+</div>
+</form>
+</div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":5200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const NAV = ['Overview', 'Checks', 'Incidents', 'Maintenance', 'Probe locations', 'Tokens', 'Team', 'Activity', 'System', 'Settings'];
+    const navFor = (active) => NAV.map((l) => ({ label: l, cls: l === active ? 'mn mn-on' : 'mn' }));
+    const nav = {
+      overview: navFor('Overview'), checks: navFor('Checks'), incidents: navFor('Incidents'), maintenance: navFor('Maintenance'),
+      probes: navFor('Probe locations'), tokens: navFor('Tokens'), team: navFor('Team'), activity: navFor('Activity'),
+      settings: navFor('Settings'), none: navFor('')
+    };
+    const empty = (label, url, active, crumb, title, text, action, href) => ({ label, url, nav: navFor(active), crumb, title, text, action, href });
+    const empties = [
+      empty('Empty · checks', 'pulse.quillbird.example/checks', 'Checks', 'Quillbird monitoring / Checks', 'No checks yet', 'Add a check here, or list checks in checks.json on the server.', 'Add check', 'SHCheckEdit.dc.html'),
+      empty('Empty · incidents', 'pulse.quillbird.example/incidents', 'Incidents', 'Quillbird monitoring / Incidents', 'No incidents', 'Incidents open by themselves when a check is down from at least two locations. Declare one for anything checks cannot see.', 'Declare incident', 'SHIncidentComposer.dc.html'),
+      empty('Empty · maintenance', 'pulse.quillbird.example/maintenance', 'Maintenance', 'Quillbird monitoring / Maintenance', 'No maintenance windows', 'Plan a window before planned work. Its public note shows on the status page.', 'Plan maintenance', 'SHMaintenance.dc.html'),
+      empty('Empty · probe locations', 'pulse.quillbird.example/probes', 'Probe locations', 'Instance / Probe locations', 'No probe location has reported yet', 'Start pulse-probe on a host with the snippet from Add location. A check is down only when at least two locations agree.', 'Add location', 'SHProbes.dc.html'),
+      empty('Empty · tokens', 'pulse.quillbird.example/tokens', 'Tokens', 'Instance / Tokens', 'Only the console token', 'pulse-console uses its own token from PULSE_CONSOLE_ADMIN_TOKEN_FILE. Create another one for scripts or CI.', 'Create token', 'SHTokens.dc.html'),
+      empty('Empty · team', 'pulse.quillbird.example/team', 'Team', 'Instance / Team', 'Only you so far', 'People join this instance only by invite. Create an invite link and send it yourself.', 'Invite people', 'SHTeam.dc.html'),
+      empty('Empty · activity', 'pulse.quillbird.example/activity', 'Activity', 'Instance / Activity', 'No activity yet', 'Sign-ins and changes to checks, incidents, maintenance, tokens and the team show here as they happen.', 'Go to overview', 'SHOverview.dc.html'),
+      empty('No results for these filters', 'pulse.quillbird.example/checks?type=dns&state=down', 'Checks', 'Quillbird monitoring / Checks', 'No results for these filters', 'No DNS check is down. Change or clear the filters to see more.', 'Clear filters', 'SHChecks.dc.html')
+    ];
+    const conf = (label, url, active, crumb, title, text, field, typed, button, back, id) => ({ label, url, nav: navFor(active), crumb, title, text, field, typed, button, back, id });
+    const typed = [
+      conf('Delete check', 'pulse.quillbird.example/checks/payments-callback/delete', 'Checks', 'Checks / Payments callback / Delete', 'Delete check Payments callback?', 'The check and its results are deleted for good and it leaves the status page. Only console checks can be deleted; checks from checks.json are removed in the file.', 'Type the check name to confirm', 'Payments callback', 'Delete check', 'SHCheckDetail.dc.html', 'tc-1'),
+      conf('Delete incident', 'pulse.quillbird.example/incidents/143/delete', 'Incidents', 'Incidents / #143 / Delete', 'Delete incident #143?', 'Card payments are slower than usual and its 2 public updates leave the console and the status page. Admins and the owner only.', 'Type the incident title to confirm', 'Card payments are slower than usual', 'Delete incident', 'SHIncidentDetail.dc.html', 'tc-2'),
+      conf('Revoke token', 'pulse.quillbird.example/tokens/status-sync/revoke', 'Tokens', 'Tokens / status-sync / Revoke', 'Revoke token status-sync?', 'Every script that uses it stops working at once. This cannot be undone; create a new token instead.', 'Type the token name to confirm', 'status-sync', 'Revoke token', 'SHTokens.dc.html', 'tc-3'),
+      conf('Revoke probe location', 'pulse.quillbird.example/probes/iad-1/revoke', 'Probe locations', 'Probe locations / iad-1 / Revoke', 'Revoke probe location iad-1?', 'The probe at iad-1 can no longer send results. Checks keep running from office and fsn-1.', 'Type the location name to confirm', 'iad-1', 'Revoke probe', 'SHProbes.dc.html', 'tc-4'),
+      conf('Remove member', 'pulse.quillbird.example/team/tomas/remove', 'Team', 'Team / Tomás Ibarra / Remove', 'Remove Tomás Ibarra?', 'Tomás loses access at once and all his sessions end. His entries in Activity stay.', 'Type the email address to confirm', 'tomas@quillbird.example', 'Remove member', 'SHTeam.dc.html', 'tc-5'),
+      conf('Transfer ownership', 'pulse.quillbird.example/settings/owner/transfer', 'Settings', 'Settings / Ownership / Transfer', 'Transfer ownership to Jonas Feld?', 'Jonas becomes the owner and you become an admin. There is exactly one owner, so only Jonas can give it back.', 'Type the new owner’s email address to confirm', 'jonas@quillbird.example', 'Transfer ownership', 'SHSettings.dc.html', 'tc-6')
+    ];
+    const pl = (label, url, active, crumb, title, text, button, back, danger) => ({ label, url, nav: navFor(active), crumb, title, text, button, back, danger: !!danger, safe: !danger });
+    const plain = [
+      pl('Resolve incident', 'pulse.quillbird.example/incidents/143/resolve', 'Incidents', 'Incidents / #143 / Resolve', 'Resolve incident #143?', 'Card payments are slower than usual closes, and the status page shows it as resolved.', 'Resolve incident', 'SHIncidentDetail.dc.html', false),
+      pl('Delete maintenance window', 'pulse.quillbird.example/maintenance/mw-0012/delete', 'Maintenance', 'Maintenance / mw-0012 / Delete', 'Delete this maintenance window?', 'mw-0012, Nov 2 22:00 to 23:00 UTC, 10 checks. Its note leaves the status page and the checks alert as usual in that time.', 'Delete window', 'SHMaintenance.dc.html', true),
+      pl('Reset two-factor', 'pulse.quillbird.example/team/jonas/two-factor/reset', 'Team', 'Team / Jonas Feld / Reset two-factor', 'Reset two-factor for Jonas Feld?', 'His authenticator app and recovery codes stop working. Admins must have two-factor, so he sets it up again at his next sign-in.', 'Reset two-factor', 'SHTeam.dc.html', true),
+      pl('Sign out all sessions', 'pulse.quillbird.example/account/sessions/sign-out-all', '', 'Account security / Sessions', 'Sign out all sessions?', 'Every session of your account ends, this one too. You sign in again with your password and a two-factor code.', 'Sign out everywhere', 'SHSecurity.dc.html', false),
+      pl('New recovery codes', 'pulse.quillbird.example/account/recovery-codes/new', '', 'Account security / Recovery codes', 'Create new recovery codes?', 'Your ten current recovery codes stop working. The new ones are shown once.', 'Create new codes', 'SHSecurity.dc.html', false)
+    ];
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      nav, empties, typed, plain,
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

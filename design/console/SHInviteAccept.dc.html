@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accept invite · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="display: flex; flex-direction: column;">
+<header class="spread" style="padding: 16px clamp(16px, 4vw, 40px);">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span><span class="wm-sub">self-hosted</span></span>
+<button type="button" class="la-iconbtn icon-btn--outline" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<main style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 32px 16px 64px;">
+<div class="la-panel" style="width: 100%; max-width: 480px; padding: 32px; display: flex; flex-direction: column; gap: 20px;">
+<div class="stack-8" style="align-items: center; text-align: center;">
+<span class="la-avatar la-avatar--sq" style="width: 48px; height: 48px; font-size: 16px; border-radius: 10px;" aria-hidden="true">QB</span>
+<h1 class="page-title">Join Quillbird monitoring</h1>
+<p class="lbl" style="margin: 0;">{{inviter}} invited you as {{roleLower}} · pulse.quillbird.example</p>
+</div>
+<form class="stack" onSubmit="{{noop}}" style="gap: 14px;">
+<div class="g2" style="gap: 12px;">
+<div class="la-field"><label class="la-field__label" for="ia-e">Email</label><input class="la-input" id="ia-e" type="email" value="{{email}}" readonly=""></div>
+<div class="la-field"><label class="la-field__label" for="ia-r">Role</label><input class="la-input" id="ia-r" value="{{role}}" readonly=""></div>
+</div>
+<p class="lbl" style="margin: -4px 0 0;">Set by the invite. An admin can change your role later.</p>
+<div class="la-field"><label class="la-field__label" for="ia-n">Your name</label><input class="la-input" id="ia-n" value="{{name}}" autocomplete="name"></div>
+<div class="la-field"><label class="la-field__label" for="ia-p">Password</label><input class="la-input" id="ia-p" type="password" value="lantern-orchard-71" autocomplete="new-password" aria-describedby="ia-p-d"><p class="la-field__help" id="ia-p-d">At least 12 characters.</p></div>
+<div class="la-field"><label class="la-field__label" for="ia-p2">Repeat password</label><input class="la-input" id="ia-p2" type="password" value="lantern-orchard-71" autocomplete="new-password"></div>
+<sc-if value="{{needs2fa}}" hint-placeholder-val="{{true}}">
+<div class="la-callout la-callout--info"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg><div class="la-callout__body"><p class="la-callout__title">Next: set up two-factor</p><p class="la-callout__text">Admins must use an authenticator app. After this step you scan a code and save ten recovery codes before you can use the console.</p></div></div>
+</sc-if>
+<sc-if value="{{optional2fa}}" hint-placeholder-val="{{false}}">
+<p class="lbl" style="margin: 0;">Two-factor is optional for your role. You can add an authenticator app later in Account security.</p>
+</sc-if>
+<a class="la-btn la-btn--primary" href="{{nextHref}}" style="width: 100%;">{{nextLabel}}</a>
+</form>
+<p class="lbl" style="margin: 0; text-align: center; border-top: 1px solid var(--rule); padding-top: 16px;">This invite link works once and expires on <span class="mono">2026-11-09</span>. Already have an account? <a href="SHSignIn.dc.html">Sign in</a></p>
+</div>
+</main>
+<footer class="lbl" style="padding: 16px clamp(16px, 4vw, 40px); border-top: 1px solid var(--rule); display: flex; flex-wrap: wrap; gap: 6px 16px;"><span>pulse-console v1.5.0 · open source, MIT</span><a href="https://status.quillbird.example">Public status page</a></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"role":{"editor":"enum","options":["admin","member"],"default":"admin"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const admin = (this.props.role ?? 'admin') === 'admin';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      inviter: admin ? 'Mara Lindqvist' : 'Jonas Feld',
+      email: admin ? 'sam.ortega@quillbird.example' : 'lena.okafor@quillbird.example',
+      name: admin ? 'Sam Ortega' : 'Lena Okafor',
+      role: admin ? 'Admin' : 'Member',
+      roleLower: admin ? 'admin' : 'member',
+      needs2fa: admin, optional2fa: !admin,
+      nextLabel: admin ? 'Create account and set up two-factor' : 'Create account',
+      nextHref: admin ? 'SHSecurity.dc.html' : 'SHOverview.dc.html',
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

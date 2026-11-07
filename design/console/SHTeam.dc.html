@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">Team</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a><a class="la-iconbtn la-iconbtn--sm" href="SHSignIn.dc.html" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></a><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Team</h1>
+<p class="page-sub" title="6 members · 2 open invites · people join this instance only by invite link · two-factor is required for the owner and admins"><span class="mono">6</span> members · <span class="mono">2</span> open invites · people join this instance only by invite link · two-factor is required for the owner and admins</p>
+</div>
+</div>
+
+<div class="g-side" style="grid-template-columns: minmax(0, 1fr) 400px;">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="m-h">
+<div class="la-panel__head"><h2 class="eb" id="m-h">Members</h2></div>
+<div class="tw" style="padding-bottom: 8px;">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Two-factor</th><th scope="col">Last active</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<sc-for list="{{members}}" as="m" hint-placeholder-count="6">
+<tr>
+<td><span class="row-12" style="flex-wrap: nowrap;"><span class="la-avatar la-avatar--sm" aria-hidden="true">{{m.ini}}</span><span class="who"><b>{{m.name}}</b><span>{{m.email}}</span></span></span></td>
+<td><span class="la-badge">{{m.role}}</span></td>
+<td><span class="la-status la-status--dense {{m.tfaTone}}"><span class="la-status__mark"></span><span class="la-status__label">{{m.tfa}}</span></span></td>
+<td class="m">{{m.last}}</td>
+<td class="act" style="position: relative;">
+<sc-if value="{{m.hasMenu}}" hint-placeholder-val="{{true}}">
+<button type="button" class="la-iconbtn" aria-haspopup="menu" aria-expanded="{{m.expanded}}" aria-controls="mm-{{m.ini}}" aria-label="More actions for {{m.name}}" onClick="{{m.toggle}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</sc-if>
+<sc-if value="{{m.open}}" hint-placeholder-val="{{false}}">
+<ul role="menu" id="mm-{{m.ini}}" aria-label="Actions for {{m.name}}" style="position: absolute; right: 8px; top: 46px; z-index: 5; margin: 0; padding: 6px; list-style: none; min-width: 250px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(39, 27, 50, 0.16); text-align: left; display: flex; flex-direction: column; gap: 2px;">
+<li role="none"><button type="button" role="menuitem" class="la-btn la-btn--ghost la-btn--sm" style="width: 100%; justify-content: flex-start;">Change role</button></li>
+<li role="none"><button type="button" role="menuitem" class="la-btn la-btn--ghost la-btn--sm" style="width: 100%; justify-content: flex-start;">Create password reset link</button></li>
+<li role="none"><button type="button" role="menuitem" class="la-btn la-btn--ghost la-btn--sm" disabled="{{m.no2fa}}" style="width: 100%; justify-content: flex-start;">Reset two-factor</button></li>
+<li role="separator" style="height: 1px; background: var(--rule); margin: 4px 0;"></li>
+<li role="none"><button type="button" role="menuitem" class="la-btn la-btn--ghost la-btn--sm" style="width: 100%; justify-content: flex-start; color: var(--error);">Remove from instance</button></li>
+</ul>
+</sc-if>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Admins manage members and viewers; only the owner changes, resets or removes an admin. A reset link is valid 24 hours, works once, ends all sessions of that person and keeps their two-factor. Remove asks you to type the name.</span></div>
+</section>
+
+<section class="la-panel" aria-labelledby="iv-h">
+<div class="la-panel__head"><h2 class="eb" id="iv-h">Open invites</h2></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Invited by</th><th scope="col">Expires</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="mono" style="font-size: 13px;">sam.ortega@quillbird.example</td><td><span class="la-badge">admin</span></td><td>Mara Lindqvist</td><td class="m">in 7 days</td><td style="text-align: right; white-space: nowrap;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Revoke</button></td></tr>
+<tr><td class="mono" style="font-size: 13px;">lena.okafor@quillbird.example</td><td><span class="la-badge">member</span></td><td>Jonas Feld</td><td class="m">in 6 days</td><td style="text-align: right; white-space: nowrap;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Revoke</button></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">pulse stores only a hash of each link, so a lost link cannot be shown again. Revoke it and create a new invite.</span></div>
+</section>
+
+<section class="la-panel" aria-labelledby="rm-h">
+<div class="la-panel__head"><h2 class="eb" id="rm-h">Roles</h2><span class="lbl">checked by the server on every page and action</span></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Area</th><th scope="col">Viewer</th><th scope="col">Member</th><th scope="col">Admin</th><th scope="col">Owner</th></tr></thead>
+<tbody>
+<sc-for list="{{matrix}}" as="r" hint-placeholder-count="13">
+<tr><th scope="row" style="font-family: inherit; font-size: var(--fs-small); font-weight: 500; text-transform: none; letter-spacing: 0; background: transparent; color: var(--text); border-bottom: 1px solid var(--rule);">{{r.area}}</th>
+<sc-for list="{{r.cells}}" as="c" hint-placeholder-count="4"><td class="m"><span class="{{c.cls}}">{{c.t}}</span></td></sc-for>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Two-factor is required for the owner and admins. A page or action outside your role shows "403: needs the admin role" (or owner).</span></div>
+</section>
+</div>
+
+<section class="la-panel" aria-labelledby="inv-h" style="align-self: start;">
+<div class="la-panel__head"><h2 class="eb" id="inv-h">Invite someone</h2></div>
+<form class="la-panel__body stack" onSubmit="{{noop}}" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="i-em">Email address</label><input class="la-input mono" id="i-em" type="email" value="sam.ortega@quillbird.example" style="font-size: 13px;"></div>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;">
+<legend class="la-field__label" style="padding: 0; margin-bottom: 4px;">Role</legend>
+<sc-for list="{{roles}}" as="r" hint-placeholder-count="3">
+<label class="opt" style="padding: 12px 14px;"><input type="radio" name="role" checked="{{r.on}}" onChange="{{r.pick}}"><span class="la-check__text"><b>{{r.name}}</b><span>{{r.desc}}</span></span></label>
+</sc-for>
+</fieldset>
+<button type="submit" class="la-btn la-btn--primary">Create invite link</button>
+<p class="lbl" style="margin: 0;">No email is sent. Copy the link and send it yourself. Links expire after 7 days and work once.</p>
+<div class="la-callout la-callout--success" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><div class="la-callout__body"><p class="la-callout__title">Invite link for sam.ortega@quillbird.example</p><p class="la-callout__text">Shown once. Copy it now; pulse cannot show it again.</p></div></div>
+<div class="la-field"><span class="la-field__label" id="lnk-l">Invite link · admin · expires 2026-11-09</span><div class="secret" aria-labelledby="lnk-l"><code style="font-size: 12px;">https://pulse.quillbird.example/invite/q7Hc2LmV9xR4tBnK0pWzY3sJfE8uGdA1oQiT6vXbN5c</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy link</button></div></div>
+</form>
+</section>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, role: 'Admin', menu: 'JF' }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const menu = this.state.menu;
+    const mk = (ini, name, email, role, tfaOn, last, self) => ({
+      ini, name, email, role, last,
+      hasMenu: !self, open: !self && menu === ini, expanded: menu === ini ? 'true' : 'false',
+      toggle: () => this.setState({ menu: menu === ini ? null : ini }),
+      no2fa: !tfaOn,
+      tfa: tfaOn ? ((role === 'Owner' || role === 'Admin') ? 'On · required' : 'On') : 'Off',
+      tfaTone: tfaOn ? 'la-status--up' : 'la-status--unknown'
+    });
+    const defs = [
+      ['Admin', 'Probe locations, tokens, team, Activity log and System, plus everything a member can do. Must set up two-factor. Only the owner invites admins.'],
+      ['Member', 'Create and edit console checks, declare incidents, post updates, plan maintenance.'],
+      ['Viewer', 'Read overview, checks, incidents and maintenance.']
+    ];
+    const rows = [
+      ['View overview, checks, incidents, maintenance', 0],
+      ['Own account security', 0],
+      ['Create and edit console checks, export checks.json', 1],
+      ['Declare incidents, post updates, resolve manual incidents', 1],
+      ['Plan maintenance', 1],
+      ['Delete console checks and manual incidents', 2],
+      ['Probe locations', 2],
+      ['API tokens', 2],
+      ['Team: invites, removal and resets of members and viewers', 2],
+      ['Activity log', 2],
+      ['System page', 2],
+      ['Team: role changes, resets and removal of admins', 3],
+      ['Settings and ownership transfer', 3]
+    ];
+    const role = this.state.role;
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      members: [
+        mk('ML', 'Mara Lindqvist · you', 'mara@quillbird.example', 'Owner', true, 'now', true),
+        mk('JF', 'Jonas Feld', 'jonas@quillbird.example', 'Admin', true, '2 min ago'),
+        mk('PR', 'Priya Raman', 'priya@quillbird.example', 'Member', true, '11 min ago'),
+        mk('TI', 'Tomás Ibarra', 'tomas@quillbird.example', 'Member', false, 'yesterday'),
+        mk('NB', 'Noah Brandt', 'noah@quillbird.example', 'Admin', true, '2026-10-26'),
+        mk('EA', 'Elif Aydın', 'elif@quillbird.example', 'Viewer', false, '2026-10-14')
+      ],
+      matrix: rows.map((r) => ({
+        area: r[0],
+        cells: [0, 1, 2, 3].map((j) => ({ t: j >= r[1] ? 'Yes' : 'No', cls: j >= r[1] ? 'ok-t' : 'lbl' }))
+      })),
+      roles: defs.map((r) => ({ name: r[0], desc: r[1], on: role === r[0], pick: () => this.setState({ role: r[0] }) })),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

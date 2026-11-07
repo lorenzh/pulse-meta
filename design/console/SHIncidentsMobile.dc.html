@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incidents on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<a class="brand" href="SHOverviewMobile.dc.html" aria-label="Quillbird monitoring home" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"></a>
+<span class="org-t"><span class="org-n">Quillbird monitoring</span><span class="org-m">self-hosted · v1.5.0</span></span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<main class="mb-body">
+<div class="spread" style="align-items: flex-end;"><h1 class="mb-title">Incidents</h1><span class="lbl">14:32 UTC</span></div>
+<a class="la-btn la-btn--primary" href="SHComposerMobile.dc.html" style="width: 100%;">Declare incident</a>
+
+<section class="stack" style="gap: 10px;" aria-labelledby="mo-h">
+<h2 class="eb" id="mo-h">Open · 2</h2>
+<a href="SHIncidentDetailMobile.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none; border-color: var(--warning);">
+<span class="row"><span class="mono" style="font-size: 13px; color: var(--muted);">#143</span><span class="la-badge">minor</span><span class="la-badge">manual</span></span>
+<span style="font-size: 17px; font-weight: 600;">Card payments are slower than usual</span>
+<span class="spread"><span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Identified</span></span><span class="lbl">since 14:10 · 2 updates</span></span>
+</a>
+<a href="SHIncidentDetail.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none; border-color: var(--error);">
+<span class="row"><span class="mono" style="font-size: 13px; color: var(--muted);">#142</span><span class="la-badge la-badge--error">major</span><span class="la-badge">automatic · read-only</span></span>
+<span style="font-size: 17px; font-weight: 600;">Invoice export API is down</span>
+<span class="spread"><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Open</span></span><span class="lbl">since 14:02 · 2 of 3 fail</span></span>
+</a>
+</section>
+
+<section class="la-panel" aria-labelledby="mr-h">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="mr-h">Resolved · 30 days</h2></div>
+<ul role="list" style="margin: 0; padding: 4px 16px 10px;">
+<li style="min-height: 52px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; justify-content: center; padding: 6px 0;"><span style="font-weight: 500;">Docs site slow from Virginia</span><span class="lbl">#141 · automatic · Oct 27 · 12 min</span></li>
+<li style="min-height: 52px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; justify-content: center; padding: 6px 0;"><span style="font-weight: 500;">Invoice reminder emails delayed</span><span class="lbl">#140 · manual · Oct 21 · 1 h 45 min</span></li>
+<li style="min-height: 52px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; justify-content: center; padding: 6px 0;"><span style="font-weight: 500;">Dashboard login errors</span><span class="lbl">#139 · automatic · Oct 18 · 8 min</span></li>
+<li style="min-height: 52px; display: flex; flex-direction: column; justify-content: center; padding: 6px 0;"><span style="font-weight: 500;">Export queue stalled</span><span class="lbl">#128 · automatic · Oct 12 · 4 min 40 s</span></li>
+</ul>
+</section>
+</main>
+<nav class="mb-tabs" aria-label="Main">
+<a href="SHOverviewMobile.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a href="SHChecks.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks</a>
+<a href="SHIncidentsMobile.dc.html" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents · 2</a>
+<a href="SHSystem.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+</nav>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

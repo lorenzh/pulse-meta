@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status page · pulse Console</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="Main.dc.html" aria-label="pulse console home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">console</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="Main.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="Checks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="Incidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">1 open</span></a>
+<a class="la-side__link" href="StatusPage.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>Status page</a>
+<a class="la-side__link" href="Notifications.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Notifications</a>
+<p class="la-side__group">Organisation</p>
+<a class="la-side__link" href="Team.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="ApiKeys.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>API keys</a>
+<a class="la-side__link" href="AgentAccess.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path></svg>Agent access</a>
+<a class="la-side__link" href="AiAssist.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6M10 22h4"></path></svg>AI assistance</a>
+<a class="la-side__link" href="Billing.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"></rect><path d="M2 10h20"></path></svg>Billing</a>
+<a class="la-side__link" href="Security.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Account security</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><button type="button" class="la-trigger cs-ws" aria-haspopup="menu" aria-expanded="false"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird</b><span>Team plan · eu</span></span><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg><span class="la-sr">Switch organisation</span></button><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="Main.dc.html">Quillbird</a></li><li aria-hidden="true">/</li><li aria-current="page">Status page</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content" style="--cs-max: 1400px">
+<div class="page-head">
+<div>
+<h1 class="page-title">Status page</h1>
+<p class="page-sub" title="Live at status.quillbird.example (opens in a new tab) · 1 of 1 status pages on the Team plan · last published 14:02 UTC">Live at <a href="#open">status.quillbird.example<span class="la-sr"> (opens in a new tab)</span></a> · 1 of 1 status pages on the Team plan · last published 14:02 UTC</p>
+</div>
+<div class="row"><span class="lbl" title="2 unsaved changes">2 unsaved changes</span><button type="button" class="la-btn la-btn--secondary">Discard</button><button type="button" class="la-btn la-btn--primary">Publish changes</button></div>
+</div>
+
+<div class="g-side" style="grid-template-columns: minmax(0, 1fr) 480px;">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="g-h">
+<div class="la-panel__head"><h2 class="eb" id="g-h">Name and brand</h2></div>
+<div class="la-panel__body stack" style="gap: 18px;">
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="p-n">Page title</label><input class="la-input" id="p-n" value="Quillbird status"></div>
+<div class="la-field"><label class="la-field__label" for="p-w">Link back to</label><input class="la-input mono" id="p-w" value="https://quillbird.example"></div>
+</div>
+<div class="la-field">
+<span class="la-field__label">Logo</span>
+<div class="row-12"><span class="la-avatar la-avatar--sq" style="width: 48px; height: 48px; font-size: 16px; border-radius: 10px;" aria-hidden="true">QB</span><span class="stack-8" style="gap: 2px;"><span style="font-weight: 500;">quillbird-logo.svg</span><span class="lbl">SVG or PNG, at least 128 px · 4 KB</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm" style="margin-left: auto;">Replace</button><button type="button" class="la-btn la-btn--ghost la-btn--sm">Remove</button></div>
+</div>
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><span class="la-field__label" id="th-l">Theme</span>
+<div class="la-seg" role="group" aria-labelledby="th-l" style="align-self: flex-start;"><button type="button" class="la-seg__item" aria-pressed="{{pvAuto}}" onClick="{{setAuto}}">Follow visitor</button><button type="button" class="la-seg__item" aria-pressed="{{pvLight}}" onClick="{{setLight}}">Light</button><button type="button" class="la-seg__item" aria-pressed="{{pvDark}}" onClick="{{setDark}}">Dark</button></div>
+</div>
+<div class="la-field"><label class="la-field__label" for="p-c">Brand colour</label><span class="la-input-wrap"><span class="la-input-wrap__suffix" style="border-left: 0; border-right: 1px solid var(--rule);"><span style="display: inline-block; width: 16px; height: 16px; border-radius: 4px; background: #2f5d8a;" aria-hidden="true"></span></span><input class="la-input mono" id="p-c" value="#2f5d8a"></span><p class="cs-fstatus cs-fstatus--ok"><svg class="cs-fstatus__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Readable on light and dark · 6.1:1</p></div>
+</div>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="c-h">
+<div class="la-panel__head"><h2 class="eb" id="c-h">Components and the checks behind them</h2><button type="button" class="la-btn la-btn--ghost la-btn--sm">Add component</button></div>
+<div class="la-panel__body">
+<fieldset class="field-list">
+<legend class="field-list__legend">Order on the page <span class="field-list__hint">· drag or use the handle with the keyboard</span></legend>
+<sc-for list="{{comps}}" as="c" hint-placeholder-count="7">
+<div class="field-list__row" style="grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1.4fr) 120px 44px;">
+<button type="button" class="field-list__handle" aria-label="Move {{c.name}}" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg></button>
+<input class="la-input" aria-label="Component name" value="{{c.name}}">
+<button type="button" class="select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Checks shown for {{c.name}}: {{c.checks}}" style="height: 44px; min-height: 44px;"><span class="select-trigger__label" style="font-weight: 400; font-size: var(--fs-small);">{{c.checks}}</span><svg class="select-trigger__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg></button>
+<label class="la-check" style="padding: 0; align-items: center; font-size: var(--fs-small);"><input type="checkbox" checked="{{c.shown}}" style="margin: 0;">Public</label>
+<button type="button" class="la-iconbtn" aria-label="Remove component {{c.name}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+</sc-for>
+</fieldset>
+<p class="lbl" style="margin: 12px 0 0;">A component takes the worst state of its checks. Checks not listed here never appear publicly: 6 checks, among them Postgres and Redis.</p>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="sh-h">
+<div class="la-panel__head"><h2 class="eb" id="sh-h">What visitors see</h2></div>
+<div class="la-panel__body stack" style="gap: 10px;">
+<label class="la-check" style="padding: 0;"><input type="checkbox" checked=""><span class="la-check__text"><b>Show individual checks</b><span>Off: only components appear. Check names, ids and per-check latency stay hidden, also in the API, feed and badges.</span></span></label>
+<label class="la-check" style="padding: 0;"><input type="checkbox" checked=""><span class="la-check__text"><b>Latency history</b><span>Daily p50 and p95 for each HTTP check over 90 days, with a table for screen readers. Needs individual checks shown.</span></span></label>
+<label class="la-check" style="padding: 0;"><input type="checkbox" checked=""><span class="la-check__text"><b>SLOs</b><span>Target and remaining error budget for checks and components that have an SLO.</span></span></label>
+<label class="la-check" style="padding: 0;"><input type="checkbox"><span class="la-check__text"><b>Hide technical details</b><span>Leaves out probe error text and DNS details. Your incident updates still show.</span></span></label>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="d-h">
+<div class="la-panel__head"><h2 class="eb" id="d-h">Custom domains</h2><button type="button" class="la-btn la-btn--ghost la-btn--sm">Add domain</button></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Domain</th><th scope="col">DNS record</th><th scope="col">Verification</th><th scope="col">Certificate</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="tt"><b class="mono" style="font-size: 13px;">status.quillbird.example</b><span class="sub">primary</span></td><td class="m">CNAME → quillbird.status.pulse.example</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Verified 2026-08-14</span></span></td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Valid · renews 2026-12-12</span></span></td><td class="act"><button type="button" class="la-iconbtn" aria-label="More actions for status.quillbird.example"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button></td></tr>
+<tr><td class="tt"><b class="mono" style="font-size: 13px;">status.quillbird-app.example</b><span class="sub">redirects to primary</span></td><td class="m">TXT _pulse-verify → pv_8f2c…41ad</td><td><span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Waiting for DNS · checked 14:30</span></span></td><td><span class="la-status la-status--unknown la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">After verification</span></span></td><td class="act"><button type="button" class="la-iconbtn" aria-label="More actions for status.quillbird-app.example"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__body stack" style="gap: 12px; border-top: 1px solid var(--rule);">
+<p style="margin: 0; font-weight: 500;">Add these records at your DNS provider for <span class="mono">status.quillbird-app.example</span></p>
+<div class="secret"><code>_pulse-verify.status.quillbird-app.example  TXT  "pv_8f2c19d0e7b34a6c41ad"</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div>
+<div class="secret"><code>status.quillbird-app.example  CNAME  quillbird.status.pulse.example</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div>
+<div class="row"><button type="button" class="la-btn la-btn--secondary la-btn--sm">Check again</button><span class="lbl">DNS changes can take up to 24 hours. We check every 10 minutes.</span></div>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="v-h">
+<div class="la-panel__head"><h2 class="eb" id="v-h">Who can see the page</h2><span class="la-badge la-badge--info">password and IP need Business</span></div>
+<div class="la-panel__body stack" style="gap: 10px;">
+<label class="opt"><input type="radio" name="vis" checked="{{visPublic}}" onChange="{{visPub}}"><span class="la-check__text"><b>Public</b><span>Anyone with the address. Search engines may index it.</span></span></label>
+<label class="opt"><input type="radio" name="vis" checked="{{visPw}}" onChange="{{visPass}}"><span class="la-check__text"><b>Password</b><span>One shared password for customers or partners.</span></span></label>
+<label class="opt"><input type="radio" name="vis" checked="{{visIp}}" onChange="{{visAllow}}"><span class="la-check__text"><b>IP allow-list</b><span>Only from your office or VPN addresses.</span></span></label>
+<sc-if value="{{isPrivate}}" hint-placeholder-val="{{false}}">
+<div class="la-callout la-callout--info"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><div class="la-callout__body"><p class="la-callout__title">Private pages come with Business</p><p class="la-callout__text">Business is €290 a month and also adds several status pages and a 10-second interval.</p></div><a class="la-btn la-btn--secondary la-btn--sm" href="Billing.dc.html" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 16px;">Compare plans</a></div>
+</sc-if>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="x-h">
+<div class="la-panel__head"><h2 class="eb" id="x-h">Feed and badges</h2></div>
+<div class="la-panel__body stack" style="gap: 14px;">
+<label class="la-check" style="padding: 0;"><input type="checkbox" checked=""><span class="la-check__text"><b>Atom feed of incidents</b><span class="mono" style="font-size: 12px;">https://status.quillbird.example/feed.atom</span></span></label>
+<div class="la-field"><span class="la-field__label">Badge for a README · component API</span>
+<div class="row-12"><span style="display: inline-flex; border-radius: 4px; overflow: hidden; font-family: var(--font-mono); font-size: 11px; line-height: 20px;" role="img" aria-label="Badge: API partial outage"><span style="background: #555; color: #fff; padding: 0 6px;">api</span><span style="background: #a4262c; color: #fff; padding: 0 6px;">partial outage</span></span></div>
+<div class="secret"><code>![API status](https://status.quillbird.example/badge/api.svg)</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div>
+</div>
+</div>
+</section>
+</div>
+
+<aside class="stack" aria-labelledby="pv-h" style="gap: 12px; min-width: 0;">
+<div class="spread"><h2 class="eb" id="pv-h">Live preview</h2><span class="lbl">with unsaved changes</span></div>
+<div class="prev">
+<div class="prev-bar"><span class="prev-url">status.quillbird.example</span></div>
+<div data-theme="{{pvTheme}}" class="pc" style="min-height: 0; padding: 22px; display: flex; flex-direction: column; gap: 18px;">
+<div class="spread"><span class="row-12"><span class="la-avatar la-avatar--sq" style="background: #2f5d8a; color: #fff;" aria-hidden="true">QB</span><span style="font-weight: 700; font-size: 18px;">Quillbird status</span></span><span class="lbl">Subscribe</span></div>
+<div style="padding: 12px 14px; border-radius: var(--radius-sm); background: var(--error-tint); display: flex; flex-direction: column; gap: 4px;">
+<span style="font-weight: 600;">Invoice export API is down</span>
+<span style="font-size: 13px; color: var(--lead);">Identified · A database migration locked the exports table. We’re rolling it back.</span>
+<span class="lbl">14:21 UTC</span>
+</div>
+<ul role="list" style="margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px;">
+<sc-for list="{{pvComps}}" as="c" hint-placeholder-count="6">
+<li class="stack-8" style="gap: 6px;"><span class="spread" style="font-size: 14px;"><span style="font-weight: 500;">{{c.name}}</span><span class="la-status la-status--dense {{c.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{c.state}}</span></span></span><span class="ub ub-sm" aria-hidden="true" style="height: 18px; gap: 1px;"><sc-for list="{{c.days}}" as="d" hint-placeholder-count="90"><span class="{{d}}"></span></sc-for></span></li>
+</sc-for>
+</ul>
+<span class="lbl" style="text-align: center;">Powered by pulse</span>
+</div>
+</div>
+</aside>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird · Team plan · eu</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":2300}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, pv: 'auto', vis: 'public' }; }
+  days(bad, warn) { const o = []; for (let i = 0; i < 90; i++) o.push(bad.indexOf(i) >= 0 ? 'e' : (warn.indexOf(i) >= 0 ? 'w' : '')); return o; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const pv = this.state.pv;
+    const vis = this.state.vis;
+    const ok = 'la-status--up';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      pvTheme: pv === 'auto' ? theme : pv,
+      pvAuto: pv === 'auto' ? 'true' : 'false', pvLight: pv === 'light' ? 'true' : 'false', pvDark: pv === 'dark' ? 'true' : 'false',
+      setAuto: () => this.setState({ pv: 'auto' }), setLight: () => this.setState({ pv: 'light' }), setDark: () => this.setState({ pv: 'dark' }),
+      visPublic: vis === 'public', visPw: vis === 'pw', visIp: vis === 'ip', isPrivate: vis !== 'public',
+      visPub: () => this.setState({ vis: 'public' }), visPass: () => this.setState({ vis: 'pw' }), visAllow: () => this.setState({ vis: 'ip' }),
+      comps: [
+        { name: 'Website', checks: 'Website, Pricing page, +3', shown: true },
+        { name: 'Dashboard', checks: 'Dashboard login, session API, +1', shown: true },
+        { name: 'API', checks: 'API health, Invoice export API, +5', shown: true },
+        { name: 'Payments', checks: 'Payments callback, Checkout page, +1', shown: true },
+        { name: 'Email delivery', checks: 'SMTP relay, MX records, +1', shown: true },
+        { name: 'Background jobs', checks: '4 heartbeats', shown: false },
+        { name: 'Docs', checks: 'Docs site, Changelog, +1', shown: true }
+      ],
+      pvComps: [
+        { name: 'Website', state: 'Operational', tone: ok, days: this.days([], [41]) },
+        { name: 'Dashboard', state: 'Operational', tone: ok, days: this.days([], [12, 63]) },
+        { name: 'API', state: 'Partial outage', tone: 'la-status--down', days: this.days([89], [27, 28, 70]) },
+        { name: 'Payments', state: 'Operational', tone: ok, days: this.days([], []) },
+        { name: 'Email delivery', state: 'Maintenance', tone: 'la-status--maintenance', days: this.days([], [55, 89]) },
+        { name: 'Docs', state: 'Operational', tone: ok, days: this.days([], [89]) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

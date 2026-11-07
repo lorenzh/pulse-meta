@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account security · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Mara Lindqvist</a></li><li aria-hidden="true">/</li><li aria-current="page">Account security</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-current="page" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a><a class="la-iconbtn la-iconbtn--sm" href="SHSignIn.dc.html" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></a><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content" style="--cs-max: 1120px">
+<div class="page-head">
+<div>
+<h1 class="page-title">Account security</h1>
+<p class="page-sub" title="How you sign in to pulse as mara@quillbird.example: a password and an authenticator app.">How you sign in to pulse as <span class="mono">mara@quillbird.example</span>: a password and an authenticator app.</p>
+</div>
+</div>
+
+<section class="la-panel" aria-labelledby="tfa-h">
+<div class="la-panel__head"><h2 class="eb" id="tfa-h">Two-factor authentication</h2>
+<sc-if value="{{isOn}}" hint-placeholder-val="{{true}}"><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">On since 2026-10-30</span></span></sc-if>
+<span class="la-badge">required for owner and admins</span>
+</div>
+<p class="lbl" style="margin: 0; padding: 14px 20px 0;">Two-factor is required for the owner and every admin. Members and viewers may add it, and must keep it when the owner requires it for everyone.</p>
+<sc-if value="{{isSetup}}" hint-placeholder-val="{{false}}">
+<div class="la-panel__body stack" style="gap: 20px;">
+<div class="la-callout la-callout--info"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Replace your authenticator app</p><p class="la-callout__text">Your current app keeps working until you confirm a code from the new one.</p></div></div>
+<ol class="steps" aria-label="Setup steps"><li class="done"><span class="n">1</span>Scan</li><li aria-current="step"><span class="n">2</span>Confirm code</li><li><span class="n">3</span>Save recovery codes</li></ol>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start;">
+<div style="width: 200px; height: 200px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--field); color: var(--text); display: flex; align-items: center; justify-content: center;">
+<svg width="176" height="176" viewBox="0 0 25 25" fill="currentColor" shape-rendering="crispEdges" role="img" aria-label="QR code for your authenticator app (placeholder)">
+<rect x="0.5" y="0.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="2" y="2" width="3" height="3"></rect>
+<rect x="18.5" y="0.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="20" y="2" width="3" height="3"></rect>
+<rect x="0.5" y="18.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="2" y="20" width="3" height="3"></rect>
+<rect x="9" y="0" width="1" height="2"></rect><rect x="12" y="1" width="2" height="1"></rect><rect x="15" y="0" width="1" height="3"></rect><rect x="8" y="3" width="2" height="1"></rect><rect x="11" y="4" width="3" height="1"></rect><rect x="9" y="6" width="1" height="1"></rect><rect x="14" y="5" width="2" height="2"></rect>
+<rect x="1" y="8" width="1" height="2"></rect><rect x="3" y="8" width="3" height="1"></rect><rect x="7" y="9" width="2" height="2"></rect><rect x="10" y="8" width="1" height="3"></rect><rect x="13" y="9" width="2" height="1"></rect><rect x="17" y="8" width="1" height="2"></rect><rect x="20" y="9" width="3" height="1"></rect>
+<rect x="0" y="12" width="2" height="1"></rect><rect x="3" y="11" width="1" height="3"></rect><rect x="6" y="13" width="2" height="1"></rect><rect x="11" y="12" width="3" height="1"></rect><rect x="16" y="11" width="1" height="3"></rect><rect x="19" y="12" width="2" height="1"></rect><rect x="22" y="13" width="2" height="2"></rect>
+<rect x="2" y="15" width="1" height="2"></rect><rect x="4" y="16" width="3" height="1"></rect><rect x="9" y="15" width="2" height="1"></rect><rect x="12" y="14" width="1" height="3"></rect><rect x="14" y="16" width="3" height="1"></rect><rect x="19" y="15" width="1" height="2"></rect><rect x="23" y="16" width="2" height="1"></rect>
+<rect x="8" y="18" width="1" height="3"></rect><rect x="10" y="19" width="3" height="1"></rect><rect x="14" y="18" width="2" height="2"></rect><rect x="17" y="19" width="1" height="2"></rect><rect x="19" y="21" width="3" height="1"></rect><rect x="21" y="18" width="2" height="1"></rect><rect x="23" y="20" width="1" height="3"></rect>
+<rect x="8" y="23" width="3" height="1"></rect><rect x="12" y="22" width="1" height="2"></rect><rect x="15" y="23" width="2" height="1"></rect><rect x="19" y="24" width="2" height="1"></rect>
+</svg>
+</div>
+<div class="stack" style="gap: 16px; min-width: 0;">
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Scan the code with the new authenticator app, or enter the key by hand. Then type the 6-digit code it shows.</p>
+<div class="la-field"><span class="la-field__label" id="k-l">Setup key</span><div class="secret" aria-labelledby="k-l" style="max-width: 420px;"><code>MFRG GZDF MZTW Q2LK NNWG 23TP</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field" style="max-width: 260px;"><label class="la-field__label" for="otp">6-digit code</label><input class="la-input mono" id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="482 913" style="font-size: 20px; letter-spacing: 0.2em;" aria-describedby="otp-s"><p class="cs-fstatus cs-fstatus--ok" id="otp-s"><svg class="cs-fstatus__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Code matches</p></div>
+<div class="row"><button type="button" class="la-btn la-btn--primary" onClick="{{turnOn}}">Use the new app</button><button type="button" class="la-btn la-btn--ghost" onClick="{{turnOn}}">Cancel</button><span class="lbl">Next: 10 new one-time recovery codes</span></div>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isOn}}" hint-placeholder-val="{{true}}">
+<div class="la-panel__body stack" style="gap: 14px;">
+<div class="spread"><span><b style="font-weight: 500;">Authenticator app</b><span class="lbl" style="display: block;">added 2026-10-30 · last used 14:30</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm" onClick="{{replace}}">Replace app</button></div>
+<div class="spread"><span><b style="font-weight: 500;">Recovery codes</b><span class="lbl" style="display: block;">10 of 10 left · created 2026-10-30</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm" onClick="{{askCodes}}" aria-expanded="{{confirmExpanded}}" aria-controls="rc-confirm">Create new codes</button></div>
+<sc-if value="{{confirmCodes}}" hint-placeholder-val="{{true}}">
+<form id="rc-confirm" class="la-panel cs-panel-s" onSubmit="{{noop}}" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+<p style="margin: 0; font-weight: 500;">Create 10 new recovery codes?</p>
+<p class="lbl" style="margin: 0;">Your current 10 codes stop working at once. The new codes are shown once, on the next page.</p>
+<div class="row"><button type="submit" class="la-btn la-btn--primary la-btn--sm">Create new codes</button><button type="button" class="la-btn la-btn--ghost la-btn--sm" onClick="{{cancelCodes}}">Cancel</button></div>
+</form>
+</sc-if>
+<p class="lbl" style="margin: 0;">As the owner you cannot turn two-factor off. If you lose the app and the codes, a command in the console container prints a one-use reset link.</p>
+</div>
+</sc-if>
+</section>
+
+<div class="g2">
+<section class="la-panel" aria-labelledby="si-h">
+<div class="la-panel__head"><h2 class="eb" id="si-h">Sign-in methods</h2></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<li class="spread" style="padding: 12px 20px; border-bottom: 1px solid var(--rule);"><span class="who"><b>Password</b><span>changed 2026-06-02 · at least 12 characters</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm">Change password</button></li>
+<li class="spread" style="padding: 12px 20px;"><span class="who"><b>Authenticator app</b><span>asked after the password</span></span><span class="la-badge">on</span></li>
+</ul>
+</section>
+
+<section class="la-panel cs-panel-s" aria-labelledby="pk-h" style="padding: 20px; display: flex; flex-direction: column; gap: 8px;">
+<h2 class="eb" id="pk-h">Passkeys: later</h2>
+<p class="lbl" style="margin: 0;">Passkeys are not part of v1. Until then you sign in with your password and your authenticator app.</p>
+</section>
+</div>
+
+<section class="la-panel" aria-labelledby="se-h">
+<div class="la-panel__head"><h2 class="eb" id="se-h">Sessions · 3</h2><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Sign out all other sessions</button></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Device</th><th scope="col">Signed in with</th><th scope="col">IP address</th><th scope="col">Last active</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="tt"><b>Firefox on Linux</b><span class="sub">this session</span></td><td class="m">password + app code</td><td class="m">203.0.113.24</td><td class="m">now</td><td style="text-align: right;"><span class="lbl">current</span></td></tr>
+<tr><td class="tt"><b>Safari on iPhone</b></td><td class="m">password + app code</td><td class="m">198.51.100.61</td><td class="m">2026-10-28 21:04</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Sign out</button></td></tr>
+<tr><td class="tt"><b>Chrome on macOS</b></td><td class="m">password + recovery code</td><td class="m">192.0.2.17</td><td class="m">2026-10-24 10:40</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Sign out</button></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Sessions end after 30 days without activity. A password reset ends all sessions.</span></div>
+</section>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"twoFactor":{"editor":"enum","options":["on","replace"],"default":"on"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, tfa: null, confirm: true }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const tfa = this.state.tfa ?? this.props.twoFactor ?? 'on';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isSetup: tfa === 'replace', isOn: tfa === 'on',
+      replace: () => this.setState({ tfa: 'replace' }),
+      turnOn: () => this.setState({ tfa: 'on' }),
+      confirmCodes: this.state.confirm, confirmExpanded: this.state.confirm ? 'true' : 'false',
+      askCodes: () => this.setState({ confirm: true }),
+      cancelCodes: () => this.setState({ confirm: false }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>
