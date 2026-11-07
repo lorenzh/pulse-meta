@@ -78,6 +78,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       - name: Follow the closed issue
         env:
