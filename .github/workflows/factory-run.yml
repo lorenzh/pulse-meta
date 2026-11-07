@@ -193,6 +193,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       - name: Check the bot account
         env:
@@ -316,6 +317,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       - name: Publish the shared findings
         if: ${{ always() && inputs.admission != 'cancel' && steps.run.outcome != 'skipped' }}
@@ -348,6 +350,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       # A HARNESS_TIMEOUT restarts the issue once by itself (.github/run/auto-restart.sh). A second
       # timeout of the same state before a run of it finishes gets the failure comment below.
@@ -414,6 +417,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       - name: Start the next run
         env:
