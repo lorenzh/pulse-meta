@@ -108,10 +108,4 @@ Other files:
 
 ## Updating this export
 
-The artifact is the source of truth. To bring this folder to a newer artifact version:
-
-1. List the artifact files (Artifact tool, action `list`, scope `files`, url above) and note the version id in the first line of the result.
-2. Read every board (`project/*.dc.html`), `project/canvas.json`, `project/console.css`, `project/shell.js` and `project/ds/losoft-app/{tokens.css,components/bundle.css,components/bundle.js}` (Artifact tool, action `read`, with `paths` and an `out_dir`), and copy them without the `project/` prefix into this folder. Do not export `artifact-type/`, `SKILL.md`, `index.html` or the fonts.
-3. Run `git diff --stat design/console` to see which boards changed. Add and remove rows in the board table so it matches the `order` in `canvas.json`.
-4. Update the version id, export date and design system version at the top of this file, and add a section "Changes in version <new id>" above the previous one that names the changed boards and what changed in them.
-5. Open a pull request. Factory reads the diff to plan the console changes.
+Use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`).

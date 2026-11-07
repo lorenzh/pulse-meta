@@ -19,7 +19,7 @@ Differences between this folder and the artifact on 7 November 2026 (not re-expo
 - `canvas.json`: board heights only.
 - `losoft-tokens.json`: identical.
 
-To update this export, follow the steps in `design/console/README.md` ("Updating this export") with the website artifact and its files (`project/{Main,Docs,DocsApi,Hosted}.dc.html`, `project/canvas.json`, `project/ds/losoft/tokens.json` as `losoft-tokens.json`), and add a "Changes in version <id>" section here.
+To check or update this export, use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`); add a "Changes in version <id>" section here.
 
 | File | Page |
 | --- | --- |
