@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Console accepts patched channel records before the api writer updates",
+      "title": "Console reads patched channels before api updates and preserves safe rollback",
       "files": [
         "package.json",
         "bun.lock",
@@ -13,7 +13,7 @@
         "src/runtime-read.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, R7, both Tests lists and Completion evidence; Rollout order steps 1-2, mixed check M2, Releases/deploy/rollback and Rows stored before the patch; Security impact, Performance impact and Acceptance evidence 5-8.",
+      "spec": "## Repository: console, R7, both Tests lists and Completion evidence; Rollout order steps 1-2, mixed check M2, Releases/deploy/rollback and Rows stored before the patch; Security impact, Performance impact and Acceptance evidence 5-8. Includes the revised writer-first rollback sequence and both database/ledger verification checks.",
       "acceptance": [
         {
           "command": "bun test src/notification-form.test.ts src/runtime-read.test.ts",
@@ -45,7 +45,11 @@
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "exit 0; CI check, browser and deploy-dev pass. PR records old/new assertions and unchanged controls, full patch SHA, UI error check, test CPU A/B and applicable security checklist (fixed secret-safe validation errors, full dependency pin/frozen lockfile). Merge/activate this reader before the api writer. Record dev-row audit with the new admin-view validator and supported correction/removal of newly refused rows, first-deploy api/console/notify image coordination, and rollback requirement to rewrite padded addresses and sync notify before reverting readers, as Rollout order specifies."
+          "expected": "exit 0; CI check, browser and deploy-dev pass. PR records old/new assertions and unchanged controls, full patch SHA, UI error check, test CPU A/B and applicable security checklist (fixed secret-safe validation errors, full dependency pin/frozen lockfile). Merge/activate this reader before the api writer. Record dev-row audit with the new admin-view validator and supported correction/removal of newly refused rows before activation, first-deploy api/console/notify image coordination, and the complete writer-first rollback sequence in the next check."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "PR carries the exact 'Releases, deploy and rollback' rule: api leaves the patch first on every running instance, even for a console-only or notify-only rollback. Its old pin rejects newly accepted addresses such as 'Ops < ops@example.test >' on POST/PUT with 422 (M1), while patched readers still read existing rows. Keep writes of that set stopped throughout cleanup and reader rollback, until both readers run the patch again; if api cannot leave the patch, retain patched console/notify. Only after api is reverted everywhere, normalize every padded from/to entry through PUT /admin/notify/channels/<id> using the current revision in If-Match; delete shadowed rows through DELETE instead (PUT answers 409). Never edit database/ledger rows by hand. Require contract c5ce6685ce8b563a243823bca451032291b81adb's validateAdminNotifyChannelsView on GET /admin/notify/channels to give ok:true. Require service.report.appliedRevision equal to revision and service.report.rejected equal to []; a matching revision alone cannot prove cleanup because rejected ids retain their earlier ledger rows. Then stop notify, read SELECT id, definition FROM remote_channels from PULSE_NOTIFY_STATE, and require the same old contract's validateNotifyChannelDefinition to give ok:true on every parsed definition. Only after both database and stopped-ledger checks pass may console and notify roll back, in either order. If either cannot be proved, keep patched readers. Api returns to the patch only after both readers run it again. This is rollout/rollback guidance in the PR, not an instruction to roll back a live service during implementation."
         }
       ]
     }

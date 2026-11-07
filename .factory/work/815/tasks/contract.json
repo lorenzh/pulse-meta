@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Notify validators match the specified rules and ship as the next patch",
+      "title": "Notify validators match notify's rules and ship the next patch after main",
       "files": [
         "src/notify-channels.ts",
         "test/notify-channels.test.ts",
@@ -19,7 +19,7 @@
       "acceptance": [
         {
           "command": "bun test test/notify-channels.test.ts",
-          "expected": "On unchanged current main (b637302 or later with the pre-fix validator), and against 2.4.0 c5ce6685ce8b563a243823bca451032291b81adb, every isolated defect case in items 1-4 fails by assertion of the literal ok/error, while all unchanged positive/negative controls and hostile-input cases pass. Record this baseline before implementation. After R1-R4 all tests pass, 0 fail; a focused run may exit nonzero only for whole-repository coverage. R1 checks all six viewText positions with 200/300-unit accepts and 202/302-unit emoji rejects, empty rejects, mixed ASCII/emoji boundaries, and containing admin views. R2 tests from and to[0], accepts 'Ops <ops@example.test>' and 'Ops < ops@example.test >', rejects 'Ops <ops@example.test> trailing', preserves trimming/CRLF/empty-address controls and Object.is identity; also reject trailing through record/admin view. R3 tests all Counterexamples, including literal clientName '☃' as its own case (U+2603), 'münchen.test', '☃.example.test', 'pülse.example.test', 'pulse_console', real U+0000, bad labels/literals; accepts the listed hostname/address literals, localhost, 191-character name and absent name; keeps the 200 cap. 'pulse_console' and '☃' reject through record/admin view too."
+          "expected": "On unchanged current main (b637302 or later with the pre-fix validator), and against 2.4.0 c5ce6685ce8b563a243823bca451032291b81adb, every isolated defect case in items 1-4 fails by assertion of the literal ok/error, while all unchanged positive/negative controls and hostile-input cases pass. Record this baseline before implementation. After R1-R4 all tests pass, 0 fail; a focused run may exit nonzero only for whole-repository coverage. R1 checks all six viewText positions with 200/300-unit accepts and 202/302-unit emoji rejects, empty rejects, mixed ASCII/emoji boundaries, and containing admin views. R2 tests from and to[0], accepts 'Ops <ops@example.test>' and 'Ops < ops@example.test >', rejects 'Ops <ops@example.test> trailing', preserves trimming/CRLF/empty-address controls and Object.is identity; also reject trailing through record/admin view. R3 tests all Counterexamples, including literal clientName '☃' as its own case (U+2603), 'münchen.test', '☃.example.test', 'pülse.example.test', 'pulse_console', real U+0000, bad labels/literals; accepts the listed hostname/address literals, localhost, 191-character name and absent name; keeps the 200 cap. 'pulse_console' and '☃' reject through record/admin view too. Preserve rejected[0].channelId:null as an accepted control and all existing nullability and byte/list bounds."
         },
         {
           "command": "bun test test/notify-channels.test.ts",
@@ -31,7 +31,7 @@
         },
         {
           "command": "bun install --frozen-lockfile && bun run check",
-          "expected": "exit 0; frozen install, lint, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+          "expected": "exit 0; frozen install, lint, build, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
         },
         {
           "command": "bun run build && git diff --exit-code -- dist",

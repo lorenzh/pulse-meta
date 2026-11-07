@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Status pins the contract patch after its prerequisite and keeps checks passing",
+      "title": "Status installs the merged contract patch after #809 and passes all checks",
       "files": [
         "package.json",
         "bun.lock"
@@ -39,7 +39,7 @@
         },
         {
           "command": "git diff origin/main --name-only && git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "Only package.json and bun.lock differ; whitespace check passes and CI check/a11y pass. PR records #809 and compare preconditions, full merged patch SHA, required-check evidence and applicable security checklist (full SHA, matching frozen lockfile). No new tests or source changes; no performance change or measurement required because main already pins 2.5.0."
+          "expected": "Only package.json and bun.lock differ; whitespace check passes and CI check/a11y pass. PR records #809 and compare preconditions, full merged patch SHA, required-check evidence and applicable security checklist (full SHA, matching frozen lockfile). No new tests or source changes; no performance change or measurement required because main already pins 2.5.0. This task belongs to Rollout step 2; status reads no stored notify channels and creates no api reader-order precondition."
         }
       ]
     }

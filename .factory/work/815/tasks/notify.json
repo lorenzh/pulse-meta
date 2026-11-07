@@ -5,14 +5,14 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Notify pins the patch and proves channel parity and ledger compatibility",
+      "title": "Notify proves contract parity and ledger compatibility before api updates",
       "files": [
         "package.json",
         "bun.lock",
         "test/contract-parity.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, R7, all Precondition checks, parity test, mixed check M3, existing-test controls and Completion evidence; Evidence R2/R3 table, Rollout order step 2 and rollback, Security impact, Performance impact and Acceptance evidence 4-8.",
+      "spec": "## Repository: notify, R7, all Precondition checks, parity test, mixed check M3, existing-test controls and Completion evidence; Evidence R2/R3 table, Rollout order step 2 and rollback, Security impact, Performance impact and Acceptance evidence 4-8. Includes the revised writer-first rollback sequence and both database/ledger verification checks.",
       "acceptance": [
         {
           "command": "gh issue view 820 --repo lorenzh/pulse-meta --json state",
@@ -60,7 +60,11 @@
         },
         {
           "command": "git diff origin/main --stat -- src && git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "No src diff; whitespace check and required CI check pass. PR records #820/pin preconditions, parity defect/control results including '☃':false, M3 old/new results, full patch SHA, test CPU/startup A/B and full-bench-or-nightly evidence. Security checklist confirms secret-safe errors, nonthrowing validation and full frozen pin. Merge/activate notify before api; document that rollback below the patch requires rewriting padded addresses and syncing the ledger first (old notify otherwise rejects D and exits 2 at startup)."
+          "expected": "No src diff; whitespace check and required CI check pass. PR records #820/pin preconditions, parity defect/control results including '☃':false, M3 old/new results, full patch SHA, test CPU/startup A/B and full-bench-or-nightly evidence. Security checklist confirms secret-safe errors, nonthrowing validation and full frozen pin. Merge/activate notify before api; carry the first-deploy api/console/notify patch requirement and the complete writer-first rollback sequence in the next check. Old notify rejects M3's padded definition D and exits 2 when reopening a ledger that holds it."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "PR carries the exact 'Releases, deploy and rollback' rule: api leaves the patch first on every running instance, even for a console-only or notify-only rollback. Its old pin rejects newly accepted addresses such as 'Ops < ops@example.test >' on POST/PUT with 422 (M1), while patched readers still read existing rows. Keep writes of that set stopped throughout cleanup and reader rollback, until both readers run the patch again; if api cannot leave the patch, retain patched console/notify. Only after api is reverted everywhere, normalize every padded from/to entry through PUT /admin/notify/channels/<id> using the current revision in If-Match; delete shadowed rows through DELETE instead (PUT answers 409). Never edit database/ledger rows by hand. Require contract c5ce6685ce8b563a243823bca451032291b81adb's validateAdminNotifyChannelsView on GET /admin/notify/channels to give ok:true. Require service.report.appliedRevision equal to revision and service.report.rejected equal to []; a matching revision alone cannot prove cleanup because rejected ids retain their earlier ledger rows. Then stop notify, read SELECT id, definition FROM remote_channels from PULSE_NOTIFY_STATE, and require the same old contract's validateNotifyChannelDefinition to give ok:true on every parsed definition. Only after both database and stopped-ledger checks pass may console and notify roll back, in either order. If either cannot be proved, keep patched readers. Api returns to the patch only after both readers run it again. This is rollout/rollback guidance in the PR, not an instruction to roll back a live service during implementation."
         }
       ]
     }
