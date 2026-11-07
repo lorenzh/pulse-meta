@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Notify pins the patch and proves channel parity and ledger compatibility",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "test/contract-parity.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, R7, all Precondition checks, parity test, mixed check M3, existing-test controls and Completion evidence; Evidence R2/R3 table, Rollout order step 2 and rollback, Security impact, Performance impact and Acceptance evidence 4-8.",
+      "acceptance": [
+        {
+          "command": "gh issue view 820 --repo lorenzh/pulse-meta --json state",
+          "expected": "Before any edit, state is CLOSED. If OPEN, request a needs-input hold naming #820; preserve fan-out coordination for a person to link this child as blocked by #820."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-notify/contents/package.json?ref=main' --jq .content | base64 -d",
+          "expected": "Before any edit read main's contract pin as PIN; PATCH_SHA is the merged contract child's patch commit."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce668...${PIN}\" --jq .status && gh api \"repos/lorenzh/pulse-contract/compare/${PIN}...${PATCH_SHA}\" --jq .status",
+          "expected": "First status is ahead or identical, second ahead. Request needs-input if the pin is older/incompatible, or a hold if the patch is already present (identical or behind on the second comparison)."
+        },
+        {
+          "command": "bun test test/contract-parity.test.ts",
+          "expected": "For every row of Evidence's R2/R3 table, compare notify's channelSchema('email') safeParse success and contract validateNotifyChannelDefinition ok, and assert both equal that row's independent literal notify-0464b90 boolean. Address rows run separately for from and to[0]. Include literal clientName '☃' (U+2603) with false, plus 'münchen.test' and '☃.example.test' false; real NUL, underscore, malformed-label/literal rows and hostname/address-literal positives all follow the table. Exclude 201..255-character names; contract retains its 200 cap. On the old prepatch pin exactly bold defect rows fail by assertion on contract's result; controls pass. On the patch all tests pass, 0 fail, irrespective of focused-run coverage exit; record both results."
+        },
+        {
+          "command": "bun test test/contract-parity.test.ts",
+          "expected": "M3: the specified padded-address email record in a valid revision envelope gives kind:'applied', exactly one record, original from 'Ops < ops@example.test >' and rejected:[]. A temp ledger accepts replaceRemoteChannels with id:'mail', appliedAt:1, revision 'sha256-' + 64 literal '1' digits, and the literal canonical JSON D in the notify section; after close/reopen remoteChannels returns that unchanged row and definition text. Both fail by assertion with the old pin (element rejected and LedgerRowError) and pass with the patch; no fixture/install crashes count as red evidence."
+        },
+        {
+          "command": "rg -n 'pulse-contract' package.json bun.lock",
+          "expected": "Both files pin the same full 40-character SHA of the merged pulse-contract main commit containing R1-R6, independently identified from the contract child's merged PR; preserve intervening merged features."
+        },
+        {
+          "command": "bun test test/remote-channels.smtp-name.test.ts test/ledger.v5.test.ts",
+          "expected": "All tests pass, 0 fail (focused coverage is not the full gate). Existing remote-channel SMTP rejection and ledger tests keep passing; no notify-local schema/mailer rule or message changes."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; frozen install, lint, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times per side, alternating origin/main and candidate with their installed pins, and report each side's median of user + system CPU seconds in the PR; wall time is not CPU. Expected about +0.1 s test CPU. Report an increase above 0.5 s as a finding."
+        },
+        {
+          "command": "bun -e 'const t=process.cpuUsage(); await import(\"@lorenzh/pulse-contract\"); const c=process.cpuUsage(t); Bun.gc(true); console.log((c.user+c.system)/1000, process.memoryUsage().rss/1048576)'",
+          "expected": "After installing each side's pin, take 15 alternating fresh-process samples per side (origin/main and candidate); report median import CPU ms and RSS MiB in the PR. Account for eager subscription module imports from 2.5.0; report an increase above 10 ms or 2 MiB as a finding. Expected near zero pin-import delta after prerequisite #820 has moved notify to 2.5.0; otherwise about +1.4 ms CPU and +0.1 MiB."
+        },
+        {
+          "command": "bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref notify=<notify branch SHA> --service-tokens --expect-report notify --rounds 3",
+          "expected": "From the api bench checkout, with literal resolved SHAs substituted, run full A/B when Docker/Compose is available and report results without budget regressions (api bench/README.md:76-100). Otherwise state the concrete Docker limitation and that the nightly main bench is the gating check after merge. Expect no measurable load/latency change and only the startup/memory effects of Performance impact."
+        },
+        {
+          "command": "git diff origin/main --stat -- src && git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "No src diff; whitespace check and required CI check pass. PR records #820/pin preconditions, parity defect/control results including '☃':false, M3 old/new results, full patch SHA, test CPU/startup A/B and full-bench-or-nightly evidence. Security checklist confirms secret-safe errors, nonthrowing validation and full frozen pin. Merge/activate notify before api; document that rollback below the patch requires rewriting padded addresses and syncing the ledger first (old notify otherwise rejects D and exits 2 at startup)."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Console accepts patched channel records before the api writer updates",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/notification-form.test.ts",
+        "src/runtime-read.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, R7, both Tests lists and Completion evidence; Rollout order steps 1-2, mixed check M2, Releases/deploy/rollback and Rows stored before the patch; Security impact, Performance impact and Acceptance evidence 5-8.",
+      "acceptance": [
+        {
+          "command": "bun test src/notification-form.test.ts src/runtime-read.test.ts",
+          "expected": "With the old 2.4.0 pin, all three new form cases and both M2 cases fail by assertion, while existing valid email and webhook-view controls pass; record the baseline. With the merged patch pin all tests pass, 0 fail (a focused coverage exit is not the gate). Form clientName 'pulse_console' gives isOk:false and 'channel.smtp.clientName: must be a host name'; trailing address gives false; 'Ops < ops@example.test >' gives true. M2: reading the specified database email record with the padded address gives kind:'ok' and original from spelling; the same record with trailing text gives kind:'failed', failure.kind:'invalid'. Keep non-test src unchanged."
+        },
+        {
+          "command": "rg -n 'pulse-contract' package.json bun.lock",
+          "expected": "Both files pin the same full 40-character SHA of the merged pulse-contract main commit containing R1-R6, independently identified from the contract child's merged PR; preserve intervening merged features."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; frozen install, lint, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+        },
+        {
+          "command": "bunx playwright install chromium && bun run check:browser",
+          "expected": "exit 0; the existing Chromium browser suite passes (package.json:19; ci.yml:291,306,308)."
+        },
+        {
+          "command": "E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml",
+          "expected": "exit 0 from pulse-deploy main's dev stack with this console checkout, after the CI deploy-dev setup/start/readiness steps (ci.yml:231-279); report the result. A two-factor failure where console follows the spec is a deploy defect: request a hold, never edit deploy or weaken the job."
+        },
+        {
+          "command": "PULSE_API_URL=http://localhost:3000 bun start",
+          "expected": "Using a local API (or 'bun e2e/run.ts --serve' fixture), exercise one email channel save with smtp.clientName 'pulse_console'; the UI shows 'channel.smtp.clientName: must be a host name'. Report command and observed result in the PR."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times per side, alternating origin/main and candidate with their installed pins, and report each side's median of user + system CPU seconds in the PR; wall time is not CPU. Console has no budget key; expect only the small added-test cost. Report an increase above 0.5 s as a finding."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "exit 0; CI check, browser and deploy-dev pass. PR records old/new assertions and unchanged controls, full patch SHA, UI error check, test CPU A/B and applicable security checklist (fixed secret-safe validation errors, full dependency pin/frozen lockfile). Merge/activate this reader before the api writer. Record dev-row audit with the new admin-view validator and supported correction/removal of newly refused rows, first-deploy api/console/notify image coordination, and rollback requirement to rewrite padded addresses and sync notify before reverting readers, as Rollout order specifies."
+        }
+      ]
+    }
+  ]
+}
