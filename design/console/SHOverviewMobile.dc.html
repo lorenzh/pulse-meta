@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<a class="brand" href="SHOverviewMobile.dc.html" aria-label="Quillbird monitoring home" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"></a>
+<span class="org-t"><span class="org-n">Quillbird monitoring</span><span class="org-m">self-hosted · v1.5.0</span></span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<main class="mb-body">
+<div class="spread" style="align-items: flex-end;"><h1 class="mb-title">Overview</h1><span class="lbl">14:32 UTC</span></div>
+<div class="la-callout la-callout--error" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Partial outage · API</p><p class="la-callout__text">Invoice export down from <span class="mono">2 of 3</span> locations since <span class="mono">14:02</span>. Incident #142.</p></div><a class="la-btn la-btn--secondary la-btn--sm" href="SHIncidentDetailMobile.dc.html" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 12px; min-height: 44px;">View</a></div>
+<section class="la-panel" aria-labelledby="mh-h">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="mh-h">Instance health</h2><span class="la-badge la-badge--info">v1.5.1 available</span></div>
+<ul role="list" style="margin: 0; padding: 4px 16px 10px;">
+<li class="spread" style="min-height: 40px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">pulse-api</span></span><span class="lbl">v1.5.0 · wire 1 · 1 s ago</span></li>
+<li class="spread" style="min-height: 40px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">pulse-console</span></span><span class="lbl">v1.5.0 · this server</span></li>
+<li class="spread" style="min-height: 40px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">checks.json</span></span><span class="lbl">valid · applied 14:01</span></li>
+<li class="spread" style="min-height: 40px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">office</span></span><span class="lbl">last result 2 s ago</span></li>
+<li class="spread" style="min-height: 40px; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">fsn-1</span></span><span class="lbl">last result 1 s ago</span></li>
+<li class="spread" style="min-height: 40px;"><span class="la-status la-status--up"><span class="la-status__mark"></span><span class="la-status__label">iad-1</span></span><span class="lbl">last result 3 s ago</span></li>
+</ul>
+</section>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+<div class="la-panel kpi" style="padding: 14px;"><span class="eb">Checks up</span><span class="kpi-v" style="font-size: 26px;">31<small>/ 34</small></span><span class="kpi-m">1 down · 1 failing at one location</span></div>
+<div class="la-panel kpi" style="padding: 14px;"><span class="eb">30 days</span><span class="kpi-v" style="font-size: 26px;">99.94<small>%</small></span><span class="kpi-m">public components</span></div>
+</div>
+<section class="la-panel" id="more" aria-labelledby="more-h">
+<div class="la-panel__head" style="padding: 6px 16px; min-height: 44px;"><h2 class="eb" id="more-h">More</h2></div>
+<nav aria-label="More pages">
+<ul role="list" style="margin: 0; padding: 0 16px;">
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHMaintenance.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Maintenance</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHProbes.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Probe locations</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHTokens.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Tokens</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHTeam.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Team</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHActivity.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Activity</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHSystem.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">System</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHSettings.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Settings</a></li>
+<li style="border-bottom: 1px solid var(--rule);"><a href="SHSecurity.dc.html" style="display: flex; align-items: center; min-height: 44px; color: var(--text); text-decoration: none; font-weight: 500;">Account security</a></li>
+<li><form method="post" action="SHSignInMobile.dc.html" style="margin: 0;"><button type="submit" class="la-btn la-btn--ghost" style="width: 100%; justify-content: flex-start; min-height: 44px; padding: 0;">Sign out</button></form></li>
+</ul>
+</nav>
+</section>
+</main>
+<nav class="mb-tabs" aria-label="Main">
+<a href="SHOverviewMobile.dc.html" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a href="SHChecks.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks</a>
+<a href="SHIncidentsMobile.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents · 1</a>
+<a href="#more"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>More</a>
+</nav>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

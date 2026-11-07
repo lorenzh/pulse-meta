@@ -30,6 +30,17 @@ Lessons:
 - If a feature builds on another, say so: name the issue, what it provides and what must not be redone.
 - Link that dependency as a native GitHub "blocked by", not only in the body.
 
+## Designs
+- `design/<target>/` holds read-only exports of the design canvases: `design/website/` and `design/console/`. Read the README in each folder first: it lists the boards and the export version.
+- The claude.ai artifacts are the source of truth; never edit the exported files by hand:
+  - pulse Website: https://claude.ai/artifact/TTYEJrYqPVdDdEeYwwdhvA
+  - pulse Console: https://claude.ai/artifact/LfbJQnnkNCF8VHGnTnYWnP
+  - losoft (design system of the website): https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH
+  - losoft App (design system of the console): https://claude.ai/artifact/1EbvYkD4WhfdNqD7HygC2q
+- Each README records the artifact version and the design system version of the export, so a later change can be traced and diffed.
+- The Console canvas marks v1 scope: the self-hosted `SH*` boards above the "Later" row. Hosted and "Later" boards are not a source for v1 work items.
+- To check an export for drift or to update it, use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`; Claude with the Artifact tool only). A sync PR bumps the recorded versions and adds a "Changes in version <id>" section; Factory plans from the diff. Sync only when asked.
+
 ## Changing Factory config
 - Manage `.factory/config.yaml` with the `factory` CLI (`factory target add`), then run `npx factory validate`.
 - A new target's `context` must list the repositories it builds on (always `meta`, usually `contract`; `api` when it calls the API).

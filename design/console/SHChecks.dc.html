@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checks · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Quillbird monitoring</a></li><li aria-hidden="true">/</li><li aria-current="page">Checks</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><a class="pill-st" href="https://status.quillbird.example" target="_blank" rel="noopener"><span class="la-status la-status--down"><span class="la-status__mark"></span></span>status.quillbird.example</a><span class="cs-tools"><a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a>
+<form method="post" action="SHSignIn.dc.html" style="margin: 0;"><button type="submit" class="la-iconbtn la-iconbtn--sm" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button></form>
+<button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Checks</h1>
+<p class="page-sub" title="35 checks · 31 from checks.json (read-only here), 4 created in the console (1 shadowed by checks.json) · 4 are heartbeats"><span class="mono">35</span> checks · <span class="mono">31</span> from checks.json (read-only here), <span class="mono">4</span> created in the console (<span class="mono">1</span> shadowed by checks.json) · <span class="mono">4</span> are heartbeats</p>
+</div>
+<div class="row">
+<button type="button" class="la-btn la-btn--secondary">Export as checks.json</button>
+<a class="la-btn la-btn--primary" href="SHCheckEdit.dc.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5v14"></path></svg>Add check</a>
+</div>
+</div>
+
+<sc-if value="{{fileInvalid}}" hint-placeholder-val="{{false}}">
+<div class="la-callout la-callout--error" role="alert">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">checks.json is invalid: line 214: "interval" must be at least 10s. The last valid version from 14:01 stays in use. Console checks can still be changed.</p><p class="la-callout__text">Fix the file on the api host; pulse-api applies it on the next read. <a href="SHSystem.dc.html">File state on System</a></p></div>
+</div>
+</sc-if>
+
+<sc-if value="{{noChecks}}" hint-placeholder-val="{{false}}">
+<section class="la-panel" aria-label="Checks">
+<div class="la-callout cs-empty" style="margin: 20px;"><svg class="la-callout__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><div class="la-callout__body"><p class="la-callout__title">No checks yet</p><p class="la-callout__text">Add a check here, or define checks in checks.json on the api host.</p></div><a class="la-btn la-btn--primary" href="SHCheckEdit.dc.html" style="align-self: center; margin-right: 16px;">Add check</a></div>
+</section>
+</sc-if>
+
+<sc-if value="{{hasChecks}}" hint-placeholder-val="{{true}}">
+<div class="row-12" role="search" aria-label="Filter checks" style="gap: 12px 16px;">
+<label class="search" style="margin-left: 0; flex: 1 1 260px; max-width: 360px;"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Filter by name or address</span><input type="search" placeholder="Name or address"></label>
+<label class="sel-lab">Type <span class="la-select"><select onChange="{{setType}}"><option value="all">All types</option><option value="http">HTTP</option><option value="tls">TLS</option><option value="tcp">TCP</option><option value="dns">DNS</option><option value="domain">Domain</option><option value="heartbeat">Heartbeat</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Component <span class="la-select"><select onChange="{{setComp}}"><option value="all">All components</option><option>Website</option><option>Dashboard</option><option>API</option><option>Payments</option><option>Email delivery</option><option>Background jobs</option><option>Docs</option><option value="none">No component</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Source <span class="la-select"><select onChange="{{setSrc}}"><option value="all">All sources</option><option value="file">checks.json (read-only) · 31</option><option value="console">console (editable) · 4</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">State <span class="la-select"><select onChange="{{pickState}}"><option value="all">Any state · 35</option><option value="down">Down · 1</option><option value="quorum">Failing at one location · 1</option><option value="up">Up · 31</option><option value="maint">Maintenance · 1</option><option value="shadow">Shadowed by checks.json · 1</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<span class="lbl" style="margin-left: auto;" role="status">{{shown}}</span>
+</div>
+
+<section class="la-panel cs-bleed" aria-label="Checks">
+<div class="tw">
+<table class="dt dt-checks">
+<thead><tr>
+<th scope="col">State</th><th scope="col">Check</th><th scope="col">Source</th><th scope="col">Type</th><th scope="col">Component</th><th scope="col">Locations</th><th scope="col" class="num">Every</th><th scope="col" class="num">30 d</th><th scope="col" class="num">p95</th><th scope="col">Last result</th><th scope="col"><span class="la-sr">Actions</span></th>
+</tr></thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+<tr>
+<td style="white-space: nowrap;"><span class="la-status la-status--dense {{r.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{r.state}}</span></span></td>
+<td class="tt"><a href="SHCheckDetail.dc.html">{{r.name}}</a><span class="sub" title="{{r.target}}">{{r.target}}</span></td>
+<td><span class="la-badge tag--{{r.srcTone}}">{{r.src}}</span><span class="lbl" style="display: block;">{{r.srcNote}}</span></td>
+<td><span class="la-badge">{{r.type}}</span></td>
+<td>{{r.comp}}</td>
+<td class="m" title="{{r.loc}}">{{r.loc}}</td>
+<td class="num">{{r.every}}</td>
+<td class="num">{{r.up}}</td>
+<td class="num">{{r.p95}}</td>
+<td class="m" title="{{r.last}}">{{r.last}}</td>
+<td class="act"><sc-if value="{{r.shadow}}" hint-placeholder-val="{{false}}"><span class="row" style="gap: 4px; flex-wrap: nowrap;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Export</button><a class="la-btn la-btn--ghost la-btn--sm" href="SHCheckDetail.dc.html" style="color: var(--error);">Delete</a></span></sc-if><sc-if value="{{r.menu}}" hint-placeholder-val="{{true}}"><button type="button" class="la-iconbtn" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for {{r.name}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button></sc-if></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div class="la-callout cs-empty" style="margin: 20px;"><svg class="la-callout__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><div class="la-callout__body"><p class="la-callout__title">No checks match these filters</p><p class="la-callout__text">Change the type, component, source or state to see more.</p></div><button type="button" class="la-btn la-btn--secondary" onClick="{{clearFilters}}" style="align-self: center; margin-right: 16px;">Clear filters</button></div>
+</sc-if>
+</section>
+</sc-if>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"example":{"editor":"enum","options":["list","checks.json invalid","no checks yet"],"default":"list"},"$preview":{"width":1440,"height":2300}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, type: 'all', comp: 'all', st: 'all', src: 'all' }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const S = {
+      up: ['Up', 'la-status--up'], down: ['Down', 'la-status--down'], quorum: ['Failing at 1 of 3', 'la-status--degraded'],
+      maint: ['Maintenance', 'la-status--maintenance'], shadow: ['Shadowed by checks.json', 'la-status--unknown']
+    };
+    const all = [
+      ['down', 'Invoice export API', 'POST https://api.quillbird.example/v1/exports', 'http', 'API', 'office fsn-1 down · iad-1 up', '30s', '99.92%', 'timeout', '14:32:01 · timeout 10 s'],
+      ['quorum', 'Docs site', 'GET https://docs.quillbird.example', 'http', 'Docs', 'iad-1 down · 2 up', '1m', '99.99%', '412 ms', '14:31:44 · 503 from iad-1'],
+      ['maint', 'SMTP relay', 'smtp.quillbird.example:587', 'tcp', 'Email delivery', '3 locations', '1m', '99.97%', '38 ms', 'until 15:00 · maintenance window'],
+      ['up', 'Website', 'GET https://quillbird.example', 'http', 'Website', '3 of 3 up', '30s', '99.98%', '148 ms', '14:32:04 · 200'],
+      ['up', 'Pricing page', 'GET https://quillbird.example/pricing', 'http', 'Website', '3 of 3 up', '1m', '99.99%', '162 ms', '14:31:58 · 200'],
+      ['up', 'quillbird.example certificate', 'quillbird.example:443', 'tls', 'Website', '3 of 3 up', '1h', '100.00%', '—', '14:00:12 · 80 days left'],
+      ['up', 'quillbird.example A record', 'A quillbird.example → 3 addresses', 'dns', 'Website', '3 of 3 up', '5m', '100.00%', '21 ms', '14:30:03 · matches'],
+      ['up', 'quillbird.example registration', 'quillbird.example', 'domain', 'Website', 'once a day', '1d', '100.00%', '—', '06:00 · expires 2027-06-14'],
+      ['up', 'Dashboard login', 'GET https://app.quillbird.example/login', 'http', 'Dashboard', '3 of 3 up', '30s', '99.95%', '212 ms', '14:32:05 · 200'],
+      ['up', 'Dashboard session API', 'GET https://app.quillbird.example/api/session', 'http', 'Dashboard', '3 of 3 up', '30s', '99.96%', '96 ms', '14:32:05 · 200'],
+      ['up', 'app certificate', 'app.quillbird.example:443', 'tls', 'Dashboard', '3 of 3 up', '1h', '100.00%', '—', '14:00:12 · 52 days left'],
+      ['up', 'API health', 'GET https://api.quillbird.example/healthz', 'http', 'API', '3 of 3 up', '30s', '99.93%', '64 ms', '14:32:06 · 200'],
+      ['up', 'Invoices list API', 'GET https://api.quillbird.example/v1/invoices', 'http', 'API', '3 of 3 up', '30s', '99.90%', '188 ms', '14:32:06 · 200'],
+      ['up', 'Customers API', 'GET https://api.quillbird.example/v1/customers', 'http', 'API', '3 of 3 up', '1m', '99.94%', '171 ms', '14:31:50 · 200'],
+      ['up', 'api certificate', 'api.quillbird.example:443', 'tls', 'API', '3 of 3 up', '1h', '100.00%', '—', '14:00:12 · 52 days left'],
+      ['up', 'API CNAME', 'CNAME api.quillbird.example', 'dns', 'API', '3 of 3 up', '5m', '100.00%', '19 ms', '14:30:03 · matches'],
+      ['up', 'API gateway port', 'gw.quillbird.example:443', 'tcp', 'API', '3 of 3 up', '1m', '99.99%', '22 ms', '14:31:40 · open'],
+      ['up', 'Payments callback', 'POST https://pay.quillbird.example/callback/health', 'http', 'Payments', '3 of 3 up', '30s', '100.00%', '121 ms', '14:32:02 · 204'],
+      ['up', 'Checkout page', 'GET https://pay.quillbird.example/checkout/ping', 'http', 'Payments', '3 of 3 up', '1m', '99.99%', '133 ms', '14:31:47 · 200'],
+      ['up', 'pay certificate', 'pay.quillbird.example:443', 'tls', 'Payments', '3 of 3 up', '1h', '100.00%', '—', '14:00:12 · 52 days left'],
+      ['up', 'MX records', 'MX quillbird.example', 'dns', 'Email delivery', '3 of 3 up', '5m', '100.00%', '24 ms', '14:30:03 · matches'],
+      ['up', 'Bounce webhook', 'POST https://hooks.quillbird.example/bounces/ping', 'http', 'Email delivery', '3 of 3 up', '1m', '99.98%', '88 ms', '14:31:52 · 200'],
+      ['up', 'Nightly backup', 'heartbeat · every 24 h · grace 30 min', 'heartbeat', 'Background jobs', 'ping', '24h', '99.86%', '—', '03:14:51 · ping received'],
+      ['up', 'Invoice reminders', 'heartbeat · every 1 h · grace 10 min', 'heartbeat', 'Background jobs', 'ping', '1h', '100.00%', '—', '14:00:41 · ping received'],
+      ['up', 'Ledger export', 'heartbeat · every 15 min · grace 5 min', 'heartbeat', 'Background jobs', 'ping', '15m', '99.97%', '—', '14:30:12 · ping received'],
+      ['up', 'Search indexer', 'heartbeat · every 5 min · grace 2 min', 'heartbeat', 'Background jobs', 'ping', '5m', '99.95%', '—', '14:30:02 · ping received'],
+      ['up', 'Postgres primary', 'db-1.internal:5432', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '30s', '100.00%', '2 ms', '14:32:00 · open'],
+      ['up', 'Postgres replica', 'db-2.internal:5432', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '30s', '99.99%', '2 ms', '14:32:00 · open'],
+      ['up', 'Redis', 'cache.internal:6379', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '1m', '100.00%', '1 ms', '14:31:30 · open'],
+      ['up', 'docs certificate', 'docs.quillbird.example:443', 'tls', 'Docs', '3 of 3 up', '1h', '100.00%', '—', '14:00:12 · 52 days left'],
+      ['up', 'Changelog', 'GET https://quillbird.example/changelog', 'http', 'Docs', '3 of 3 up', '5m', '100.00%', '156 ms', '14:30:20 · 200'],
+      ['up', 'quillbird-app.example registration', 'quillbird-app.example', 'domain', '—', 'once a day', '1d', '100.00%', '—', '06:00 · expires 2027-02-02'],
+      ['up', 'Staging app', 'GET https://staging.quillbird.example', 'http', '—', '3 of 3 up', '1m', '99.71%', '204 ms', '14:31:55 · 200'],
+      ['up', 'Staging API', 'GET https://staging-api.quillbird.example/healthz', 'http', '—', '3 of 3 up', '1m', '99.64%', '91 ms', '14:31:49 · 200'],
+      ['shadow', 'Changelog', 'GET https://quillbird.example/changelog', 'http', 'Docs', '—', '5m', '—', '—', 'id changelog is now in checks.json · not run']
+    ];
+    const consoleNames = ['Staging app', 'Staging API', 'Bounce webhook'];
+    const srcOf = (r) => (r[0] === 'shadow' || consoleNames.indexOf(r[1]) >= 0 ? 'console' : 'file');
+    const example = this.props.example ?? 'list';
+    const noChecks = example === 'no checks yet';
+    const { type, comp, st, src } = this.state;
+    const rows = noChecks ? [] : all.filter((r) => (type === 'all' || r[3] === type) && (st === 'all' || r[0] === st) && (src === 'all' || srcOf(r) === src) && (comp === 'all' || r[4] === comp || (comp === 'none' && r[4] === '—')))
+      .map((r) => {
+        const file = srcOf(r) === 'file';
+        return { state: S[r[0]][0], tone: S[r[0]][1], name: r[1], target: r[2], type: r[3], comp: r[4], loc: r[5].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '), every: r[6], up: r[7], p95: r[8], last: r[9].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '),
+          src: file ? 'checks.json' : 'console', srcNote: file ? 'read-only' : (r[0] === 'shadow' ? 'Delete and Export only' : 'editable'), srcTone: file ? 'neutral' : 'accent2',
+          shadow: r[0] === 'shadow', menu: r[0] !== 'shadow' };
+      });
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      rows,
+      noChecks,
+      hasChecks: !noChecks,
+      fileInvalid: example === 'checks.json invalid',
+      empty: !noChecks && rows.length === 0,
+      shown: rows.length + ' of ' + all.length + ' shown',
+      setSrc: (e) => this.setState({ src: e.target.value }),
+      clearFilters: () => this.setState({ type: 'all', comp: 'all', st: 'all', src: 'all' }),
+      setType: (e) => this.setState({ type: e.target.value }),
+      setComp: (e) => this.setState({ comp: e.target.value }),
+      pickState: (e) => this.setState({ st: e.target.value })
+    };
+  }
+}
+</script>
+</body>
+</html>

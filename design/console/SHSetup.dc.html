@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>First-run setup · pulse Console self-hosted</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<header class="topbar" style="padding: 10px clamp(16px, 4vw, 40px);">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span><span class="wm-sub">self-hosted</span></span>
+<ol class="steps" aria-label="Setup steps" style="margin-left: auto;">
+<li class="{{c0}}" aria-current="{{a0}}"><span class="n">1</span>Owner</li>
+<li class="{{c1}}" aria-current="{{a1}}"><span class="n">2</span>Two-factor</li>
+<li class="{{c2}}" aria-current="{{a2}}"><span class="n">3</span>pulse-api</li>
+<li class="{{c3}}" aria-current="{{a3}}"><span class="n">4</span>Probes</li>
+</ol>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+
+<main style="max-width: 1040px; margin: 0 auto; padding: 40px clamp(16px, 4vw, 40px) 64px; display: flex; flex-direction: column; gap: 28px;">
+
+<sc-if value="{{s0}}" hint-placeholder-val="{{false}}">
+<div class="g-main" style="grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);">
+<div class="stack-24">
+<div class="stack-8"><p class="eb">Step 1 of 4 · first run</p><h1 class="page-title">Create the owner account</h1><p class="lead" style="margin: 0;">This instance has no users yet. The first account becomes the owner; everyone else joins by invite link.</p></div>
+<form class="la-panel la-panel__body stack" onSubmit="{{noop}}" style="gap: 18px;">
+<div class="la-field"><label class="la-field__label" for="o-inst">Instance name</label><p class="la-field__help" id="o-inst-d">Shown on the sign-in page and on invite pages.</p><input class="la-input" id="o-inst" value="Quillbird monitoring" aria-describedby="o-inst-d"></div>
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="o-n">Your name</label><input class="la-input" id="o-n" value="Mara Lindqvist" autocomplete="name"></div>
+<div class="la-field"><label class="la-field__label" for="o-e">Email</label><input class="la-input" id="o-e" type="email" value="mara@quillbird.example" autocomplete="email"></div>
+</div>
+<div class="la-field"><label class="la-field__label" for="o-p">Password</label><input class="la-input" id="o-p" type="password" value="correct-horse-battery" autocomplete="new-password" aria-describedby="o-p-d"><p class="la-field__help" id="o-p-d">At least 12 characters. The next step sets up an authenticator app for this account.</p></div>
+</form>
+</div>
+<aside class="la-panel cs-panel-s" style="padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-top: 120px;" aria-labelledby="sec-h">
+<h2 class="eb" id="sec-h">Setup is locked to this server</h2>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Setup only opens with the one-time code from the container log:</p>
+<div style="background: var(--code); color: var(--term-text); border-radius: var(--radius); padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; overflow-x: auto;"><div><span style="color: var(--term-prompt);">$</span> docker compose logs pulse-console</div><div style="color: var(--term-muted);">setup code: <span style="color: var(--term-text);">KX7-41Q-M2P</span></div></div>
+<div class="la-field"><label class="la-field__label" for="o-code">Setup code</label><input class="la-input mono" id="o-code" value="KX7-41Q-M2P"></div>
+<p class="lbl" style="margin: 0;">Users are stored in SQLite at <span class="mono">/data/console.db</span>.</p>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{s1}}" hint-placeholder-val="{{false}}">
+<div class="g-main" style="grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);">
+<div class="stack-24">
+<div class="stack-8"><p class="eb">Step 2 of 4 · required</p><h1 class="page-title">Secure the owner account</h1><p class="lead" style="margin: 0;">The owner must use a second factor. Scan the code with an authenticator app, or enter the key by hand. Then type the 6-digit code it shows.</p></div>
+<form class="la-panel la-panel__body stack" onSubmit="{{noop}}" style="gap: 20px;">
+<ol class="steps" aria-label="Two-factor steps"><li aria-current="step"><span class="n">1</span>Scan and confirm</li><li><span class="n">2</span>Save recovery codes</li></ol>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start;">
+<div style="width: 200px; height: 200px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--field); color: var(--text); display: flex; align-items: center; justify-content: center;">
+<svg width="176" height="176" viewBox="0 0 25 25" fill="currentColor" shape-rendering="crispEdges" role="img" aria-label="QR code for your authenticator app (placeholder)">
+<rect x="0.5" y="0.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="2" y="2" width="3" height="3"></rect>
+<rect x="18.5" y="0.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="20" y="2" width="3" height="3"></rect>
+<rect x="0.5" y="18.5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"></rect><rect x="2" y="20" width="3" height="3"></rect>
+<rect x="8" y="0" width="2" height="1"></rect><rect x="11" y="1" width="1" height="2"></rect><rect x="14" y="0" width="1" height="1"></rect><rect x="9" y="3" width="3" height="1"></rect><rect x="15" y="2" width="2" height="2"></rect><rect x="8" y="5" width="1" height="2"></rect><rect x="12" y="5" width="2" height="1"></rect>
+<rect x="0" y="8" width="2" height="1"></rect><rect x="3" y="9" width="2" height="2"></rect><rect x="6" y="8" width="1" height="3"></rect><rect x="8" y="8" width="3" height="1"></rect><rect x="12" y="8" width="1" height="3"></rect><rect x="14" y="9" width="3" height="1"></rect><rect x="18" y="8" width="2" height="2"></rect><rect x="22" y="8" width="3" height="1"></rect>
+<rect x="1" y="12" width="1" height="2"></rect><rect x="4" y="13" width="3" height="1"></rect><rect x="9" y="11" width="2" height="2"></rect><rect x="15" y="12" width="1" height="3"></rect><rect x="17" y="11" width="2" height="1"></rect><rect x="20" y="12" width="2" height="2"></rect><rect x="23" y="11" width="1" height="3"></rect>
+<rect x="0" y="15" width="3" height="1"></rect><rect x="5" y="16" width="2" height="1"></rect><rect x="8" y="14" width="1" height="3"></rect><rect x="10" y="15" width="3" height="1"></rect><rect x="13" y="17" width="2" height="1"></rect><rect x="17" y="15" width="3" height="1"></rect><rect x="21" y="16" width="2" height="1"></rect>
+<rect x="8" y="19" width="2" height="2"></rect><rect x="11" y="18" width="1" height="3"></rect><rect x="13" y="20" width="3" height="1"></rect><rect x="16" y="18" width="2" height="1"></rect><rect x="18" y="20" width="1" height="3"></rect><rect x="20" y="19" width="3" height="1"></rect><rect x="22" y="22" width="3" height="1"></rect>
+<rect x="9" y="22" width="1" height="3"></rect><rect x="12" y="23" width="3" height="1"></rect><rect x="16" y="22" width="1" height="2"></rect><rect x="20" y="23" width="1" height="2"></rect>
+</svg>
+</div>
+<div class="stack" style="gap: 16px; min-width: 0;">
+<div class="la-field"><span class="la-field__label" id="k-l">Setup key</span><div class="secret" aria-labelledby="k-l"><code>JBSW Y3DP EHPK 3PXP K4QT 2M7C</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><span class="la-field__label" id="u-l">otpauth link</span><div class="secret" aria-labelledby="u-l"><code style="font-size: 12px;">otpauth://totp/Quillbird%20monitoring:mara%40quillbird.example?secret=JBSWY3DPEHPK3PXPK4QT2M7C&amp;issuer=Quillbird%20monitoring</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field" style="max-width: 260px;"><label class="la-field__label" for="otp">6-digit code</label><input class="la-input mono" id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="482 913" style="font-size: 20px; letter-spacing: 0.2em;"></div>
+</div>
+</div>
+</form>
+</div>
+<aside class="la-panel cs-panel-s" style="padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-top: 120px;" aria-labelledby="why-h">
+<h2 class="eb" id="why-h">Why this step is required</h2>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">The owner and every admin must have a second factor. In v1 this is an authenticator app (TOTP). Members and viewers may add one; you can require it for everyone later in Settings.</p>
+<p class="lbl" style="margin: 0;">The key is stored encrypted with the key file from <span class="mono">PULSE_CONSOLE_SECRET_KEY_FILE</span>.</p>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{s2}}" hint-placeholder-val="{{false}}">
+<div class="g-main" style="grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);">
+<div class="stack-24">
+<div class="stack-8"><p class="eb">Step 2 of 4 · required</p><h1 class="page-title">Save your recovery codes</h1><p class="lead" style="margin: 0;">Use one of these codes if you lose your authenticator app. Each code works once. They are shown only now.</p></div>
+<div class="la-panel la-panel__body stack" style="gap: 18px;">
+<ol class="steps" aria-label="Two-factor steps"><li class="done"><span class="n">1</span>Scan and confirm</li><li aria-current="step"><span class="n">2</span>Save recovery codes</li></ol>
+<ul role="list" class="mono" style="margin: 0; padding: 16px; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; background: var(--field); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 15px; max-width: 420px;">
+<sc-for list="{{codes}}" as="c" hint-placeholder-count="10"><li>{{c}}</li></sc-for>
+</ul>
+<div class="row"><button type="button" class="la-btn la-btn--secondary la-btn--sm">Copy codes</button><span class="lbl">pulse keeps only a hash of each code.</span></div>
+<label class="la-check"><input type="checkbox" checked="{{saved}}" onChange="{{toggleSaved}}"><span class="la-check__text"><b>I saved these codes</b><span>Store them in your password manager or print them. You cannot see them again.</span></span></label>
+</div>
+</div>
+<aside class="la-panel cs-panel-s" style="padding: 20px; display: flex; flex-direction: column; gap: 12px; margin-top: 120px;" aria-labelledby="lost-h">
+<h2 class="eb" id="lost-h">If the owner loses both</h2>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">A command in the console container prints a one-use reset link for the owner, valid for 15 minutes. Using it removes the owner's second factor.</p>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{s3}}" hint-placeholder-val="{{true}}">
+<div class="g-main" style="grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);">
+<div class="stack-24">
+<div class="stack-8"><p class="eb">Step 3 of 4</p><h1 class="page-title">Check the pulse-api connection</h1><p class="lead" style="margin: 0;">The console reads its api token from a file on the server. You do not paste it here, it is not stored in the console database, and browsers never see it.</p></div>
+<div class="la-panel la-panel__body stack" style="gap: 18px;">
+<dl class="dl" style="grid-template-columns: 170px minmax(0, 1fr);">
+<dt>pulse-api URL</dt><dd><span class="mono" style="font-size: 13px;">http://pulse-api:8080</span><span class="lbl" style="display: block;">from PULSE_API_URL</span></dd>
+<dt>Console token</dt><dd><span class="mono" style="font-size: 13px;">/run/secrets/pulse_console_admin_token</span><span class="lbl" style="display: block;">from PULSE_CONSOLE_ADMIN_TOKEN_FILE · read at start</span></dd>
+</dl>
+<div class="row"><button type="button" class="la-btn la-btn--secondary">Test again</button><span class="lbl">tested 14:31:52 · read only, nothing is changed</span></div>
+<p class="lbl" style="margin: 0;">To change either value, edit the console's environment and restart the container.</p>
+</div>
+</div>
+<section class="la-panel cs-panel-s" aria-labelledby="ct-h" style="padding: 20px; display: flex; flex-direction: column; gap: 14px; margin-top: 120px;">
+<h2 class="eb" id="ct-h">Connection test</h2>
+<div class="la-callout la-callout--success" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><div class="la-callout__body"><p class="la-callout__title">Connected</p><p class="la-callout__text">pulse-api answered and accepted the console token.</p></div></div>
+<dl class="dl" style="grid-template-columns: 130px minmax(0, 1fr); background: var(--bg); border-radius: var(--radius); padding: 14px;">
+<dt>Wire version</dt><dd><span class="mono" style="font-size: 13px;">1</span> <span class="lbl ok-t">· compatible</span><span class="lbl" style="display: block;">x-pulse-contract header</span></dd>
+<dt>Token</dt><dd><span class="mono" style="font-size: 13px;">pulse-console</span><span class="lbl" style="display: block;">GET /admin/tokens/self</span></dd>
+<dt>Scopes</dt><dd class="mono" style="font-size: 13px;">read, checks, incidents, admin</dd>
+<dt>Checks</dt><dd class="mono" style="font-size: 13px;">34</dd>
+</dl>
+<p class="lbl" style="margin: 0;">If the test fails, check that the token file exists in the console container and that its token has the admin scope.</p>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{s4}}" hint-placeholder-val="{{false}}">
+<div class="stack-24">
+<div class="stack-8"><p class="eb">Step 4 of 4</p><h1 class="page-title">Probe locations</h1><p class="lead" style="margin: 0;">pulse-api already knows these probes. Add another location now or later in Probe locations.</p></div>
+<div class="la-panel">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Location</th><th scope="col">Last result</th><th scope="col">State</th></tr></thead>
+<tbody>
+<tr><td class="tt"><b>office</b><span class="sub">office network</span></td><td class="m">2 s ago</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Healthy</span></span></td></tr>
+<tr><td class="tt"><b>fsn-1</b><span class="sub">VPS · Falkenstein</span></td><td class="m">1 s ago</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Healthy</span></span></td></tr>
+<tr><td class="tt"><b>iad-1</b><span class="sub">VPS · Virginia</span></td><td class="m">3 s ago</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Healthy</span></span></td></tr>
+</tbody>
+</table>
+</div>
+<div class="row"><a class="la-btn la-btn--secondary" href="SHProbes.dc.html">Add a location</a><span class="lbl">Each new location gets its own probe token.</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{s5}}" hint-placeholder-val="{{false}}">
+<div class="stack-24" style="max-width: 640px;">
+<div class="la-callout la-callout--success" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><div class="la-callout__body"><p class="la-callout__title">Quillbird monitoring is ready</p><p class="la-callout__text">Owner created with two-factor · connected to pulse-api · 3 probe locations.</p></div></div>
+<div class="row"><a class="la-btn la-btn--primary" href="SHOverview.dc.html">Open the console</a><a class="la-btn la-btn--secondary" href="SHTeam.dc.html">Invite your team</a></div>
+</div>
+</sc-if>
+
+<div class="spread" style="border-top: 1px solid var(--rule); padding-top: 20px;">
+<sc-if value="{{showBack}}" hint-placeholder-val="{{false}}"><button type="button" class="la-btn la-btn--ghost" onClick="{{back}}">Back</button></sc-if>
+<sc-if value="{{noBack}}" hint-placeholder-val="{{true}}"><span class="lbl">Two-factor is set up; the recovery codes are not shown again.</span></sc-if>
+<div class="row">
+<sc-if value="{{nextOpen}}" hint-placeholder-val="{{true}}"><button type="button" class="la-btn la-btn--primary" onClick="{{next}}">{{nextLabel}}</button></sc-if>
+<sc-if value="{{nextBlocked}}" hint-placeholder-val="{{false}}"><span class="lbl">Confirm that you saved the codes to continue.</span><button type="button" class="la-btn la-btn--primary" disabled="">{{nextLabel}}</button></sc-if>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"step":{"editor":"enum","options":["owner","secure","codes","api","probes","done"],"default":"api"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, step: null, saved: false }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const steps = ['owner', 'secure', 'codes', 'api', 'probes', 'done'];
+    const shown = [0, 1, 1, 2, 3, 4];
+    const i = Math.max(0, steps.indexOf(this.state.step ?? this.props.step ?? 'api'));
+    const k = shown[i];
+    const c = (n) => (n < k ? 'done' : '');
+    const a = (n) => (n === k ? 'step' : 'false');
+    const labels = ['Create owner account', 'Confirm code', 'Continue', 'Continue', 'Finish setup', 'Open the console'];
+    const blocked = i === 2 && !this.state.saved;
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      s0: i === 0, s1: i === 1, s2: i === 2, s3: i === 3, s4: i === 4, s5: i === 5,
+      c0: c(0), c1: c(1), c2: c(2), c3: c(3), a0: a(0), a1: a(1), a2: a(2), a3: a(3),
+      nextLabel: labels[i],
+      nextOpen: !blocked, nextBlocked: blocked,
+      showBack: i !== 3, noBack: i === 3,
+      codes: ['7KQ4-M2XD-91', 'P8WN-3TJC-46', 'H2VR-QL7E-08', 'Z5MB-YK1F-73', 'C9TD-6NWA-25', 'R4LX-HP8G-62', 'W1EQ-J5SU-37', 'F6NZ-2CBV-94', 'U3KG-T9MR-50', 'D7YH-4XPL-16'],
+      saved: this.state.saved,
+      toggleSaved: () => this.setState({ saved: !this.state.saved }),
+      back: () => this.setState({ step: steps[Math.max(0, i - 1)] }),
+      next: () => this.setState({ step: steps[Math.min(5, i + 1)] }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

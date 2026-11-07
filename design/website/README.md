@@ -2,6 +2,25 @@
 
 Design reference for the pulse website, exported from the design canvas "pulse Website" as version 28 on 31 October 2026. Read-only input for the website project; the built site lives in lorenzh/pulse-website.
 
+## Source
+
+| | |
+| --- | --- |
+| Artifact | [pulse Website](https://claude.ai/artifact/TTYEJrYqPVdDdEeYwwdhvA) (claude.ai, Design type). The artifact is the source of truth; this folder is a copy. |
+| Exported from | version 28 (canvas numbering). The artifact service version id of that export was not recorded and cannot be recovered. |
+| Artifact version on 7 November 2026 | `1794088431-aba7`. It is newer than this export: it adds a "Coming soon" docs menu, a pulse-console section on Home, and more (see below). |
+| Design system | losoft, [artifact](https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH), version `1793220369-a87d` (also in `canvas.json` under `designSystems`). `losoft-tokens.json` is the artifact's `project/ds/losoft/tokens.json`. |
+
+Differences between this folder and the artifact on 7 November 2026 (not re-exported):
+
+- `Main.dc.html`: Home board is 8300 px high in the artifact (5400 here); changed texts for latency, notification channels and architecture, new cards "CDN-ready caching" and "Hot backups", a pulse-console block and a "Self-hosting is next" section.
+- `Docs.dc.html`, `DocsApi.dc.html`: a "Coming soon" menu (Console, Deploy and pulse CLI) with a "coming soon" tag; hover rules are no longer inside `@media (hover:hover)`; the REST intro text changed.
+- `Hosted.dc.html`: a card "The same open-source console" (in progress) and a "Web console" table row; board height 4800 px (4500 here).
+- `canvas.json`: board heights only.
+- `losoft-tokens.json`: identical.
+
+To check or update this export, use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`); add a "Changes in version <id>" section here.
+
 | File | Page |
 | --- | --- |
 | `Main.dc.html` | Home (`/`) |

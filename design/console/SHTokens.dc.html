@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokens · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">Tokens</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a>
+<form method="post" action="SHSignIn.dc.html" style="margin: 0;"><button type="submit" class="la-iconbtn la-iconbtn--sm" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button></form>
+<button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Tokens and API keys</h1>
+<p class="page-sub" title="Scoped tokens for CI, scripts and Terraform against pulse-api. A secret is shown once, when it is created or rotated.">Scoped tokens for CI, scripts and Terraform against pulse-api. A secret is shown once, when it is created or rotated.</p>
+</div>
+</div>
+
+<div class="g-side" style="grid-template-columns: minmax(0, 1fr) 400px;">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel cs-bleed" aria-label="Tokens">
+<div class="tw">
+<table class="dt">
+<thead><tr><th scope="col">Name</th><th scope="col">Token</th><th scope="col">Access</th><th scope="col">Source</th><th scope="col">Last used</th><th scope="col">Expires</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<sc-for list="{{rows}}" as="k" hint-placeholder-count="5">
+<tr>
+<td class="tt"><b>{{k.name}}</b><sc-if value="{{k.self}}" hint-placeholder-val="{{false}}"><span class="la-badge la-badge--info" style="margin-top: 4px;">used by this console</span></sc-if><span class="sub">{{k.rot}}</span></td>
+<td class="m">{{k.token}}</td>
+<td><b style="font-weight: 500;">{{k.preset}}</b><span class="lbl" style="display: block;">{{k.scopes}}</span></td>
+<td>{{k.source}}<span class="lbl" style="display: block;">{{k.srcNote}}</span></td>
+<td class="m">{{k.used}}</td>
+<td class="m">{{k.expires}}</td>
+<td style="text-align: right; white-space: nowrap;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" onClick="{{k.rotate}}">Rotate</button><sc-if value="{{k.canRevoke}}" hint-placeholder-val="{{true}}"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Revoke</button></sc-if><sc-if value="{{k.noRevoke}}" hint-placeholder-val="{{false}}"><button type="button" class="la-btn la-btn--ghost la-btn--sm" disabled="" aria-describedby="why-{{k.id}}">Revoke</button><span class="lbl" id="why-{{k.id}}" style="display: block; white-space: normal; max-width: 220px; margin-left: auto;">{{k.why}}</span></sc-if></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<sc-if value="{{show409}}" hint-placeholder-val="{{true}}">
+<div class="la-callout la-callout--error" role="alert" style="margin: 0 20px 16px;"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">deploy-pipeline was not rotated (409)</p><p class="la-callout__text">It was rotated at 14:01 and the old secret stays valid until 14:11. Rotate it again after that time.</p></div></div>
+</sc-if>
+<div class="la-panel__foot"><span class="lbl">Rotating gives a new secret; the old one stays valid for 10 minutes. Revoke is off for the last active admin token, and an expiry on it is refused. Probe tokens live under <a href="SHProbes.dc.html">Probe locations</a>.</span></div>
+</section>
+
+<section class="la-panel cs-panel-s" aria-labelledby="adm-h" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;">
+<h2 class="eb" id="adm-h">Console connection to pulse-api</h2>
+<span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Token valid · read from PULSE_CONSOLE_ADMIN_TOKEN_FILE</span></span>
+<p class="lbl" style="margin: 0;">This is the pulse-console row above. Its secret is never entered in a browser and never stored in the console database. After you rotate it, write the new secret to the console's token file and restart pulse-console within 10 minutes.</p>
+</section>
+</div>
+
+<section class="la-panel" aria-labelledby="nt-h" style="align-self: start;">
+<div class="la-panel__head"><h2 class="eb" id="nt-h">Create a token</h2></div>
+<sc-if value="{{isForm}}" hint-placeholder-val="{{false}}">
+<form class="la-panel__body stack" onSubmit="{{create}}" style="gap: 14px;">
+<div class="la-field"><label class="la-field__label" for="t-n">Name</label><input class="la-input" id="t-n" value="status-sync"></div>
+<fieldset style="border: 0; margin: 0; padding: 0;">
+<legend class="la-field__label" style="padding: 0;">Access</legend>
+<sc-for list="{{presets}}" as="s" hint-placeholder-count="4">
+<label class="la-check"><input type="radio" name="preset" checked="{{s.on}}" onChange="{{s.pick}}"><span class="la-check__text"><b>{{s.label}}</b><span>{{s.desc}}</span></span></label>
+</sc-for>
+</fieldset>
+<sc-if value="{{hasAdmin}}" hint-placeholder-val="{{true}}">
+<div class="la-callout la-callout--warning"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Includes admin</p><p class="la-callout__text">Can also create, rotate and revoke tokens with the same or fewer scopes, and read the audit log.</p></div></div>
+</sc-if>
+<div class="la-field"><label class="la-field__label" for="t-x">Expires</label><span class="la-select"><select id="t-x"><option>In 90 days</option><option selected="">In 1 year</option><option>Never</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></div>
+<button type="submit" class="la-btn la-btn--primary">Create token</button>
+</form>
+</sc-if>
+<sc-if value="{{isDone}}" hint-placeholder-val="{{true}}">
+<div class="la-panel__body stack" style="gap: 14px;">
+<div class="la-callout la-callout--warning"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Copy it now</p><p class="la-callout__text">The secret of status-sync is shown once.</p></div></div>
+<div class="secret"><code>pulse_db_HL9nksY3TQb3w19Y8xIJajy-WDeyT6UsuMQQFC64</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div>
+<span class="lbl">Post incidents · read, incidents, admin · expires 2027-10-30</span>
+<button type="button" class="la-btn la-btn--secondary" onClick="{{again}}">Create another</button>
+</div>
+</sc-if>
+</section>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"example":{"editor":"enum","options":["list","last admin token"],"default":"list"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, done: true, preset: 'incidents', show409: true }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const last = (this.props.example ?? 'list') === 'last admin token';
+    const P = [
+      ['read', 'Read', 'Checks, results and incidents', false],
+      ['checks', 'Manage checks', 'read, checks, admin', true],
+      ['incidents', 'Post incidents', 'read, incidents, admin', true],
+      ['full', 'Full access', 'read, checks, incidents, admin', true]
+    ];
+    const imported = 'imported from a token file';
+    const created = 'created in pulse-api';
+    const once = 'Rotate once: imported secrets keep their old strength';
+    const all = [
+      { id: 'console', name: 'pulse-console', self: true, rot: '', token: 'pulse_…r3kA', preset: 'Full access', scopes: 'read, checks, incidents, admin', source: imported, srcNote: once, used: '14:32 · now', expires: 'never', admin: true },
+      { id: 'deploy', name: 'deploy-pipeline', self: false, rot: 'rotated 14:01 · old secret valid until 14:11 · 8 min 54 s left', token: 'pulse_…k9Tz', preset: 'Manage checks', scopes: 'read, checks, admin', source: created, srcNote: '', used: '14:01', expires: 'never', admin: true },
+      { id: 'grafana', name: 'grafana', self: false, rot: '', token: 'pulse_…Vx8c', preset: 'Read', scopes: 'read', source: created, srcNote: '', used: '14:32', expires: 'never', admin: false },
+      { id: 'bridge', name: 'incident-bridge', self: false, rot: '', token: 'pulse_…2wQe', preset: 'Post incidents', scopes: 'read, incidents, admin', source: imported, srcNote: once, used: '14:21', expires: '2027-08-19', admin: true },
+      { id: 'sync', name: 'status-sync', self: false, rot: 'created now', token: 'pulse_…FC64', preset: 'Post incidents', scopes: 'read, incidents, admin', source: created, srcNote: '', used: 'never', expires: '2027-10-30', admin: true }
+    ];
+    const list = last ? all.filter((k) => k.id === 'console' || k.id === 'grafana') : all;
+    const rows = list.map((k) => {
+      const why = k.self ? (last ? 'Last active admin token, and this console uses it.' : 'This console uses it. Write the new secret to the console\'s token file and restart pulse-console within 10 minutes after a rotate.') : '';
+      return { ...k, canRevoke: !why, noRevoke: !!why, why, rotate: k.id === 'deploy' ? () => this.setState({ show409: true }) : null };
+    });
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      rows,
+      show409: this.state.show409 && !last,
+      presets: P.map((x) => ({ label: x[1], desc: x[2], on: x[0] === this.state.preset, pick: () => this.setState({ preset: x[0] }) })),
+      hasAdmin: (P.find((x) => x[0] === this.state.preset) || P[0])[3],
+      isForm: !this.state.done, isDone: this.state.done,
+      create: (e) => { e.preventDefault(); this.setState({ done: true }); },
+      again: () => this.setState({ done: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

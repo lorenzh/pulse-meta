@@ -1,0 +1,641 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-30T15:00:00Z"
+  },
+  "title": "pulse Console",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Auth.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 960,
+      "title": "Hosted, later \u00b7 1 \u00b7 Sign in / create account",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AuthMobile.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Hosted, later \u00b7 1 \u00b7 Sign in \u00b7 mobile",
+      "is_interactive": true
+    },
+    "Onboarding.dc.html": {
+      "x": 1990,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "title": "Hosted, later \u00b7 2 \u00b7 Onboarding",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Main.dc.html": {
+      "x": 0,
+      "y": 1660,
+      "w": 1440,
+      "h": 1480,
+      "title": "Hosted, later \u00b7 3 \u00b7 Overview",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "OverviewMobile.dc.html": {
+      "x": 1520,
+      "y": 1660,
+      "w": 390,
+      "h": 844,
+      "title": "Hosted, later \u00b7 3 \u00b7 Overview \u00b7 mobile",
+      "is_interactive": true
+    },
+    "Checks.dc.html": {
+      "x": 1990,
+      "y": 1660,
+      "w": 1440,
+      "h": 2300,
+      "title": "Hosted, later \u00b7 4 \u00b7 Checks",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CheckDetail.dc.html": {
+      "x": 3510,
+      "y": 1660,
+      "w": 1440,
+      "h": 1960,
+      "title": "Hosted, later \u00b7 4 \u00b7 Check detail",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CheckEdit.dc.html": {
+      "x": 5030,
+      "y": 1660,
+      "w": 1440,
+      "h": 2080,
+      "title": "Hosted, later \u00b7 5 \u00b7 Create / edit check",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Incidents.dc.html": {
+      "x": 0,
+      "y": 4960,
+      "w": 1440,
+      "h": 1160,
+      "title": "Hosted, later \u00b7 6 \u00b7 Incidents",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "IncidentDetail.dc.html": {
+      "x": 1520,
+      "y": 4960,
+      "w": 1440,
+      "h": 1560,
+      "title": "Hosted, later \u00b7 6 \u00b7 Incident detail (automatic)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "IncidentComposer.dc.html": {
+      "x": 3040,
+      "y": 4960,
+      "w": 1440,
+      "h": 1480,
+      "title": "Hosted, later \u00b7 6 \u00b7 Manual incident composer",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ComposerMobile.dc.html": {
+      "x": 4560,
+      "y": 4960,
+      "w": 390,
+      "h": 844,
+      "title": "Hosted, later \u00b7 6 \u00b7 Composer \u00b7 mobile",
+      "is_interactive": true
+    },
+    "StatusPage.dc.html": {
+      "x": 0,
+      "y": 6940,
+      "w": 1440,
+      "h": 2300,
+      "title": "Hosted, later \u00b7 7 \u00b7 Status page settings",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Notifications.dc.html": {
+      "x": 1520,
+      "y": 6940,
+      "w": 1440,
+      "h": 1700,
+      "title": "Hosted, later \u00b7 8 \u00b7 Notification channels",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Team.dc.html": {
+      "x": 3040,
+      "y": 6940,
+      "w": 1440,
+      "h": 1240,
+      "title": "Hosted, later \u00b7 9 \u00b7 Team and roles",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ApiKeys.dc.html": {
+      "x": 4560,
+      "y": 6940,
+      "w": 1440,
+      "h": 1000,
+      "title": "Hosted, later \u00b7 10 \u00b7 API keys",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Billing.dc.html": {
+      "x": 6080,
+      "y": 6940,
+      "w": 1440,
+      "h": 1560,
+      "title": "Hosted, later \u00b7 11 \u00b7 Billing",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Security.dc.html": {
+      "x": 7600,
+      "y": 6940,
+      "w": 1440,
+      "h": 1480,
+      "title": "Hosted, later \u00b7 12 \u00b7 Account security",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHSetup.dc.html": {
+      "x": 0,
+      "y": 9960,
+      "w": 1440,
+      "h": 1780,
+      "title": "SH 1 \u00b7 First-run setup",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHSetupMobile.dc.html": {
+      "x": 1520,
+      "y": 9960,
+      "w": 390,
+      "h": 844,
+      "title": "SH 1 \u00b7 Setup: owner \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHSignIn.dc.html": {
+      "x": 1990,
+      "y": 9960,
+      "w": 1440,
+      "h": 1020,
+      "title": "SH 2 \u00b7 Sign in (self-hosted)",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHOverview.dc.html": {
+      "x": 3510,
+      "y": 9960,
+      "w": 1440,
+      "h": 1500,
+      "title": "SH 3 \u00b7 Overview with instance health",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHOverviewMobile.dc.html": {
+      "x": 5030,
+      "y": 9960,
+      "w": 390,
+      "h": 844,
+      "title": "SH 9 \u00b7 Overview \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHProbes.dc.html": {
+      "x": 0,
+      "y": 12080,
+      "w": 1440,
+      "h": 2600,
+      "title": "SH 4 \u00b7 Probe locations and tokens",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHSystem.dc.html": {
+      "x": 1520,
+      "y": 12080,
+      "w": 1440,
+      "h": 1940,
+      "title": "SH 5 \u00b7 System",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHTokens.dc.html": {
+      "x": 3040,
+      "y": 12080,
+      "w": 1440,
+      "h": 1140,
+      "title": "SH 6 \u00b7 Tokens and API keys",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHTeam.dc.html": {
+      "x": 4560,
+      "y": 12080,
+      "w": 1440,
+      "h": 1980,
+      "title": "SH 7 \u00b7 Team (self-hosted)",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHSettings.dc.html": {
+      "x": 6080,
+      "y": 12080,
+      "w": 1440,
+      "h": 1560,
+      "title": "SH 8 \u00b7 Settings",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHChecks.dc.html": {
+      "x": 0,
+      "y": 15020,
+      "w": 1440,
+      "h": 3440,
+      "title": "SH \u00b7 Checks",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHCheckDetail.dc.html": {
+      "x": 1520,
+      "y": 15020,
+      "w": 1440,
+      "h": 1900,
+      "title": "SH \u00b7 Check detail",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHCheckEdit.dc.html": {
+      "x": 3040,
+      "y": 15020,
+      "w": 1440,
+      "h": 2160,
+      "title": "SH \u00b7 Create / edit check",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHIncidents.dc.html": {
+      "x": 4560,
+      "y": 15020,
+      "w": 1440,
+      "h": 1240,
+      "title": "SH \u00b7 Incidents",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHIncidentDetail.dc.html": {
+      "x": 6080,
+      "y": 15020,
+      "w": 1440,
+      "h": 2280,
+      "title": "SH \u00b7 Incident detail",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHIncidentComposer.dc.html": {
+      "x": 7600,
+      "y": 15020,
+      "w": 1440,
+      "h": 1480,
+      "title": "SH \u00b7 Incident composer",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHStatusPage.dc.html": {
+      "x": 0,
+      "y": 24260,
+      "w": 1440,
+      "h": 2360,
+      "title": "Later \u00b7 Status page settings",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHNotifications.dc.html": {
+      "x": 1520,
+      "y": 24260,
+      "w": 1440,
+      "h": 1700,
+      "title": "Later \u00b7 Notification channels",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHSecurity.dc.html": {
+      "x": 0,
+      "y": 18800,
+      "w": 1440,
+      "h": 1580,
+      "title": "SH \u00b7 Account security",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AgentAccess.dc.html": {
+      "x": 6080,
+      "y": 24260,
+      "w": 1440,
+      "h": 2020,
+      "title": "Later \u00b7 Hosted, later \u00b7 13 \u00b7 Agent access (MCP)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AiAssist.dc.html": {
+      "x": 7600,
+      "y": 24260,
+      "w": 1440,
+      "h": 1800,
+      "title": "Later \u00b7 Hosted, later \u00b7 14 \u00b7 AI assistance",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHAgentAccess.dc.html": {
+      "x": 3040,
+      "y": 24260,
+      "w": 1440,
+      "h": 2020,
+      "title": "Later \u00b7 Agent access (MCP)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHAiAssist.dc.html": {
+      "x": 4560,
+      "y": 24260,
+      "w": 1440,
+      "h": 1800,
+      "title": "Later \u00b7 AI assistance",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHTwoFactor.dc.html": {
+      "x": 1520,
+      "y": 18800,
+      "w": 1440,
+      "h": 900,
+      "title": "SH \u00b7 Sign in: second factor",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHInviteAccept.dc.html": {
+      "x": 3040,
+      "y": 18800,
+      "w": 1440,
+      "h": 1000,
+      "title": "SH \u00b7 Accept invitation",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHPasswordReset.dc.html": {
+      "x": 4560,
+      "y": 18800,
+      "w": 1440,
+      "h": 900,
+      "title": "SH \u00b7 Set new password",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHSignInMobile.dc.html": {
+      "x": 6080,
+      "y": 18800,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Sign in \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHTwoFactorMobile.dc.html": {
+      "x": 6550,
+      "y": 18800,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Second factor \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHInviteMobile.dc.html": {
+      "x": 7020,
+      "y": 18800,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Accept invitation \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHResetMobile.dc.html": {
+      "x": 7490,
+      "y": 18800,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Password reset \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHMaintenance.dc.html": {
+      "x": 0,
+      "y": 20720,
+      "w": 1440,
+      "h": 1500,
+      "title": "SH \u00b7 Maintenance",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHActivity.dc.html": {
+      "x": 1520,
+      "y": 20720,
+      "w": 1440,
+      "h": 1300,
+      "title": "SH \u00b7 Activity log",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHStates.dc.html": {
+      "x": 3040,
+      "y": 20720,
+      "w": 1440,
+      "h": 3200,
+      "title": "SH \u00b7 States and confirmations",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "SHIncidentsMobile.dc.html": {
+      "x": 4560,
+      "y": 20720,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Incidents \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHIncidentDetailMobile.dc.html": {
+      "x": 5030,
+      "y": 20720,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Incident detail \u00b7 mobile",
+      "is_interactive": true
+    },
+    "SHComposerMobile.dc.html": {
+      "x": 5500,
+      "y": 20720,
+      "w": 390,
+      "h": 844,
+      "title": "SH \u00b7 Declare incident \u00b7 mobile",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Auth.dc.html",
+    "AuthMobile.dc.html",
+    "Onboarding.dc.html",
+    "OverviewMobile.dc.html",
+    "Checks.dc.html",
+    "CheckDetail.dc.html",
+    "CheckEdit.dc.html",
+    "Incidents.dc.html",
+    "IncidentDetail.dc.html",
+    "IncidentComposer.dc.html",
+    "ComposerMobile.dc.html",
+    "StatusPage.dc.html",
+    "Notifications.dc.html",
+    "Team.dc.html",
+    "ApiKeys.dc.html",
+    "Billing.dc.html",
+    "Security.dc.html",
+    "AgentAccess.dc.html",
+    "AiAssist.dc.html",
+    "SHSetup.dc.html",
+    "SHSetupMobile.dc.html",
+    "SHSignIn.dc.html",
+    "SHOverview.dc.html",
+    "SHOverviewMobile.dc.html",
+    "SHProbes.dc.html",
+    "SHSystem.dc.html",
+    "SHTokens.dc.html",
+    "SHTeam.dc.html",
+    "SHSettings.dc.html",
+    "SHChecks.dc.html",
+    "SHCheckDetail.dc.html",
+    "SHCheckEdit.dc.html",
+    "SHIncidents.dc.html",
+    "SHIncidentDetail.dc.html",
+    "SHIncidentComposer.dc.html",
+    "SHStatusPage.dc.html",
+    "SHNotifications.dc.html",
+    "SHSecurity.dc.html",
+    "SHAgentAccess.dc.html",
+    "SHAiAssist.dc.html",
+    "SHTwoFactor.dc.html",
+    "SHInviteAccept.dc.html",
+    "SHPasswordReset.dc.html",
+    "SHSignInMobile.dc.html",
+    "SHTwoFactorMobile.dc.html",
+    "SHInviteMobile.dc.html",
+    "SHResetMobile.dc.html",
+    "SHMaintenance.dc.html",
+    "SHActivity.dc.html",
+    "SHStates.dc.html",
+    "SHIncidentsMobile.dc.html",
+    "SHIncidentDetailMobile.dc.html",
+    "SHComposerMobile.dc.html"
+  ],
+  "notes": {
+    "rowAccess": {
+      "x": 0,
+      "y": -300,
+      "text": "Sign in and onboarding",
+      "kind": "title1",
+      "maxW": 3430
+    },
+    "rowMonitor": {
+      "x": 0,
+      "y": 1360,
+      "text": "Monitor: overview and checks",
+      "kind": "title1",
+      "maxW": 6470
+    },
+    "rowIncidents": {
+      "x": 0,
+      "y": 4660,
+      "text": "Incidents",
+      "kind": "title1",
+      "maxW": 4950
+    },
+    "rowSettings": {
+      "x": 0,
+      "y": 6640,
+      "text": "Status page, alerts and organisation settings",
+      "kind": "title1",
+      "maxW": 12080
+    },
+    "rowSH1": {
+      "x": 0,
+      "y": 9660,
+      "text": "Self-hosted pulse-console: setup, sign-in, overview",
+      "kind": "title1",
+      "maxW": 5420
+    },
+    "rowSH2": {
+      "x": 0,
+      "y": 11780,
+      "text": "Self-hosted: operator screens",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "shNote": {
+      "x": 5500,
+      "y": 9960,
+      "w": 420,
+      "text": "Self-hosted mode: same app as a fifth container in the operator's Compose file. One organisation, invites only, no billing or plans. Every v1 screen links only to other v1 SH artboards. Updated 2 Nov 2026 to the decisions on issue #460: MCP and AI assistance are not part of the MVP.",
+      "fill": "teal",
+      "size": "m"
+    },
+    "rowSH3": {
+      "x": 0,
+      "y": 14720,
+      "text": "Self-hosted: checks and incidents",
+      "kind": "title1",
+      "maxW": 9040
+    },
+    "rowSH5": {
+      "x": 0,
+      "y": 18500,
+      "text": "Self-hosted: account security, sign-in steps, invitations and password reset",
+      "kind": "title1",
+      "maxW": 9000
+    },
+    "rowSH6": {
+      "x": 0,
+      "y": 20420,
+      "text": "Self-hosted: maintenance, activity log, states and phone incident flows",
+      "kind": "title1",
+      "maxW": 7500
+    },
+    "rowLater": {
+      "x": 0,
+      "y": 23960,
+      "text": "Later: not in v1 (status page and notify settings, agent access, AI assistance)",
+      "kind": "title1",
+      "maxW": 9000
+    },
+    "scope": {
+      "x": 5500,
+      "y": 10480,
+      "w": 420,
+      "text": "v1 scope: the self-hosted boards above the Later row. The hosted rows at the top and the Later row are not a source for v1 work items.",
+      "fill": "orange",
+      "size": "m"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "losoft App",
+      "namespace": "losoft-app",
+      "artifact": "https://claude.ai/artifact/1EbvYkD4WhfdNqD7HygC2q",
+      "version": "1794041526-2438",
+      "copiedAt": "2026-11-07T19:13:35Z"
+    }
+  ]
+}

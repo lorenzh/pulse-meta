@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">System</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a>
+<form method="post" action="SHSignIn.dc.html" style="margin: 0;"><button type="submit" class="la-iconbtn la-iconbtn--sm" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button></form>
+<button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">System</h1>
+<p class="page-sub" title="Versions, database, backups and where checks come from. Owners and admins only.">Versions, database, backups and where checks come from. Owners and admins only.</p>
+</div>
+</div>
+
+<div class="la-callout la-callout--info" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">pulse v1.5.1 is available</p><p class="la-callout__text">Released <span class="mono">2026-10-28</span>. A patch release, still wire version 1, so you can update one container at a time. Run <span class="mono">docker compose pull &amp;&amp; docker compose up -d</span> on the host.</p><p class="la-callout__text lbl" style="margin-top: 4px;">The update check is read-only: checked at most every 6 hours; disable with <span class="mono">PULSE_CONSOLE_UPDATE_CHECK=false</span>.</p></div>
+</div>
+
+<section class="la-panel" aria-labelledby="v-h">
+<div class="la-panel__head"><h2 class="eb" id="v-h">Versions</h2><span class="lbl">update check 14:00 · read-only</span></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Component</th><th scope="col">Running</th><th scope="col">Latest</th><th scope="col" class="num">Wire</th><th scope="col">State</th></tr></thead>
+<tbody>
+<tr><td class="tt"><b>pulse-api</b><span class="sub">http://pulse-api:8080</span></td><td class="m">v1.5.0</td><td class="m">v1.5.1</td><td class="num">1</td><td><span class="la-status la-status--unknown la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Update available</span></span></td></tr>
+<tr><td class="tt"><b>pulse-console</b><span class="sub">this server · Bun</span></td><td class="m">v1.5.0</td><td class="m">v1.5.1</td><td class="num">1</td><td><span class="la-status la-status--unknown la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Update available</span></span></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">pulse-api answers with wire version 1 · compatible with this console.</span></span></div>
+</section>
+
+<div class="g2" style="align-items: start;">
+<section class="la-panel" aria-labelledby="db-h">
+<div class="la-panel__head"><h2 class="eb" id="db-h">Database</h2><span class="la-badge">sqlite</span></div>
+<div class="la-panel__body stack" style="gap: 16px;">
+<dl class="dl" style="grid-template-columns: 150px minmax(0, 1fr);">
+<dt>pulse-api</dt><dd class="mono" style="font-size: 13px;">412 MB</dd>
+<dt>Console</dt><dd class="mono" style="font-size: 13px;">/data/console.db · 3.1 MB</dd>
+<dt>Oldest result</dt><dd class="mono" style="font-size: 13px;">2026-08-01 14:32</dd>
+<dt>Retention</dt><dd class="mono" style="font-size: 13px;">PULSE_RETENTION_DAYS = 90</dd>
+</dl>
+<p class="lbl" style="margin: 0;">Read-only here. Retention is set in the pulse-api environment.</p>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="bk-h">
+<div class="la-panel__head"><h2 class="eb" id="bk-h">Back up and restore</h2></div>
+<div class="la-panel__body stack" style="gap: 14px;">
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Run these on the host, next to compose.yaml.</p>
+<div style="background: var(--code); color: var(--term-text); border-radius: var(--radius); padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.75; overflow-x: auto; white-space: pre;" role="group" aria-label="Backup commands"><span style="color: var(--term-muted);"># pulse-api database</span>
+<span style="color: var(--term-prompt);">$</span> docker compose exec api bun run backup /data/backup-2026-10-30.db
+<span style="color: var(--term-muted);"># console database (users, sessions, activity)</span>
+<span style="color: var(--term-prompt);">$</span> docker compose exec pulse-console bun run backup /data/console-2026-10-30.db</div>
+<p style="margin: 0; font-weight: 500;">Restore</p>
+<div style="background: var(--code); color: var(--term-text); border-radius: var(--radius); padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.75; overflow-x: auto; white-space: pre;" role="group" aria-label="Restore steps"><span style="color: var(--term-muted);"># 1. stop both services</span>
+<span style="color: var(--term-prompt);">$</span> docker compose stop api pulse-console
+<span style="color: var(--term-muted);"># 2. copy the backups over the databases</span>
+<span style="color: var(--term-prompt);">$</span> cp ./data/backup-2026-10-30.db ./data/pulse.db
+<span style="color: var(--term-prompt);">$</span> cp ./data/console-2026-10-30.db ./data/console.db
+<span style="color: var(--term-muted);"># 3. delete the old -wal and -shm files</span>
+<span style="color: var(--term-prompt);">$</span> rm -f ./data/pulse.db-wal ./data/pulse.db-shm ./data/console.db-wal ./data/console.db-shm
+<span style="color: var(--term-muted);"># 4. start again</span>
+<span style="color: var(--term-prompt);">$</span> docker compose up -d</div>
+<p class="lbl" style="margin: 0;">pulse does not schedule or store backups. Run the commands from cron and copy the files off the host.</p>
+</div>
+</section>
+</div>
+
+<section class="la-panel" aria-labelledby="cf-h">
+<div class="la-panel__head"><h2 class="eb" id="cf-h">Where checks come from</h2></div>
+<div class="la-panel__body g2" style="gap: 24px;">
+<div class="stack-8">
+<div class="row"><span class="la-badge">checks.json</span><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">File state: ok · last applied 14:01</span></span></div>
+<span style="font-weight: 600;">31 checks from the file</span>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">pulse-api watches <span class="mono">/etc/pulse/checks.json</span> and reloads it on change. These checks are read-only in the console: edit the file, commit it, and the change shows within seconds.</p>
+<p class="lbl" style="margin: 0;">When the file is invalid or unreadable, pulse-api keeps the last valid version, shows its message here and on <a href="SHChecks.dc.html">Checks</a>, and console checks can still be changed.</p>
+</div>
+<div class="stack-8">
+<div class="row"><span class="la-badge la-badge--info">console</span><span class="lbl">stored in pulse-api</span></div>
+<span style="font-weight: 600;">4 checks created in the console · 1 shadowed</span>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Kept in the database, not in the file. A console check cannot take an id the file uses. If the file gains that id later, the console check is shadowed: it does not run and can only be deleted or exported. Export writes env names, never literal values.</p>
+<div class="row"><button type="button" class="la-btn la-btn--secondary la-btn--sm">Export as checks.json</button></div>
+</div>
+</div>
+</section>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>

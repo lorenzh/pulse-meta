@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span></span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 16px;">
+<div class="stack-8"><span class="la-avatar la-avatar--sq" style="width: 40px; height: 40px; font-size: 14px; border-radius: 8px;" aria-hidden="true">QB</span><h1 class="mb-title">Quillbird monitoring</h1><p class="lbl" style="margin: 0;">pulse.quillbird.example · sign in to continue</p></div>
+<div class="la-field"><label class="la-field__label" for="sim-e">Email</label><input class="la-input" id="sim-e" type="email" autocomplete="email" value="jonas@quillbird.example"></div>
+<div class="la-field"><label class="la-field__label" for="sim-p">Password</label><input class="la-input" id="sim-p" type="password" autocomplete="current-password" value="correct-horse-battery"></div>
+<p class="lbl" style="margin: 0;">With two-factor on, the next step asks for the code from your authenticator app.</p>
+<div class="stack-8" style="border-top: 1px solid var(--rule); padding-top: 16px;">
+<p class="lbl" style="margin: 0;">No account? Ask an admin of this instance for an invite.</p>
+<p class="lbl" style="margin: 0;">Lost your password? Ask an admin for a reset link.</p>
+<a href="https://status.quillbird.example" style="font-size: var(--fs-small);">Public status page</a>
+</div>
+</form>
+<div style="padding: 12px 16px 16px; border-top: 1px solid var(--rule);">
+<a class="la-btn la-btn--primary" href="SHTwoFactorMobile.dc.html" style="width: 100%;">Sign in</a>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>
