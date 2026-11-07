@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Keep service reports on the heartbeat cadence without overlap and preserve shutdown tracking",
+      "files": [
+        "src/index.ts",
+        "test/report-heartbeat.test.ts",
+        "docs/channels.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify — Behavior (all bullets, implementing D1-D4 and R1-R8), Tests cases 1-7, and Completion evidence; Counterexamples 1-10, Performance impact, Security impact, and Acceptance evidence (feature). Keep the timer, shared report serializer and shutdown lifecycle together in startChannelLoop; add the regression tests before changing production code.",
+      "acceptance": [
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Red evidence, before changing src/index.ts: on unchanged main (the spec inspected 5a44c5a3de1764faa04b6cd3762f2c2be4c58430), case 1 passes with starts [0, 60000, 120000, 180000]; case 2 fails because actual starts [0, 60000, 124000] differ from the literal expected [0, 60000, 120000, 180000], with a 64000 ms gap. Record the command, actual lists and failing cases for the PR. A coverage-only failure does not establish the regression. Use the existing main dependency seams, a chronological injected clock/scheduler and injected fetch, isolated temporary state, and no external network or wall-clock sleeps standing for fake time. Keep production timeout wiring unchanged."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Green evidence after the fix: 7 pass, 0 fail; a focused run may fail only the global coverage threshold. Cases 1-2: poll 300000, latencies 0 and 4000, inclusive window [0, 180000], exact starts [0, 60000, 120000, 180000] and every adjacent gap <= 60000. Case 3: poll 54000, latency 4000, window [0, 100000], starts [0, 58000, 62000]; third body at equals its start (relative 62000). Case 4: poll 300000, hold the 60000 report until 125000, window [0, 180000], starts [0, 60000, 125000, 180000]. Assert max in flight 1 in delayed, collision and held cases. Case 5: reject the 60000 report with TypeError; starts [0, 60000, 120000, 180000] and one service report failed warning. Case 6: stop at 1000 with only a pending timer, then advance to 300000; starts remain [0]. Case 7: poll 62000, hold the 60000 report, stop at 63000 with a poll report waiting; stop remains unresolved until release, then resolves with starts [0, 60000], no uncancelled channel timers and no added fetch after advancing to 300000. Assert complete start lists to reject missing reports, double arming and catch-up bursts."
+        },
+        {
+          "command": "bun test test/index.test.ts test/channel-loop.review.test.ts",
+          "expected": "All selected tests pass, 0 fail; a focused run may fail only the global coverage threshold. Both existing test files remain unchanged. Poll and heartbeat reports still occur, shutdown waits for an active beat and cancels the newest timer, and tokenless mode makes 0 service calls and 0 reports."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; lint, typecheck and the full test suite pass with at least 80% line coverage and cognitive complexity at most 15 per function. Existing report validation and integration coverage pass, including report-after-apply behavior. Do not weaken shared tooling or coverage settings."
+        },
+        {
+          "command": "git diff --exit-code -- biome.json bunfig.toml eslint.config.js tsconfig.json .github src/service-report.ts src/api.ts src/ledger.ts src/config.ts test/index.test.ts test/channel-loop.review.test.ts",
+          "expected": "exit 0; all listed files remain unchanged from the implementation base. Report content, endpoint, ledger format 5, channel poll cadence, token handling, the 5000 ms service timeout and existing regression coverage remain intact."
+        },
+        {
+          "command": "git diff --stat && git diff -- src/index.ts docs/channels.md",
+          "expected": "The complete implementation diff, including the added test once staged, contains only src/index.ts, test/report-heartbeat.test.ts and docs/channels.md. Review against D1-D4: the tick guards stopped/tokenless mode and arms only the next 60000 ms timer before requesting a report; settlement never arms a timer. Polls and beats share one in-flight report and one coalesced follow-up, whose body is built at its own start and whose waiters are released when shutdown drops it. Failures free the slot. Stop cancels the newest timer and awaits the running poll and active report before the existing ledger shutdown. The loop comment and channels documentation state start-anchored timing, no overlap and coalesced waiting."
+        },
+        {
+          "command": "/usr/bin/time -v bun test",
+          "expected": "Run on clean main and on the fixed branch with the same environment and dependency pins; both full suites pass. Record User time plus System time in seconds for each in the PR, as Performance impact requires. Do not derive expected timings from the implementation or impose an invented performance threshold; the spec expects test CPU to rise by well under 0.5 s and no other budget impact."
+        },
+        {
+          "command": "PULSE_NOTIFY_CHANNELS_POLL_MS=300000 bun run start",
+          "expected": "With a local fake API, a fixture service token and an isolated temporary ledger configured for this smoke run, the service starts and the changed heartbeat behavior is exercised once, as notify AGENTS.md requires. The fake API observes report starts no more than 60000 ms apart with 4000 ms report latency, subject to the spec's timely-dispatch assumption, and no overlapping report. Stop the service cleanly and record the command and observed result without publishing tokens or private details."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0; review the diff against Security impact: no change to auth, parsing, HTTP headers or redirects, file writes, error/log text, dependencies, Dockerfile or CI. Record Security impact: no and the scope review in the PR."
+        },
+        {
+          "command": "gh pr checks --watch",
+          "expected": "exit 0; the PR CI check job passes lint, typecheck and tests, and both existing docker matrix jobs pass on ubuntu-24.04 and ubuntu-24.04-arm. No new compose end-to-end command is required by this section; notify has no compose test configuration."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR names issue #824 and includes the complete Completion evidence: baseline red command, failing cases and actual start lists; green command with all 7 cases passing; successful bun run check and CI; unchanged tooling and protected files; scope limited to the three Files paths; measured main/branch test CPU seconds. Include the service smoke command/result, security scope review, and the documented limits for runtime timer lateness and requests held longer than 60000 ms."
+        }
+      ]
+    }
+  ]
+}
