@@ -5,46 +5,54 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Console forms adopt contract 2.4.1 address and client-name validation",
+      "title": "Console forms use the contract patch's address and SMTP client-name rules",
       "files": [
         "package.json",
         "bun.lock",
         "src/notification-form.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, R7, all Tests and Completion evidence; Rollout steps 1-2; Security impact dependency pins; Acceptance evidence 5. After contract merges, use the same full 2.4.1 main merge SHA as api and regenerate bun.lock. Add the three parseChannelForm regressions first and observe their assertion failures against c5ce6685ce8b563a243823bca451032291b81adb. Keep the existing errors mapping and all console production code unchanged. The final checks include the existing browser and deploy-dev compose CI checks required by AGENTS.md.",
+      "spec": "## Repository: console, R7, all Tests and Completion evidence; Rollout steps 1-2; Security impact; Acceptance evidence 5. After contract merges, use the same full main patch merge SHA as api (2.5.1 or next free patch) and regenerate bun.lock. Add the three parseChannelForm defect tests first and record assertion failures on c5ce6685ce8b563a243823bca451032291b81adb; the existing pulse.example.com / Pulse <pulse@example.com> valid input is a control and passes on both pins. All new cases pass after the bump. Preserve the existing errors mapping and console production code. Final checks include check, browser, deploy-dev Compose CI and the manual changed-form check, using the tool facts cited in this section.",
       "acceptance": [
         {
           "command": "bun test src/notification-form.test.ts",
-          "expected": "After the bump, 0 fail: smtp_client_name pulse_console returns isOk false and error text channel.smtp.clientName: must be a host name; from Ops <ops@example.test> trailing returns isOk false; from Ops < ops@example.test > returns isOk true. Each new assertion fails on the 2.4.0 pin. A focused run may fail only global coverage; its exit status is not the acceptance result."
+          "expected": "After the bump, 0 fail: smtp_client_name pulse_console yields isOk false with channel.smtp.clientName: must be a host name; from Ops <ops@example.test> trailing yields isOk false; from Ops < ops@example.test > yields isOk true. Each of these three defect assertions fails on the old 2.4.0 pin; the existing pulse.example.com / Pulse <pulse@example.com> control passes on both. A focused run's global coverage exit status is not its test result."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the updated dependency pin and lockfile agree."
+          "expected": "exit 0; the manifest and committed lockfile agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with the existing 80% line coverage gate."
+          "expected": "exit 0; lint, typecheck (including e2e) and full tests pass; the existing 80% line coverage gate passes."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "package.json and bun.lock's workspace dependency contain the same full 40-character SHA of the merged pulse-contract main commit implementing R1-R6 (version 2.4.1), independently verified from that contract PR; the lockfile resolution matches that commit."
+          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
         },
         {
-          "command": "bun run check:browser",
-          "expected": "exit 0 with Chromium installed using the existing CI setup; existing browser checks pass."
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
+          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
         },
         {
-          "command": "git diff --name-only",
-          "expected": "Before committing, the only changed paths are package.json, bun.lock and src/notification-form.test.ts."
+          "command": "bunx playwright install chromium && bun run check:browser",
+          "expected": "exit 0; the existing browser checks pass with Chromium (package.json:19; AGENTS.md:24; ci.yml:291,306,308)."
+        },
+        {
+          "command": "git status --short",
+          "expected": "Before committing, only package.json, bun.lock and src/notification-form.test.ts are changed or untracked."
         },
         {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; required console CI checks pass, including browser and deploy-dev. The existing deploy-dev job starts the pulse-deploy main stack using this console checkout, waits for readiness and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml in pulse-deploy; no target repository is edited to make this pass."
+          "expected": "exit 0; console check, browser and deploy-dev pass on the PR. deploy-dev starts pulse-deploy main's dev stack with this console checkout and runs E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml (ci.yml:231,279). A failure where console follows the spec is a deploy defect: hold; never edit deploy or weaken the check."
+        },
+        {
+          "command": "bun e2e/run.ts --serve",
+          "expected": "The fixture console starts per AGENTS.md:25; manually attempt one email channel save with clientName pulse_console and observe channel.smtp.clientName: must be a host name. Record the command and shown error in the PR, then stop the fixture server."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records the three old-pin assertion failures and new-pin results, the independently verified 2.4.1 merge SHA and lockfile, full checks/browser/compose CI results and applicable Security impact dependency-pin review. Includes the AGENTS.md bun start/manual changed-form check command and result."
+          "expected": "Records all three old-pin assertion failures and new-pin results, the unchanged valid control passing on both pins, the independently verified main patch merge SHA/lockfile, full check/browser/Compose CI results and manual changed-form command/error. Includes the applicable Security impact dependency-pin/input-validation review."
         }
       ]
     }

@@ -5,38 +5,54 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Notify adopts contract 2.4.1 and proves parity with its own channel rules",
+      "title": "Notify adopts the contract patch after #820 and proves parity with its own rules",
       "files": [
         "package.json",
         "bun.lock",
         "test/contract-parity.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, R7 precondition, Test test/contract-parity.test.ts and all Completion evidence; Rollout step 3; Evidence R2/R3 table; Non-goals clientName cap; Security impact dependency pins; Acceptance evidence 4-5. Before editing, verify notify main pins 2.4.0 c5ce6685ce8b563a243823bca451032291b81adb from #810. If older (currently 9ab7e2492a2cec91789fba7c742bdba900a800a9), request a needs-input hold naming #810; if already 2.4.1 or later, hold because the change is already there. Preserve the native blocked-by #810 rollout dependency. Once ready, add a table-driven parity test first and record old-pin assertion failures, then bump only the manifest and lockfile to the shared full 2.4.1 main merge SHA. For every R2/R3 Evidence row, vary only from, to[0] or smtp.clientName on the base email fixture and compare channelSchema('email') safeParse success with validateNotifyChannelDefinition ok and the literal expected notify c79f0b7 boolean. Include actual NUL, whitespace, empty, CR/LF and all hostname/literal cases, including the 64-character label; omit 201..255-character clientName names because the contract keeps its 200 cap. Notify's own schemas/helpers and all src files remain unchanged.",
+      "spec": "## Repository: notify, R7, all preconditions, Test test/contract-parity.test.ts, existing tests and Completion evidence; Rollout step 3; Evidence R2/R3 table; Non-goals clientName cap; Security impact dependency pins; Acceptance evidence 4-5. Before any edit, require #820 closed, notify main's pin containing c5ce6685ce8b563a243823bca451032291b81adb, and the current-pin-to-patch compare ahead; otherwise apply the specified holds. #810 has merged; the prerequisite is now #820. Preserve the requested native blocked-by #820 rollout dependency for a person to link after fan-out. Once ready, add a parity test first and record assertion failures for exactly the bold Evidence rows on the old pin (after #820, b637302); all non-bold controls pass. For every R2/R3 Evidence row, vary only from, to[0] or smtp.clientName on the base email fixture and compare notify channelSchema('email').safeParse success with contract validateNotifyChannelDefinition ok and the literal expected notify 0464b90 boolean. Write rows explicitly, including actual NUL and the 64-character label; exclude 201..255-character clientName because contract keeps its 200 cap. Then bump package.json and bun.lock to the same full main patch merge SHA as other consumers (2.5.1 or next free patch). Notify's own rules and all src stay unchanged. Keep smtp-name and ledger tests passing, including ledger open/revalidation safety described in Rollout step 3.",
       "acceptance": [
         {
+          "command": "gh issue view 820 --repo lorenzh/pulse-meta --json state",
+          "expected": "Before any edit, state is CLOSED. OPEN requires a needs-input hold naming #820; do not edit while the prerequisite is open."
+        },
+        {
           "command": "git show origin/main:package.json",
-          "expected": "Before implementation, @lorenzh/pulse-contract pins c5ce6685ce8b563a243823bca451032291b81adb from #810. An older pin triggers a needs-input hold naming #810; 2.4.1 or later triggers a hold because the change is already present."
+          "expected": "Before any edit, record the full @lorenzh/pulse-contract pin as CONTRACT_BASELINE_PIN for the following compare checks; use current main, not a hard-coded version equality."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce6685ce8b563a243823bca451032291b81adb...$CONTRACT_BASELINE_PIN\" --jq .status",
+          "expected": "Before any edit, status is ahead or identical; main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Any other result requires a needs-input hold."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_BASELINE_PIN...$CONTRACT_PATCH_SHA\" --jq .status",
+          "expected": "Before any edit, with CONTRACT_PATCH_SHA independently obtained from the merged contract child PR, status is ahead. Identical or behind requires a hold because the patch is already present; do not proceed unless the precondition is established."
         },
         {
           "command": "bun test test/contract-parity.test.ts",
-          "expected": "On 2.4.1, 0 fail: every R2/R3 Evidence row produces the literal notify c79f0b7 boolean independently from notify and contract, with from and to[0] both covered. The bold old-contract discrepancies fail by assertion on c5ce668 before the bump; positive controls stay valid. The intentional 201..255-character cap disagreement is excluded. A focused run may fail only global coverage; its exit status is not the acceptance result."
+          "expected": "On the patch pin, 0 fail: every R2/R3 Evidence row returns the literal notify 0464b90 boolean independently from notify and contract; address rows cover both from and to[0]. Before the bump, exactly the bold rows fail by contract-side assertion; all non-bold controls pass on both pins. Include actual NUL, CR/LF, empty, whitespace, host/literal cases and the 64-character label. Exclude the intentional 201..255-character cap difference. A focused run's global coverage exit status is not its test result."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the updated dependency pin and lockfile agree."
+          "expected": "exit 0; the manifest and committed lockfile agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with the existing 80% line coverage gate."
+          "expected": "exit 0; lint, typecheck and full tests pass, including test/remote-channels.smtp-name.test.ts and ledger tests; the invalid SMTP name may now be rejected at element level as the existing test permits; the existing 80% line coverage gate passes."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "package.json and bun.lock's workspace dependency contain the same full 40-character SHA of the merged pulse-contract main commit implementing R1-R6 (version 2.4.1), independently verified from that contract PR; the lockfile resolution matches that commit."
+          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
         },
         {
-          "command": "git diff --exit-code -- src",
-          "expected": "exit 0; notify's own rules and all production source remain unchanged."
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
+          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
+        },
+        {
+          "command": "git diff --exit-code origin/main -- src",
+          "expected": "exit 0; notify's own rules and all production source are unchanged."
         },
         {
           "command": "git status --short",
@@ -48,7 +64,7 @@
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records the #810 prerequisite, the parity rows that fail by assertion on 2.4.0 and pass on 2.4.1, both independent implementation results and literal booleans, the intentionally excluded 201..255-character cap difference, the independently verified merge SHA/lockfile, full checks and applicable Security impact dependency-pin review; src is unchanged."
+          "expected": "Records #820 CLOSED and both pre-edit ancestry results; old-pin failures for exactly the bold parity rows, passing non-bold controls on both pins and full parity on the patch; both independent implementation results plus literal booleans for each row; the intentional 201..255-character exclusion; independently verified full main patch merge SHA/lockfile, full checks and unchanged src. Includes the applicable Security impact dependency-pin review and ledger safety: stored remote definitions already passed notify's unchanged local rules, so the newly tightened contract rules do not invalidate stored rows."
         }
       ]
     }

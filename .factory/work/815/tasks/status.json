@@ -5,41 +5,65 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Status adopts the merged contract 2.4.1 after its 2.4.0 prerequisite",
+      "title": "Status adopts the contract patch after #809 and passes its existing checks",
       "files": [
         "package.json",
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, R7 precondition and all Completion evidence; Rollout step 3; Security impact dependency pins; Acceptance evidence 5. Before editing, verify status main has the 2.4.0 contract c5ce6685ce8b563a243823bca451032291b81adb provided by #809. If it still pins an older commit (currently 9ab7e2492a2cec91789fba7c742bdba900a800a9), request a needs-input hold naming #809; if it already pins 2.4.1 or later, hold because the change is already there. Preserve the requested native blocked-by #809 rollout dependency. Once ready and contract has merged, bump only package.json and bun.lock to the full 2.4.1 main merge SHA shared by all consumers. No new tests or status behavior changes are required.",
+      "spec": "## Repository: status, R7, all preconditions and Completion evidence; Rollout step 3; Security impact dependency pins; Acceptance evidence 5. Before any edit, require #809 closed, status main's pin containing c5ce6685ce8b563a243823bca451032291b81adb, and compare <pin>...<patch sha> status ahead; otherwise apply the specified holds. Today's status main pins b637302363b3f147a99280e5961396e6c9f22e7a, not c5ce668 exactly, so use ancestry rather than version equality. Preserve the requested native blocked-by #809 rollout dependency for a person to link after fan-out. After these checks and contract merge, bump only package.json and bun.lock to the same full main patch merge SHA as the other consumers (2.5.1 or next free patch). No new tests: status calls none of the changed validators. Include check, accessibility, CI and two-file-only evidence.",
       "acceptance": [
         {
+          "command": "gh issue view 809 --repo lorenzh/pulse-meta --json state",
+          "expected": "Before any edit, state is CLOSED. OPEN requires a needs-input hold naming #809; do not edit while the prerequisite is open."
+        },
+        {
           "command": "git show origin/main:package.json",
-          "expected": "Before implementation, @lorenzh/pulse-contract pins c5ce6685ce8b563a243823bca451032291b81adb from #809. An older pin triggers a needs-input hold naming #809; 2.4.1 or later triggers a hold because the change is already present."
+          "expected": "Before any edit, record the full @lorenzh/pulse-contract pin as CONTRACT_BASELINE_PIN for the following compare checks; use current main, not a hard-coded version equality."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/c5ce6685ce8b563a243823bca451032291b81adb...$CONTRACT_BASELINE_PIN\" --jq .status",
+          "expected": "Before any edit, status is ahead or identical; main's pin contains the 2.4.0 baseline c5ce6685ce8b563a243823bca451032291b81adb. Any other result requires a needs-input hold."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_BASELINE_PIN...$CONTRACT_PATCH_SHA\" --jq .status",
+          "expected": "Before any edit, with CONTRACT_PATCH_SHA independently obtained from the merged contract child PR, status is ahead. Identical or behind requires a hold because the patch is already present; do not proceed unless the precondition is established."
         },
         {
           "command": "bun install --frozen-lockfile",
-          "expected": "exit 0; the updated dependency pin and lockfile agree."
+          "expected": "exit 0; the manifest and committed lockfile agree."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0; lint, typecheck and the full test suite pass with the existing 80% line coverage gate."
+          "expected": "exit 0; lint, typecheck and full tests pass; the existing 80% line coverage gate passes."
+        },
+        {
+          "command": "bunx playwright install chromium && bun run check:a11y",
+          "expected": "exit 0; existing accessibility checks pass on the new pin (package.json:18; ci.yml:51,66,68)."
         },
         {
           "command": "rg -n 'pulse-contract' package.json bun.lock",
-          "expected": "package.json and bun.lock's workspace dependency contain the same full 40-character SHA of the merged pulse-contract main commit implementing R1-R6 (version 2.4.1), independently verified from that contract PR; the lockfile resolution matches that commit."
+          "expected": "The manifest and lockfile workspace dependency contain the same full 40-character patch merge SHA, independently obtained from the merged contract child PR on main (R1-R6, version 2.5.1 or the next free patch literal named there); the lockfile resolution matches that commit."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/$CONTRACT_PATCH_SHA...main\" --jq .status",
+          "expected": "With CONTRACT_PATCH_SHA set to the full merge SHA from the contract child PR, status is ahead or identical: the pinned patch commit is on contract main."
         },
         {
           "command": "git diff --name-only",
-          "expected": "Before committing, exactly package.json and bun.lock are changed; no test or source changes."
+          "expected": "Before committing, exactly package.json and bun.lock are listed."
+        },
+        {
+          "command": "git status --short",
+          "expected": "Before committing, only package.json and bun.lock are changed or untracked."
         },
         {
           "command": "gh pr checks --watch",
-          "expected": "exit 0; required status CI checks, including the existing a11y checks, pass on the new dependency."
+          "expected": "exit 0; status check and a11y pass on the PR."
         },
         {
           "command": "gh pr view --json body --jq .body",
-          "expected": "Records that #809's 2.4.0 prerequisite was satisfied, the independently verified 2.4.1 main merge SHA and matching lockfile, bun run check and CI results, two-file-only scope and applicable Security impact dependency-pin review."
+          "expected": "Records #809 CLOSED and both pre-edit ancestry compare results; the independently verified full main patch merge SHA and matching lockfile; bun run check, check:a11y and CI results; exactly two changed files; the applicable Security impact dependency-pin review."
         }
       ]
     }
