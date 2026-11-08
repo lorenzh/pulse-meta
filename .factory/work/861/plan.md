@@ -51,16 +51,27 @@ answered `HTTP 404` on 2026-11-08, so there are no findings yet.
   ordered `timestamp DESC, id DESC`; when the page is full it appends the remaining rows of the last
   timestamp (`tiedRows`). That completes the boundary timestamp group across locations.
 - `src/server.ts:67-68,849-857`: default 100, cap 1000, `before` is a non-negative integer.
-- Runtime reproduction through `bun start` on the base (planner run, fresh temp DB, checks and
-  tokens files outside the checkout, script `/tmp/repro-scripts/repro.sh`, five location-bound
-  tokens `a`..`e`):
-  - five identical posts of check `dup` from token `a` at one fixed timestamp: statuses
-    `204 204 204 204 204`; `GET /checks/dup/results` and `?limit=1` each return one row
-    (`location` `a`, that timestamp);
-  - check `tie`: one older sample (timestamp − 1000) from `a`, then one sample per location
-    `a`..`e` at the same timestamp: `?limit=1` returns 5 rows (order `e,d,c,b,a`),
-    `?limit=1&before=<that timestamp>` returns only the older sample; the API stopped with exit 0
-    on `SIGTERM`.
+- Runtime reproduction through `bun start` on the base: three planner runs on
+  `e084bde0a5bc199748ec5614ed604ae79b8454cf` (fresh clone in `/tmp`, `bun install --frozen-lockfile`,
+  Bun 1.4.0). Each run used a fresh temp dir outside the checkout for `PULSE_DB`, `PULSE_CHECKS_FILE`
+  (non-heartbeat checks `dup` and `tie`, `intervalMs` 60000) and `PULSE_TOKENS_FILE` (five
+  location-bound random tokens `a`..`e`), its own free `PORT` (18761, 18762, 18763), and waited for
+  `/readyz` `200`. The script lived outside the checkout and was not kept. The temp dir was removed
+  after each run, and `git status --porcelain` in the clone stayed empty. All three runs gave the same
+  results:
+  - five identical posts of check `dup` from token `a` at one captured timestamp `T` (now − 5000):
+    statuses `204 204 204 204 204`; `GET /checks/dup/results` and `?limit=1` each return exactly one
+    row (`a@T`);
+  - check `tie`: one older sample at `T − 1000` from `a`, then one sample per location `a`..`e` at
+    `T` (statuses `204` ×6): `?limit=1` returns 5 rows (order `e,d,c,b,a`, all at `T`);
+    `?limit=1&before=T` returns 1 row (`a@T−1000`); `?limit=1&before=T−1000` returns 0 rows;
+  - `SIGTERM` → API exit `0`; script exit `0`.
+
+  | Run | Port | dup statuses | dup default / `limit=1` rows | tie `limit=1` rows | `before=T` rows | `before=T−1000` rows | API exit |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | 1 | 18761 | `204` ×5 | 1 / 1 | 5 | 1 | 0 | 0 |
+  | 2 | 18762 | `204` ×5 | 1 / 1 | 5 | 1 | 0 | 0 |
+  | 3 | 18763 | `204` ×5 | 1 / 1 | 5 | 1 | 0 | 0 |
 
 ## Required behavior (documentation)
 
@@ -207,7 +218,7 @@ config or tooling file changes.
 | --- | --- | --- |
 | `bun test --config=/dev/null src/service.idempotent.test.ts src/server.reads.test.ts src/docs-claims.test.ts` | 3 | exit 0, `27 pass`, `0 fail` (7 + 8 + 12 tests) |
 | `bun run check` | 3 | exit 0, `904 pass`, `0 fail`, line-coverage threshold met (no exact figure promised) |
-| Runtime reproduction through `bun start` (planner's own script, not kept; the build writes its own outside the checkout) | 1 | as in "Verified current behavior" |
+| Runtime reproduction through `bun start` (planner's own script, not kept; the build writes its own outside the checkout) | 3 | exit 0 for the script and the API on `SIGTERM`; dup: `204` ×5, 1 row for default and `limit=1`; tie: 5 rows for `limit=1`, 1 row for `before=T`, 0 rows for `before=T−1000` (table in "Verified current behavior") |
 
 These pass on the recorded base. The implementer records its own `BASE` (full SHA of api `main`
 when build starts); if it differs from `e084bde…`, re-run the three controls three times there and
