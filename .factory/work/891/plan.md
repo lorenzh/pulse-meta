@@ -253,10 +253,27 @@ one test and one bounded wait, which replaces a race. A scratch trial with 5 int
 base/branch `bun run test` runs measured user+system CPU of 4.28/4.25, 4.30/4.28, 4.19/4.30,
 4.24/4.25 and 4.24/4.24 s: median 4.24 s (base) and 4.25 s (branch), a delta of +0.01 s. That
 is inside noise. The local value is above the bench budget because the bench measures in its
-own environment; it is not comparable. Startup CPU, load CPU, idle and peak RSS, build CPU,
-startup wall-clock, p95 latency, requests per second and image size cannot move: no production
-code or image content changes (test files are not in the image, `ci.yml` step "Check the image
-holds no test files").
+own environment; it is not comparable.
+
+Image size (`"image_mb"`, budget 124 MB, not gating; measured as `docker image inspect
+--format {{.Size}}` / 1e6 in api `bench/stack.ts:105-114`) grows by a few hundred bytes. The
+image copies `src/` (status `Dockerfile:12`). `.dockerignore:5-8` drops `**/*.test.ts`,
+`**/*.spec.ts`, `**/__fixtures__` and `**/*.mock.ts`, but not `src/subscribe-test-support.ts`,
+so that file is in the image (10,502 bytes on the base). The three lines of R1 add 210 bytes
+(counted with `wc -c` on the R1 snippet). `src/subscribe-timing.test.ts` is not in the image.
+Expected effect: about +0.0002 MB, which `image_mb` does not show at its usual precision. Measure
+it without Docker and without the bench: report
+`git show "$BASE:src/subscribe-test-support.ts" | wc -c` and
+`git show "HEAD:src/subscribe-test-support.ts" | wc -c` and their difference (expected: positive
+and below 1,000 bytes; the literal bound comes from this estimate). If the support file grows by
+1,000 bytes or more, report the number in the PR body.
+
+Startup CPU, load CPU, idle and peak RSS, startup wall-clock, p95 latency and requests per
+second cannot move: no production code changes, and no runtime module imports
+`src/subscribe-test-support.ts` (`grep -rln subscribe-test-support src e2e` in status `2cefdf1`
+lists only `src/subscribe-timing.test.ts`, `src/subscribe-enumeration.test.ts` and
+`src/subscribe-routes.test.ts`), so the server never loads it. Build CPU does not move: the
+image build copies one slightly larger file and runs no extra step.
 
 Measurement (information only, the machine is shared and noisy): five interleaved pairs on one
 machine. For each run, `/usr/bin/time -o <file> -f "%U %S" bun run test`, with the base worktree
@@ -463,7 +480,10 @@ the commit before the change).
   lint, typecheck or coverage failure, is never rerun away.
 - A10 **CPU (information only):** five interleaved base/branch pairs as in
   `## Performance impact`, with per-run values, both medians and the delta in the PR body. No
-  Docker bench.
+  Docker bench. Image size (information only): the PR body reports the byte counts of
+  `src/subscribe-test-support.ts` at `BASE` and `HEAD` and their difference, measured with
+  `git show <ref>:src/subscribe-test-support.ts | wc -c` (expected: a positive difference below
+  1,000 bytes, the literal bound from `## Performance impact`).
 - A11 **Scope, commits:** `git diff --name-only "$BASE" HEAD` prints exactly the two lines
   `src/subscribe-test-support.ts` and `src/subscribe-timing.test.ts` (sorted, nothing else).
 - A12 **Scope, index and worktree:** after the last commit, `git diff --name-only --cached`
@@ -483,11 +503,22 @@ the commit before the change).
   - (d) `README.md` changed in the worktree only: `git diff --name-only` prints `README.md`;
   - (e) an untracked file: `git status --porcelain` prints `?? <file>`;
   - (f) restored-worktree trap, index: stage a `README.md` change, then
-    `git restore --worktree --source="$BASE" README.md`. `git diff --name-only` is empty, but
-    `git diff --name-only --cached` still prints `README.md`;
+    `git restore --worktree --source="$BASE" README.md`. The worktree file equals `BASE` again,
+    so a check that compares only the worktree with the base,
+    `git diff --exit-code "$BASE" -- README.md`, exits 0 and misses the change (the trap). The
+    A12 checks catch it: `git diff --name-only --cached` prints `README.md` (index differs from
+    `HEAD`), `git diff --name-only` also prints `README.md` (worktree differs from the index), and
+    `git status --porcelain` prints `MM README.md`;
   - (g) restored-worktree trap, commit: commit a `README.md` change, then
-    `git restore --worktree --source="$BASE" README.md`. The cached diff is empty, but
-    `git diff --name-only "$BASE" HEAD` lists `README.md` and the protected diff exits 1.
+    `git restore --worktree --source="$BASE" README.md`. Again
+    `git diff --exit-code "$BASE" -- README.md` exits 0 (the trap). `git diff --name-only --cached`
+    prints nothing, `git diff --name-only` prints `README.md` (worktree differs from the index,
+    which holds the commit), `git status --porcelain` prints ` M README.md`,
+    `git diff --name-only "$BASE" HEAD` lists `README.md` (A11), and the protected diff exits 1
+    (A13).
+
+  These literal results were reproduced in a disposable fixture during planning (git 2.56.0,
+  `mktemp -d`, removed afterwards).
 
   The fixture is validation evidence only. It is not added to pulse-status.
 - A15 **Comments:** after reading every added line of `git diff "$BASE" HEAD` (inline comments
