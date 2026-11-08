@@ -16,7 +16,11 @@ to SQLite. Token files are only read. Exports are HTTP responses. None of these 
 
 ## Sources and recorded bases
 
-- Issue #853, its one comment (the Factory issue-review run), and `.factory/work/853/issue-review.md`.
+- The first plan-review run on this issue found two defects, both fixed in this revision: kit's
+  error precedence on a failing temp `close` differs from base (now the third gap below, handled
+  by the `close` record in the adapter and checked by R3 and Acceptance 5 (c)), and the tool facts
+  lacked line citations (now cited by line, with the CI pin at `ci.yml:18`).
+- Issue #853, its comments (the Factory issue-review run and the earlier spec runs), and `.factory/work/853/issue-review.md`.
   The plan follows that review, including its six-file scope, its documentation inventory and its
   acceptance checks 1–7. It adds the concrete design and the checks below.
 - Approved spec `.factory/work/555/plan.md`. Its API section describes a simpler store routine
@@ -49,7 +53,8 @@ From `dist/atomic-write.js` at the pin (line numbers are from the clone, whose b
 3. A write loop until all bytes are written, then `fchmod(fd, plan.mode)`, then
    `fstat`/`fchown` to the destination owner when it differs (only `EPERM` is tolerated), then
    `fsync(fd)`, then `close(fd)`. Any failure closes the fd, unlinks the temp and throws
-   `AtomicWriteError("write")` (`:106–144`).
+   `AtomicWriteError("write")` (`:106–144`). When a fill step fails and the following `close`
+   fails too, kit swallows the close error and keeps the fill error as `cause` (`:129–136`).
 4. `beforeRename()`. If it throws, kit unlinks the temp and rethrows the same error unwrapped
    (`:177–184`). If it returns `false`, kit unlinks the temp and returns `false` (`:185–188`).
 5. `rename(temp, path)`. If it throws, kit unlinks the temp and throws
@@ -61,13 +66,39 @@ From `dist/atomic-write.js` at the pin (line numbers are from the clone, whose b
 8. `AtomicWriteError` keeps the original error as `cause` and sets `code` only for codes that
    match `/^E[A-Z0-9]+$/` (`:4–31`).
 
-There are two gaps against the API protocol, and the design closes both through injection:
+There are three gaps against the API protocol, and the design closes all of them through
+injection:
 
 - Kit opens the temp with the destination mode, while the API creates it with `0600` and only
   then applies the final mode (`src/config-fs.ts:52`).
 - Kit unlinks the temp whenever `beforeRename` throws or the rename fails. The API must keep the
   temp file while a pending audit row may name it, because the temp is the recovery evidence
   (`src/config-write.ts:383–401,488–496`).
+- Error precedence on a double failure. On base, `writeTemp` closes the temp fd in a `finally`
+  (`src/config-fs.ts:53–58`). In JavaScript an exception thrown from `finally` replaces the one in
+  flight, so a failing `close` replaces an earlier `write`/`fchmod`/`fstat`/`fchown`/`fsync`
+  failure, and the API reports the close code. Kit does the reverse (fact 3 above). This was
+  reproduced on this run: with the kit pin's `writeFileAtomicSync`, a fake fs whose temp `fsync`
+  throws `ENOSPC` and whose temp `close` throws `EIO` (after it really closed the fd) produced
+  `stage "write"`, `code "ENOSPC"`, `cause.code "ENOSPC"`, and the temp was gone. A plain
+  `node -e` with `try { throw ENOSPC } finally { throw EIO }` yields `EIO`, which is what base
+  reports. Without compatibility handling the API would answer
+  `checks file could not be written (ENOSPC)` where base answers `(EIO)`, and with a read-only
+  close code (for example `EROFS`) the status class would change too (`error` instead of
+  `readonly`).
+
+Other precedence points were checked and already agree, so they need no handling:
+
+- Directory syncs: base `fsyncDir` (`src/config-fs.ts:69–76`) and kit's `syncDirSync`
+  (`:145–158`) both close in `finally`, so a close error replaces an fsync error in both. The
+  API's own `syncDir` helper (below) keeps `finally` for the same reason.
+- A failed exclusive `open` removes nothing in both and reports the open error.
+- A failed destination `stat`: base runs it after the create and then unlinks the temp, while
+  kit runs it before the create. Both report the stat code, and in both no temp remains.
+- A missing destination (kit's `opts.mode ?? 0o600` branch): it is unreachable for a successful
+  write. `assertCurrent` reads the file before `store` (`src/config-write.ts:375`) and again inside
+  `beforeRename`, so a file deleted in between fails that second check, and the temp is aborted.
+  No temp ever becomes the checks file through this branch.
 
 ## Scope
 
@@ -128,17 +159,22 @@ exactly once per write. `path` is `deps.path` as today, so it may be relative.
 1. `const suffix = deps.tempSuffix()` is called once. Then `temp = ${path}.${suffix}.tmp`,
    `tempPath = resolve(temp)`, and `tempSuffix: () => suffix` is passed to kit, so kit and the API
    name the same file.
-2. A per-write adapter `kitFs: AtomicWriteSyncFs` spreads `fs.atomic` and overrides exactly three
+2. A per-write adapter `kitFs: AtomicWriteSyncFs` spreads `fs.atomic` and overrides exactly four
    operations:
-   - `open(p, flags, mode)`: for `flags === "wx"` it calls `fs.atomic.open(p, "wx", 0o600)`.
-     Otherwise it passes the call through unchanged. Kit's `fchmod` then sets the final mode, as
-     the local code did.
+   - `open(p, flags, mode)`: for `flags === "wx"` it calls `fs.atomic.open(p, "wx", 0o600)` and
+     remembers the returned fd as this write's `tempFd`. Otherwise it passes the call through
+     unchanged. Kit's `fchmod` then sets the final mode, as the local code did.
+   - `close(fd)`: when `fd === tempFd`, it first clears `tempFd` (so a later fd that reuses the
+     number, such as kit's directory fd, is never mistaken for the temp), then calls
+     `fs.atomic.close(fd)`. If that throws, it stores the error as this write's `tempCloseError`
+     and rethrows it unchanged. Any other fd passes through unchanged. The override only records;
+     it never retries, swallows or replaces an error.
    - `rename(from, to)`: it calls `fs.atomic.rename(from, to)` and then the fault point
      `rename`, only after the rename returned.
    - `unlink(p)`: it does nothing once a pending row may exist for this write, or once a fault
      hook has thrown during this write. Otherwise it calls `fs.atomic.unlink(p)`. From that moment
      the API's `abort` owns the temp removal, in its durable order (row deleted first).
-   - The adapter does not re-implement `write`, `fchmod`, `fstat`, `fchown`, `fsync`, `close` or
+   - The adapter does not wrap or re-implement `write`, `fchmod`, `fstat`, `fchown`, `fsync` or
      `stat`: they come from the spread.
 3. `beforeRename` runs the API steps between "temp written" and "rename" in today's order. It
    either returns `true` or throws, and the boolean result of `writeFileAtomicSync` is not used.
@@ -160,6 +196,13 @@ exactly once per write. `path` is `deps.path` as today, so it may be relative.
    - Else, if it is an `AtomicWriteError` with `stage === "rename"`, run `lstatCode(fs, temp)`,
      then fault `lstat`, then `abort(...)` only when the temp is still present (code `undefined`),
      then throw the mapped error. This is today's `src/config-write.ts:490–496`.
+   - Else, if it is an `AtomicWriteError` with `stage === "write"` and `tempCloseError` is set,
+     throw `mapFsError(tempCloseError)`. This restores base precedence: the close error wins over
+     an earlier fill error, as with base's `finally { closeSync(fd) }` (`src/config-fs.ts:53–58`).
+     When only the close failed, kit's `cause` is that same close error, so the result is the
+     same either way. When only a fill step failed, `tempCloseError` is unset and the fill error
+     is reported, as on base. Kit has already unlinked the temp at this point (no row can exist
+     yet), which matches base's unlink after the failed close (`src/config-fs.ts:59–65`).
    - Otherwise throw `mapFsError(err)`.
 6. `mapFsError` passes a `ConfigWriteError` through unchanged, as today. For an `AtomicWriteError`
    it uses the error's `cause` for the code (with the existing `codeOf`) and as the new `cause`. So
@@ -244,8 +287,9 @@ Checklist items that apply:
 Hostile inputs for the security state: a pre-existing regular file at the temp name, a symlink at
 the temp name pointing at a file outside the directory, a destination with mode `0640` or `0444`,
 a destination owned by another uid (with `fchown` returning `EPERM` and `EINVAL`), a read-only
-directory (`EROFS`), `EXDEV` on rename, and a `stat` failure (`ENOTDIR`, `EACCES`) before anything
-is created.
+directory (`EROFS`), `EXDEV` on rename, a `stat` failure (`ENOTDIR`, `EACCES`) before anything
+is created, and a double failure in the temp write (`fsync` `ENOSPC` followed by `close` `EIO`
+or `EROFS`), which must report only the close code and leave no temp.
 
 ## Rollout order
 
@@ -295,6 +339,15 @@ Each line is an input, and what a wrong implementation would do.
 12. **A directory sync removed "to make the search empty".** Dropping barrier 1 or the resolver
     sync makes the audit order literals and the crash rows fail (for example "first fsyncDir
     (temp name)").
+13. **Double failure in the temp write.** The temp `fsync` throws `ENOSPC`, then the temp
+    `close` throws `EIO`. Mapping kit's `cause` directly would answer
+    `checks file could not be written (ENOSPC)`. The rule (base precedence): exactly
+    `checks file could not be written (EIO)`, code `error`. With `fchmod` throwing `EIO` and
+    `close` throwing `EROFS`, the answer is exactly `checks file is read-only (EROFS)`, code
+    `readonly`, not `error`. Control: with `fsync` throwing `ENOSPC` and `close` succeeding, the
+    answer stays exactly `checks file could not be written (ENOSPC)`, so a fix that reports the
+    close step unconditionally fails. Directory-sync errors (`stage "sync-dir"`) are not
+    remapped: there kit and base both let the close error win already.
 
 Statistics: the only number is the informational test-CPU delta, defined in `## Performance impact`
 (user + system seconds per run, medians of 5 interleaved runs per side, the difference of the
@@ -329,27 +382,44 @@ Because nothing documented changes, no README or docs change is needed. `README.
 
 ### Tool facts (verified)
 
-- Bun `1.4.0`: `package.json` `engines.bun` and `packageManager: "bun@1.4.0"`. Locally,
-  `bun --version` printed `1.4.0`. CI uses `bun-version: 1.4.0` in pulse-config
-  `.github/workflows/check.yml:22–24`.
-- `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json` `scripts.check`).
-  `lint` = `biome check . && pulse-eslint . && pulse-workflows`. `typecheck` =
-  `bun node_modules/typescript7/bin/tsc --noEmit`, with `typescript7` = `npm:typescript@7.0.2`.
-  `@biomejs/biome` is `2.6.3`.
-- Coverage: `bunfig.toml` `[test]` sets `coverage = true` and
-  `coverageThreshold = { lines = 0.8, functions = 0 }`. Focused runs use `--config=/dev/null`.
-  Three runs on base printed no coverage table and exited 0 (see the baselines below).
-- Biome: `biome.json` only `extends` `@lorenzh/pulse-config/biome.json`. The pinned file at
-  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (the pin in `package.json` and in `ci.yml:19`) has
-  `files.includes` `["**", "!**/dist", "!**/node_modules", "!**/bun.lock", …]` (`biome.json:8–14`),
-  and an override for `**/*.test.ts` that turns `noNonNullAssertion` off (`:55–59`). It is
-  byte-identical to the config clone.
-- ESLint: `eslint.config.js` spreads `@lorenzh/pulse-config/eslint.config.js` and ignores `.repos/**`,
-  `.bench/**` and `bench-out/**`. API `AGENTS.md` states the SonarJS cognitive-complexity limit of
-  15 per function. Split `store` into helpers if needed, without weakening the rule.
-- CI: `.github/workflows/ci.yml` job `check` `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa0…`.
-  The pinned `check.yml` (byte-identical to the clone) runs `bun install --frozen-lockfile`,
-  `bun run lint`, `bun run typecheck` and `bun run test` (`:25–38`).
+All API line numbers are on `a7e9c84`. Pulse-config line numbers are on the pin
+`04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, read with
+`gh api "repos/lorenzh/pulse-config/contents/<path>?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7"`.
+On this run `check.yml`, `biome.json` and `eslint.config.js` at the pin were each byte-identical
+to the config clone (`diff` printed nothing).
+
+- Bun `1.4.0`: `package.json:8–10` (`engines.bun: "1.4.0"`, `:9`) and `package.json:35`
+  (`packageManager: "bun@1.4.0"`). Locally, `bun --version` printed `1.4.0`. CI sets
+  `bun-version: 1.4.0` in the pinned pulse-config `.github/workflows/check.yml:22–24`.
+- Scripts (`package.json:11–21`): `check` = `bun run lint && bun run typecheck && bun run test`
+  (`:20`). `lint` = `biome check . && pulse-eslint . && pulse-workflows` (`:16`). `typecheck` =
+  `bun node_modules/typescript7/bin/tsc --noEmit` (`:14`). `test` = `bun test` (`:15`).
+- DevDependency pins (`package.json:22–29`): `@biomejs/biome` `2.6.3` (`:23`),
+  `@lorenzh/pulse-config` `github:lorenzh/pulse-config#04108fa0…` (`:24`), `typescript7` =
+  `npm:typescript@7.0.2` (`:27`). Dependency pin: `@lorenzh/pulse-kit`
+  `github:lorenzh/pulse-kit#c6d2cba7…` (`package.json:32`).
+- Coverage: `bunfig.toml:1` opens `[test]`. `bunfig.toml:2` sets `coverage = true`, `:3` sets
+  `coverageThreshold = { lines = 0.8, functions = 0 }`, and `:4` ignores `**/*.test.ts`, `test/**`,
+  `**/test/**` and `dist/**` for coverage. Focused runs use `--config=/dev/null`. Three runs on base
+  printed no coverage table and exited 0 (see the baselines below).
+- Biome: `biome.json:2` only `extends` `@lorenzh/pulse-config/biome.json`. The pinned config
+  `biome.json` has `files` at `:8` with `includes` at `:10–16`
+  (`"**"`, `"!**/dist"`, `"!**/node_modules"`, `"!**/bun.lock"`, `"!**/*.html"`,
+  `"!**/test/fixtures"`, …), sets `noNonNullAssertion` to `"error"` at `:46`, and has an override
+  (`overrides` at `:53`) for `["**/*.test.ts", "**/test/**"]` (`:55`) that turns
+  `noNonNullAssertion` off (`:59`).
+- ESLint: `eslint.config.js:1` imports `@lorenzh/pulse-config/eslint.config.js`, and
+  `eslint.config.js:4` ignores `.repos/**`, `.bench/**` and `bench-out/**` and spreads that base.
+  The pinned config `eslint.config.js:16` sets `"sonarjs/cognitive-complexity": ["error", 15]`, and
+  API `AGENTS.md:77` states that limit and forbids lowering it. Split `store` into helpers if
+  needed, without weakening the rule.
+- CI: `.github/workflows/ci.yml:17–18`, job `check`,
+  `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`
+  (`:18`, the same SHA as `package.json:24`). The pinned `check.yml` runs
+  `bun install --frozen-lockfile` (`:25–26`), `bun run lint` (`:27–28`), `bun run typecheck`
+  (`:29–30`) and `bun run test` (`:37–38`). Its build steps (`:31–36`) run only with
+  `inputs.build`, which defaults to `false` (`check.yml:6–9`) and which the API job does not set
+  (`ci.yml:17–18` passes no `with:`).
 - Typecheck of the kit imports: a scratch module in a throwaway copy of the base, importing
   `AtomicWriteError, type AtomicWriteSyncFs, nodeAtomicWriteSyncFs, writeFileAtomicSync` from
   `@lorenzh/pulse-kit` and building an adapter with an `open` override, passed
@@ -378,8 +448,9 @@ reported and not made a mandatory control.
 
 As in `## Required behavior (api)`. Code rules from API `AGENTS.md`: `import type` for types
 (mixed imports mark the types inline), `.ts` relative imports, no `any`, no `!` in `src/`, named
-exports, and comments only for non-obvious order. The adapter's `unlink` guard and the `0600` open
-each need a one-line "why" comment.
+exports, and comments only for non-obvious order. The adapter's `unlink` guard, the `0600` open
+and the temp `close` record (base precedence: the close error wins) each need a one-line "why"
+comment.
 
 ### Tests
 
@@ -422,6 +493,22 @@ each need a one-line "why" comment.
      `EPERM` from it still writes (200 outcome). An `EINVAL` fails with
      `checks file could not be written (EINVAL)` and leaves no temp.
   5. `nodeConfigFs.lstat` throws `ENOENT` for a missing path and returns for a present one.
+- R3, close-error precedence (new; a compatibility control, see Acceptance 5 (c) for its proof).
+  Same real-directory setup as R1, with a recorder that fails only on the temp fd (the fd that
+  the `"wx"` open returned). Its failing `close` first really closes the fd, then throws, so no fd
+  leaks. Expected values are literals that come from base precedence (`src/config-fs.ts:53–58`,
+  close in `finally`; see "What the pinned kit helper does", third gap):
+  - (a) temp `fsync` throws `ENOSPC`, temp `close` throws `EIO`: the write rejects with a
+    `ConfigWriteError` whose `code` is `"error"` and whose `message` is exactly
+    `checks file could not be written (EIO)`.
+  - (b) temp `fchmod` throws `EIO`, temp `close` throws `EROFS`: `code` `"readonly"`, `message`
+    exactly `checks file is read-only (EROFS)`.
+  - (c) temp `fsync` throws `ENOSPC`, `close` succeeds: `code` `"error"`, `message` exactly
+    `checks file could not be written (ENOSPC)`.
+  - (d) only the temp `close` throws `EIO`: `code` `"error"`, `message` exactly
+    `checks file could not be written (EIO)`.
+  - In each case the checks file keeps its old bytes, no `*.tmp` is left in the directory, no
+    pending row exists, and no message contains `atomic write failed`.
 
 **`src/config-write.audit.test.ts`:** `MemFs` implements `WriteFs` with an `atomic` member that
 logs low-level calls in this format: `stat(p)`, `open(p, wx, 600)` / `open(p, r)` (octal mode
@@ -479,7 +566,8 @@ after the last commit, unless stated otherwise.
    - admin suite: 62 pass (literal; same tests).
    - `src/config-reload.initial.test.ts`: 4 pass.
    - `src/server.maintenance-admin.test.ts`: 18 pass.
-   - `src/config-fs.test.ts`: exit 0, with at least R1, R2 and migrated controls 1–5 by title.
+   - `src/config-fs.test.ts`: exit 0, with at least R1, R2, R3 (a)–(d) and migrated controls 1–5
+     by title.
 
    If `BASE` differs from `a7e9c84`, the base-run literals from the implementer's baseline table
    apply.
@@ -505,15 +593,22 @@ after the last commit, unless stated otherwise.
    - Each run exits non-zero. R1 fails because the recorder saw no kit sequence (the base writer
      calls `writeTemp`). R2 fails on `nodeConfigFs.atomic` being `undefined` and on the forbidden
      `writeSync` in `src/config-fs.ts`.
-   - Report the failing titles and messages. Migrated controls may also fail there because the
-     `atomic` surface is missing; say which.
+   - Report the failing titles and messages. Migrated controls and R3 may also fail there because
+     the `atomic` surface is missing; say which. R3 is not a red-on-base regression: base already
+     has the precedence it checks, and its proof is the mutation in 5 (c).
    - Remove the worktree afterwards.
-5. **Mutation: the local writer comes back.**
+5. **Mutations: the local writer comes back, or the close precedence is lost.**
    - (a) On the branch, `git checkout "$BASE" -- src/config-fs.ts src/config-write.ts`, then run
      the focused fs suite: R1 and R2 fail (exit ≠ 0).
    - (b) Restore with `git checkout HEAD -- src/config-fs.ts src/config-write.ts`, then add an
      unused `function fill(fd: number, b: Buffer): void { writeSync(fd, b); }` (with its import)
      to `src/config-fs.ts`: R2 fails.
+   - (c) Restore again, then make the `stage "write"` branch in `src/config-write.ts` ignore
+     `tempCloseError` (map kit's `cause` as kit reports it). Run the focused fs suite three times:
+     each exits non-zero, R3 (a) fails with received `checks file could not be written (ENOSPC)`
+     against the expected `(EIO)`, and R3 (b) fails with received code `"error"` and
+     `checks file could not be written (EIO)` against `"readonly"` and
+     `checks file is read-only (EROFS)`. R3 (c) and (d) still pass. Report the outputs.
    - Restore again. `git status --porcelain` is empty afterwards.
 6. **Documentation inventory** (rerun at `BASE` and at the final `HEAD`):
    - `grep -rnE "atomic|fsync|rename|temp file|\.tmp|mode|owner|read-only|precedence" README.md docs/*.md`.
