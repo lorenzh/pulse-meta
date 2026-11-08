@@ -58,6 +58,9 @@ New in this run (2026-11-08, Factory runner, Bun 1.4.0, Node 24.19.0, OpenSSL 3.
   input content were removed from the counterexamples, the contract tests, the Node and browser
   evidence and the probe and status tests. What remains is location, title, class, expected outcome
   and budget.
+- Benchmark rule (this revision, after the fourth plan review): the shared fallback rule in
+  "Performance impact" now names notify's +0.3 s threshold next to contract's +1.5 s and the
+  +0.3 s for probe and status. It now agrees with the notify section. Nothing else changed.
 - No pulse service or deploy profile compresses responses: `grep -rni 'content-encoding|gzip|brotli|compress'`
   over `api/src`, `status/src`, `probe/src`, `notify/src`, `console/src` and `deploy` found no
   production match.
@@ -220,8 +223,10 @@ Other keys of the same file:
     system seconds per side and their difference. This is the quantity that the harness reads
     (`api/bench/measure.ts:68`, `resourceUsage()`; `run.ts:222`). The child processes of the memory
     test count, because they are children of `bun run test`.
-  - Fallback, only for `contract`, `probe`, `status` or `notify`, and only when the primary contract
-    delta exceeds +1.5 s or a probe/status delta exceeds +0.3 s. The harness exists only in the api
+  - Fallback, only for `contract`, `probe`, `status` or `notify`, and only for the repository whose
+    own primary delta exceeds its threshold: contract above +1.5 s; probe, status or notify each
+    above +0.3 s. These are the same thresholds that each repository section names. Below its
+    threshold, a repository does not run the fallback. The harness exists only in the api
     repository. Clone it into a scratch directory outside every target repository:
     `git clone https://github.com/lorenzh/pulse-api.git <scratch>/pulse-api`, then from that
     checkout's root run `bun install --frozen-lockfile`, then
