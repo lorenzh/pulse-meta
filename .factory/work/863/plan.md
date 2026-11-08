@@ -12,8 +12,9 @@ After this change:
 - `POST /results` refuses every redirect. A redirected result is undelivered: it goes through the
   existing retry and buffer path.
 - `POST /results` asks for an uncompressed answer and turns off Bun's eager decompression. It
-  refuses an encoded answer before the body is read or dropped. So an encoded answer cannot raise
-  the probe's memory.
+  decides the outcome from status and headers before the body is dropped, and it never reads or
+  decodes the body. An encoded 204 is refused (`retry`). Every other encoded answer keeps the
+  outcome of its status (Decision 4). So an encoded answer cannot raise the probe's memory.
 - Every log line in `src/client.ts` that carries a check ID shows at most 80 UTF-16 units of it,
   then `…`. The validation text of a skipped record is capped too, so a skip line has a bounded
   length.
@@ -35,7 +36,11 @@ After this change:
 Clones read in this run: meta `f28900c`, probe `892cf36` (merge of pulse-probe#57), contract
 `96f33aa` (merge of pulse-contract#57, the #864 fix), config `bc87049`, api `515031b`. The issue
 review is `.factory/work/863/issue-review.md`. `gh api …/git/ref/heads/factory/findings/863` answered
-HTTP 404, so no shared findings exist yet.
+HTTP 404, so no shared findings exist yet (re-checked in the revision run: still HTTP 404).
+
+Revision after the plan review: README and docs limit the "buffered and retried" statement to
+encoded 204 answers; Security impact lists the two changed outcomes; R1 names the wire-mismatch
+exception; M2 has a required base failure (growth); the time rule names the only real-time uses.
 
 - Probe pins contract `96f33aa…` (`package.json:30`), the same SHA as the contract clone. So the
   inherited client is exactly the one read here.
@@ -100,12 +105,14 @@ HTTP 404, so no shared findings exist yet.
    1. A thrown error (network, timeout, abort) → `retry`, no line (unchanged).
    2. The wire-version check runs on every answer, as today. A mismatch logs the existing line and
       does not change the outcome.
-   3. Status 300–399 (any, with or without `Location`) → `retry`, no line. No request goes to the
-      `Location`. Nothing falls back to another route.
+   3. Status 300–399 (any, with or without `Location`) → `retry`. This step adds no line of its
+      own; the only line a 3xx can produce is the wire-mismatch line of step 2, when its wire
+      header mismatches. No request goes to the `Location`. Nothing falls back to another route.
    4. Status 204 → `accepted` when `content-encoding` is absent, empty or `identity` (trimmed,
-      case-insensitive). Any other value, including unknown and combined values, → `retry`, no
-      line. Same as the shared client, where an encoded 2xx is an error. A retry after a 204 is
-      safe, because the api ignores a duplicate result.
+      case-insensitive). Any other value, including unknown and combined values, → `retry`. This
+      step adds no line of its own (step 2 still applies). Same as the shared client, where an
+      encoded 2xx is an error. A retry after a 204 is safe, because the api ignores a duplicate
+      result.
    5. Every other status keeps its current outcome and line, whatever the encoding (429/5xx
       `retry`; 401/403 `rejected` with the token line; 404 `unknown-check`; others `rejected`).
       No body is read for any status.
@@ -145,9 +152,11 @@ HTTP 404, so no shared findings exist yet.
 
 ## Required behavior
 
-- R1: A result post that gets any 3xx returns `retry`, logs nothing, and the `Location` target gets
-  zero requests (same origin, cross origin, https to http; 301, 302, 303, 307, 308; a 3xx without
-  `Location`).
+- R1: A result post that gets any 3xx returns `retry`, and the `Location` target gets zero requests
+  (same origin, cross origin, https to http; 301, 302, 303, 307, 308; a 3xx without `Location`).
+  The redirect itself logs nothing. Explicit exception: when the 3xx answer's wire header
+  mismatches, the existing wire-mismatch diagnostic (Decision 4, step 2) is logged exactly once,
+  with its current text. A 3xx with a matching or absent wire header logs no line.
 - R2: Through the real buffer, a redirected result is retained, retried with the existing backoff,
   delivered in order after a direct 204, and never counted as `rejected`.
 - R3: The post sends `accept-encoding: identity` and turns off Bun's eager decompression. The
@@ -207,10 +216,13 @@ Checklist items that apply:
   bounded (R4).
 - Secrets in errors, logs and responses: no token, response body or received header value in any
   line. JSON failures keep the fixed text.
-- Input validation: content coding fails closed for unknown and combined values. API-supplied IDs
-  and validation text are bounded in logs.
-- Auth order and status codes: 401/403, 404, 429, 5xx and 2xx keep their outcomes. Only 3xx
-  changes, from `rejected` to `retry`.
+- Input validation: on a 204, the content coding fails closed for unknown and combined values
+  (`retry`). On every other status the coding never changes the outcome, and the body is never
+  decoded. API-supplied IDs and validation text are bounded in logs.
+- Auth order and status codes: 401/403, 404, 429 and 5xx keep their outcomes, encoded or not. A
+  non-204 2xx keeps `rejected`, encoded or not. A 204 with an absent, empty or `identity` coding
+  keeps `accepted`. Two outcomes change: every 3xx (from `rejected`, or from whatever the followed
+  target answered, to `retry`), and a 204 with any other coding (from `accepted` to `retry`).
 - Dependency pins: unchanged (`package.json`, `bun.lock` protected).
 
 The security state after review exercises these hostile classes on the candidate, with inputs built
@@ -418,12 +430,14 @@ No question here is shared with another repository: this feature has one child.
 Docs (short plain sentences, no payloads):
 
 - `README.md:13`: result posts, like check reads, follow no redirect and ask for uncompressed
-  answers. A redirect or an encoded answer to a post leaves the result buffered and retried, so
-  `PULSE_API_URL` must be the final endpoint. Monitored checks keep their own redirect rules.
+  answers. A redirect, or a 204 with an encoded body, leaves the result buffered and retried, so
+  `PULSE_API_URL` must be the final endpoint. Other answers keep their status outcome whatever their
+  encoding, and the probe never decodes a post answer. Do not write that every encoded answer is
+  retried. Monitored checks keep their own redirect rules.
 - `docs/configuration.md:28`: add "HTTP 3xx" and "an encoded 204" to the list of undelivered
-  answers. `:39`: one sentence that `POST /results` follows no redirect and refuses encoded
-  answers. Log lines show at most 80 characters of a check ID, then `…`, and at most 1000
-  characters of validation text.
+  answers. `:39`: one sentence that `POST /results` follows no redirect, never decodes the answer,
+  and retries an encoded 204; other encoded answers keep their status outcome. Log lines show at
+  most 80 characters of a check ID, then `…`, and at most 1000 characters of validation text.
 - `docs/troubleshooting.md:80-87`: the final-drop section no longer covers 3xx. The buffering
   section names 3xx (`PULSE_API_URL` redirects) as a cause. Under `skipping invalid check` (`:65`),
   long IDs and long texts are shortened with `…`.
@@ -432,13 +446,31 @@ Docs (short plain sentences, no payloads):
 
 ### Tests
 
-All servers listen on `127.0.0.1` port `0` and close in `finally`/`afterAll`. Clocks, sleeps and
-timers are injected fakes. No external network. Tests use the real `fetch` and assert on the
-servers' request counts. Log assertions check that no captured line holds the token, a body marker
-or a received header marker. Names below are the test titles. "Regression" means it must fail on
-`BASE` for the stated reason. "Control" means it must pass on `BASE` and on the branch.
+All servers listen on `127.0.0.1` port `0` and close in `finally`/`afterAll`. No external network.
+Tests use the real `fetch` and assert on the servers' request counts. Log assertions check that no
+captured line holds the token, a body marker or a received header marker. Names below are the test
+titles. "Regression" means it must fail on `BASE` for the stated reason. "Control" means it must
+pass on `BASE` and on the branch.
 
-`src/client.result-redirect.test.ts`:
+Time rule:
+
+- Retry and reload timing is always injected: the buffer's `sleep` and `now` (`src/buffer.ts:13-15`),
+  the reloader's `timer` and `now` (`src/reloader.ts:6-8`), and the `sleep` of `fetchChecks`
+  (`src/client.ts:29`, `:364`) are fakes in every new test. No test waits for a real backoff,
+  reload interval or retry delay.
+- No test relies on the post's real 10 s request timeout (`src/client.ts:407-408`) firing. Stalled
+  servers are released by the test itself after the asserted outcome.
+- Narrow exception, real time allowed only here:
+  1. Memory measurement in `test/client-result-memory-child.ts`: the real RSS sampling interval
+     (at least every 5 ms) and the real 1000 ms post-return window of the "Peak RSS growth"
+     statistic. A fake clock would not sample the process's memory.
+  2. Process supervision in `src/client.result-memory.test.ts`: the real kill timer of the child
+     (30 s) and the explicit per-test timeouts (60 s). They only bound a hung child; no assertion
+     depends on them firing, and they are cleared when the child exits.
+  Nothing else in either file uses real timers.
+
+`src/client.result-redirect.test.ts` (every redirect answer carries the matching wire header,
+except in the wire-mismatch control, so "no line" below follows from R1):
 - Regression "result post refuses a same-origin redirect": 307 to another path on the API → `retry`,
   0 requests on that path, no line. Base: follows the redirect.
 - Regression "result post refuses a cross-origin redirect" for 301, 302, 303, 307, 308: `retry`, the
@@ -481,15 +513,23 @@ or a received header marker. Names below are the test titles. "Regression" means
   - M0 control "small identity 204 is accepted with bounded memory": `accepted`, growth ≤ 64 MiB.
   - M1 regression "large encoded 200 is rejected with bounded memory": `rejected`, growth ≤ 64 MiB.
   - M2 regression "large encoded 503 with a wire mismatch is retried with bounded memory": `retry`,
-    one mismatch line, growth ≤ 64 MiB.
+    one mismatch line, growth ≤ 64 MiB. Its discriminating assertion is the growth: on `BASE` the
+    outcome `retry` and the mismatch line already hold, so the required base failure is "growth
+    above 64 MiB" and nothing else. Basis: #864 measured the same class (a compressed non-success
+    answer whose body is never read) at about +396 MiB under Bun with runtime decompression on
+    (`.factory/work/864/plan.md:45-52`), and `postResult` on `BASE` sends no `decompress: false`
+    (`src/client.ts:401-409`).
   - M3 regression "large encoded 307 is refused with bounded memory": `retry`, the redirect target
     gets 0 requests (counted by the parent), growth ≤ 64 MiB.
   - Regression "whole-child peak growth stays within 64 MiB".
   - Each test gets an explicit timeout (60 s). The statistics are the ones in "Counterexamples".
     Report the numbers per case, never the inputs.
-  - Base expectation: M0 passes; M1 and the whole-child test fail for growth above 64 MiB (eager
-    decoding); M3 fails because the target receives a request. Record the M2 base result as
-    observed.
+  - Base expectation (required): M0 passes; M1, M2 and the whole-child test fail for growth above
+    64 MiB (eager decoding); M3 fails because the target receives a request. Every one of these
+    base failures is required, with the stated reason. If M1 or M2 stays at or below 64 MiB on
+    `BASE`, the case input is not large enough: enlarge it within the input-CPU budget. If that is
+    not possible, request a hold with `needs-input`; never relabel a regression as a control, and
+    never lower the 64 MiB budget.
 
 `src/client.long-id.test.ts` (through `fetchChecks`/`loadChecks` against a local API, and
 `postResult`):
@@ -551,8 +591,8 @@ Every expected value is a literal in the check, or it comes from Git semantics:
 - A redirected result is delivered later through the buffer, with 0 `rejected` drops.
 - An encoded 204 is `retry`; encoded error answers keep their status outcome; the post asks for
   `identity`.
-- Peak RSS growth ≤ 64 MiB per measured case and for the whole child. M1 shows a larger growth on
-  `BASE`.
+- Peak RSS growth ≤ 64 MiB per measured case and for the whole child. M1, M2 and the whole-child
+  statistic show growth above 64 MiB on `BASE`.
 - Startup and reload lines for malformed JSON contain
   `invalid JSON: response body is not valid JSON`, and the body marker appears in no line.
 - Long-ID lines show 80 units plus `…`, validation text ≤ 1000 units, every skip line ≤ 1200
