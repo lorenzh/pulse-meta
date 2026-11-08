@@ -247,8 +247,12 @@ evidence.
 
 ## Performance impact
 
-Only `test_cpu_s` of status (`bench/budgets.json` in api `515031b`, `"status"` →
-`"test_cpu_s"`, budget 3.4 s, gating) can move. Expected effect: none to +0.05 s. The change adds
+Two metrics of status (`bench/budgets.json` in api `515031b`, `"status"`) can move:
+`test_cpu_s` (gating, budget 3.4 s), the only affected gating metric, and `image_mb` (reported,
+not gating, budget 124 MB; see the image size paragraph below). Every other metric stays
+unchanged.
+
+`test_cpu_s`: expected effect none to +0.05 s. The change adds
 one test and one bounded wait, which replaces a race. A scratch trial with 5 interleaved
 base/branch `bun run test` runs measured user+system CPU of 4.28/4.25, 4.30/4.28, 4.19/4.30,
 4.24/4.25 and 4.24/4.24 s: median 4.24 s (base) and 4.25 s (branch), a delta of +0.01 s. That
