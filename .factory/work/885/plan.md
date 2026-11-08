@@ -96,8 +96,11 @@ For each of the 49 names, add a short, plain entry in the style of its neighbour
     `must be a normalized email address` (`src/subscriptions.ts:111-120`).
   - `subscriptionAnswerSchema` is the strict `{ status }` with a `SUBSCRIPTION_RESULTS` value
     (`src/subscriptions.ts:137-140`).
-  - An error text quoted in the docs must be copied exactly from `src/` (or from an existing
-    test). Do not invent error text. Do not say that a Zod schema never throws: only the
+  - An error text quoted in the docs must be the exact message that the validator emits. Some
+    messages are template literals in `src/` (for example
+    `` `must be at most ${TOKEN_MAX} characters` `` at `src/subscriptions.ts:127`, with
+    `TOKEN_MAX = 128` at `:31`). Quote the expanded text, never the template. Do not invent
+    error text. Do not say that a Zod schema never throws: only the
     `validate*` functions have that guarantee. `schema.parse` throws.
 - **Constants** (7 `MANUAL_INCIDENT_*`): give the value and its meaning (`src/schema.ts:849-860`):
   `MANUAL_INCIDENT_TITLE_MAX` 200, `MANUAL_INCIDENT_MESSAGE_MAX` 2000,
@@ -180,7 +183,10 @@ list of names and no fixed count.
 - **Prose matches.** Short type names such as `Check` or `Result` can match ordinary words in
   headings. On the base every such name already has a real entry. This is a known limit of
   whole-file matching, and review covers it. Do not narrow matching to code spans: see rule 4.
-- **Wrong error texts** in the new entries. Copy them from `src/` and check each one quoted.
+- **Wrong error texts** in the new entries. Take each one from the message that the validator
+  emits, and check every quoted text against a run of that validator (acceptance 6). A literal
+  search of `src/` is not enough, because template messages such as the token limit do not
+  appear in the source as written.
 - **main moving.** If contract `main` advances past `96f33aa` before implementation, record the
   new `BASE`, re-enumerate the exports and the missing names, and document any new names too.
   The literal 49 list stays as the expected value only for `96f33aa`. For a newer base, the
@@ -239,6 +245,7 @@ wrong implementation would get it wrong.
 | Docs `` `Validation<T>` `` or `fetchJson(url, options)` | `Validation`, `fetchJson` documented | Requiring an exact backtick span `` `Validation` `` reports documented names such as `Validation`, `fetchJson` and `MAX_MAINTENANCE_TIME` as missing (the issue review counted nine on the base). |
 | Docs `` `StatusLockedField`s `` inside a code span that crosses a line break | documented | A code-span-only matcher reports it missing. A single-line span parser gave 50 instead of 49 on the base, and a multi-line one mis-pairs backticks around the fenced blocks. |
 | Base `96f33aa`, unchanged docs | fails with exactly the 49 names of the baseline table | Any other count shows a parser or matcher bug. |
+| Docs quote the token error of `subscriptionTokenRequestSchema` | `must be at most 128 characters`, the emitted message for a 129-character token (a 128-character token passes) | Quoting the template `must be at most ${TOKEN_MAX} characters`, or checking the text with `grep -F` over `src/`, which finds no match for the expanded text. |
 
 There are no statistics in this change.
 
@@ -340,10 +347,27 @@ Where each expected value comes from is stated in brackets.
    inventory assertion. [The commands' exit statuses.]
 6. **Docs content.** The 49 names (or the re-enumerated list for a newer base) each appear in
    `docs/index.md` with a short description and their type, signature or value. The three
-   subscription schemas are named explicitly. Every error text quoted in a new entry occurs
-   verbatim in `src/`: `grep -F '<text>' src/*.ts` finds each one. `docs/index.md:10` ("Every
-   type exported …") is true: each of the 12 missing type names now appears in docs. [The
-   baseline table, and `src/` for the error texts.]
+   subscription schemas are named explicitly. `docs/index.md:10` ("Every type exported …") is
+   true: each of the 12 missing type names now appears in docs. [The baseline table.]
+
+   Every error text quoted in a new entry is checked against the message that the validator
+   emits, not by a literal search of `src/`. Use a one-off script outside the repository, not
+   the new test file. It imports `src/index.ts`, runs the validator on an input that it must
+   reject, and compares `error.issues[0].message` with the quoted text. Record the script and
+   its output in the PR. These two cases are required, with literal inputs and expected texts:
+
+   | Call | Expected message |
+   |------|------------------|
+   | `subscriptionTokenRequestSchema.safeParse({ token: "a".repeat(129) })` | `must be at most 128 characters` |
+   | `subscriptionRequestSchema.safeParse({ email: "A@Example.com" })` | `must be a normalized email address` |
+
+   Add the boundary control `subscriptionTokenRequestSchema.safeParse({ token: "a".repeat(128) })`,
+   which must give `success: true`. Add one row with a rejecting input for every other error
+   text that a new entry quotes. Both required rows were run on `96f33aa` with
+   `bun <script>` and gave exactly these messages; the boundary control gave `true`. Then
+   `grep -F '<text>' docs/index.md` finds each quoted text. [Literal texts in this table,
+   compared against the runtime output of the validators, which is independent of
+   `docs/index.md`.]
 7. **dist unchanged.** After `bun run build`, `git diff --exit-code -- dist` exits 0, and
    `git diff --exit-code "$BASE" HEAD -- dist` exits 0. [The committed dist against a fresh
    build, two independent artifacts.]
