@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Shared API reads bound memory, refuse redirects and use fixed diagnostics",
+      "files": [
+        "src/client.ts",
+        "src/version.ts",
+        "test/client.test.ts",
+        "test/request-json.test.ts",
+        "test/version.test.ts",
+        "test/client-transport.test.ts",
+        "test/client-memory.test.ts",
+        "test/client-memory-child.ts",
+        "dist/client.js",
+        "dist/version.js",
+        "dist/client.d.ts",
+        "dist/version.d.ts",
+        "README.md",
+        "docs/index.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Behavior items 1-6, Tests and Completion evidence; Decisions 1-7 and 9; Required behavior R1-R5; Counterexamples; Disclosure rule; Scope verification; Performance impact; Security impact; Acceptance evidence items 1-4 and 6",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD)",
+          "expected": "Before the first edit, record the full implementation-base SHA in task evidence; retain this BASE for every scope and performance check."
+        },
+        {
+          "command": "bash \"$SCRATCH/scope-fixture.sh\"",
+          "expected": "Create this disposable Git fixture script outside every repository and prove the five checks in plan.md, Scope verification, before relying on them. Record each check separately in all seven states: clean control: checks 1-5 pass, check 1 empty; allowed committed: check 1 allowed singleton, checks 2-5 pass; protected unstaged: checks 3,4 detect, checks 1,2,5 pass; protected staged: checks 2,4 detect, checks 1,3,5 pass; protected staged then worktree restored to base: git diff \"$BASE\" empty but checks 2,3,4 detect; protected committed with clean index/worktree: check 1 protected path, check 5 exit 1, checks 2-4 pass; protected committed then worktree restored to base: git diff \"$BASE\" empty but checks 1,3,4,5 detect, check 2 passes. Use an allowed file and a protected file, verify exact-path rejection against this task’s lists, and delete fixture/script afterwards."
+        },
+        {
+          "command": "bun test test/client.test.ts test/request-json.test.ts test/version.test.ts test/client-transport.test.ts test/client-memory.test.ts",
+          "expected": "Green candidate: 0 failed tests; focused coverage exit is not the acceptance gate. Cover the entire contract Tests section. Fixed invalid-JSON text is response body is not valid JSON, fixed wire text is x-pulse-contract: unsupported wire version, expected 1 at every surfaced location, with no upstream marker in serialized results. Existing wire ok/absent/mismatch decisions remain unchanged."
+        },
+        {
+          "command": "bun test test/client-memory.test.ts",
+          "expected": "0 failed tests. Four isolated Bun memory cases from the spec, covering successful/non-successful reads/writes: network, http, network, http respectively; peak RSS growth ≤64 MiB each. Fixture CPU ≤0.1 s per case. Measurement uses the plan's baseline, ≥one RSS sample every 5 ms through 1000 ms after return, MiB rounded down; each child has a 30 s kill deadline and tests a 60 s timeout. Report titles, outcomes, growth and CPU only."
+        },
+        {
+          "command": "bun test test/client-transport.test.ts",
+          "expected": "0 failed tests. Same-origin, cross-origin and HTTPS-to-HTTP read redirects refused; statuses 301,302,303,307,308 produce http with the original status, every destination count 0. Encoding refusal under Bun produces fixed cause response content-encoding is not supported and no received header text; non-successful write is http without message and retains response metadata. Identity cases are ok; identity body over the default cap is too-large. Precedence, validator exclusion and onWireAbsent once are verified. TLS verification stays enabled; test-only EC certificate is generated locally using kit's OpenSSL call form and lint comment, cleaned up, never committed; missing OpenSSL fails, never skips."
+        },
+        {
+          "command": "git checkout \"$BASE\" -- src; bun test test/client.test.ts test/request-json.test.ts test/version.test.ts test/client-transport.test.ts test/client-memory.test.ts; git checkout HEAD -- src",
+          "expected": "After the fixed source is committed, retain candidate tests while running against BASE source, then restore candidate source even if the test command fails. Red evidence includes all four memory cases (growth above 64 MiB or wrong kind), the three redirect refusal titles (old destination count 1 and ok true), and both fixed-text cases. Record failing titles and measured numbers only. Do not claim failures caused only by coverage. Restore index and working tree before final scope checks."
+        },
+        {
+          "command": "Review src/client.ts, src/version.ts and their injected-fetch/source-check regressions",
+          "expected": "Shared local init helper sends manual redirects, decompress false and accept-encoding identity for both functions, preserves other caller headers without mutation, and keeps requestJson JSON content type. Bun-only encoding refusal precedes all body reads with the spec's HTTP/wire/encoding/size/empty/JSON/validation precedence. No new src module or dist import, no node:/bun runtime import, no exported decompress type, no changed readText/cancellation/interruption/manual-incident semantics. SonarJS complexity ≤15. Test assertions use independent literals, never checkWireVersion output as the expected error text."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 under Bun 1.4.0: lint, build, typecheck and full tests with 80% line coverage, including unchanged security tests and exported-type fixture. The mandatory OpenSSL TLS test runs without skipping."
+        },
+        {
+          "command": "bun run build; git diff --exit-code -- dist",
+          "expected": "Fresh build exit 0; after generated dist is committed, diff exit 0. Required dist/client.js and dist/version.js committed; declaration files only if generated doc comments change."
+        },
+        {
+          "command": "grep -c decompress dist/client.d.ts",
+          "expected": "Prints 0 (grep may exit 1 for no match)."
+        },
+        {
+          "command": "git diff --numstat \"$BASE\" HEAD -- package.json",
+          "expected": "Exactly 1\t1\tpackage.json; the only changed line sets version to 2.5.2."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/index.md",
+          "expected": "Both required docs updated: add console to consumers/pin instructions, document per-runtime encoding policy, redirect statuses including browser status 0, both fixed texts, check order and non-successful encoded write handling; add the 2.5.2 patch note. Text agrees with Decisions 1-7."
+        },
+        {
+          "command": "node \"$SCRATCH/node-client-evidence.mjs\"",
+          "expected": "Create/run/delete local evidence outside every repository with Node 24 and the built dist, and report Node version plus titles/outcomes only. Identity read and small compressed JSON read: ok; compressed answer above cap: too-large with peak growth ≤64 MiB; same-origin redirect: http with original 3xx status, destination count 0. Against BASE dist the redirect gives ok true and destination count 1. No script or hostile input retained or disclosed."
+        },
+        {
+          "command": "bun \"$SCRATCH/browser-client-evidence.ts\"",
+          "expected": "Create/run/delete local browser evidence outside every repository using Playwright 1.64.1 and Chromium with a browser bundle of built dist as specified in Completion evidence. Small gzip and brotli JSON: ok with the independently specified benign fixture value (R5); decoded gzip/brotli answers above cap: too-large; same-origin/cross-origin redirects: http status 0, destination count 0. Against BASE dist both redirects give ok true, destination count 1. Report Chromium version, titles, outcomes and call durations; no browser dependency or test committed."
+        },
+        {
+          "command": "TIMEFORMAT='%U %S'; time bun run test",
+          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. Expected +0.6 to +1.0 s, contract.test_cpu_s budget 9.0 s and regression floor 2.0 s; fallback required above +1.5 s."
+        },
+        {
+          "command": "git clone https://github.com/lorenzh/pulse-api.git \"$SCRATCH/pulse-api\"; (cd \"$SCRATCH/pulse-api\" && bun install --frozen-lockfile && bun bench/run.ts --a \"$API_MAIN\" --b \"$API_MAIN\" --others-ref main --b-ref \"contract=$TARGET_REF\" --rounds 1)",
+          "expected": "Conditional fallback only after the primary threshold is exceeded. The harness runs from the scratch api checkout, never this consumer or contract repository. Record the full api main SHA as API_MAIN for both sides and the public fetchable candidate branch/SHA as TARGET_REF; Docker with Compose, git and network required. Report contract's rows and compare to api/bench/budgets.json using the plan's budget/floor rule; no api metric is expected to move. Delete the scratch checkout afterwards. Do not use --b-ref console."
+        },
+        {
+          "command": "Review task acceptance evidence and PR text against plan.md, Disclosure rule and Security impact",
+          "expected": "Public P2 security disclosure: name location, class, impact and fix direction for security-contract-2026-11-03-1, -3, -4 and -5 only. Every security case is reported by title, class, expected outcome and budget; no working payload, response construction steps or parameters, reproduction command, crafted header value, redirect recipe or oversized-response recipe appears. Hostile inputs are built at runtime inside test code only. No new runtime or dev dependency, setting, exported name, result shape or wire version; timeout/abort behavior and default 5 MiB cap preserved."
+        },
+        {
+          "command": "Review candidate security checklist and PR evidence",
+          "expected": "Exercise Security impact's secrets/error text, memory/body limits, redirects/caller-header containment, fail-closed coding and dependency-pin checks on the candidate. PR names version 2.5.2, four finding ids with location/class/impact/fix direction only, red/green checks, Node/browser outcomes, performance and scope evidence. Known browser limit documented: it cannot request identity and relies on decoding inside the capped stream."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | sort",
+          "expected": "After the last commit, exact allowed list (sorted): README.md, dist/client.d.ts, dist/client.js, dist/version.d.ts, dist/version.js, docs/index.md, package.json, src/client.ts, src/version.ts, test/client-memory-child.ts, test/client-memory.test.ts, test/client-transport.test.ts, test/client.test.ts, test/request-json.test.ts, test/version.test.ts. Only dist/client.d.ts and dist/version.d.ts are optional, and only if changed by generated doc comments; every other path is required. No other path; inspect every allowed diff for unrelated changes."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last commit: empty output; index checked independently against HEAD."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last commit: empty output; working tree checked independently against index."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last commit: empty output, including untracked files. All scratch evidence scripts, fixture directories and temporary checkouts are deleted."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md .github/workflows/ci.yml biome.json bunfig.toml tsconfig.json eslint.config.js lefthook.yml tsconfig.build.json bun.lock src/index.ts src/schema.ts src/validate.ts src/validate-core.ts dist/index.js dist/index.d.ts test/smoke.test.ts test/security-review.test.ts test/security-adversarial.test.ts test/types.fixture.ts",
+          "expected": "After the last commit: exit 0. This checks committed changes against the recorded implementation base; a base-to-working-tree diff is not a substitute."
+        }
+      ]
+    }
+  ]
+}
