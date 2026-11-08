@@ -24,6 +24,14 @@ entry also states the page-module rule.
   are follow-up issues.
 - No new enforcement (lint rule, test, CI step).
 - No change to `CLAUDE.md` (each one imports `AGENTS.md`), Factory config or meta docs.
+- No rewrite of existing `AGENTS.md` text. The only exception is the one config line that
+  contradicts the new entry (`### The common entry`).
+- No change to any repository's check commands or done gate: each task runs the gate its
+  `AGENTS.md` already names (`bun run check`, or `bun run check:all` in `website`).
+
+Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/927` returned
+HTTP 404 on 2026-11-08, so there are no findings yet. No question in this spec repeats across
+repository sections, so no shared finding is expected.
 
 ## Required behavior
 
@@ -50,12 +58,22 @@ wording. The implementer may adjust it to the file's current state on `main`, bu
 three points and the link.
 
 Placement: directly after the section that holds the repository's design rules (`## Code design`,
-or `## Rules` in `deploy`). Existing text stays as it is. No existing line contradicts the entry:
-the line "Keep a helper beside its only caller; move it out when a second module needs it" in
-`contract`, `probe`, `api`, `status`, `notify`, `config`, `kit` and `console` describes where a
-helper lives, and the new entry says that a second copy becomes a helper. Both hold, so the line
-stays. The stricter rules already in place (use pulse-kit before a local helper, never copy kit or
-contract code into a service) stay and are not repeated.
+or `## Rules` in `deploy`). Existing text stays as it is, with one exception (below). The line
+"Keep a helper beside its only caller; move it out when a second module needs it" in
+`contract`, `probe`, `api`, `status`, `notify`, `config`, `kit` and `console` does not contradict
+the entry: it describes where a helper lives, and the new entry says that a second copy becomes a
+helper. Both hold, so the line stays. The stricter rules already in place (use pulse-kit before a
+local helper, never copy kit or contract code into a service) stay and are not repeated.
+
+The one exception is `config/AGENTS.md:51` (clone `bc87049`): "Keep logic pure. I/O (HTTP,
+SQLite, files, `process.env`, `console`) stays in `main.ts` and the server or client modules."
+pulse-config has no `main.ts` and no server or client module (`git ls-files` at `bc87049`): its
+file and process I/O sits in `bin/pulse-eslint.js` (`readFileSync`, `spawnSync`,
+`process.exit`, lines 4, 16, 26, 30) and `bin/pulse-workflows.js` (`readFileSync`,
+`process.cwd`, lines 3, 10, 28, 39). The config entry names `bin/` as the place for I/O, so this
+line contradicts it. The issue allows a change "where it contradicts the new entry": the config
+task replaces this one line with a corrected line (see `## Repository: config`). No other line
+in any target is changed or removed.
 
 ### The console entry
 
@@ -94,9 +112,17 @@ All eight categories must be named. The entry may be a few sentences longer than
 ## Acceptance evidence
 
 1. **Diff scope (per PR).** `git diff --name-only origin/main...HEAD` prints exactly `AGENTS.md`.
-   The expected value is the literal `AGENTS.md`. For existing files,
+   The expected value is the literal `AGENTS.md`. For existing files except `config`,
    `git diff origin/main...HEAD -- AGENTS.md | grep '^-[^-]'` prints nothing. Expected: an
-   empty output, because only lines are added.
+   empty output, because only lines are added. For `config`, the same command prints exactly one
+   line (expected count: the literal `1`), and that line is this literal, the text of
+   `config/AGENTS.md:51` at clone `bc87049` written out here:
+
+   ```text
+   -- Keep logic pure. I/O (HTTP, SQLite, files, `process.env`, `console`) stays in `main.ts` and the server or client modules.
+   ```
+
+   The matching added line is the corrected line given in `## Repository: config`.
 2. **Link (per PR and after merge).** `grep -c 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md' AGENTS.md`
    prints at least `1`, and `grep -c '^## Code conventions$' AGENTS.md` prints `1`. The URL
    answers `200` for an unauthenticated `curl -s -o /dev/null -w '%{http_code}'`. Expected values
@@ -142,6 +168,8 @@ it. The `website` docs pipeline fetches only the `docs/*.md` paths listed in `do
 | Link the rule, do not copy it | An entry that lists "1. Reuse before you write … 7. How a reviewer checks it" or pastes the `fieldError` example. Reject: the rule would exist twice. |
 | All three points present | "See the code conventions." alone. Reject: no target sentence. An entry with search and second copy but no "small and pure". Reject. |
 | Existing text stays | A diff that rewrites "Keep a helper beside its only caller; move it out when a second module needs it." Reject: it does not contradict the entry. |
+| Only a contradicting line changes | A config diff that leaves `AGENTS.md:51` ("… stays in `main.ts` and the server or client modules.") as it is while the new entry puts I/O in `bin/`. Reject: the file then gives two places for I/O. A config diff that also rewrites line 52 (`now`, `fetch`, `sleep`, `log` wired in `main.ts`) or deletes line 51 without a replacement. Reject: only the one contradicting line is replaced. A removed line in any other target. Reject. |
+| Console `*-pages.ts` is pure | A console entry that says "`*-pages.ts` modules build markup and may load their data" or "may call the api client or read `process.env`". Reject: the rule is data in, markup out, no I/O. An entry that drops the words "no I/O" and says only "keep pages small". Reject. |
 | Only `AGENTS.md` changes | A diff that also touches `CLAUDE.md`, `README.md` or a test (for example adding `expectCalloutsOnly` to `src/server.team.test.ts`). Reject. |
 | Console names all eight categories | An entry that names "form controls and callouts" instead of inputs, selects, choices, field errors, tables, callouts, empty states and outcome pages. Reject. |
 | Console test rule scope | "`src/server.checks*.test.ts` run `expectCalloutsOnly`". Reject: the rule is every `src/server.*.test.ts` that renders a page. |
@@ -276,9 +304,21 @@ Completion evidence: as for contract.
 
 Files:
 - `AGENTS.md` (changed: new section `## Code conventions` after `## Code design`, line 46 at clone
-  `bc87049`)
+  `bc87049`; line 51 replaced by its corrected text)
 
 Behavior change: no. Documentation only.
+
+Contradiction correction: `AGENTS.md:51` says I/O stays "in `main.ts` and the server or client
+modules", which pulse-config does not have (see `### The common entry`). Replace exactly that line
+with:
+
+```md
+- Keep logic pure. I/O (files, child processes, `process.env`, `process.exit`, `console`) stays in the `bin/` entry points.
+```
+
+Line 52 ("Pass side effects in as dependencies … Only `main.ts` wires the real ones.") stays
+unchanged: the issue allows only a change that contradicts the new entry, and the entry says
+nothing about wiring. No other existing line changes.
 
 Proposed entry:
 
@@ -292,10 +332,16 @@ Shared modules named: the shared files from "This repository" (`biome.json`, `ts
 `eslint.config.js`, `lefthook.yml`, `.github/workflows/check.yml`), `bin/pulse-eslint.js` and
 `bin/pulse-workflows.js`.
 
-Checks: acceptance 1–3. Run `bun run check` (`package.json:40`). The entry does not change a
-shared file, so no target pin is bumped.
+Shared modules also include `src/workflow-policy.ts`, the pure policy logic that
+`bin/pulse-workflows.js` calls.
 
-Completion evidence: as for contract.
+Checks: acceptance 1–3; acceptance 1 expects the one removed line written out there. Run
+`bun run check` (`package.json:40`: `bun run lint && bun run typecheck && bun run test`). The
+entry does not change a shared file (`package.json:15–26` `files` lists no `AGENTS.md`), so no
+target pin is bumped.
+
+Completion evidence: PR diff with only `AGENTS.md`, the acceptance 1 output with the one removed
+line, the grep outputs from acceptance 2, and the `bun run check` result.
 
 ## Repository: kit
 
@@ -339,12 +385,20 @@ The pulse [code conventions](https://github.com/lorenzh/pulse-meta/blob/main/doc
 Shared modules named: `src/components/` (for example `ButtonLink.tsx`, `Document.tsx`),
 `src/lib/`, `src/build/` (for example `url-safety.ts`).
 
-Checks: acceptance 1–3. Run `bun run check` (`package.json:25`). Tests that mention
-`../AGENTS.md` (`src/docs/links.test.ts:61`, `src/docs/page.test.ts:25`,
-`src/build/url-safety.test.ts:34`) use it as a literal fixture string and do not read the file.
-`check:site` is not needed: `AGENTS.md` is not part of the built site.
+Checks: acceptance 1–3. The repository's own done gate applies unchanged: `AGENTS.md:23` says "A
+change is done when `bun run check:all` passes". Run `bun run check:all` (`package.json:26`:
+`bun run check && bun run check:site`; `check` is `package.json:25`: lint, typecheck, test;
+`check:site` is `package.json:19`: build, links, budget, a11y). `check:site` needs network access
+to fetch the pinned docs and a Playwright Chromium (`AGENTS.md:22`:
+`bunx playwright install --with-deps chromium`). If the implementer's environment cannot run it,
+the PR says so, and the CI job `site` (`.github/workflows/ci.yml:19–35`, the same four steps)
+runs it on the PR. Tests that mention `../AGENTS.md` (`src/docs/links.test.ts:61`,
+`src/docs/page.test.ts:25`, `src/build/url-safety.test.ts:34`) use it as a literal fixture
+string and do not read the file.
 
-Completion evidence: as for contract.
+Completion evidence: PR diff with only `AGENTS.md`, the grep outputs from acceptance 2, and the
+`bun run check:all` result (or the `bun run check` result plus the named reason that
+`check:site` could not run locally and the green CI job `site`).
 
 ## Repository: console
 
@@ -400,9 +454,27 @@ Shared modules named: `common/services.yaml` (shared service config), the helper
 `e2e/` (for example the `metric_is`, `manual_count` and `published_port` helpers), and `cli/`
 modules.
 
-Checks: acceptance 1–3. Run `bun run check` (`package.json:18`). `biome.json` excludes `*.md`
-(`"!*.md"` in its `files.includes`), so the CLI checks do not read `AGENTS.md`. Shell, JSON and
-Compose checks do not read Markdown either. Nothing else is required.
+Checks: acceptance 1–3. Run `bun run check` (`package.json:18`: `bun run lint && bun run
+typecheck && bun run test`; `lint` is `package.json:14`: `biome check . && pulse-eslint . &&
+pulse-workflows`). Tool facts, checked at clone `9853c6d`:
+
+- `biome.json:2` extends `@lorenzh/pulse-config/biome.json`; `package.json:22` pins
+  `@lorenzh/pulse-config` to `github:lorenzh/pulse-config#04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`.
+- deploy's own `files.includes` (`biome.json:4–27`) holds `"!*.md"` at `biome.json:13`, which
+  excludes the root-level `AGENTS.md` from Biome.
+- The pinned config file, read with
+  `gh api "repos/lorenzh/pulse-config/contents/biome.json?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7"`,
+  has `files.ignoreUnknown: true` (line 9) and `files.includes` `["**", "!**/dist",
+  "!**/node_modules", "!**/bun.lock", "!**/*.html", "!**/test/fixtures"]` (lines 10–17). It is
+  byte-identical to `biome.json` in the config clone (`bc87049`). It does not re-include `*.md`.
+- The CI job `check` (`.github/workflows/ci.yml:17`) uses
+  `lorenzh/pulse-config/.github/workflows/check.yml@04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`.
+  That pinned file (identical to the config clone) runs `bun run lint`, `bun run typecheck` and
+  `bun run test` (lines 27–38). The CI job `lint` (`ci.yml:19` onward) runs shellcheck and
+  `bash -n` on `*.sh` (lines 34–37), `node --check` on `*.mjs` (lines 38–39) and `jq empty` on
+  `*.json` (lines 40–41), then the `e2e/*.test.sh` helper tests. None of these selects `*.md`.
+
+So no check reads `AGENTS.md`, and `bun run check` must pass as it does on `main`.
 
 Completion evidence: as for contract.
 
