@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
@@ -11,7 +11,9 @@ const cli = resolve(root, process.env.FACTORY_CLI ?? 'node_modules/@paragondata/
 const factory = (...args) => execFileSync(process.execPath, [cli, ...args], { cwd: root, encoding: 'utf8' });
 
 test('every Factory prompt renders', { skip: !existsSync(cli) && `Factory CLI not found at ${cli}; run npm ci or set FACTORY_CLI` }, async (t) => {
-  const input = join(mkdtempSync(join(tmpdir(), 'prompts-test-')), 'issue.md');
+  const dir = mkdtempSync(join(tmpdir(), 'prompts-test-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const input = join(dir, 'issue.md');
   writeFileSync(input, 'Part of #1\n\nA test issue.\n');
   const rendered = new Set(['preamble.md']);
   for (const { workflow } of JSON.parse(factory('state')).catalogs) {
