@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Every public export has an API reference entry and an inventory test enforces it",
+      "files": [
+        "docs/index.md",
+        "test/docs-inventory.test.ts",
+        "README.md",
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: contract, Steps 1-6 and Acceptance 1-11; Required behavior: Documentation, Inventory test items 1-7, and README.md and AGENTS.md; Counterexamples, Risks, Performance impact, Security impact and Rollout order. Implement the documentation and its inventory gate together: no intermediate task can leave the new inventory assertion green before the missing entries exist. Discover the complete public surface only from src/index.ts, with no maintained list or fixed count. Keep parse/match/runtime-missing helpers private in the single new test file; use only bun:test, node:assert/strict, node:fs and string/RegExp built-ins. Read both inputs using readFileSync(new URL(..., import.meta.url)). No source, dist, existing test, metadata, dependency, configuration or CI changes; no new exports, package or wire version bump, consumer pin, generator, fixture files or shipped scope framework. Include #823's three schemas; #823 is already closed as superseded.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD",
+          "expected": "Before edits record the full implementation-base SHA as BASE and preserve it for every comparison. Inspected base: 96f33aaa85188c0794dedca89035f9c5500f85ee. If main advances, independently re-enumerate the newer base and record its full SHA, names and missing set; do not use the new inventory test to generate its own expected baseline. Prepare a separate writable BASE_CHECKOUT with unchanged source/docs and its own lockfile install for baseline/regression/performance runs; never modify read-only .repos/ clones."
+        },
+        {
+          "command": "bun --version",
+          "expected": "1.4.0 on both recorded BASE and candidate."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "Exit 0 on recorded BASE and candidate; lockfile and package metadata unchanged. Run all baseline controls that the spec calls passing on the recorded base before claiming them as controls. If the unchanged base check fails, record the failing step and stop implementation rather than hide it."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Before adding the new test or editing docs, run on the unchanged recorded BASE: exit 0 for lint, build, typecheck and full tests with the existing 80% line coverage gate. Capture this actual result, not just the spec's claim. Record the base dist freshness too. After the final commit rerun on the candidate: exit 0, all four steps green and docs-inventory.test.ts visibly executed in the test output. Keep existing gates and configs unchanged."
+        },
+        {
+          "command": "python3 -c 'import pathlib,re; root=pathlib.Path(\".\"); src=(root/\"src/index.ts\").read_text(); docs=(root/\"docs/index.md\").read_text(); names=[]; types=[]; values=[]\nfor clause in re.finditer(r\"export\\s+(type\\s+)?\\{([^}]+)\\}\\s+from\\s+[^;]+;\",src):\n for raw in clause[2].split(\",\"):\n  item=raw.strip()\n  if not item: continue\n  name=re.sub(r\"^type\\s+\",\"\",item); names.append(name); (types if clause[1] or item.startswith(\"type \") else values).append(name)\nmissing=[n for n in names if not re.search(r\"(?<![A-Za-z0-9_$])\"+re.escape(n)+r\"(?![A-Za-z0-9_$])\",docs)]\nprint({\"exports\":len(names),\"distinct\":len(set(names)),\"values\":len(values),\"types\":len(types),\"missing\":len(missing)}); print(\"\\n\".join(missing))'",
+          "expected": "Run independently on unchanged BASE before the test, and on final candidate. At 96f33aaa85188c0794dedca89035f9c5500f85ee: exports=316, distinct=316, values=195, types=121, missing=49; printed names equal exactly the spec's Baseline missing names table (12 types, 30 schemas, 7 constants), in source order. Candidate: same public surface and missing=0. For a newer BASE use its separately recorded enumeration as the independent oracle, adapting this one-off probe if export syntax changes; never hardcode the count/list in the shipped test."
+        },
+        {
+          "command": "for run in 1 2 3; do (cd \"$BASE_CHECKOUT\" && bun test test/docs-inventory.test.ts); done",
+          "expected": "Before the docs fix, copy only the new test file into the isolated writable BASE checkout after baseline controls. Three isolated runs each fail only the real docs inventory assertion; every inline fixture and runtime cross-check passes. Each diagnostic lists once, in source order, exactly the same literal 49-name baseline set on 96f33aa, including all 12 missing types and subscriptionAnswerSchema, subscriptionRequestSchema, subscriptionTokenRequestSchema. For a newer BASE compare to the independent enumeration recorded above. Missing test/import/dependency errors or coverage failures alone are not regression evidence. Remove the copied test before taking unmodified-base performance samples."
+        },
+        {
+          "command": "bun test test/docs-inventory.test.ts",
+          "expected": "Final candidate: 0 failing tests for the real inventory, runtime cross-check and every fixture. Report test results rather than requiring exit 0 from this focused command because bunfig.toml enables a full-suite coverage threshold. The real inventory discovers every public name, including type-only clauses and inline type modifiers, and ignores schemas not re-exported by src/index.ts such as checkStatusSchema. Missing-name diagnostics are deterministic, complete and in source order. No hand-maintained inventory/count, dependency or exported helper."
+        },
+        {
+          "command": "bun test test/docs-inventory.test.ts",
+          "expected": "Parser fixtures use literal inline source and expected arrays: export type { A, B } yields [A, B]; the mixed DEFAULT_MAX_BODY_BYTES/type FetchJsonError/fetchJson clause yields those three names; multiline clauses with trailing commas include every name and no empty name. Block- and line-commented Hidden/Gone exports add none. Fail with offending-text diagnostics for export *, export default, export const, export function, export type X =, export =, alias a as b, default specifiers and duplicate names. Every residual export token outside supported named re-export statements is rejected; unsupported syntax never silently skips names. No fixture files on disk."
+        },
+        {
+          "command": "bun test test/docs-inventory.test.ts",
+          "expected": "Matching fixtures use whole-file case-sensitive identifier boundaries [A-Za-z0-9_$]: validateAdminConfigSummary(raw) alone leaves literal [AdminConfigSummary] missing; generic Validation<T>, fetchJson(url, options), StatusLockedField followed by backtick and s across a multiline span, and MAX_MAINTENANCE_TIME in a longer span are documented. Cover identifier-prefix/suffix and case near misses. Adding synthetic export undocumentedExtra to an otherwise covered source produces literal [undocumentedExtra] without updating a maintained inventory; deleting the sole occurrence of a documented name makes it missing. Runtime helper fixture with literal keys [a, b] and discovered [a] returns [b]; real assertion discovers every key of await import('../src/index.ts') (195 on recorded base). Fixture expectations are literals, never computed by the helpers under test."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- docs/index.md README.md AGENTS.md",
+          "expected": "Review each newly documented name against its source definition and the independent missing-name list. All 49 entries at the inspected base have a short description plus shape/union/signature/value and relevant limits, beside related existing sections; a bare list fails. Add schema/admin types to Type reference, six client types to API client with generic forms where appropriate, WireVersionCheck's exact ok/absent/mismatch union to Wire-format version. Name all 30 schemas and their validated shape/value set, linking shared rules. Name the seven manual incident constants with literal values 200, 2000, 100, 50, 16384 (16 KiB), impacts [none, minor, major, critical] and statuses [investigating, identified, monitoring, resolved]. All 12 missing type names now have useful entries. README Development explains that bun run test and check execute test/docs-inventory.test.ts; AGENTS This repository requires naming/describing each new public export in docs/index.md in the same change and names the enforcing test. No runtime behavior change."
+        },
+        {
+          "command": "rg -n 'subscriptionAnswerSchema|subscriptionRequestSchema|subscriptionTokenRequestSchema' docs/index.md",
+          "expected": "All three names explicitly have useful entries. Request schema: strict normalized email, exact error must be a normalized email address. Token request: strict token string at most 128 characters, exact error must be at most 128 characters; route-level token pattern validation is separate. Answer: strict { status } using SUBSCRIPTION_RESULTS. Do not apply validate*'s never-throw guarantee to schema.parse."
+        },
+        {
+          "command": "bun /tmp/pulse-885-errors.ts",
+          "expected": "Create a one-off script outside the repository using file tools; record its contents, command and output in the PR. Import the candidate src/index.ts and assert literal emitted messages via rejected safeParse results' error.issues[0].message: subscriptionTokenRequestSchema.safeParse({ token: \"a\".repeat(129) }) -> must be at most 128 characters; subscriptionRequestSchema.safeParse({ email: \"A@Example.com\" }) -> must be a normalized email address. Boundary: subscriptionTokenRequestSchema.safeParse({ token: \"a\".repeat(128) }) -> success: true. Exit 0. Run these three controls on recorded BASE as well and record actual outcomes before claiming they pass there. Add an independent rejecting input and literal expected message for every additional error text quoted in a new entry; do not invent errors or compare expanded messages by literal search of src/. No shipped script or validator test changes."
+        },
+        {
+          "command": "grep -F 'must be at most 128 characters' docs/index.md && grep -F 'must be a normalized email address' docs/index.md",
+          "expected": "Exit 0; both emitted error texts appear exactly. Also run grep -F separately for every other newly quoted validator error after its runtime assertion passes; record each row/input/message and docs match. Compare against emitted messages, not template spellings."
+        },
+        {
+          "command": "bun run build",
+          "expected": "Exit 0 after final commit; build includes src only, not the new test. Preserve source, committed dist, version 2.5.2 on the inspected base, wire version and all consumer pins. No Docker/compose check or service startup is applicable to this docs-and-test library patch."
+        },
+        {
+          "command": "git diff --exit-code -- dist",
+          "expected": "After the post-commit fresh build, exit 0; generated dist is identical to the committed tree."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- dist",
+          "expected": "Exit 0; committed dist is byte-identical to the recorded implementation base, independently of worktree build output."
+        },
+        {
+          "command": "for sample in 1 2 3 4 5; do (cd \"$BASE_CHECKOUT\" && /usr/bin/time -f '%U %S' bun run test); /usr/bin/time -f '%U %S' bun run test; done",
+          "expected": "10 sequential full-suite runs, five per revision, alternating unmodified BASE then final candidate; all tests pass. BASE_CHECKOUT no longer contains the copied regression test. Same Bun 1.4.0, lockfile install and coverage settings, no concurrent runs. Report each raw user+system CPU sample including children, each median (third sorted value), candidate-minus-base delta in seconds and percent of base median. Spec expects under 0.1 s additional CPU within noise; report measured values without replacing them with an assumption or a noisy wall-time gate. Build and consumer runtime metrics have no expected change because src/dist/config are identical. Do not run Docker bench (#834)."
+        },
+        {
+          "command": "diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '%s\\n' AGENTS.md README.md docs/index.md test/docs-inventory.test.ts | LC_ALL=C sort)",
+          "expected": "After the last commit and all verification, exit 0: exact four-path committed allowlist, also the cumulative branch allowlist because this is the only task. No directory wildcard and no redefining BASE."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last commit, empty output; record the index check separately."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last commit, empty output; record the working-tree check separately."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last commit and every acceptance run, empty output, including no untracked files."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src dist package.json bun.lock biome.json tsconfig.json tsconfig.build.json bunfig.toml eslint.config.js lefthook.yml .github .npmrc .gitignore CLAUDE.md LICENSE test/types.fixture.ts test/reference",
+          "expected": "Exit 0 after the last commit: all explicit protected files/directories unchanged, including production code/types/validators/exports, dist, package version, dependencies/lockfile, tooling, CI and frozen references."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- $(git ls-tree -r --name-only \"$BASE\" test)",
+          "expected": "Exit 0 after the last commit: every test tracked at BASE is unchanged; only the new docs-inventory.test.ts is added."
+        },
+        {
+          "command": "node --input-type=module -e 'import assert from \"node:assert/strict\";\nimport { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, writeFileSync, rmSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nconst dir = mkdtempSync(join(tmpdir(), \"scope-885-\"));\nconst git = (...args) => execFileSync(\"git\", args, { cwd: dir, encoding: \"utf8\", stdio: [\"ignore\", \"pipe\", \"pipe\"] });\nconst write = (name, value) => writeFileSync(join(dir, name), value);\ntry {\n  git(\"init\", \"-q\");\n  git(\"config\", \"user.name\", \"Scope fixture\");\n  git(\"config\", \"user.email\", \"scope@example.invalid\");\n  git(\"config\", \"commit.gpgsign\", \"false\");\n  write(\"allowed.txt\", \"base\\n\");\n  write(\"protected.txt\", \"base\\n\");\n  git(\"add\", \".\");\n  git(\"commit\", \"-qm\", \"base\");\n  const base = git(\"rev-parse\", \"HEAD\").trim();\n  write(\"allowed.txt\", \"allowed change\\n\");\n  git(\"add\", \"allowed.txt\");\n  git(\"commit\", \"-qm\", \"allowed\");\n  const allowed = git(\"rev-parse\", \"HEAD\").trim();\n  const reset = () => { git(\"reset\", \"--hard\", allowed); git(\"clean\", \"-fd\"); };\n  const change = () => write(\"protected.txt\", \"protected change\\n\");\n  const commitProtected = () => { change(); git(\"add\", \"protected.txt\"); git(\"commit\", \"-qm\", \"protected\"); };\n  const restore = () => {\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\");\n    assert.equal(git(\"diff\", base, \"--\", \"protected.txt\"), \"\");\n  };\n  const row = (name, expected) => {\n    let protectedPass = true;\n    try { git(\"diff\", \"--exit-code\", base, \"HEAD\", \"--\", \"protected.txt\"); } catch { protectedPass = false; }\n    const actual = [\n      git(\"diff\", \"--name-only\", base, \"HEAD\").trim() === \"allowed.txt\",\n      git(\"diff\", \"--name-only\", \"--cached\") === \"\",\n      git(\"diff\", \"--name-only\") === \"\",\n      git(\"status\", \"--porcelain\") === \"\",\n      protectedPass\n    ].map(value => value ? \"P\" : \"F\").join(\" \");\n    console.log(name + \" \" + actual);\n    assert.equal(actual, expected);\n  };\n  row(\"clean-allowed\", \"P P P P P\");\n  change(); row(\"unstaged\", \"P P F F P\");\n  reset(); change(); git(\"add\", \"protected.txt\"); row(\"staged\", \"P F P F P\");\n  restore(); row(\"staged-restored-worktree\", \"P F F F P\");\n  reset(); commitProtected(); row(\"committed\", \"F P P P F\");\n  restore(); row(\"committed-restored-worktree\", \"F P F F F\");\n  reset(); write(\"extra.txt\", \"untracked\\n\"); row(\"untracked\", \"P P P F P\");\n  reset(); row(\"clean-allowed-again\", \"P P P P P\");\n} finally { rmSync(dir, { recursive: true, force: true }); }'",
+          "expected": "Exit 0; temporary repo removed. Columns: committed allowlist, empty index diff, empty worktree diff, empty porcelain, unchanged committed protected file. Literal rows: clean-allowed P P P P P; unstaged P P F F P; staged P F P F P; staged-restored-worktree P F F F P; committed F P P P F; committed-restored-worktree F P F F F; untracked P P P F P; clean-allowed-again P P P P P. Both restore cases explicitly prove worktree-to-base diff is empty while independent index/HEAD/status checks reject the protected change. Record commands, each expected rejection and results; do not add this fixture/framework to the implementation repository."
+        },
+        {
+          "command": "git diff --check \"$BASE\" HEAD && git diff \"$BASE\" HEAD -- test/docs-inventory.test.ts",
+          "expected": "Whitespace check exits 0. Review the test for private helpers, allowed imports, URL-relative reads and inline literal fixtures; lint enforces cognitive complexity <=15 per function. No explanatory comments except at most one line naming the test class and expected outcome; quoted comment syntax in parser fixture strings is input data. PR body lists every added comment (none or the permitted one line)."
+        },
+        {
+          "command": "git log --format=%s \"$BASE\"..HEAD",
+          "expected": "Conventional Commit subject, for example docs: document every public export and check the inventory; no bypass of pre-commit hooks. Final PR names #885 and Closes lorenzh/pulse-meta#<child>, records BASE, independent inventory, actual base-control results, three regression runs, fixture/runtime results, emitted-message script and output, green check including inventory execution, fresh and base-identical dist, separate commit/index/worktree/status/protected-path checks, scope fixture rows, five interleaved CPU samples per revision/medians/deltas, and every added comment. State the known whole-file prose-match limit and coverage of already-closed #823. Security impact no: documentation and a read-only test, no validator/client/dependency/CI change; rollout only contract, no consumer pin or wire/package bump."
+        }
+      ]
+    }
+  ]
+}
