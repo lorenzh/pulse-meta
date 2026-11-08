@@ -25,6 +25,10 @@ console) move their contract pin to the merged commit and document the changed b
   redirect or oversized response, or the parameters used to generate a response.
 - Tests build their hostile inputs at run time inside the test code. Test output, task evidence and
   PR text report test titles, outcomes and measured numbers, never the inputs.
+- The plan and the tasks state no fixture setup, server layout, routing, response order, header
+  value, body content or encoder setting for a security case. Those are choices of the test code.
+  The plan names only the code under test (location), the case title, its class, the expected
+  outcome and the budget.
 - The local Node and browser evidence scripts live in a scratch directory outside every repository,
   are not committed, are deleted after the run, and are reported by case title and outcome only.
 
@@ -49,6 +53,11 @@ New in this run (2026-11-08, Factory runner, Bun 1.4.0, Node 24.19.0, OpenSSL 3.
   - CPU per child (user + system): 0.17 s with decompression off, 0.57 s with today's behavior.
   - The scratch script was deleted.
 - Collision searches for the new texts (section "Contract fields") are empty.
+- Disclosure audit (this revision, after the third plan review): every security case in this spec
+  was checked against the disclosure rule. Fixture setup, peer layout, routing, response order and
+  input content were removed from the counterexamples, the contract tests, the Node and browser
+  evidence and the probe and status tests. What remains is location, title, class, expected outcome
+  and budget.
 - No pulse service or deploy profile compresses responses: `grep -rni 'content-encoding|gzip|brotli|compress'`
   over `api/src`, `status/src`, `probe/src`, `notify/src`, `console/src` and `deploy` found no
   production match.
@@ -59,7 +68,7 @@ New in this run (2026-11-08, Factory runner, Bun 1.4.0, Node 24.19.0, OpenSSL 3.
 - `openssl` in CI: the pinned `check.yml:16` is `runs-on: ubuntu-24.04` with no container. The
   `actions/runner-images` `images/ubuntu/Ubuntu2404-Readme.md` (image version 20261101.360.1,
   read in this run) lists "OpenSSL 3.0.13-0ubuntu3.16" at line 94. kit
-  `test/guarded-fetch.tls.test.ts:29-54` runs `openssl req -x509` with an EC key under
+  `test/guarded-fetch.tls.test.ts:29-54` runs `openssl` to make a test-only certificate under
   `check.yml@51e95b0…` (`kit/.github/workflows/ci.yml:17`). kit CI on `main` `536133f` passed in run
   41814062315 (checked in this run with `gh run list`).
 - Contract CI on `main` `1b5e7d3` passed in run 42378361352.
@@ -192,9 +201,8 @@ Other keys of the same file:
   - Basis: four isolated memory children at about 0.17 to 0.24 CPU s each (0.17 s measured in this
     run, 0.18 to 0.24 s reported by the earlier prototype), plus transport tests with local servers
     and one EC `openssl` certificate, at most 0.4 s.
-  - Fixture generation inside a memory child must stay at or below 0.1 CPU s per case. Some
-    encoders' default settings cost 25 to 60 times that (reported by the earlier run), so the test
-    picks a fast setting. The test code owns that choice, and the spec does not name it.
+  - Budget: input generation inside a memory child stays at or below 0.1 CPU s per case. The test
+    code owns how it meets that budget.
   - The hosted nightly B of 3.78 s plus 1.0 s stays under the 9.0 s budget, and +1.0 s stays under
     the 2.0 s floor.
 - `contract.build_cpu_s` (budget 6.4 s): unchanged. Two source files change by a few lines.
@@ -291,9 +299,10 @@ Each case is named by title, class and expected outcome. Inputs are built at run
   wrong.
 - **Small compressed body under the cap (Bun).** Expected: `network` with the fixed cause, never
   `too-large` and never `ok`.
-- **Combined coding list containing identity (Bun).** Expected: refused. A "contains identity" check
-  gets it wrong.
-- **Identity written in another case and with spaces (Bun).** Expected: read normally.
+- **Multi-coding header value (Bun).** Fail-closed input validation. Expected: refused with the
+  fixed cause. A check that accepts any value that mentions `identity` gets it wrong.
+- **Non-canonical identity spelling (Bun).** Expected: read normally (decision 2: trimmed,
+  case-insensitive).
 - **Precedence.** A mismatching wire header with an encoded `2xx` gives `wire-mismatch`. An encoded
   `503` gives `http` 503, not `network`.
 - **Same-origin read redirect.** Expected: `http` with the 3xx status, and the destination gets 0
@@ -301,17 +310,18 @@ Each case is named by title, class and expected outcome. Inputs are built at run
 - **Cross-origin read redirect, with a caller `authorization`-style header.** Expected: `http`, and
   the destination gets 0 requests.
 - **HTTPS-to-HTTP read redirect.** Transport downgrade. Expected: `http`, and the destination gets 0
-  requests. TLS verification stays on: the test fetch trusts only its runtime-generated
-  certificate, with no global TLS bypass.
-- **Invalid JSON diagnostic.** Two malformed bodies, each carrying its own marker. Both
-  `invalid-json.message` values must equal the literal `response body is not valid JSON`, and no
-  marker may appear in `JSON.stringify(result)`. A fix that only shortens the parser text still leaks
-  a short marker.
-- **Wire mismatch diagnostic.** A short and a long received value, each carrying a marker. Every
-  surfaced text equals the literal `x-pulse-contract: unsupported wire version, expected 1`, and no
-  marker appears. A fix that truncates the value still leaks a prefix.
-- **Wire decision unchanged.** The current version with surrounding spaces stays `ok`. Absent stays
-  `absent`. The existing malformed values of `test/version.test.ts:21` stay `mismatch`.
+  requests. Constraint: certificate verification stays on, with no global TLS bypass and no
+  committed key material.
+- **Invalid JSON diagnostic.** Upstream body-text disclosure. Expected: every `invalid-json.message`
+  of both functions equals the literal `response body is not valid JSON`, and no received body text
+  appears anywhere in the serialized result. A fix that only shortens the parser text is wrong: a
+  short received fragment still appears.
+- **Wire mismatch diagnostic.** Upstream header-text disclosure. Expected: every surfaced text equals
+  the literal `x-pulse-contract: unsupported wire version, expected 1`, for short and long received
+  values alike, and no received header text appears. A fix that truncates the value is wrong: a
+  prefix still appears.
+- **Wire decision unchanged.** Expected: the existing `ok`, `absent` and `mismatch` cases of
+  `test/version.test.ts:10-28` keep their decisions.
 - **Node 24 compressed answer above the cap.** Expected: `too-large`, not `network`, with peak growth
   ≤ 64 MiB. A fix that refuses on `Content-Encoding` in every runtime would also refuse in browsers.
 - **Browser small compressed JSON.** Expected: `ok` with the value. A fix that refuses encoded
@@ -321,8 +331,8 @@ Each case is named by title, class and expected outcome. Inputs are built at run
 
 Statistics, defined exactly:
 
-- **Peak RSS growth.** In one child process per case: run `Bun.gc(true)` after fixture generation
-  and server start, then read the baseline `process.memoryUsage().rss`. Sample RSS at least every
+- **Peak RSS growth.** In one child process per case: run `Bun.gc(true)` after the case's setup,
+  then read the baseline `process.memoryUsage().rss`. Sample RSS at least every
   5 ms, from just before the client call until 1000 ms after it returns. Growth is the maximum
   sample minus the baseline, in MiB (2^20 bytes), rounded down. One sample set per case, with no
   averaging. The budget is ≤ 64 MiB, a literal set between the +2 MiB measured with decompression
@@ -423,12 +433,11 @@ Tool facts (verified in this run):
 - `bunfig.toml:1-4`: coverage on, 80 % line threshold, `test/**` ignored. Only `*.test.ts` files
   run, so `test/client-memory-child.ts` is not collected. The same pattern is used for
   `test/validate-cpu.ts:2`.
-- `openssl` is available in CI (see "Evidence gathered"). Use kit's call form:
-  `execFileSync("openssl", [...], { stdio: "ignore" })` with the line comment
-  `// eslint-disable-next-line sonarjs/no-os-command-from-path -- openssl from PATH makes a test-only certificate`
-  (`kit/test/guarded-fetch.tls.test.ts:31-32`; kit pins the same config `51e95b0…`). Use an EC key,
-  write it into a `mkdtemp` directory, remove it in `afterAll`, and commit no key material. A
-  missing `openssl` must fail the test, never skip it.
+- `openssl` is available in CI (see "Evidence gathered"). If the HTTPS case calls it, follow kit's
+  lint convention for a test-only `openssl` call from `PATH`
+  (`kit/test/guarded-fetch.tls.test.ts:31-32`; kit pins the same config `51e95b0…`). Commit no key
+  material, leave no temporary file behind, and fail the test (never skip it) when `openssl` is
+  missing.
 
 ### Behavior
 
@@ -466,47 +475,45 @@ Tool facts (verified in this run):
 Write the tests first and keep the red run ("Done when" of the issue). Hostile inputs are built
 inside the test code only.
 
-- `test/client-memory-child.ts` and `test/client-memory.test.ts`:
-  - One `bun` child process per case (`process.execPath`, run one after another, killed after 30 s,
-    test timeout 60 s).
-  - The child builds a compressed fixture at run time within the 0.1 CPU s fixture budget, without
-    holding the decoded body in memory. It serves it from `Bun.serve` on `127.0.0.1` port `0` with
-    the native `fetch`, measures "Peak RSS growth" as defined above, imports `../src/index.ts`, and
-    prints one JSON line with `kind` and the growth.
-  - Cases (titles):
+- `test/client-memory-child.ts` and `test/client-memory.test.ts`. Class: eager decompression,
+  memory exhaustion.
+  - Each case runs in its own `bun` child process (`process.execPath`), one after another. A child is
+    killed after 30 s, and the test timeout is 60 s. The child imports `../src/index.ts`, uses the
+    native `fetch` against a local-only peer, measures "Peak RSS growth" as defined above, and
+    prints one JSON line with `kind` and the growth. Input generation stays within 0.1 CPU s.
+  - Cases (title → expected kind; budget ≤ 64 MiB growth for each):
     - "compressed read body larger than the cap is rejected with a bounded peak memory" → `network`.
     - "compressed non-success read is dropped with a bounded peak memory" → `http`.
     - "compressed successful write response larger than the cap is rejected with a bounded peak
-      memory" → `network`.
-    - "compressed non-success write response is an http error with a bounded peak memory" → `http`.
-  - Every case asserts growth ≤ 64 MiB. The literal sources are decision 3 for the kinds and
-    "Counterexamples" for the 64 MiB budget.
-- `test/client-transport.test.ts`: native Bun `fetch`, with servers on `127.0.0.1` port `0` that are
-  closed in `afterAll`.
-  - Redirects: "same-origin read redirect is refused", "cross-origin read redirect is refused" and
-    "https-to-http read redirect is refused". Each expects `ok: false`, `kind` `http`, the 3xx
-    status, and a request count of 0 on every destination. The cross-origin and downgrade cases send
-    a caller `authorization` header, which never reaches the destination. Cover 301, 302, 303, 307
-    and 308.
-  - The downgrade case uses a TLS origin with a runtime-generated EC certificate. It is trusted only
-    by the test's injected fetch, through Bun's per-request `tls` option, with no global TLS
-    bypass.
-  - Encoding (Bun): "encoded answer is refused with a fixed cause" across real, unknown and combined
-    codings, with the literal cause `response content-encoding is not supported`. The serialized
-    result never contains the received header. Identity variants and an absent header read `ok`.
-    The server observes `accept-encoding: identity` on the request. The precedence counterexamples
-    and the `requestJson` non-`2xx` encoded case are covered (`http` without `message`, `response`
-    kept). `onWireAbsent` is still called once for a refused answer without a wire header.
-  - An identity body over the default cap, with Content-Length and chunked, still gives
-    `too-large`.
+      memory" → `network`, `response` kept.
+    - "compressed non-success write response is an http error with a bounded peak memory" → `http`
+      without `message`, `response` kept.
+  - The literal sources are decision 3 for the kinds and "Counterexamples" for the 64 MiB budget.
+- `test/client-transport.test.ts`: native Bun `fetch` against local-only peers, all closed in
+  `afterAll`. No external network.
+  - Redirect following (class: SSRF and redirects): "same-origin read redirect is refused",
+    "cross-origin read redirect is refused" and "https-to-http read redirect is refused". Each
+    expects `ok: false`, `kind` `http` with the received 3xx status, 0 requests at every
+    destination, and no caller credential at any destination. Each of 301, 302, 303, 307 and 308
+    gives that outcome.
+  - Content coding (class: eager decompression, fail-closed input validation): "encoded answer is
+    refused with a fixed cause" covers real, unknown and multi-coding values, with the literal cause
+    `response content-encoding is not supported` and no received header text in the serialized
+    result. "identity coding reads normally" covers an absent header and non-canonical spellings of
+    `identity` → `ok`. The request carries `accept-encoding: identity`.
+  - Precedence and write cases, as in "Counterexamples": wire mismatch before encoding, HTTP status
+    before encoding, and `requestJson` non-`2xx` encoded → `http` without `message`, `response`
+    kept. `onWireAbsent` is still called once for a refused answer without a wire header.
+  - Compatibility: an identity body above the default cap, with and without a declared length, is
+    still `too-large`.
 - `test/client.test.ts` and `test/request-json.test.ts`:
-  - "invalid JSON diagnostic uses a fixed text" (both functions, two marker-bearing bodies): the
-    literal is `response body is not valid JSON`, and no marker appears.
+  - "invalid JSON diagnostic uses a fixed text" (both functions): the literal is
+    `response body is not valid JSON`, and no received body text appears in the serialized result.
   - "wire mismatch diagnostic uses a fixed text": the literal
     `x-pulse-contract: unsupported wire version, expected 1` appears in `fetchJson`
     `wire-mismatch.message` (`2xx`), `fetchJson` `error.wire.error` (non-2xx), `requestJson` `2xx`
     `error.message` and `response.wire.error`, and `requestJson` non-`2xx` `error.wire.error`. No
-    marker appears.
+    received header text appears.
   - An injected-fetch check that `fetchJson` and `requestJson` pass `redirect: "manual"`,
     `decompress: false` and `accept-encoding: identity`. A caller `authorization` header is kept, a
     caller `accept-encoding` is replaced by `identity`, and the caller's `headers` object is not
@@ -517,8 +524,9 @@ inside the test code only.
     - "wire mismatch is a typed error with the checkWireVersion text" (`:82-96`) asserts the literal
       text instead of deriving it from `checkWireVersion`.
     - "invalid json" (`:113-119`, and `test/request-json.test.ts:187`) also asserts the literal.
-- `test/version.test.ts`: the literal text for a non-current value, an empty value and a long
-  marker-bearing value. The existing ok / absent / mismatch cases (`:10-28`) stay.
+- `test/version.test.ts`: "mismatch text is fixed" expects the literal text for every non-current
+  value, short or long, and no received header text in it. The existing ok / absent / mismatch
+  cases (`:10-28`) stay.
 - A source check in a test: `src/client.ts` and `src/version.ts` contain no `from "node:` or
   `from "bun` import.
 
@@ -541,7 +549,7 @@ inside the test code only.
 - Test CPU, measured the primary way: three runs per side and the median. Expected +0.6 to +1.0 s.
   Above +1.5 s, run the fallback harness for contract.
 - Node evidence (not committed): a scratch script outside the repository, run with Node 24, imports
-  the built `dist/index.js` and uses `node:http` servers on `127.0.0.1:0`. Expected outcomes:
+  the built `dist/index.js` and talks to local-only peers. Expected outcomes:
   - "identity read" → `ok`;
   - "small compressed JSON read" → `ok`;
   - "compressed answer above the cap" → `too-large` with peak growth ≤ 64 MiB;
@@ -554,8 +562,9 @@ inside the test code only.
     status `package.json:28` and console `package.json:28` pin), then
     `bunx playwright install chromium`. Bundle the built client with
     `bun build <contract>/dist/index.js --target=browser --format=esm --outfile=<scratch>/contract.js`.
-  - A local page origin serves the bundle. A second local origin acts as the cross-origin
-    destination with permissive CORS, so a followed redirect is visible to the old client.
+  - The page loads the bundle from a local-only origin. No external network is used. The setup
+    must let the base's client show a followed redirect, so that the red counterpart below can
+    fail. How the test arranges that is its own choice.
   - In the page, call `fetchJson` with `fetch.bind(globalThis)` for each case. Expected outcomes:
     - "small gzip-compressed JSON" → `ok` with the value;
     - "small brotli-compressed JSON" → `ok` with the value;
@@ -611,15 +620,17 @@ Behavior:
   - If `bun run check` needs any change outside the allowed list, request a hold.
 - No production source changes. `apiError` (`src/client.ts:237-239`) and the `postResult` log
   (`:414`) then carry the contract's fixed texts.
-- New `src/client.api-redirect.test.ts`, with a fake api and a second destination server on
-  `127.0.0.1` port `0` and the native `fetch`:
-  - "authenticated check read is not redirected": with a token, `/probe/checks` answers a redirect
-    to the second server. `fetchChecks` treats it as a failed fetch and retries; the next answer is
-    valid. The destination counts 0 requests and receives no `authorization` header. There is no
-    `/checks` fallback, because the 404 fallback stays limited to 404.
-  - "invalid JSON from the api logs the fixed text": the first answer is a marker-bearing non-JSON
-    `200`. The log line contains the literal `invalid JSON: response body is not valid JSON` and not
-    the marker.
+- New `src/client.api-redirect.test.ts`. It drives the real API read path (`requestChecks` and
+  `loadChecks`, `src/client.ts:298` and `:318`; `fetchChecks` `:375-387`) with the native `fetch` and
+  local-only peers:
+  - "authenticated check read is not redirected". Class: redirect following with credentials.
+    Expected: the authenticated read fails as an HTTP error with the received 3xx status (logged as
+    `fetching checks failed: HTTP <status>; …`, `src/client.ts:233,387`), no check from the redirect
+    target is used, the target receives 0 requests and no credential, and the public `/checks`
+    fallback is not taken, because it stays limited to 404 (`:308`).
+  - "invalid JSON from the api logs the fixed text". Class: upstream body-text disclosure. Expected:
+    the failure log line contains the literal `invalid JSON: response body is not valid JSON`
+    (`src/client.ts:237`) and no received body text.
 - `README.md`: one sentence that API reads follow no redirect (`PULSE_API_URL` must be the final
   endpoint), ask for uncompressed answers and refuse compressed ones. Monitored checks keep their
   own redirect rules.
@@ -671,14 +682,15 @@ Behavior:
 - Confirm that every dist module that the new contract's `index.js` imports is in the allowlist at
   `src/server.ts:219-242`. The contract section adds none. If one is missing, request a hold: the
   allowlist is protected.
-- New `src/server.upstream-redirect.test.ts`: the real status server (`createStatusServer`,
-  `src/server.ts:786`) with the native fetch, `apiUrl` at a local fake api, and a second local
-  destination server.
-  - "proxy read of a redirecting api is not followed": `/api/checks` upstream answers a redirect.
-    The proxy keeps its public mapping: the same 3xx status with body `{"error":"API error"}`
-    (`README.md:71`), no `location` header in the proxy answer, and destination count 0.
-  - "readiness poll counts a redirecting api as an error": `startApiPoll` against the same fake
-    records outcome `error`, and the destination counts 0.
+- New `src/server.upstream-redirect.test.ts`. It drives the real proxy path (`createStatusServer`,
+  `src/server.ts:786`; `fetchRaw` `:405-430`) and the real readiness poll (`startApiPoll`,
+  `src/api-poll.ts:24`) with the native `fetch` and local-only peers. Class: redirect following.
+  - "proxy read of a redirecting api is not followed". Expected: the proxy keeps its public mapping
+    for an `http` error (`src/server.ts:426-430`, `README.md:71`): the received 3xx status, body
+    `{"error":"API error"}`, no `location` header in the proxy answer, and 0 requests at the
+    redirect target.
+  - "readiness poll counts a redirecting api as an error". Expected: outcome `error`, and 0
+    requests at the redirect target.
 - `README.md:73`: state that every API request follows no redirect, and that on the server it asks
   for and requires uncompressed answers. The browser poller relies on the browser's decoding inside
   the 5 MiB cap. The version error now shows a fixed text without the received header.
