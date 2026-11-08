@@ -66,14 +66,15 @@ Planning used a scratch clone of the api at `e084bde` in `/tmp` (`bun install --
 
   So the API-only messages `reason must be at most 1000 characters`, `reason must be a string or null`, `latencyMs: must be an integer 0..2147483647`, `checkId must be a non-empty string`, `timestamp must be an integer (epoch ms)`, `status must be "up", "degraded" or "down"`, `statusCode must be null or an integer from 100 to 599`, `body must be a JSON object` and `location must be a string` are unreachable. Only `docs/troubleshooting.md:87` names one of them. A grep over `src`, `test`, `docs` and `README.md` found no other use outside `src/server.ts`.
 - **Late-failure reproduction** (scratch test, not committed). Each case was run 3× on the base and 3× with the fix (log before the `headersSent` branch):
-  - (a) The injected `admin` handler writes `204` and `end()`, then throws. Base: `expect(calls).toEqual([boom])` fails, 0 pass and 1 fail, exit 1, received `[]`. Fix: 1 pass, exit 0.
-  - (b) The handler writes `200` headers and the chunk `partial`, waits until the client received that chunk, then throws. A raw `node:net` client read exactly one `HTTP/1.1 200 OK` head plus `7\r\npartial\r\n`, with no terminating `0` chunk and no `internal error`, then the socket closed. Base: the log assertion fails, 3/3. Fix: 1 pass, 3/3. In both runs a later `GET /healthz` answered 200.
+  - (a) The injected `admin` handler writes `204` and `end()`, then throws. The test synchronizes without waiting on the log (R3.1 (a)). It awaits the `fetch` response (204, empty body), then the settlement of the handler's own returned promise, then one `setImmediate` turn, and then asserts. Base: the `assert.deepEqual(calls, [["request failed", boom]])` assertion fails with `+ []` as the actual value in 3/3 runs, after about 12-24 ms, exit 1, and no timeout. Fix: pass, 3/3, exit 0. This was re-verified in the plan-review correction run in a second scratch copy of `e084bde`.
+  - Rejected synchronization for (a): waiting for the client socket to close. Bun 1.4.0 keeps the keep-alive socket of a finished 204 open after `res.destroy()`. The raw-socket variant timed out after 5000 ms in 3/3 base runs, so it would be a timeout and not the required assertion failure. Awaiting a promise that only `logError` resolves has the same flaw on the base: the logger is never called.
+  - (b) The handler writes `200` headers and the chunk `partial`, waits until the client received that chunk, then throws. A raw `node:net` client read exactly one `HTTP/1.1 200 OK` head plus `7\r\npartial\r\n`, with no terminating `0` chunk and no `internal error`, then the socket closed. The test synchronizes on the client socket's `close` event, which does not depend on logging: `res.destroy()` closes an unfinished response on the base and on the branch. Base: the log assertion fails with `+ []`, 3/3, no timeout. Fix: 1 pass, 3/3. In both runs a later `GET /healthz` answered 200.
 - **Focused test runs and coverage, Bun 1.4.0.** `bunfig.toml:1-4` enables coverage with `lines = 0.8`.
   - `bun test --config /dev/null <file>` (space) still applies the repository coverage: the coverage table is printed and the run exits 1 although all tests pass.
   - `bun test --config=/dev/null <file>` (equals sign) runs without coverage and exits 0. This was verified on `src/server.validation.test.ts`: 15 pass, exit 0.
   - Use only the `=` form for focused runs.
-- **Baseline controls on the base, run 3×, all exit 0.** `bun test --config=/dev/null src/server.validation.test.ts src/server.target.test.ts src/server.test.ts`: 29 pass, 0 fail, each run.
-- **Full check on the base, run once.** `bun run check` exited 0: 904 pass, 0 fail, 99 files. The `error: audit log down` lines it prints are expected output of existing tests, not failures.
+- **Baseline controls on the base, run 3×, all exit 0.** `bun test --config=/dev/null src/server.validation.test.ts src/server.target.test.ts src/server.test.ts`: 29 pass, 0 fail, each run. This was repeated 3× in the plan-review correction run with the same result.
+- **Full check on the base, run 3×.** `for run in 1 2 3; do bun run check || exit; done` ran in a clean scratch clone at `e084bde` (`bun install --frozen-lockfile`, Bun 1.4.0) during the plan-review correction run. Each of the 3 runs exited 0 with lint, typecheck and tests passing: 904 pass, 0 fail, 99 files (test times 9.65 s, 9.09 s and 9.52 s). The repository coverage threshold was in force. The `error: audit log down` lines it prints are expected output of existing tests, not failures. An earlier single run in the first plan run had the same result.
 - **Test CPU on the base**, for information only (`/usr/bin/time bun run test`, 2 runs): 8.40 user + 1.55 sys and 8.27 user + 1.51 sys, about 9.8-10.0 s on this shared machine.
 
 ## Scope
@@ -124,9 +125,18 @@ Keep:
 
 ### R3: tests
 
-1. **New `src/server.errors.test.ts`.** Real HTTP on `127.0.0.1` port 0, an in-memory DB, a fixed `now`, and handlers injected through `createApiServer` options (`admin`). Synchronize on events and promises, never on sleeps or timers. Close sockets and servers in `finally` or `afterAll`.
-   - (a) finished 204, then throw: client status 204 with an empty body; once the log promise resolved, the log calls are exactly `[["request failed", boom]]` (same identity).
-   - (b) started 200 with the chunk written, then reject after the client saw the chunk: the raw socket data holds exactly one `HTTP/1.1 ` status line, no `internal error`, and no terminating `0\r\n\r\n` chunk; the socket closes; exactly one log call with the original error.
+1. **New `src/server.errors.test.ts`.** Real HTTP on `127.0.0.1` port 0, an in-memory DB, a fixed `now`, and handlers injected through `createApiServer` options (`admin`). The `logError` spy only records its calls into an array. Synchronize on events and promises, never on `setTimeout`, sleeps or polling. The one allowed exception is a single `setImmediate` turn, used in (a) below. It waits for no time, only for already queued microtasks to drain. No synchronization point may depend on `logError` being called: on `BASE` the logger is never called for (a) and (b), so a test that waits for it times out instead of failing the assertion. Close sockets and servers in `finally` or `afterAll`.
+   - (a) finished 204, then throw. The injected handler builds its async body as a promise `p`, which writes `204`, calls `end()` and throws `boom`. It stores `settled = p.catch(() => undefined)` for the test and returns `p` to the server. The test does this in order:
+     1. awaits the client response: status 204, empty body;
+     2. awaits `settled`;
+     3. awaits one `setImmediate` turn;
+     4. asserts that the log calls are exactly `[["request failed", boom]]` (same identity).
+
+     This is deterministic: `handle(...)` only awaits `p`, and the server's `.catch` is a microtask chained to it, so it has run before the check phase that runs `setImmediate`. Do not synchronize (a) on the client socket closing. Bun 1.4.0 keeps the keep-alive socket of a finished 204 open after `res.destroy()`, and that variant timed out in the planning trial.
+   - (b) started 200 with the chunk written, then reject after the client saw the chunk. A raw `node:net` client rejects the handler's pending promise from its `data` event once `partial` arrived, then awaits its own socket `close` event; `res.destroy()` closes the socket on `BASE` and on the branch. Then assert:
+     - the raw data holds exactly one `HTTP/1.1 ` status line;
+     - it holds no `internal error` and no terminating `0\r\n\r\n` chunk;
+     - there is exactly one log call, with the original error.
    - (c) unexpected before headers: `500 {"error":"internal error"}`, one call with the original error, and the response body does not contain the error message.
    - (d) expected errors stay quiet, each with zero log calls:
      - an `HttpError` path: `GET /nope` answers `404 {"error":"not found"}`;
@@ -136,7 +146,7 @@ Keep:
      `ManualRouteError` is already exported from `src/manual-incident-routes.ts:20`, so no new export is needed. Do not export `HttpError`.
    - (e) privacy and continued service: send sentinel strings in `Authorization`, the query and the body of the failing request. They appear in neither the log message (`request failed`) nor the client bytes. A following ordinary `GET /healthz` answers 200 and the log count stays 1.
 
-   Cases (a) and (b) must fail on the base for the stated reason (0 calls instead of 1).
+   Cases (a) and (b) must fail on the base for the stated reason: an assertion failure where the actual log calls are `[]` and the expected value holds 1 call. A timeout, a hang until the 5000 ms test limit, or any other failure is not valid red evidence. The test fails then because of how it synchronizes, and the spec requires that to be fixed.
 2. **Extend `src/server.validation.test.ts` with compatibility controls** that pass on the base. Every assertion compares the whole message with a literal from this spec, and where noted also with the pinned `validatePostResultRequest` (a differential: the same text).
    - **Contract/API parity**, one invalid field per case, with the inputs and literal texts of the table above. Also: `statusCode: "200"`, `statusCode: 600`, `latencyMs: "1"`, a non-object body (`[]`, `null`, `"x"`) giving `result: must be an object`, and `timestamp: "1"`.
    - **Reason boundaries**: `null`, `""`, 1000 code units accepted, 1001 rejected with `result.reason: must be null or a string of at most 1000 characters`. Also 999×`"x"` + `"😀"` (1001 code units) rejected and 998×`"x"` + `"😀"` (1000 code units) accepted.
@@ -185,10 +195,16 @@ Keep:
 - **Bun `node:http` destroy semantics.** In the planning trial, Bun 1.4.0 closed the socket without the terminating chunk (see Current behavior). If the implementer's base differs, re-verify before relying on raw-socket assertions.
 - **Coverage flag trap.** `--config /dev/null` (space) silently keeps coverage on and exits 1. Use `--config=/dev/null`.
 - **Flaky raw-socket timing.** Drive the reject from the client's `data` event, not from timers.
+- **Red test that hangs.** If a late-failure test waits for the logger, or for the socket of a finished 204 to close, it times out on `BASE` instead of failing the 1-versus-0 assertion. R3.1 (a) and (b) fix the synchronization points, which do not depend on logging.
 
 ## Evidence from a planning trial (planning only, not acceptance)
 
-See Current behavior: red 3/3 and green 3/3 for both late cases with a minimal catch change; 29/29 baseline controls 3× on the base; full check exit 0 with 904 pass. The implementer repeats all of this at its own recorded `BASE`.
+See Current behavior:
+- red 3/3 and green 3/3 for both late cases with a minimal catch change, using the logging-independent synchronization of R3.1;
+- the 29 baseline controls pass in 3 runs on the base;
+- the full check exits 0 with 904 pass and 0 fail in each of 3 runs.
+
+The implementer repeats all of this at its own recorded `BASE`.
 
 ## Performance impact
 
@@ -288,8 +304,8 @@ Unexpected request failures after headers become visible in the error log, and t
 1. Record `BASE=$(git rev-parse HEAD)` before any edit. If it is not `e084bde`, re-check the cited lines and the doc inventory, and report differences.
 2. Run the baseline controls on `BASE` 3×:
    - `bun test --config=/dev/null src/server.validation.test.ts src/server.target.test.ts src/server.test.ts`: expect exit 0, 29 pass, 0 fail (the count from the planning trial at `e084bde`; if `BASE` differs, record the count observed on all 3 runs and use it);
-   - `bun run check` once: expect exit 0, 0 fail.
-3. Write `src/server.errors.test.ts` (R3.1). Run `bun test --config=/dev/null src/server.errors.test.ts` 3× on unchanged `src/server.ts`. Cases (a) and (b) must fail with the log-count assertion (expected 1 call, received 0); (c), (d) and (e) must pass. Record the output. A failure from coverage, an import, a timeout or a transport race does not count as red.
+   - `for run in 1 2 3; do bun run check || exit; done`: each of the 3 runs exits 0 with 904 pass and 0 fail (the counts from the planning trial at `e084bde`, 3 runs). Record the count of every run. If `BASE` differs, record the counts observed on all 3 runs and use them. If a run fails, report it and do not claim a passing control.
+3. Write `src/server.errors.test.ts` (R3.1). Run `bun test --config=/dev/null src/server.errors.test.ts` 3× on unchanged `src/server.ts`. Cases (a) and (b) must fail with the log-count assertion (expected 1 call, actual `[]`), within the default 5000 ms limit and not by timing out; (c), (d) and (e) must pass. Record the output. A failure from coverage, an import, a timeout or a transport race does not count as red.
 4. Extend `src/server.validation.test.ts` (R3.2). Run it 3× with `--config=/dev/null` on unchanged `src/server.ts`: all pass, exit 0. Record the count.
 5. Change `src/server.ts` (R1, R2).
 6. Update the four docs (R4).
@@ -298,7 +314,7 @@ Unexpected request failures after headers become visible in the error log, and t
 
 ### Acceptance
 
-1. **Late failures.** `src/server.errors.test.ts` passes 3/3 on the branch. Cases (a) and (b) failed 3/3 on `BASE` with 0 log calls against the literal expectation of 1. Expected values are literals: status `204`, status `500` and body `{"error":"internal error"}`, message `request failed`, 1 call, 0 calls for expected errors, exactly 1 `HTTP/1.1 ` line.
+1. **Late failures.** `src/server.errors.test.ts` passes 3/3 on the branch. Cases (a) and (b) failed 3/3 on `BASE` with an assertion failure: 0 log calls (`[]`) against the literal expectation of 1, and no timeout. Their synchronization points are the ones R3.1 names, none of which waits for `logError`. Expected values are literals: status `204`, status `500` and body `{"error":"internal error"}`, message `request failed`, 1 call, 0 calls for expected errors, exactly 1 `HTTP/1.1 ` line.
 2. **Validation compatibility.** The new and existing tests in `src/server.validation.test.ts` pass on `BASE` and on the branch (3× each). Messages are the literals of this spec's table and lists, and the differential compares with the pinned contract validator, an independent module.
 3. **Source review against the pinned schema.** In `src/server.ts`:
    - none of the strings `reason must be at most`, `reason must be a string or null`, `latencyMs: must be an integer`, `checkId must be a non-empty string`, `timestamp must be an integer (epoch ms)`, `status must be "up", "degraded" or "down"`, `statusCode must be null or an integer from 100 to 599`, `body must be a JSON object`, `location must be a string` remains. Check with `grep -c` for each string: expected 0;
