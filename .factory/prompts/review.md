@@ -83,7 +83,7 @@ If the spec or the section is missing, request a hold with status `needs-input`.
    - SSRF: allowed targets, redirects (cross-origin, https to http), and which headers are forwarded;
    - file writes are atomic and path-safe;
    - new or changed dependencies are pinned and approved (`docs/approved-packages.md` in meta).
-9. Check the change against the code conventions in `{{project.root}}/{{workspace.contextDirectory}}/meta/docs/code-conventions.md`
+9. Check the change against the code conventions {{#if workspace.contextDirectory}}in `{{project.root}}/{{workspace.contextDirectory}}/meta/docs/code-conventions.md`{{else}}of the meta repository (`docs/code-conventions.md`){{/if}}
    and the shared modules that this repository's `AGENTS.md` names. Report a second copy of existing
    markup, a query, a check or logic, hand-written code that a shared helper covers, and a new shared
    helper without a test as should-fix findings, with both locations as proof. A should-fix finding
