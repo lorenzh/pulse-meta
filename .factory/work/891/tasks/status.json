@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Observe early-answer client data before counting bytes and releasing the timing self-check",
+      "files": [
+        "src/subscribe-test-support.ts",
+        "src/subscribe-timing.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, Steps 1–6 and Acceptance A1–A16; Required behavior R1–R4; Performance impact; Counterexamples. Test-only behavior change; README.md, docs/ and AGENTS.md remain protected under the manager's correction.",
+      "acceptance": [
+        {
+          "command": "git status --porcelain\nBASE=$(git rev-parse HEAD)\ngit rev-parse HEAD\nbun --version\ngit ls-tree -r --name-only \"$BASE\" | grep -vxF -e src/subscribe-test-support.ts -e src/subscribe-timing.test.ts",
+          "expected": "Before edits, status is empty; record the clean implementation BASE SHA and Bun version 1.4.0. Preserve the complete tracked-path output as /tmp/protected-891.txt outside the target; it excludes exactly the two allowed files. If BASE differs from the inspected 2cefdf1cfbbd7cce175a9df97dbdafdec0e925aa, recheck source, documentation and preconditions rather than assuming historical evidence applies. All following BASE checks use that recorded commit; final checks use the committed HEAD."
+        },
+        {
+          "command": "bun run lint\nbun run typecheck",
+          "expected": "Step 2 C1–C2 / A1: run both on the unchanged recorded BASE before implementation; each exits 0. Report commands and results. Earlier planning experiments do not substitute for these controls."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test src/subscribe-timing.test.ts --test-name-pattern \"D22\"; done",
+          "expected": "Step 2 C3 / A1: on unchanged BASE, each of the 3 isolated runs reports 10 pass and 0 fail. Record every result; focused test acceptance is the test count, and the coverage gate remains in the final full bun run check. Enumeration is not a passing baseline control because its R8 L9 full case is a known flake."
+        },
+        {
+          "command": "grep -n \"beforeRelease\" src/subscribe-test-support.ts src/subscribe-timing.test.ts\nsed -n '272,329p' src/subscribe-test-support.ts",
+          "expected": "Step 2 C4 / A1: on BASE, grep prints nothing and exits 1; the driver has no hook or condition between its existing 50-turn loop and byte snapshot. If BASE already waits for observed client data there, request needs-input instead of opening a review."
+        },
+        {
+          "command": "bun run test",
+          "expected": "Step 2 observation / A1: run once on unchanged BASE and record the actual exit status, Ran N tests across M files summary and every failure with its file header. This is observation only, explicitly excluded from the controls required to pass; unrelated flakes may make it nonzero."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test src/subscribe-timing.test.ts --test-name-pattern \"just before the release\"; done",
+          "expected": "Step 3 / A2: before changing the driver, overlay only the R3 gated wrongServer fixture and new regression on BASE in src/subscribe-timing.test.ts. Each of 3 isolated runs reports 1 fail with AssertionError: false == true at assert.ok(driven.bytesBeforeRelease > 0) in the new test. Bun strips types and ignores the unknown option on the base driver; load errors, type errors, coverage-only failures or gave up waiting are not valid red evidence. Record all 3 runs and any mechanical adaptation."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test src/subscribe-timing.test.ts; done",
+          "expected": "A3: after implementing R1–R3 and committing, each of 3 runs on HEAD reports 12 pass and 0 fail. The gated regression records releaseStates exactly [\"live\"], positive bytesBeforeRelease, and checkRequest throwing /0/. The existing self-check retains both early-answer and wrong-timeout variants. The full-suite coverage gate is checked separately by bun run check."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test src/subscribe-timing.test.ts --test-name-pattern \"just before the release\"; done",
+          "expected": "Step 5(a) / A4: in a disposable scratch mutation only, move await options.beforeRelease?.(client) after the bytesBeforeRelease snapshot. All 3 isolated regression runs fail with AssertionError: false == true at the new test's bytesBeforeRelease > 0 assertion. Restore the correct implementation afterwards; no mutation is committed."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test src/subscribe-timing.test.ts --test-name-pattern \"just before the release\"; done",
+          "expected": "Step 5(b) / A4: in a separate disposable scratch mutation, move the hook after the release timer fire() line. All 3 isolated regression runs fail with AssertionError: false == true at the same bytesBeforeRelease > 0 assertion. Restore the correct implementation afterwards; no mutation is committed. Report both mutation series independently."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts",
+          "expected": "R1–R4: DriveOptions gains optional beforeRelease?: (client: RawClient) => Promise<void> | void, awaited exactly once after the unchanged 50-turn loop and immediately before both the byte snapshot and release. earlyBytes uses waitUntil(() => client.received().length > 0, \"early answer bytes\"); only the early-answer variant opts in. wrongServer's optional gate?: Promise<void> delays its early write; the new gated self-check opens it in the hook, observes bytes while the 2000-ms release remains live, then proves check 2 rejects the wrong answer. Existing cleanups close new fake-notify and wrong-server sockets/servers, including failing runs. No production, endpoint, setting, wire type, dependency, tooling, CI or security behavior changes. Equivalent mechanics require the same ordering and three wrong-position proofs, with scoped name searches repeated per Contract fields."
+        },
+        {
+          "command": "grep -c \"beforeRelease\" src/subscribe-enumeration.test.ts\ngrep -n -E 'Self-check|beforeRelease' src/subscribe-timing.test.ts",
+          "expected": "A5: enumeration count is 0 (grep exits 1 for no matches). Every timing-file beforeRelease occurrence is after the Self-check marker, only in the early-answer iteration and new regression. Ordinary D22/enumeration calls and the call-timeout-2000 variant have no hook and retain zero-byte behavior. Inspection covers both variants of the file's sole existing self-check; only early answer has the observation race."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/subscribe-timing.test.ts\ngit diff \"$BASE\" HEAD -- src/subscribe-test-support.ts",
+          "expected": "A6: no removed timing-test line contains assert; preserve these literal assertions/values: assert.ok(driven.bytesBeforeRelease > 0); assert.throws(() => checkRequest(driven, { isCalling: true }), /0/); assert.throws(() => checkRequest(driven, { isCalling: true }), /1500/); [5000, 2000, 2000],; assert.equal(driven.bytesBeforeRelease, 0); assert.deepEqual(delays, c.isCalling ? [5000, 2000, 1500] : [5000, 2000]);. The support diff removes 0 lines, excluding diff headers; for (let turn = 0; turn < 50; turn++) await new Promise((r) => setImmediate(r)); is unchanged. Preserve timer registration/order, cancellation, release output, K/P/U byte equality and abort expectations, plus waitUntil, rawClient, manual scheduler and checkRequest."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD | grep '^+' | grep -E 'setTimeout|setInterval|sleep|Date\\.now|performance\\.now|for \\(|while \\('",
+          "expected": "A7: no output (final grep exits 1). No real timer, sleep, clock read, new fixed-delay loop or increased turn count is added. Synchronization uses only the existing bounded condition waitUntil; it must precede the snapshot and release, never follow driveSubscribe's return."
+        },
+        {
+          "command": "python3 -c 'import json, pathlib, subprocess; p = pathlib.Path(\"/tmp/891-runs\"); p.mkdir(exist_ok=False); results = []\nfor i in range(1, 51):\n    with (p / f\"run-{i}.log\").open(\"w\") as log:\n        result = subprocess.run([\"bun\", \"run\", \"test\"], stdout=log, stderr=subprocess.STDOUT)\n    results.append({\"run\": i, \"exit\": result.returncode})\n    (p / \"statuses.json\").write_text(json.dumps(results, indent=2) + \"\\n\")\n    print(f\"run {i} exit {result.returncode}\", flush=True)'",
+          "expected": "A8: on the committed HEAD, run 50 consecutive complete bun run test invocations on one machine and retain all logs and exit statuses outside the target. Use a fresh evidence directory; if the example directory already exists, select a new one without discarding previous attempts. No retries, omitted invocations, reset counts or selective sequences. Required result is 0 runs failing src/subscribe-timing.test.ts under the Counterexamples definition; this is not a claim that every suite exit is 0."
+        },
+        {
+          "command": "awk '/^src\\/.*\\.test\\.ts:$/{f=$0} /^\\(fail\\)/{print FILENAME\": \"f\" \"$0}' /tmp/891-runs/run-*.log\nrg --files-without-match 'Ran [0-9]+ tests across' /tmp/891-runs/run-*.log\ncat /tmp/891-runs/statuses.json",
+          "expected": "A8 / Counterexamples: attribute every failure to its file header, inspect incomplete logs, and reconcile all 50 exit statuses. There are 0 runs with timing-file failures. A crash, hang, missing test summary or unattributed nonzero exit counts as a timing-file failure, never a success. Report every unrelated failure, all nonzero suite exits and the timing-file failure count; known server/enumeration flakes remain visible. Substitute the actual fresh evidence directory if different."
+        },
+        {
+          "command": "bun run check",
+          "expected": "A9: exits 0 on committed HEAD with existing lint, typecheck and tests, including the 80% line coverage gate. If a run fails only from a known unrelated flake, record its actual failure, rerun this whole command and report both results. Never rerun away a timing-file, lint, typecheck or coverage failure, and never weaken the checks."
+        },
+        {
+          "command": "for i in 1 2 3 4 5; do\n  (cd \"$BASE_WORKTREE\" && /usr/bin/time -o \"/tmp/891-cpu-base-$i.txt\" -f '%U %S' bun run test)\n  (cd \"$BRANCH_WORKTREE\" && /usr/bin/time -o \"/tmp/891-cpu-branch-$i.txt\" -f '%U %S' bun run test)\ndone",
+          "expected": "A10 / Performance impact: use worktrees at recorded BASE and committed HEAD with the same machine, Bun and environment; collect five interleaved base/branch pairs in precisely that order. Report each run's result and user+system CPU seconds, the median of the 5 sums per side (third sorted value), and median(branch) minus median(base), rounded to 0.01 s. This noisy-host CPU delta is information only, not a pass/fail budget. Do not run the Docker bench (#834)."
+        },
+        {
+          "command": "git show \"$BASE:src/subscribe-test-support.ts\" | wc -c\ngit show HEAD:src/subscribe-test-support.ts | wc -c",
+          "expected": "A10 / Performance impact: report both independent git-object byte counts and HEAD minus BASE in the PR body. Expected growth is positive and below 1,000 bytes (R1 estimate about 210 bytes, about 0.0002 MB); report the actual number even if 1,000 or larger, since this measurement is information only. Dockerfile copies src/ and .dockerignore does not exclude the support file, so image content can grow slightly; timing.test.ts is excluded. No runtime module imports the support file, so startup/runtime CPU, RSS and latency do not change. No Docker build or bench is needed for this byte measurement."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD",
+          "expected": "A11: exactly the two sorted lines src/subscribe-test-support.ts and src/subscribe-timing.test.ts, with no other path, against the recorded implementation BASE after the last commit. README.md, docs/development.md and AGENTS.md are not allowed files."
+        },
+        {
+          "command": "git diff --name-only --cached\ngit diff --name-only\ngit status --porcelain",
+          "expected": "A12: after the last commit, each command independently prints nothing. Verify the index, working tree and untracked paths separately; do not substitute a combined BASE-to-worktree comparison that can hide a staged or committed protected change."
+        },
+        {
+          "command": "grep -cxF -e README.md -e docs/development.md -e AGENTS.md /tmp/protected-891.txt\nxargs -a /tmp/protected-891.txt git diff --exit-code \"$BASE\" HEAD --\ngit diff --exit-code \"$BASE\" HEAD -- README.md docs/ AGENTS.md package.json bun.lock bunfig.toml biome.json .github/",
+          "expected": "A13: grep prints 3, and both protected-path diffs exit 0. The manifest protects every BASE-tracked path except the exact two allowed files, including production, documentation, other tests, dependencies, locks and configuration. README needs no edit because this is test-only; docs/development.md describes no timing self-check and remains correct. Plan, issue review and task share the same two-file scope."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD\ngit diff --name-only --cached\ngit diff --name-only\ngit status --porcelain\ngit diff --exit-code \"$BASE\" HEAD -- README.md docs/development.md",
+          "expected": "A14(a–e): execute the scope checks in a disposable repository outside the target, with fixture BASE, allowed a.ts, protected README.md and docs/development.md; isolate and report each state. (a) Only a.ts committed: committed paths equal a.ts, cached/unstaged/status outputs empty, protected diff exits 0. (b) Protected README committed: committed names list README.md and protected diff exits 1. (c) README staged only: cached names print README.md. (d) README in worktree only: unstaged names print README.md. (e) Untracked file: porcelain prints ?? <file>. Show each expected rejection separately; the fixture is evidence only and is removed, never delivered in pulse-status."
+        },
+        {
+          "command": "git restore --worktree --source=\"$BASE\" README.md\ngit diff --exit-code \"$BASE\" -- README.md\ngit diff --name-only --cached\ngit diff --name-only\ngit status --porcelain\ngit diff --name-only \"$BASE\" HEAD\ngit diff --exit-code \"$BASE\" HEAD -- README.md",
+          "expected": "A14(f–g): in separate disposable fixture states, first stage or commit a protected README change, then run these commands to restore only the worktree. (f) Staged trap: BASE-to-worktree diff exits 0, but BOTH cached and unstaged name diffs print README.md and porcelain prints MM README.md. (g) Committed trap: BASE-to-worktree diff exits 0, cached names empty, unstaged names README.md, porcelain ' M README.md', BASE-to-HEAD names include README.md and protected diff exits 1. The individual A11–A13 checks must reject both traps; report exact outputs and remove the fixture."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts",
+          "expected": "A15: read every added line, including inline comments, and list every added comment verbatim in the PR body. Expected single added comment: /** Runs before the bytes are counted and the release fires (for example: wait for an early answer). */. Write none only after full inspection if no comment was actually added. No new test file is created; if one becomes necessary, stop with needs-input because the allowed list changes."
+        },
+        {
+          "command": "git log --format=%s \"$BASE\"..HEAD\ngh pr view --json body --jq .body",
+          "expected": "Step 6 / A16: commits use Conventional Commit subjects without bypassing hooks. The PR body names Closes lorenzh/pulse-meta#<child>; reports actual A1–A13 commands/results, base and HEAD SHAs, Bun 1.4.0, all 50 run exit statuses, every failure/file, nonzero-suite count and zero timing-file-failure count; reports fixture outcomes A14, the interleaved CPU values/medians/delta and support-file byte counts/difference, and verbatim added comments A15. It identifies server.test.ts '502 when the API is down' and subscribe-enumeration.test.ts 'R8 L9 full …' as known unrelated limits, and explains README.md and docs/ are unchanged because this is test-only. Historical scratch results are not implementation evidence."
+        }
+      ]
+    }
+  ]
+}
