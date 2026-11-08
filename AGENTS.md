@@ -38,7 +38,7 @@ Lessons:
   - losoft (design system of the website): https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH
   - losoft App (design system of the console): https://claude.ai/artifact/1EbvYkD4WhfdNqD7HygC2q
 - Each README records the artifact version and the design system version of the export, so a later change can be traced and diffed.
-- The Console canvas marks v1 scope: the self-hosted `SH*` boards above the "Later" row. Hosted and "Later" boards are not a source for v1 work items.
+- The Console canvas marks v1 scope: boards whose title starts with "SH" ("SH · …" or "SH <n> · …") are v1 wherever they sit on the canvas. "Hosted, later" and "Later" boards are not a source for v1 work items.
 - To check an export for drift or to update it, use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`; Claude with the Artifact tool only). A sync PR bumps the recorded versions and adds a "Changes in version <id>" section; Factory plans from the diff. Sync only when asked.
 
 ## Changing Factory config
