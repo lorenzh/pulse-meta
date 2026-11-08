@@ -16,6 +16,20 @@ run_rec() { # <state> <reason> <next state or empty> [<run id>] -> the record of
   jq -nc --arg s "$1" --arg r "$2" --arg n "$3" --arg run "${4:-1-1}" \
     '{kind: "run", claim: {run: $run, workflow: "build", state: $s}, done: {reason: $r, states: ([$n] - [""])}}'
 }
+v4() { # <entry json> [<done json>] -> the v4 marker line the installed CLI (0.10, --run-url) writes
+  (cd "$here/../.." && node --input-type=module -e '
+import { markerLine, runMarkerLine } from "@paragondata/factory-app";
+const [a, b] = process.argv.slice(1).map((s) => JSON.parse(s));
+console.log(b ? runMarkerLine(a, b) : markerLine(a));' "$@")
+}
+claim4() { # <state> -> a full v4 claim of run 900-1
+  jq -nc --arg s "$1" '{kind: "claim", run: "900-1", generation: 1, base: 0, depth: 0, workflow: "build", state: $s,
+    admission: "label", harness: "claude", model: "implementer", runUrl: "https://github.com/lorenzh/pulse-meta/actions/runs/900"}'
+}
+done4() { # <reason> <next state> -> the done entry of run 900-1
+  jq -nc --arg r "$1" --arg n "$2" '{kind: "done", run: "900-1", generation: 1, depth: 0, workflow: "build", states: [$n],
+    statuses: [], complete: false, next: true, reason: $r, usage: {total: 1}}'
+}
 comments() { # <issue> <comment json>... -> the comment pages of the issue
   local k; k="$(key "repos/$R/issues/$1/comments?per_page=100")"; shift
   rm -f "$FIXTURES/$k".*.json
@@ -61,6 +75,15 @@ echo '{"login":"pulse-bot"}' > "$FIXTURES/user.json"
 comments 600 "$(record pulse-bot "no
 task-rejected: T1" "$(run_rec task-review transition implement)")"
 check "tasks: a rejection makes a fix of the same task" "0 fix-task T1 base0" "$(tasks 600 api)"
+comments 600 "$(comment pulse-bot "ok
+task-accepted: T1 @ $SHA
+$(v4 "$(claim4 task-review)" "$(done4 transition implement)")")"
+check "tasks: a v4 run record (Factory 0.10) counts" "0 final T2 $SHA" "$(tasks 600 api)"
+comments 600 "$(record pulse-bot "no
+task-rejected: T1" "$(run_rec task-review transition implement)")" "$(comment pulse-bot "ok
+task-accepted: T1 @ $SHA
+$(v4 "$(claim4 task-review)" "$(done4 transition implement)")")"
+check "tasks: a v4 acceptance after a v3 rejection moves on" "0 final T2 $SHA" "$(tasks 600 api)"
 check "tasks: a child without its feature line fails" "2 factory-tasks: #601 has no \"Part of #<feature>\" line" "$(tasks 601 api)"
 echo '{"version":1,"target":"api","tasks":[]}' > "$tmp/meta/.factory/work/590/tasks/bad.json"
 check "tasks: a broken task file fails instead of falling back to the legacy flow" \
@@ -113,6 +136,19 @@ check "restart: a PAT marker still blocks a repeated timeout after the App switc
 comments 600 "$old_marker" "$(record lorenzh-factory-bot "finished" "$(run_rec implement transition task-review)")" "$app_claim"
 check "restart: a historical PAT completion resets the App guard" "restarted=true" \
   "$(RESTART_ACTOR='pulse-factory[bot]' restart "$tmp/timeout.err" | tail -1)"
+claim4c="$(comment pulse-bot "Factory claimed state implement.
+$(v4 "$(claim4 implement)")")"
+failure4="$(comment pulse-bot "Factory run 900-1 failed with HARNESS_TIMEOUT.
+$(v4 '{"kind":"failure","run":"900-1","generation":1,"code":"HARNESS_TIMEOUT"}')")"
+comments 600 "$claim4c" "$failure4"
+check "restart: a v4 claim (Factory 0.10) restarts; its failure comment does not hide the state" \
+  "Restarted #600 after a timeout of build/implement." "$(restart "$tmp/timeout.err" | head -1)"
+comments 600 "$marker" "$claim4c" "$failure4"
+check "restart: a v4 claim after the marker is left to a person" \
+  "build/implement was restarted after a timeout already and has not finished since. A person decides." "$(restart "$tmp/timeout.err")"
+comments 600 "$marker" "$(comment pulse-bot "T1 done
+$(v4 "$(claim4 implement | jq -c '.run = "899-1"')" "$(done4 transition task-review | jq -c '.run = "899-1"')")")" "$claim4c" "$failure4"
+check "restart: a finished v4 run of the state resets the guard" "restarted=true" "$(restart "$tmp/timeout.err" | tail -1)"
 check "restart: wired into factory-run.yml before the failure comment, chain limit 24" \
   "\${{ failure() && inputs.admission != 'cancel' }}|bash .github/run/auto-restart.sh|\${{ failure() && steps.restart.outputs.restarted != 'true' }}|True" \
   "$(python3 -c '

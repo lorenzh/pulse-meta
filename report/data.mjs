@@ -102,7 +102,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
   const splitComments = raw.comments.filter((c) => splitAuthors.has(c.user?.login));
 
   // One factory run record per finished state, written by the Factory bot at the end of its comment.
-  const recordRe = /<!-- factory-record v3 (\{.*\}) -->/s;
+  const recordRe = /<!-- factory-record v[34] (\{.*\}) -->/s; // v4 since 0.10 (run link); old issues keep v3
   const allRuns = [];
   for (const c of botComments) {
     const m = recordRe.exec(c.body ?? '');
