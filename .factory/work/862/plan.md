@@ -16,7 +16,8 @@ Disclosure rule (manager decision): this spec, the task acceptance and the PR te
 - Issue #862 and its "Added requirements (manager decision after the spec review)": disclosure, the separate scope checks with fixture proof, and `README.md` in scope.
 - `.factory/work/862/issue-review.md`: the eight-file scope, the protected paths, resolved assumptions 1 to 7, the derived acceptance and the scope-fixture procedure. This spec adopts them and fixes the open points (error text, red/green evidence, exact paths).
 - Earlier Factory comments on #862 describe a previous spec run. Its artifacts are not in this checkout, so this spec is rebuilt from the clones. The comments are decision history only. Two decisions from them are kept: the accepted character range, and that the probe gets its own rule rather than the contract's header validator.
-- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/862` answered `HTTP 404`, so there are no findings yet.
+- The plan-review of this spec found three defects, and this revision fixes them. First, required behavior 7 now covers only rejected-location diagnostics, because the protected `src/main.ts:158` logs an accepted location. Second, completion check 3 checks the overlength message at runtime instead of with a source grep, because `src/location.ts:9` builds that message from a template. Third, completion check 1 and Red/green evidence judge the focused run by its test results, and the full `bun run check` alone enforces exit status and coverage, as the task acceptance already does.
+- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/862` answered `HTTP 404` again in this run, so there are no findings yet.
 
 ## Current behavior (evidence)
 
@@ -57,7 +58,7 @@ Probe clone `.repos/probe` at `9490141ef9e92044808c70bb8200db3d497d1060`:
 4. A trimmed value of 1–64 code units that holds any code unit outside decision 1 fails with the fixed text of decision 3.
 5. Every other value is returned exactly as trimmed. The HTTP check sends `pulse-probe (<location>)` and the result carries `<location>`, unchanged.
 6. The probe process with a refused location exits 2. Its stderr is one line, the stderr text of decision 3. Stdout is empty. Before the exit it binds no health listener, makes no API request, sends no check request and posts no result.
-7. No error, log line, test title or assertion message contains the location value, the token or another setting value.
+7. Rejected-location diagnostics carry no setting value: the startup error for a refused location (decision 3 and the overlength message), its stderr output, and the titles and assertion messages of the new tests contain neither the location value, the token nor another setting value. This rule covers only the rejection path. The existing info line at `src/main.ts:158` (`running <n> check(s) against <apiUrl> from location <location>`) logs an accepted location after validation. It is outside this rule and stays byte-identical, because `src/main.ts` is protected (decision 4). With this change, a refused value never reaches it.
 
 ## Risks
 
@@ -168,6 +169,8 @@ T6 and T7 are the only new child processes (Performance impact). Close all serve
 
 Red/green evidence: run `bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts` at `BASE` with the new tests. T2, T4 and T6 must fail for the reasons in the table (no throw; no throw; wrong stderr line), and T1, T3, T5 and T7 must pass. Then implement, and all seven must pass. Report the pass/fail per title for both runs. Do not report failure output that holds a value.
 
+The focused run is judged by its test results only: the per-title pass/fail and the summary's fail count. Its process exit status is not a criterion. `bunfig.toml:2-3` turns coverage on with a 0.8 line threshold for every `bun test` run, so a run over four files can exit non-zero on coverage of the modules those files load, even when every test passes. Coverage is enforced only by the full `bun run check` (completion check 2), which must exit 0.
+
 ### Documentation
 
 - `README.md`: one short paragraph after the quick start. `PULSE_LOCATION` names the probe's location. It is trimmed, unset or blank means `default`, it is case-sensitive, at most 64 characters, and may hold only tab, space, visible ASCII and Latin-1 (U+0080 to U+00FF). Any other value stops the start with exit 2. Link to `docs/configuration.md#location`.
@@ -179,9 +182,12 @@ Red/green evidence: run `bun test src/location.test.ts src/settings.test.ts src/
 
 Run with Bun 1.4.0 in the probe checkout.
 
-1. `bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts`: exit 0, and T1–T7 are listed as passed by their exact titles.
-2. `bun run check`: exit 0, with coverage at or above the 0.8 line threshold of `bunfig.toml`, which stays unchanged.
-3. Message literal in code and docs: `grep -c 'PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 characters'` on `src/location.ts`, `docs/configuration.md` and `docs/troubleshooting.md` gives at least 1 for each file. `grep -c 'Latin-1' README.md` gives at least 1. `grep -c 'PULSE_LOCATION is longer than 64 characters' src/location.ts` gives 1 (unchanged).
+1. `bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts`: T1–T7 are listed as passed by their exact titles, and the summary reports `0 fail`. The exit status of this focused run is not a criterion, because the coverage threshold can fail it (see Red/green evidence). Check 2 enforces exit 0 and coverage.
+2. `bun run check`: exit 0. This includes the full test suite with coverage at or above the 0.8 line threshold of `bunfig.toml`, which stays unchanged. This is the only coverage gate.
+3. Messages in code and docs:
+   - `grep -c 'PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 characters'` on `src/location.ts`, `docs/configuration.md` and `docs/troubleshooting.md` gives at least 1 for each file. The new message is a fixed literal (decision 3), so it appears verbatim in the source.
+   - `grep -c 'Latin-1' README.md` gives at least 1.
+   - The overlength message is checked at runtime, not with a source grep. The source builds it from a template with `MAX_LOCATION_LENGTH` (`src/location.ts:9` at `9490141`), so a grep for the full text finds no match on the base or after the change. In the probe checkout, run `bun -e 'import { parseLocation } from "./src/location.ts"; for (const n of [64, 65]) { try { console.log("accepted", parseLocation("a".repeat(n)).length); } catch (e) { console.log(e.message); } }'`. The expected output is exactly two lines, `accepted 64` and `PULSE_LOCATION is longer than 64 characters`, which are literals from this spec and decision 2. It was run against the base in this planning run with this result, and it must give the same output at `HEAD`. The input is plain ASCII only. The precedence of the length message over the new message, when a 65-unit value also holds a refused character, is proved by T1 (`location defaults, trimming and length stay compatible`), not by a command.
 4. Disclosure: `git diff "$BASE" HEAD -- src README.md docs | grep '^+' | LC_ALL=C grep -n '[^ -~]'` prints nothing. Every added line is printable ASCII, so no raw refused or non-ASCII value is in code, tests or docs. `git diff "$BASE" HEAD -- README.md docs | grep '^+' | grep -nE '\\(u|x)[0-9A-Fa-f]'` prints nothing (no escaped values in docs).
 5. Test CPU: the medians of Performance impact for `BASE` and `HEAD`, with `HEAD` below 2.3 s.
 6. Exclusive scope, after the last commit, each as a separate result:
