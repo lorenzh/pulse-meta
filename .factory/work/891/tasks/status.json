@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Wait for observed early-answer bytes before the timing snapshot and release",
+      "files": [
+        "src/subscribe-test-support.ts",
+        "src/subscribe-timing.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, Steps 1–6 and Acceptance A1–A16; Required behavior R1–R4, Counterexamples, Performance impact and Security impact. Test-only behavior change; the two-file driver/self-check/regression fix is one task.",
+      "acceptance": [
+        {
+          "command": "export BASE=$(git rev-parse HEAD); export NOCOV=--config=/tmp/891-nocov/bunfig.toml; git rev-parse HEAD; bun --version; test -z \"$(git status --porcelain)\" && test \"$(bun --version)\" = 1.4.0 && python3 -c 'import os, pathlib, subprocess\np = pathlib.Path(\"/tmp/891-nocov/bunfig.toml\")\np.parent.mkdir(parents=True, exist_ok=True)\np.write_text(\"\")\nallowed = {\"src/subscribe-test-support.ts\", \"src/subscribe-timing.test.ts\"}\npaths = subprocess.check_output([\"git\", \"ls-tree\", \"-r\", \"--name-only\", os.environ[\"BASE\"]], text=True).splitlines()\npathlib.Path(\"/tmp/protected-891.txt\").write_text(\"\".join(p + \"\\n\" for p in paths if p not in allowed))\nprint(\"BASE\", os.environ[\"BASE\"])\nprint(\"empty external bunfig and protected-path list ready\")'",
+          "expected": "Steps 1–2: before edits, record the clean implementation BASE SHA, machine and Bun 1.4.0; exit 0. Keep BASE and NOCOV available for subsequent commands and record any difference from inspected status 2cefdf1cfbbd7cce175a9df97dbdafdec0e925aa. The external bunfig is empty; protected paths are all BASE paths except the exact two allowed files. Install lockfile dependencies with normal hooks if needed; no tracked tooling change."
+        },
+        {
+          "command": "test \"$(git rev-parse HEAD)\" = \"$BASE\" && for i in 1 2 3; do bun test $NOCOV src/subscribe-timing.test.ts || exit $?; done",
+          "expected": "A1/C0: run on unchanged BASE before edits. All 3 focused runs exit 0, each with 11 pass, 0 fail and no coverage table or % Lines line. Record all outputs; the verified empty external config disables focused coverage only."
+        },
+        {
+          "command": "test \"$(git rev-parse HEAD)\" = \"$BASE\" && bun run lint",
+          "expected": "A1/C1: unchanged BASE exits 0; report the result, including existing warnings."
+        },
+        {
+          "command": "test \"$(git rev-parse HEAD)\" = \"$BASE\" && bun run typecheck",
+          "expected": "A1/C2: unchanged BASE exits 0; report the result."
+        },
+        {
+          "command": "test \"$(git rev-parse HEAD)\" = \"$BASE\" && for i in 1 2 3; do bun test $NOCOV src/subscribe-timing.test.ts --test-name-pattern \"D22\" || exit $?; done",
+          "expected": "A1/C3: all 3 runs on unchanged BASE exit 0 with 10 pass, 1 filtered out, 0 fail and no coverage table. Preserve zero-byte, timer, release, full-answer and abort controls. Enumeration is not a passing baseline control because of its reported flake."
+        },
+        {
+          "command": "grep -n \"beforeRelease\" src/subscribe-test-support.ts src/subscribe-timing.test.ts; git show \"$BASE:src/subscribe-test-support.ts\"",
+          "expected": "A1/C4 and hold rule: grep prints nothing and exits 1 on BASE; inspect the BASE driver to confirm no existing hook or condition waits for observed client bytes between the 50-turn loop and snapshot. If BASE already synchronizes there, request needs-input rather than opening review."
+        },
+        {
+          "command": "test \"$(git rev-parse HEAD)\" = \"$BASE\" && { bun run test; observation_status=$?; printf \"base full-suite observation exit %s\\n\" \"$observation_status\"; bun test src/subscribe-timing.test.ts --test-name-pattern \"D22\"; observation_status=$?; printf \"tracked-bunfig focused observation exit %s\\n\" \"$observation_status\"; }",
+          "expected": "A1 observations only, excluded from the passing C0–C4 controls: report the full-suite exit status, Ran N tests across M files and every failure with its file header as observed; unrelated flakes may fail it. The tracked-bunfig D22 observation has 10 pass, 0 fail, 1 filtered out and exits 1 for the 80% coverage threshold. Do not misclassify coverage-only failure as red or change bunfig.toml."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test $NOCOV src/subscribe-timing.test.ts --test-name-pattern \"just before the release\"; red_status=$?; printf \"red %s exit %s\\n\" \"$i\" \"$red_status\"; test \"$red_status\" -eq 1 || exit 1; done",
+          "expected": "A2/Step 3: before fixing the driver, add only R3 regression/gate plus the RawClient import and earlyBytes helper it needs in the timing file, keeping subscribe-test-support.ts exactly at BASE. All 3 isolated runs exit 1 with 0 pass, 1 fail and AssertionError: false == true at the new assert.ok(driven.bytesBeforeRelease > 0), caused by the missing hook. No load/type error, gave up waiting message or coverage-only failure is valid red. Record all results."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test $NOCOV src/subscribe-timing.test.ts || exit $?; done",
+          "expected": "A3: after R1–R3 are fixed and committed with a Conventional Commit subject and normal hooks, all 3 runs on HEAD exit 0 with 12 pass, 0 fail and no coverage table. The base has 11 tests; exactly 1 gated regression is added."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test $NOCOV src/subscribe-timing.test.ts --test-name-pattern \"just before the release\"; mutant_status=$?; printf \"mutation %s exit %s\\n\" \"$i\" \"$mutant_status\"; test \"$mutant_status\" -eq 1 || exit 1; done",
+          "expected": "A4/Step 5: run this command separately for each scratch mutant: (a) hook immediately after the byte snapshot, (b) hook after release fire(). Each mutant fails 3 of 3 at the new positive bytesBeforeRelease assertion, with 1 fail and AssertionError: false == true, never merely coverage or a timeout. Report both sets of 3 results. Restore the correct R1 position without committing mutants, inspect git diff, then commit the fixed version before final HEAD evidence."
+        },
+        {
+          "command": "grep -c \"beforeRelease\" src/subscribe-enumeration.test.ts; grep -n \"beforeRelease\" src/subscribe-timing.test.ts; grep -n \"// ---- Self-check\" src/subscribe-timing.test.ts; git diff \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts",
+          "expected": "R1–R4/A5: enumeration grep prints 0 (exit 1); timing hooks occur only after the Self-check marker, in the early-answer iteration and the new regression. Full diff inspection confirms optional beforeRelease(client: RawClient): Promise<void> | void is awaited exactly once after unchanged 50 turns and before both byte snapshot and release; earlyBytes uses bounded waitUntil on client.received().length > 0. Wrong-timeout variant and ordinary D22/enumeration callers get no hook. The gate opens only in the regression hook, which observes releaseStates [\"live\"] after bytes; all created servers use existing cleanups. Record review of both variants and why the registration-based timeout variant needs no byte wait."
+        },
+        {
+          "command": "python3 -c 'import os, pathlib, subprocess\nbase = os.environ[\"BASE\"]\ntiming = pathlib.Path(\"src/subscribe-timing.test.ts\").read_text()\nsupport = pathlib.Path(\"src/subscribe-test-support.ts\").read_text()\ndef diff(path):\n    return subprocess.check_output([\"git\", \"diff\", base, \"HEAD\", \"--\", path], text=True)\nassert not any(line.startswith(\"-\") and not line.startswith(\"---\") and \"assert\" in line for line in diff(\"src/subscribe-timing.test.ts\").splitlines())\nfor literal in [\n    \"assert.ok(driven.bytesBeforeRelease > 0);\",\n    \"assert.throws(() => checkRequest(driven, { isCalling: true }), /0/);\",\n    \"assert.throws(() => checkRequest(driven, { isCalling: true }), /1500/);\",\n    \"[5000, 2000, 2000],\",\n    \"assert.equal(driven.bytesBeforeRelease, 0);\",\n    \"assert.deepEqual(delays, c.isCalling ? [5000, 2000, 1500] : [5000, 2000]);\",\n]:\n    assert literal in timing, literal\nassert not any(line.startswith(\"-\") and not line.startswith(\"---\") for line in diff(\"src/subscribe-test-support.ts\").splitlines())\nassert \"for (let turn = 0; turn < 50; turn++) await new Promise((r) => setImmediate(r));\" in support\nprint(\"assertions and 50-turn loop preserved\")'",
+          "expected": "A6: exit 0, prints assertions and 50-turn loop preserved. No existing assertion is removed or weakened; every listed literal remains. Support-file diff has no removed lines apart from its header. waitUntil, rawClient, scheduler, checkRequest and ordinary callers remain unchanged as required by non-goals."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD | grep '^+' | grep -E 'setTimeout|setInterval|sleep|Date\\.now|performance\\.now|for \\(|while \\('",
+          "expected": "A7/R4: prints nothing, final grep exit 1. No added real timer, sleep, wall-clock read or new turn-count loop; inspect all added lines too."
+        },
+        {
+          "command": "python3 -c 'import pathlib, re, subprocess\nroot = pathlib.Path(\"/tmp/891-runs\")\nroot.mkdir(parents=True, exist_ok=True)\nstatuses = []\ntiming_failures = []\nfor i in range(1, 51):\n    log = root / f\"run-{i}.log\"\n    assert not log.exists(), f\"Refuse to overwrite stability evidence: {log}\"\n    with log.open(\"w\") as stream:\n        result = subprocess.run([\"bun\", \"run\", \"test\"], stdout=stream, stderr=subprocess.STDOUT)\n    statuses.append(result.returncode)\n    print(f\"run {i} exit {result.returncode}\", flush=True)\n    text = log.read_text()\n    file = \"\"\n    failures = []\n    for line in text.splitlines():\n        if re.match(r\"^src/.*\\.test\\.ts:$\", line):\n            file = line\n        if line.startswith(\"(fail)\"):\n            failures.append((file, line))\n            print(f\"{log}: {file} {line}\", flush=True)\n    summary = re.search(r\"Ran \\d+ tests across \\d+ files\", text)\n    if summary:\n        print(f\"run {i}: {summary.group(0)}\", flush=True)\n    if (not summary or any(file == \"src/subscribe-timing.test.ts:\" or not file for file, _ in failures)\n        or (result.returncode != 0 and not failures)):\n        timing_failures.append(i)\n    if not summary:\n        print(f\"run {i}: missing summary\", flush=True)\nprint(\"completed runs\", len(statuses))\nprint(\"nonzero exits\", sum(status != 0 for status in statuses))\nprint(\"runs failing timing file\", timing_failures)\nassert len(statuses) == 50 and timing_failures == []'",
+          "expected": "A8: on committed HEAD, one machine, unchanged tracked bunfig with coverage on: 50 consecutive full bun run test invocations, no retries, dropped runs or restarted count; exit 0 with completed runs 50 and runs failing timing file []. Keep all logs, report all 50 statuses, summaries, every failing name/file, nonzero-exit count, BASE/HEAD SHAs, machine, Bun version and exact command in PR body. Missing summary/crash/hang or unattributed nonzero exit counts as a timing-file failure. Any timing-file failure invalidates the sequence and needs investigation. Other failures are reported as known limits, never called 50 green runs."
+        },
+        {
+          "command": "bun run check",
+          "expected": "A9: on committed HEAD exit 0 with lint, typecheck and full tests; tracked bunfig.toml keeps the 80% line gate. If only a known unrelated flake fails, report that run and a subsequent full check result. Never rerun away a timing-file, lint, typecheck or coverage failure."
+        },
+        {
+          "command": ": \"${BASE_TREE:?Set BASE_TREE to a separate clean checkout at the recorded BASE with equivalent lockfile dependencies}\"; python3 -c 'import os, pathlib, statistics, subprocess\nbase = os.environ[\"BASE\"]\nbase_tree = pathlib.Path(os.environ[\"BASE_TREE\"]).resolve()\nhead_tree = pathlib.Path.cwd()\nassert subprocess.check_output([\"git\", \"rev-parse\", \"HEAD\"], cwd=base_tree, text=True).strip() == base\nassert subprocess.check_output([\"git\", \"status\", \"--porcelain\"], cwd=base_tree, text=True) == \"\"\nvalues = {\"base\": [], \"branch\": []}\nroot = pathlib.Path(\"/tmp/891-cpu\")\nroot.mkdir(parents=True, exist_ok=True)\nfor i in range(1, 6):\n    for name, tree in [(\"base\", base_tree), (\"branch\", head_tree)]:\n        timing = root / f\"{name}-{i}.time\"\n        log = root / f\"{name}-{i}.log\"\n        with log.open(\"w\") as stream:\n            result = subprocess.run([\"/usr/bin/time\", \"-o\", str(timing), \"-f\", \"%U %S\", \"bun\", \"run\", \"test\"], cwd=tree, stdout=stream, stderr=subprocess.STDOUT)\n        parts = timing.read_text().splitlines()[-1].split()\n        cpu = sum(map(float, parts))\n        values[name].append(cpu)\n        print(f\"{name} {i}: user+system {cpu:.2f} s, exit {result.returncode}\", flush=True)\nfor name, runs in values.items():\n    print(f\"{name} raw {runs}, median {statistics.median(runs):.2f} s\")\nprint(f\"delta {statistics.median(values['\\''branch'\\'']) - statistics.median(values['\\''base'\\'']):+.2f} s\")'",
+          "expected": "A10/Performance impact: five interleaved pairs BASE, branch, BASE, branch, ... on the same machine, equivalent full-suite commands and dependencies. Report every user+system CPU value, status/failures, median of each 5 (sorted third value), and median(branch) minus median(base) rounded to 0.01 s. Information only on a shared noisy machine; no CPU threshold or claimed comparison to bench budget 3.4 s. Do not run Docker bench (#834)."
+        },
+        {
+          "command": "git show \"$BASE:src/subscribe-test-support.ts\" | wc -c; git show \"HEAD:src/subscribe-test-support.ts\" | wc -c",
+          "expected": "A10/image size: report both byte counts and HEAD minus BASE in PR body; expected positive and below 1,000 bytes (planning estimate +210, approximately +0.0002 MB), report an increase of 1,000 or more explicitly. This is a source-size estimate, not measured Docker image size. Both test_cpu_s (only affected gating metric) and reported-only image_mb can move; support is copied by Dockerfile but never imported by runtime modules, so no runtime performance change is expected."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD; python3 -c 'import os, subprocess\npaths = subprocess.check_output([\"git\", \"diff\", \"--name-only\", os.environ[\"BASE\"], \"HEAD\"], text=True).splitlines()\nassert paths == [\"src/subscribe-test-support.ts\", \"src/subscribe-timing.test.ts\"], paths'",
+          "expected": "A11: after last commit exit 0; committed path set against recorded implementation BASE is exactly src/subscribe-test-support.ts and src/subscribe-timing.test.ts, sorted, with no other paths."
+        },
+        {
+          "command": "git diff --name-only --cached; test -z \"$(git diff --name-only --cached)\"",
+          "expected": "A12/index: after last commit exit 0, no cached paths. Check index separately from committed and unstaged changes."
+        },
+        {
+          "command": "git diff --name-only; test -z \"$(git diff --name-only)\"",
+          "expected": "A12/worktree: after last commit exit 0, no unstaged paths. A BASE-to-worktree-only comparison is not a substitute."
+        },
+        {
+          "command": "git status --porcelain; test -z \"$(git status --porcelain)\"",
+          "expected": "A12/status: after last commit exit 0 and no output, including untracked files. All temporary configs, fixtures and evidence stay outside the target."
+        },
+        {
+          "command": "test \"$(grep -cxF -e README.md -e docs/development.md -e AGENTS.md -e bunfig.toml /tmp/protected-891.txt)\" -eq 4 && xargs -a /tmp/protected-891.txt git diff --exit-code \"$BASE\" HEAD -- && git diff --exit-code \"$BASE\" HEAD -- README.md docs/ AGENTS.md package.json bun.lock bunfig.toml biome.json .github/",
+          "expected": "A13: exit 0, both protected diffs empty; required protected-list count is 4. All BASE paths except the two allowed files are protected, including production files, README.md, docs/development.md, AGENTS.md, package/lock/tooling/config and CI. No documentation change is needed: test-only; development docs do not describe timing self-checks."
+        },
+        {
+          "command": "python3 -c 'import pathlib, subprocess, tempfile\nwith tempfile.TemporaryDirectory(prefix=\"891-scope-\") as directory:\n    root = pathlib.Path(directory)\n    def git(*args, code=0):\n        result = subprocess.run([\"git\", *args], cwd=root, text=True, capture_output=True)\n        assert result.returncode == code, (args, result.returncode, result.stdout, result.stderr)\n        return result.stdout\n    git(\"init\", \"-q\")\n    git(\"config\", \"user.name\", \"Scope Fixture\")\n    git(\"config\", \"user.email\", \"fixture@example.invalid\")\n    for name in [\"a.ts\", \"README.md\", \"docs/development.md\"]:\n        path = root / name\n        path.parent.mkdir(parents=True, exist_ok=True)\n        path.write_text(\"base\\n\")\n    git(\"add\", \".\")\n    git(\"commit\", \"-qm\", \"base\")\n    base = git(\"rev-parse\", \"HEAD\").strip()\n    def changed():\n        (root / \"README.md\").write_text(\"protected change\\n\")\n    def protected():\n        return subprocess.run([\"git\", \"diff\", \"--exit-code\", base, \"HEAD\", \"--\", \"README.md\", \"docs/development.md\"], cwd=root, capture_output=True).returncode\n    def accepts():\n        return (git(\"diff\", \"--name-only\", base, \"HEAD\") == \"a.ts\\n\"\n                and git(\"diff\", \"--name-only\", \"--cached\") == \"\"\n                and git(\"diff\", \"--name-only\") == \"\"\n                and git(\"status\", \"--porcelain\") == \"\"\n                and protected() == 0)\n    (root / \"a.ts\").write_text(\"allowed change\\n\")\n    git(\"add\", \"a.ts\")\n    git(\"commit\", \"-qm\", \"allowed\")\n    allowed = git(\"rev-parse\", \"HEAD\").strip()\n    assert accepts()\n    print(\"(a) allowed committed change: accepted\")\n    def reset():\n        git(\"reset\", \"--hard\", allowed)\n        git(\"clean\", \"-fd\")\n    changed()\n    git(\"add\", \"README.md\")\n    git(\"commit\", \"-qm\", \"forbidden\")\n    assert \"README.md\" in git(\"diff\", \"--name-only\", base, \"HEAD\").splitlines()\n    assert protected() == 1 and not accepts()\n    print(\"(b) protected commit: rejected\")\n    reset()\n    changed()\n    git(\"add\", \"README.md\")\n    assert git(\"diff\", \"--name-only\", \"--cached\") == \"README.md\\n\" and not accepts()\n    print(\"(c) protected index change: rejected\")\n    reset()\n    changed()\n    assert git(\"diff\", \"--name-only\") == \"README.md\\n\" and not accepts()\n    print(\"(d) protected unstaged change: rejected\")\n    reset()\n    (root / \"stray.txt\").write_text(\"untracked\\n\")\n    assert git(\"status\", \"--porcelain\") == \"?? stray.txt\\n\" and not accepts()\n    print(\"(e) untracked file: rejected\")\n    reset()\n    changed()\n    git(\"add\", \"README.md\")\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"README.md\")\n    git(\"diff\", \"--exit-code\", base, \"--\", \"README.md\")\n    assert git(\"diff\", \"--name-only\", \"--cached\") == \"README.md\\n\"\n    assert git(\"diff\", \"--name-only\") == \"README.md\\n\"\n    assert git(\"status\", \"--porcelain\") == \"MM README.md\\n\" and not accepts()\n    print(\"(f) worktree-vs-base exit 0; cached README.md; unstaged README.md; status MM README.md: rejected\")\n    reset()\n    changed()\n    git(\"add\", \"README.md\")\n    git(\"commit\", \"-qm\", \"forbidden\")\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"README.md\")\n    git(\"diff\", \"--exit-code\", base, \"--\", \"README.md\")\n    assert git(\"diff\", \"--name-only\", \"--cached\") == \"\"\n    assert git(\"diff\", \"--name-only\") == \"README.md\\n\"\n    assert git(\"status\", \"--porcelain\") == \" M README.md\\n\"\n    assert \"README.md\" in git(\"diff\", \"--name-only\", base, \"HEAD\").splitlines()\n    assert protected() == 1 and not accepts()\n    print(\"(g) worktree-vs-base exit 0; cached empty; unstaged README.md; status  M README.md; BASE..HEAD README.md; protected exit 1: rejected\")\nprint(\"all seven fixture states passed; disposable fixture removed\")'",
+          "expected": "A14: exit 0; (a) only allowed a.ts committed is accepted; (b) forbidden committed README, (c) staged README, (d) unstaged README, (e) untracked file, and (f)/(g) both restored-worktree traps are rejected by the combined checks. In (f) both cached and unstaged lists contain README.md, status MM README.md. In (g) cached is empty, unstaged contains README.md, status is \" M README.md\", BASE..HEAD lists README.md and protected diff exits 1. Both traps fool a BASE-to-worktree-only check (exit 0). Record all seven results in PR evidence; fixture is removed and never added to status."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts; git log --format=%s \"$BASE\"..HEAD",
+          "expected": "A15/Step 6: read every added line, including inline comments, and list every added comment verbatim in PR body. Expected exactly the beforeRelease JSDoc: /** Runs before the bytes are counted and the release fires (for example: wait for an early answer). */. Write none only after a full inspection finds none. No new test file; request needs-input if one is necessary. Commits use Conventional Commits, imperative lower-case subjects, no period, with normal pre-commit hooks."
+        },
+        {
+          "command": "git rev-parse HEAD; git diff --stat \"$BASE\" HEAD; git diff --check \"$BASE\" HEAD",
+          "expected": "A16/security/rollout: exit 0 for diff check; handoff PR body names Closes lorenzh/pulse-meta#<child> and includes A1–A14 evidence, recorded BASE/HEAD/machine/Bun, focused empty-config command and coverage rationale, red/green/mutants, all 50 statuses and failures, CPU raw values/medians/delta, support byte counts/delta, scope fixture, every added comment and known unrelated flakes (server.test.ts \"502 when the API is down\", subscribe-enumeration.test.ts \"R8 L9 full …\"). Explain README.md, docs/ and bunfig.toml unchanged because test-only; no production, dependency, setting, endpoint, type, tooling, CI or security-sensitive change. Status alone rolls out; no Docker bench and no other target task."
+        }
+      ]
+    }
+  ]
+}
