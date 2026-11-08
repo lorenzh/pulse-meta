@@ -14,12 +14,11 @@ Design reference for pulse-console (self-hosted first, hosted later), exported f
 
 ## Scope: what is v1
 
-The canvas has three groups. Only the first is a source for v1 work items (canvas note "scope").
+The canvas has three groups. Only boards titled "SH · …" are a source for v1 work items, wherever they sit on the canvas (canvas notes "scope" and the host and container note).
 
-- Self-hosted boards (`SH*`, titles start with "SH"): v1. One organisation, invites only, no billing or plans.
+- Self-hosted boards (titles start with "SH ·" or "SH <number> ·"): v1, also the host and container check boards (`SHHostCheck*`, `SHContainer*`, issues #836 and #839) in the row below "Later". One organisation, invites only, no billing or plans.
 - Hosted boards (titles start with "Hosted, later"): not v1.
 - "Later" boards (status page settings, notification channels, agent access, AI assistance): not v1. MCP and AI assistance are not part of the MVP (issue #460).
-- Host and container check boards (`SHHostCheck*`, `SHContainer*`, issues #836 and #839): they sit below the "Later" row on the canvas, but their canvas note calls them "v1 work item screens for the push agent". Treat them as v1 (the artifact is the source of truth); see the open question in the changes of the current version.
 
 ## Boards
 
@@ -124,7 +123,7 @@ Other files:
 - `SHIncidents`, `SHIncidentsMobile`, `SHOverview`, `SHOverviewMobile`, `SHIncidentComposer`, `SHStatusPage`: two new automatic incidents (#144 app-01 swap above 90%, #145 web on app-01 is down), 4 open incidents (was 2), overall "Partial outage · API, Website", Website shown as partial outage on the status page, checks up 33 of 38. The sidebar of all `SH*` boards shows 38 checks and 4 open incidents.
 - Tokens and styles: `console.css` adds threshold rows, meter list, key-value list and secret field (marked as design system candidates) and no-break identifiers. The design system version is unchanged.
 - Example secrets: the artifact replaced the made-up keys and tokens in `ApiKeys`, `Notifications`, `SHNotifications`, `SHProbes`, `SHTokens`, `SHTeam`, `SHSetup`, `SHSetupMobile`, `SHSecurity`, `SHInviteMobile`, `SHTwoFactor` and `SHTwoFactorMobile` by values marked `EXAMPLE` (setup keys, otpauth links, recovery codes, invite link). The earlier export still carried random-looking values.
-- Open question: the host and container boards sit below the "Later" row, which the canvas scope note and this README read as "not v1", but their own canvas note says "v1 work item screens". The README treats them as v1; please confirm in the artifact.
+- Scope rule: the canvas note on the host and container row marks it as v1 although it sits below the "Later" row. A board is v1 when its title starts with "SH"; position on the canvas does not decide.
 
 ## Changes in version 1794085135-571f
 
