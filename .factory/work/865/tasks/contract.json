@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Public check validators reject reserved headers without reading their values",
+      "files": [
+        "src/validate-core.ts",
+        "src/validate.ts",
+        "src/validate-admin.ts",
+        "dist/validate-core.js",
+        "dist/validate-core.d.ts",
+        "dist/validate.js",
+        "dist/validate-admin.js",
+        "test/reserved-header.test.ts",
+        "test/validate-diff.test.ts",
+        "README.md",
+        "docs/index.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract — Behavior (Decisions 1-6 and 8), Tests C1-C4 and D1, Documentation, Completion checks 1-8 and PR text; Required behavior 1-4, Counterexamples, Performance impact, Security impact, Contract fields and rollout step 1. One atomic change: move the existing admin guard into validate-core.ts, invoke it first in the HTTP branch inside verdict, preserve the admin call sites and original-object success, rebuild only the four listed dist files, and narrowly distinguish the candidate from the frozen reference in 15b. No schema, index export, wire/package version, dependency, setting or API change.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD",
+          "expected": "Before any edit, record the full implementation-base SHA as BASE for all comparisons and baseline runs; the inspected planning reference is 1b5e7d3e268372a6241db05ae30272eab7299b10, not a substitute for the actual base. Use an untouched disposable BASE checkout with its own install for repeat baseline checks. If BASE already rejects the reserved own header in validateCheck, request the section's hold instead of claiming a new regression."
+        },
+        {
+          "command": "bun --version",
+          "expected": "1.4.0."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "Exit 0 at recorded BASE and HEAD; package.json and bun.lock remain byte-identical to BASE."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Run and pass on untouched recorded BASE before new assertions, and again at final HEAD: exit 0, lint, build, typecheck and full suite green, line coverage >= 0.8 with unchanged bunfig.toml. Do not claim any baseline control passes without running it there."
+        },
+        {
+          "command": "bun test test/admin.test.ts test/security-review.test.ts test/security-adversarial.test.ts test/http-options.test.ts test/validate.test.ts test/runtime-getters.test.ts test/version.test.ts test/smoke.test.ts",
+          "expected": "Run at BASE and HEAD; 0 failing tests in both runs. Keep all eight files byte-identical. Preserve admin input/view and both config lists, export-marker restrictions, valid HTTP headers, other check types, state behavior, getters, successful identity, WIRE_VERSION === 1, package export list and fresh dist. Focused coverage may fail its threshold; judge these runs by test results, not exit status."
+        },
+        {
+          "command": "bun test test/reserved-header.test.ts test/validate-diff.test.ts",
+          "expected": "Regression first: at BASE plus only the new suite and narrow 15b test change, C1 and C2 fail for source, built and package because the reserved own header is accepted, and D1 fails because the candidate accepts it. C3 and C4 pass for all three entries; all other differential assertions and the throwing-Proxy control pass. Setup/import/type errors are not red evidence; a failing control must be redesigned. After the fix and rebuild, C1-C4 for all three entries and D1 pass with 0 fail; report per title and entry on BASE and HEAD. C1 covers every Counterexamples value class, implicit/explicit HTTP, plain/null-prototype records and the literal paths checks[3], check, checks[1], config.checks[1] through all four validators. C2 rejects own accessor and non-enumerable descriptors without reading them (0 getter calls), with no escaping exception. C3 preserves object/array/nested item identity and no mutation for literal, empty-string and env headers. C4 preserves inherited names and the three exact existing messages in the spec. Fixtures are built only inside tests; sentinel RESERVED-HEADER-SENTINEL-865 appears in no error. Focused coverage exit status is not a criterion."
+        },
+        {
+          "command": "bun run build",
+          "expected": "Exit 0; commit the four generated files together with the source, tests and docs. The helper uses ownValue/isObject/Object.hasOwn and never reads the reserved value; its HTTP call runs before schema validation inside verdict, so dual faults report the reserved-name text. Preserve non-HTTP validation, inherited/check-level names, case variants, other prototype-related names and admin behavior. No new package-root export or import cycle. In 15b change only the final candidate/reference comparison and add the issue comment; the reference keeps historical success/identity and every other assertion remains unchanged."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "After the last commit, exit 0 against the committed tree, proving the build cannot merely repair stale committed dist."
+        },
+        {
+          "command": "git status --porcelain -- dist",
+          "expected": "After that build, empty output."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD -- dist | LC_ALL=C sort",
+          "expected": "Exactly four lines: dist/validate-admin.js; dist/validate-core.d.ts; dist/validate-core.js; dist/validate.js."
+        },
+        {
+          "command": "rg -c 'is not an allowed header name' src/validate-core.ts src/validate-admin.ts src/validate.ts",
+          "expected": "One match in src/validate-core.ts; zero matches in src/validate-admin.ts and src/validate.ts. Exactly one shared implementation retains the existing comment and error text."
+        },
+        {
+          "command": "rg -n '__proto__' README.md docs/index.md",
+          "expected": "README Usage states the own reserved-name rule for every check validator regardless of value, fixed path error and no value read. docs/index.md updates the headers row and validator-error prose, names validateCheck, validateCheckWithState, validateChecksResponse, validateAdminConfigExport and admin input/view/config validators, and retains identity on success. Both files change in this same behavior change."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/index.md",
+          "expected": "Docs contain the required rule and no new malformed payload, JSON fixture or reproduction command. Public prose remains at location, class, impact and fix direction; existing unrelated examples stay unchanged."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs | grep '^+' | grep -c '{\"'",
+          "expected": "Prints 0 (grep with zero matches normally exits 1); no added JSON fixtures."
+        },
+        {
+          "command": "for run in 1 2 3; do /usr/bin/time -f '%U %S' bun run test; done",
+          "expected": "Run in untouched BASE and final HEAD separately; all full test runs pass. Report median user+system CPU for each: HEAD < 9.0 s. Use the three actual measurements per revision, not the planning-run median."
+        },
+        {
+          "command": "for run in 1 2 3; do /usr/bin/time -f '%U %S' bun run build; done",
+          "expected": "Run at BASE and HEAD separately; builds pass. Report median user+system CPU: HEAD < 6.4 s. Preserve committed dist freshness after the measurements."
+        },
+        {
+          "command": "diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '%s\\n' README.md dist/validate-admin.js dist/validate-core.d.ts dist/validate-core.js dist/validate.js docs/index.md src/validate-admin.ts src/validate-core.ts src/validate.ts test/reserved-header.test.ts test/validate-diff.test.ts | LC_ALL=C sort)",
+          "expected": "G1 after the last commit: exit 0; committed diff matches exactly these 11 allowed files, without directory wildcards."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "G2 after the last commit: empty output, checked and reported separately from committed and working-tree scope."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "G3 after the last commit: empty output, checked and reported separately from index and committed scope."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "G4 after the last commit and all checks: empty output, including untracked files."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src/index.ts src/schema.ts src/admin.ts src/version.ts dist/index.js dist/index.d.ts dist/schema.js dist/schema.d.ts dist/validate.d.ts dist/validate-admin.d.ts dist/version.js test/reference test/admin.test.ts test/security-review.test.ts test/security-adversarial.test.ts test/smoke.test.ts test/version.test.ts test/types.fixture.ts package.json bun.lock bunfig.toml biome.json tsconfig.json tsconfig.build.json eslint.config.js lefthook.yml .github/workflows/ci.yml AGENTS.md CLAUDE.md",
+          "expected": "G5 after the last commit: exit 0; every explicit protected path is byte-identical to the implementation base, including frozen references, public exports, schemas/types/version, baseline controls, dependencies, config, CI and instructions."
+        },
+        {
+          "command": "node --input-type=module -e 'import assert from \"node:assert/strict\";\nimport { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, writeFileSync, rmSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nconst dir = mkdtempSync(join(tmpdir(), \"scope-865-\"));\nconst git = (...args) => execFileSync(\"git\", args, { cwd: dir, encoding: \"utf8\", stdio: [\"ignore\", \"pipe\", \"pipe\"] });\nconst write = (name, value) => writeFileSync(join(dir, name), value);\ntry {\n  git(\"init\", \"-q\");\n  git(\"config\", \"user.name\", \"Scope fixture\");\n  git(\"config\", \"user.email\", \"scope@example.invalid\");\n  git(\"config\", \"commit.gpgsign\", \"false\");\n  write(\"allowed.txt\", \"base\\n\");\n  write(\"protected.txt\", \"base\\n\");\n  git(\"add\", \".\");\n  git(\"commit\", \"-qm\", \"base\");\n  const base = git(\"rev-parse\", \"HEAD\").trim();\n  write(\"allowed.txt\", \"allowed change\\n\");\n  git(\"add\", \"allowed.txt\");\n  git(\"commit\", \"-qm\", \"allowed\");\n  const allowed = git(\"rev-parse\", \"HEAD\").trim();\n  const reset = () => { git(\"reset\", \"--hard\", allowed); git(\"clean\", \"-fd\"); };\n  const protectedChange = () => write(\"protected.txt\", \"protected change\\n\");\n  const commitProtected = () => { protectedChange(); git(\"add\", \"protected.txt\"); git(\"commit\", \"-qm\", \"protected\"); };\n  const restore = () => {\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\");\n    assert.equal(git(\"diff\", base, \"--\", \"protected.txt\"), \"\");\n  };\n  const row = (name, expected) => {\n    let protectedPass = true;\n    try { git(\"diff\", \"--exit-code\", base, \"HEAD\", \"--\", \"protected.txt\"); } catch { protectedPass = false; }\n    const actual = [\n      git(\"diff\", \"--name-only\", base, \"HEAD\").trim() === \"allowed.txt\",\n      git(\"diff\", \"--name-only\", \"--cached\") === \"\",\n      git(\"diff\", \"--name-only\") === \"\",\n      git(\"status\", \"--porcelain\") === \"\",\n      protectedPass\n    ].map(value => value ? \"P\" : \"F\").join(\" \");\n    console.log(name + \" \" + actual);\n    assert.equal(actual, expected);\n  };\n  row(\"S1\", \"P P P P P\");\n  commitProtected(); row(\"S2\", \"F P P P F\");\n  reset(); protectedChange(); row(\"S3\", \"P P F F P\");\n  reset(); protectedChange(); git(\"add\", \"protected.txt\"); row(\"S4\", \"P F P F P\");\n  restore(); row(\"S5\", \"P F F F P\");\n  reset(); commitProtected(); restore(); row(\"S6\", \"F P F F F\");\n  reset(); write(\"extra.txt\", \"untracked\\n\"); row(\"S7\", \"P P P F P\");\n  reset(); row(\"S8\", \"P P P P P\");\n} finally { rmSync(dir, { recursive: true, force: true }); }'",
+          "expected": "Exit 0. Disposable repository is removed. Columns G1 G2 G3 G4 G5: S1=P P P P P; S2=F P P P F; S3=P P F F P; S4=P F P F P; S5=P F F F P; S6=F P F F F; S7=P P P F P; S8=P P P P P, exactly the eight-state table in contract Completion check 8. S5 and S6 additionally prove git diff BASE -- protected.txt is empty after restoring only the working tree, while index/commit checks still detect the protected change. Report each state, including clean allowed-only and untracked controls."
+        },
+        {
+          "command": "git diff --check \"$BASE\" HEAD",
+          "expected": "Exit 0. Handoff/PR evidence names #865 and security-contract-2026-11-03-2, actual BASE, C1-C4/D1 per entry at BASE and HEAD, every baseline control result, G1-G5 separately, all eight fixture states, committed-dist freshness and CPU medians. Complete applicable Security impact checklist: input boundary, 0 accessor reads, no sentinel in errors, fixed error text, preserved admin/API guards and dependency scope; identify other checklist items as unchanged. Rollout merges contract first, consumers retain their pins, wire version stays 1. State limits: Proxy result text is unspecified; inherited names and case variants stay accepted. Public handoff/PR text contains no payload or reproduction command."
+        }
+      ]
+    }
+  ]
+}
