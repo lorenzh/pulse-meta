@@ -10,6 +10,9 @@ The Docker bench of pulse-api (`bun bench/run.ts`) must not fail because a host 
   1. Teardown is not confirmed before a retry (`bench/stack.ts:293-300,327-332,351-357` only log a failed `compose down`). Fixed by decision 4 (confirmed teardown) and its forced teardown-failure self-tests.
   2. `stackEnv` was to be exported only for a test, against api `AGENTS.md:72`. Fixed: `stackEnv` stays private. Every new export has a production caller (see "Exports and their production callers" in the api section).
   3. The collision search left out names. Fixed: the search under "Contract fields" covers every new name, module, file, env var and log text. It found a real collision: `CommandError` already exists in pulse-deploy (`deploy/cli/docker.ts:31`), so the new class is `CommandExitError`.
+- The second plan review found two more defects. This revision fixes them:
+  4. The end-of-day day-change retry reseeds without confirmed teardown. `runEodPhase` (`bench/eod.ts:187-208`) calls `seed` again after a UTC day change, and the seed callback in `runEodStack` removes the run directory first (`bench/stack.ts:362`), even when the `down()` in `measure`'s `finally` (`stack.ts:351-358,381-383`) failed. The outer confirmation runs only after the whole phase, too late. Fixed by decision 4a: a new `withConfirmedReseed` wrapper in `bench/bind-retry.ts` confirms the teardown before every `seed` call. `runEodStack` in `stack.ts` is authorized to use it (Required behavior 7). `bench/eod.ts` stays unchanged. `check-bind-retry.ts` drives the real `runEodPhase` with a deterministic day change and a failed teardown.
+  5. The breakdown asked `check-side-round.ts` to check `stackEnv` fixtures, although that script uses fake phase functions and cannot reach `stackEnv`. Fixed: `check-side-round.ts` checks only what reaches its fakes (the `StackIdentity` and the confirmation closure). It must not claim any `stackEnv` check. The `stackEnv` path is proved only by the three production-boundary checks under "Exports and their production callers".
 - `.factory/work/834/issue-review.md`: no blocking questions. Open points 1-8 are resolved below.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/834` answered `HTTP 404` again in this run. There are no findings yet, which is normal for a feature without children.
 - Read-only clones: api at `515031bd3fd2aa6b8993e325b24ab08f4a3510d6`, config at `bc870498cc8e2539a132ce2aac35a09db1deabd8`. The pinned config files `biome.json`, `eslint.config.js` and `.github/workflows/check.yml` at `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` were read with `gh api` in the first plan run and do not differ from the clone.
@@ -22,6 +25,7 @@ The Docker bench of pulse-api (`bun bench/run.ts`) must not fail because a host 
 - `bench/run.ts:56` uses one workspace `.bench/` per checkout. The shared clones use `FETCH_HEAD` (`:161`), and fixed paths are deleted (`:169,188,238,260,264`). Two runs from one checkout overwrite each other's files.
 - The cold-read phase restarts the api twice through `composeTarget` (`bench/cold.ts:289-301`, `docker compose restart api`). With a port that Docker picks, every restart binds a new random host port.
 - `runChecked` (`bench/measure.ts:75-87`) throws a plain `Error` that keeps only the last 500 characters of stderr. `bench/run.ts:339-344` turns any thrown error into exit `2`. A gating verdict gives exit `1` (`:329-331`).
+- The end-of-day phase has its own inner retry: when the UTC day changes during the phase, `runEodPhase` (`bench/eod.ts:187-208`) runs `seed` and `measure` once more. `seed` in `runEodStack` starts with `rm(runDir, { recursive: true, force: true })` (`bench/stack.ts:361-362`). `measure` ends with `down()` in its `finally` (`stack.ts:381-383`), and `down()` only logs a failure (`stack.ts:351-358`). So after a failed `down`, the reseed deletes the run directory under a container that may still run.
 - There is no retry on a bind failure. A failed stack writes `docker compose ps -a` and the logs to `failure-round<n>-<side>.log` (`stack.ts:288-290,323-325,378-380`). Then the phase's `finally` runs `compose down -v --remove-orphans -t 5`. A failed `down` is only logged (`stack.ts:293-300,327-332,351-357`), so containers can stay behind without anyone checking.
 - `run.ts:339-344` ends the process with `process.exit`, so an open socket does not keep it alive.
 
@@ -35,7 +39,7 @@ The Docker bench of pulse-api (`bun bench/run.ts`) must not fail because a host 
    - Order: start at a random block (the random source is injected) and scan forward with wrap-around. Each candidate is tried at most once per allocation. If no block is left, the error is `no free bench port block in 20000-29999` (exit `2`, not retried).
    - Gap between the check and Docker's bind: the retry below closes it. The kernel does not hand out ports outside the ephemeral range for outgoing connections. Docker also refuses a host port that another container already publishes (`port is already allocated`). So a race between the check and the bind ends in a bind failure, which the retry handles. It never ends with two stacks sharing a port.
    - Explicit ports also keep the host port across `docker compose restart api` in the cold-read phase. `bench/cold.ts` keeps reading the port with `docker compose port` and does not change.
-2. **Retry boundary and count.** The unit is one phase call for one side in one round. There are three phases: `load` (`runStack`), `cold` (`runColdStack`) and `eod` (`runEodStack`). Each phase call runs at most two attempts (the private constant `BIND_ATTEMPTS = 2`). Attempt 2 runs only when attempt 1 failed with a port bind failure (decision 5) and its teardown is confirmed (decision 4). A nested helper never retries on its own. The end-of-day day-change retry inside `runEodPhase` (`bench/eod.ts:186-208`) stays as it is and runs inside each attempt.
+2. **Retry boundary and count.** The unit is one phase call for one side in one round. There are three phases: `load` (`runStack`), `cold` (`runColdStack`) and `eod` (`runEodStack`). Each phase call runs at most two attempts (the private constant `BIND_ATTEMPTS = 2`). Attempt 2 runs only when attempt 1 failed with a port bind failure (decision 5) and its teardown is confirmed (decision 4). A nested helper never retries on a bind failure. The end-of-day day-change retry inside `runEodPhase` (`bench/eod.ts:187-208`) is not a bind retry: `bench/eod.ts` stays unchanged, and the day-change retry runs inside each attempt. Its reseed now waits for a confirmed teardown (decision 4a).
 3. **Fresh attempt.** Before each attempt, the harness removes the phase's run directory, as `run.ts:238,260,264` does today. The phase function then rebuilds it from the side's untouched seed (`prepareRunDir`, or the eod `seed`). The load phase creates its runtime tokens again on the new api. Attempt 2 gets a new block that excludes the failed block. Samples of a failed attempt are dropped: only the result of the successful attempt is added to `samples`, so every metric gets exactly one value per side and round. Seeds, warm-up, the idle and load windows, settle, restart order, routes, cycle counts and metric definitions do not change.
 4. **Confirmed teardown.** The phase functions keep their own `finally` with `compose down` and its log line, unchanged. After every attempt (success, bind failure or other failure), the attempt loop runs `confirmTeardown` for the phase's project, before anything else happens:
    - `docker ps -a -q --filter label=com.docker.compose.project=<project>`. Exit `0` with empty output means confirmed.
@@ -48,6 +52,16 @@ The Docker bench of pulse-api (`bun bench/run.ts`) must not fail because a host 
      - after any other failure (including a second bind failure): the primary error is rethrown unchanged (`PortBindError` "failed twice", or the original error). The teardown failure is only logged and never replaces the primary error.
    - The process then ends with exit `2` through `run.ts:339-344`. `process.exit` frees the held guards.
    - Final cleanup (decision 8) checks both side projects with `confirmTeardown` again. If one is not confirmed, the cleanup removes no image and no directory. It logs `cleanup skipped: containers of <project> remain; kept .bench/<id> and its images`. So no workspace is deleted under a running container.
+
+   4a. **Confirmed teardown before every end-of-day seed.** The inner day-change retry of `runEodPhase` deletes the run directory in `seed` (`stack.ts:362`). So `seed` must not run before the teardown is confirmed.
+   - New export `withConfirmedReseed(phase, { confirmTeardown, side, project })` in `bench/bind-retry.ts`. It takes an `EodPhase` (the type exported by `bench/eod.ts:176-181`) and returns an `EodPhase`. `measure` is passed through unchanged. Its `seed(now)` first awaits `confirmTeardown()`:
+     - Confirmed: it calls the wrapped `seed(now)` and returns its value.
+     - Not confirmed: it throws `TeardownError` with the message `teardown not confirmed: eod on <side> (project <project>): <reason>`. The wrapped `seed` is not called, so the run directory is not removed.
+   - It confirms before every `seed` call, the first one too. The first check finds no containers, because the outer loop confirmed the previous attempt or phase on the same project. It costs one `docker ps`.
+   - The check runs inside `seed`, before the copy of the seed database. That is before `measure`, so it is outside every measured window. `runEodPhase` takes `seededAt` before it calls `seed`, as today, so the day-change rule does not change.
+   - In `runEodStack` only the argument of `runEodPhase` changes: the `{ seed, measure }` object is wrapped with `withConfirmedReseed`. The bodies of `seed` and `measure`, `down()`, the dump and the log lines stay as they are.
+   - `runEodStack` gets the check as a new parameter `confirmTeardown: () => Promise<TeardownCheck>`. `side-round.ts` passes `() => deps.confirmTeardown(project)` with the phase's project.
+   - A `TeardownError` from the reseed is not a bind failure (decision 5). The outer `withBindRetry` handles it as "any other failure": it confirms again, logs if that fails too, and rethrows the `TeardownError`. Exit `2`.
 5. **What counts as a bind failure.** A failure counts only when the error, or one of its `cause`s, is a `CommandExitError` (new, `bench/measure.ts`) of the command `docker` whose full stderr matches, case-insensitively, `address already in use` or `port is already allocated`. Nothing else is retried: other Docker errors, readiness timeouts, request failures, allocation errors, `TeardownError`, a second change of the UTC day, and gating verdicts (verdicts are never thrown anyway). `CommandExitError` keeps today's message (`<command> <args> exited with <code>: <last 500 chars of stderr>`) and adds the readonly fields `command`, `args`, `code` and the full `stderr`. So classification works even when the matching text is not in the last 500 characters.
 6. **Terminal bind error.** When attempt 2 also fails with a bind failure, the phase throws `PortBindError` (name `PortBindError`, `cause` = the attempt-2 error). Its message is `host port bind failed twice: <phase> on <side> (ports <api>,<probe>,<status>,<notify>): <first stderr line that matches, at most 300 chars>`. `run.ts` prints it as `bench: host port bind failed twice: …` through the unchanged catch (`run.ts:339-344`) and exits `2`. It is not a table row, a budget row or a regression row, and no `table.*` or `samples.json` file is written. A recovered attempt-1 failure logs `bind retry: <phase> on <side>: host port in use, retrying once with new ports` (printed with the `[bench] ` prefix of `log`). The run stays valid.
 7. **Diagnostics per attempt.** When attempt 1 fails and a retry follows, it writes its stack dump to `failure-round<n>-<side>-<phase>-attempt1.log` in `--out`. Every other failure keeps `failure-round<n>-<side>.log`.
@@ -71,7 +85,7 @@ None expected for any metric in `bench/budgets.json`. The change touches only ha
 - `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `build_cpu_s`: unchanged (no change to a service, image or build).
 - `test_cpu_s` of api: unchanged. `bun run test` (`package.json:15`) runs `bun test`, which loads only `*.test.ts`. The bench files and `bench/selftest/check-*.ts` are not loaded. It is measured anyway (see the api section): five interleaved runs, with the delta expected within noise (|delta| < 10 %).
 - Reported `startup_wall_ms`, p95 latencies, `rps`, `image_mb`: unchanged. The image content is the same; only its tag carries the run id.
-- Harness wall time, which is not a metric, grows by the fresh clones of each run (seconds to a minute) and by one `docker ps` per phase. Parallel runs no longer fail, which saves reruns.
+- Harness wall time, which is not a metric, grows by the fresh clones of each run (seconds to a minute) and by one `docker ps` per phase attempt plus one per end-of-day seed (decision 4a), all outside the measured windows. Parallel runs no longer fail, which saves reruns.
 - The bench runs only for the concurrent proof. Its metrics are not performance evidence, because two benches share one machine.
 
 ## Security impact
@@ -79,7 +93,7 @@ None expected for any metric in `bench/budgets.json`. The change touches only ha
 Security impact: yes. The change adds recursive deletes and Docker image and container removal by computed names, and error text that carries external data (Docker stderr).
 
 Checklist items that apply:
-- **Atomic, path-safe writes and deletes:** `rm -rf` runs only on `<repo>/.bench/<id>`, after checking the id pattern and that the resolved path is exactly that directory, and only after confirmed teardown. `docker image rm` runs only on the eight tags this run built. `compose down` and `docker ps --filter label=…` run only for its own two projects. A hostile or malformed id (`..`, `/`, empty, upper case, 11 or 13 characters) is refused before any command runs.
+- **Atomic, path-safe writes and deletes:** `rm -rf` runs only on `<repo>/.bench/<id>`, after checking the id pattern and that the resolved path is exactly that directory, and only after confirmed teardown. The run-directory deletes before an attempt (`withBindRetry`) and before every end-of-day seed (`stack.ts:362`, behind `withConfirmedReseed`) also run only after confirmed teardown of the phase's project. `docker image rm` runs only on the eight tags this run built. `compose down` and `docker ps --filter label=…` run only for its own two projects. A hostile or malformed id (`..`, `/`, empty, upper case, 11 or 13 characters) is refused before any command runs.
 - **Secrets in errors and logs:** `PortBindError` carries at most one matching stderr line (300 chars), plus the ports, side and phase. `TeardownError` carries the project, a count and an exit code. Neither carries env values, tokens (`BENCH_ADMIN_TOKEN`, service token secrets) or config contents. The full stderr stays on `CommandExitError.stderr` for classification, and nothing prints more of it than today's 500-character tail.
 - **Input validation:** the content of `ip_local_port_range` is parsed strictly (two integers 1-65535 separated by whitespace, low <= high). Anything else is a harness error, never a silent default.
 - **Dependency pins:** no new dependency. Only the `node:crypto`, `node:net`, `node:fs` and `node:path` built-ins.
@@ -114,6 +128,12 @@ One repository: only the `bench/` directory of `pulse-api` changes. No other rep
   - A readiness timeout with containers left over: the readiness error is rethrown unchanged (not `TeardownError`), and the teardown failure is logged.
   - `docker ps` lists one container, the second `compose down` succeeds, and the list is then empty: confirmed, and the retry goes ahead.
   - Final cleanup with containers left in `pulse-bench-<id>-b`: no `docker image rm` and no directory removal, only the `cleanup skipped` log line.
+- **End-of-day reseed (decision 4a), with the real `runEodPhase` and a fake clock.** The literal times are `late` = `2026-11-08T23:59:30Z`, `next` = `2026-11-09T00:11:00Z`, `noon` = `2026-11-08T12:00:00Z`. The clock gives the check time, the seed time and the end time of each pass.
+  - The day changes (`late`, `late`, `next`, then `next`, `next`, `next` + 60 s), and both checks are confirmed. Events: `confirm`, `seed(late)`, `measure`, `confirm`, `seed(next)`, `measure`. The result is the second one.
+  - The day changes and the second check returns `{ isConfirmed: false, reason: "1 containers remain after compose down (exit 1)" }`. Then `TeardownError` with the message `teardown not confirmed: eod on b (project pulse-bench-0a1b2c3d4e5f-b): 1 containers remain after compose down (exit 1)`. There is exactly one `seed` (at `late`) and one `measure`. The base code, which reseeds after a failed `down`, gives a second `seed`, and this case rejects it.
+  - No day change (`noon`, `noon`, `noon` + 60 s): one `confirm`, one `seed`, one `measure`.
+  - The first check is not confirmed: `TeardownError`, and no `seed` and no `measure`.
+  - A `TeardownError` from the reseed, given to `withBindRetry` as the error of attempt 1: exactly one attempt, and the same error is rethrown. It is never retried as a bind failure.
 - **Classification:**
   - `docker compose … up` with stderr `Error response from daemon: driver failed programming external connectivity on endpoint pulse-bench-0a1b2c3d4e5f-b-api: Bind for 127.0.0.1:20001 failed: port is already allocated` is retried.
   - `… failed to bind host port for 127.0.0.1:20006:172.18.0.3:9100/tcp: address already in use` is retried.
@@ -141,23 +161,23 @@ No contract or config names. New harness-internal names in pulse-api only:
 - Constant: `BIND_ATTEMPTS` (private).
 - Functions and types:
   - `bench/ports.ts`: `parseEphemeralRange`, `candidateBlocks`, `allocatePorts`, `listenLoopback`, `EphemeralRange`, `PortLease`, `ServicePorts`.
-  - `bench/bind-retry.ts`: `withBindRetry`, `isPortBindFailure` (private).
-  - `bench/invocation.ts`: `newInvocationId`, `benchProject`, `benchImage`, `portEnv`, `workspaceDir`, `confirmTeardown`, `cleanupInvocation`.
+  - `bench/bind-retry.ts`: `withBindRetry`, `withConfirmedReseed`, `isPortBindFailure` (private).
+  - `bench/invocation.ts`: `newInvocationId`, `benchProject`, `benchImage`, `portEnv`, `workspaceDir`, `confirmTeardown`, `cleanupInvocation`, and the type `TeardownCheck`.
   - `bench/side-round.ts`: `measureStack` (moved from `run.ts`, not new) and `SideRoundDeps`.
   - `bench/stack.ts`: `StackIdentity`.
 - Modules: `bench/ports.ts`, `bench/bind-retry.ts`, `bench/invocation.ts`, `bench/side-round.ts`. Self-tests: `check-command-error.ts`, `check-ports.ts`, `check-bind-retry.ts`, `check-invocation.ts`, `check-side-round.ts`.
 - Phase names `load`, `cold`, `eod`. Name patterns `pulse-bench-<id>-<side>` and `failure-round<n>-<side>-<phase>-attempt1.log`.
 - Log and error texts: `invocation <id>`, `bind retry:`, `host port bind failed twice`, `host port bind failed, retry skipped`, `teardown not confirmed`, `no bench port block`, `no free bench port block`, `cleanup skipped`.
 
-The collision search was run in this plan run over every clone in `.target/.repos` (agent, api, config, console, contract, deploy, kit, notify, probe, status, website), excluding `node_modules` and `.git`:
+The collision search was run again in this plan run (api `515031b`, contract `6370c25`, config `bc87049`) over every clone in `.target/.repos` (agent, api, config, console, contract, deploy, kit, notify, probe, status, website), excluding `node_modules` and `.git`:
 
 ```sh
 cd .target/.repos
 for n in BENCH_API_PORT BENCH_PROBE_PORT BENCH_STATUS_PORT BENCH_NOTIFY_PORT \
   CommandExitError PortBindError TeardownError PortAllocationError BIND_ATTEMPTS \
-  parseEphemeralRange candidateBlocks allocatePorts listenLoopback withBindRetry isPortBindFailure \
+  parseEphemeralRange candidateBlocks allocatePorts listenLoopback withBindRetry withConfirmedReseed isPortBindFailure \
   newInvocationId benchProject benchImage portEnv workspaceDir confirmTeardown cleanupInvocation \
-  StackIdentity PortLease ServicePorts EphemeralRange SideRoundDeps ip_local_port_range \
+  StackIdentity PortLease ServicePorts EphemeralRange SideRoundDeps TeardownCheck ip_local_port_range \
   "host port bind failed" "bind retry:" "teardown not confirmed" "no bench port block" \
   "no free bench port block" "cleanup skipped" "retry skipped" "attempt1.log" "pulse-bench-[0-9a-f]" \
   side-round bind-retry invocation.ts ports.ts \
@@ -179,7 +199,7 @@ Result: every name above printed `0`. Other results:
 Files:
 - `bench/compose.bench.yaml` (changed)
 - `bench/measure.ts` (changed: `CommandExitError` only)
-- `bench/stack.ts` (changed: identity and port wiring only)
+- `bench/stack.ts` (changed: identity and port wiring, and the `withConfirmedReseed` wrapper in `runEodStack`)
 - `bench/run.ts` (changed: run id, workspace, port and teardown wiring, cleanup; `measureStack` moved out)
 - `bench/ports.ts` (new)
 - `bench/bind-retry.ts` (new)
@@ -219,6 +239,8 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
 | `ports.ts` `parseEphemeralRange`, `candidateBlocks` | `run.ts` at start: reads the `/proc` file, computes the blocks, and stops with the "no bench port block" error |
 | `ports.ts` `allocatePorts`, `listenLoopback` | `run.ts` wires them into the `side-round.ts` dependencies |
 | `bind-retry.ts` `withBindRetry` | `side-round.ts`, once per phase |
+| `bind-retry.ts` `withConfirmedReseed` | `stack.ts` `runEodStack`, around the `{ seed, measure }` object it gives to `runEodPhase` |
+| `invocation.ts` `TeardownCheck` (type) | returned by `confirmTeardown`; used by `bind-retry.ts`, `stack.ts` (`runEodStack` parameter) and `side-round.ts` |
 | `invocation.ts` `newInvocationId`, `workspaceDir`, `cleanupInvocation` | `run.ts` |
 | `invocation.ts` `benchProject` | `run.ts` (the side projects) and `side-round.ts` (teardown confirmation) |
 | `invocation.ts` `benchImage` | `stack.ts` `imageSizeMB`, and `cleanupInvocation` |
@@ -227,7 +249,7 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
 | `side-round.ts` `measureStack` | `run.ts` |
 | `stack.ts` `StackIdentity` (type) | `side-round.ts` and `run.ts` |
 
-`stackEnv` in `stack.ts` stays private, as today. How the lease ports reach Compose is proved by three checks: `portEnv` in `check-invocation.ts` (literal ports to literal env names), the Compose driver below (literal env to literal published ports), and the `docker ps` snapshot of the concurrent proof.
+`stackEnv` in `stack.ts` stays private, as today. How the lease ports reach Compose is proved by three checks: `portEnv` in `check-invocation.ts` (literal ports to literal env names), the Compose driver below (literal env to literal published ports), and the `docker ps` snapshot of the concurrent proof. In addition, a review of the `stack.ts` diff shows that `stackEnv` sets `BENCH_PROJECT` from `identity.project` and spreads `portEnv(identity.ports)`. No self-test reaches `stackEnv`, and no task acceptance may claim that one does. In particular, `check-side-round.ts` replaces the phase functions with fakes, so it cannot see `stackEnv` or any env value.
 
 ### Required behavior
 
@@ -248,6 +270,7 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
    - `PortBindError`, `TeardownError` and `BIND_ATTEMPTS = 2` are private.
    - `withBindRetry(deps)` is the attempt loop of decisions 2, 3, 4, 6 and 7. It has these injected dependencies: `allocate(exclude)`, `removeRunDir()`, `attempt(lease, failureLogFile)`, `confirmTeardown()`, `log`, plus `phase`, `side` and the two failure-log paths.
    - Per attempt, the order is: allocate, remove the run directory, run the attempt, confirm the teardown. Only after confirmation does it release the lease, then return, retry or rethrow, as decision 4 says.
+   - `withConfirmedReseed(phase, { confirmTeardown, side, project })` implements decision 4a. It throws the same private `TeardownError`. It has no other logic: no retry, no log, no clock.
 5. `bench/invocation.ts` implements decision 8:
    - `newInvocationId(randomBytes)`, `benchProject(id, side)`, `benchImage(project, service)` and `portEnv(ports)`, which returns the four `BENCH_*_PORT` strings.
    - `workspaceDir(root, id)` throws on an invalid id or a path that escapes `<root>/.bench/`.
@@ -256,12 +279,14 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
 6. `bench/side-round.ts`:
    - Exports `measureStack`, moved from `run.ts:230-273` with the same order of phases and the same `add(...)` calls and metric keys.
    - Each of the three phase calls goes through `withBindRetry`, with the phase's project from `benchProject`.
-   - `runStack`, `runColdStack`, `runEodStack`, `imageSizeMB`, `allocate`, `confirmTeardown`, `removeDir`, `log`, the run id, the work root and the `--out` directory come in as `SideRoundDeps`.
+   - `runStack`, `runColdStack`, `runEodStack`, `imageSizeMB`, `allocate`, `confirmTeardown` (`(project) => Promise<TeardownCheck>`), `removeDir`, `log`, the run id, the work root and the `--out` directory come in as `SideRoundDeps`.
+   - The eod attempt calls `runEodStack` with the identity `{ project, ports: lease.ports }` and the closure `() => deps.confirmTeardown(project)` (decision 4a).
    - The `samples` and `missingOnA` logic stays the same, line for line, apart from the dependency calls. Review it with `git diff --color-moved=zebra`.
 7. `bench/stack.ts`:
    - `buildImages`, `imageSizeMB`, `runStack`, `runColdStack` and `runEodStack` take a `StackIdentity` (`{ project, ports }`; `ports` is `null` for `buildImages`) instead of computing `pulse-bench-${side}`.
    - The private `stackEnv` sets `BENCH_PROJECT` and spreads `portEnv(ports)`. `imageSizeMB` inspects `benchImage(project, service)`.
-   - No other line of the procedures changes: `prepareRunDir`, `startServices`, the waits, `IDLE_S`, the load, the sampling, the dump, and the `finally` with `compose down` and its log line all stay as they are.
+   - `runEodStack` (`stack.ts:340-388`) is the one adapter change beyond the identity: it gets the new parameter `confirmTeardown: () => Promise<TeardownCheck>`, and its `return runEodPhase({ seed, measure }, log)` (`:359-387`) becomes `return runEodPhase(withConfirmedReseed({ seed, measure }, { confirmTeardown, side: dirs.side, project }), log)`. The bodies of `seed` (`:361-370`, including the `rm` at `:362`) and `measure` (`:371-384`), and `down()` (`:351-358`), stay the same line for line.
+   - No other line of the procedures changes: `prepareRunDir`, `startServices`, the waits, `IDLE_S`, the load, the sampling, the dump, and the `finally` with `compose down` and its log line all stay as they are. `bench/eod.ts` (with `runEodPhase`) does not change.
 8. `bench/run.ts`:
    - Make the run id, log it, and set `WORK_ROOT` to `workspaceDir(ROOT, id)`.
    - At start, read `/proc/sys/net/ipv4/ip_local_port_range` and compute `candidateBlocks`. Wire `allocatePorts` with `listenLoopback` and a `node:crypto` random start.
@@ -277,7 +302,7 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
      - the confirmed teardown and its `teardown not confirmed` and `retry skipped` errors;
      - the `-attempt1.log` file.
      It also covers the run id, `.bench/<id>/` and its removal at the end (and when it is kept), separate `--out` directories for parallel runs, and the parallel-run command.
-   - `bench/README.md`, "Reading a failure": the bind errors, the teardown errors, the kept workspace and the attempt-1 log.
+   - `bench/README.md`, "Reading a failure": the bind errors, the teardown errors (also the one before an end-of-day reseed after a UTC day change), the kept workspace and the attempt-1 log.
    - `bench/README.md`, "Self-tests": what the five new scripts cover.
    - `README.md`: one or two sentences beside the bench line (`README.md:74`). They say that runs can start in parallel on one machine, ports come from outside the ephemeral range, and a bind failure gets one retry. Add a link to `bench/README.md`.
    - `docs/development.md`, "Performance bench" (`:45-47`): the same short summary and the link to `../bench/README.md`.
@@ -302,6 +327,7 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
         - after a success: `TeardownError` and 0 releases;
         - after a readiness timeout: the timeout error is rethrown unchanged, with 0 releases.
       - The attempt-1 log path is `failure-round1-b-load-attempt1.log`.
+      - End-of-day reseed (decision 4a): every "End-of-day reseed" counterexample above. Each one drives the real `runEodPhase` from `../eod.ts` with `withConfirmedReseed` around a fake `EodPhase`. The fake `seed` and `measure` only record events (a fake `seed` stands for the `rm` at `stack.ts:362`). The clock and `sleep` are fakes passed to `runEodPhase`, and the times are the ISO literals of the counterexamples. Assert the exact event list, the number of `seed`, `measure` and `confirm` calls, and the error `name` and message. The `TeardownError` from the failing reseed case is then thrown by the fake attempt of a `withBindRetry` run: assert one attempt and the same error rethrown.
     - `check-invocation.ts`:
       - `newInvocationId` on fixed bytes `0a 1b 2c 3d 4e 5f` gives `0a1b2c3d4e5f`.
       - `benchProject`, `benchImage` and `portEnv` give the literal names, and `{ BENCH_API_PORT: "20001", BENCH_PROBE_PORT: "20002", BENCH_STATUS_PORT: "20003", BENCH_NOTIFY_PORT: "20004" }`.
@@ -321,10 +347,12 @@ api `AGENTS.md:72` forbids exporting a function only for a test. Every new expor
       - Eod: fails once, then succeeds.
       - Teardown not confirmed after a bind failure in `cold`: no second `cold` attempt, `eod` never runs, and `PortBindError` "retry skipped".
       - Check that:
-        - each phase gets a new lease with distinct ports, and `confirmTeardown` gets the project `pulse-bench-0a1b2c3d4e5f-a`;
+        - each phase's fake gets the `StackIdentity` `{ project: "pulse-bench-0a1b2c3d4e5f-a", ports }`, where `ports` are the lease ports that the fake `allocate` handed out for that attempt (literal ports, distinct per attempt), and `confirmTeardown` gets the project `pulse-bench-0a1b2c3d4e5f-a`;
+        - the fake `runEodStack` gets a `confirmTeardown` closure, and calling it calls the fake `deps.confirmTeardown` with `pulse-bench-0a1b2c3d4e5f-a`;
         - samples hold exactly one value per metric;
         - no phase runs a third time;
         - a non-bind error (readiness timeout) is not retried.
+      - It does not check `stackEnv`, `BENCH_*` env values or Compose names. Its fakes replace the phase functions, so it cannot reach them. Those are proved only by the checks named under "Exports and their production callers".
 
 ### Checks and completion evidence
 
@@ -349,10 +377,12 @@ Record `BASE` (the full SHA of api `main` at the start of the build) before any 
 
      If the installed Compose prints `published` as a number, write the literal with numbers and say so.
    - The other new scripts test new modules. On `BASE`, they would only fail on a missing import, which the rules do not count as evidence. Say this in the PR and show them green on the branch.
+   - This also holds for the end-of-day reseed cases in `check-bind-retry.ts`. The base code path (`runEodStack`) cannot be driven without Docker. The failing reseed case rejects the base order by its literal count of one `seed`, and the build quotes `stack.ts:361-362` of `BASE` to show that the base reseeds with no check.
 3. **Branch green:**
    - `bun run bench:selftest` (15 scripts), the Compose `config --quiet`, the driver above (literal match) and `bun run check` all pass on the final branch.
    - Show the output of `bun run bench:selftest` with each new script's exit status.
-   - Show `grep -n '^export' bench/ports.ts bench/bind-retry.ts bench/invocation.ts bench/side-round.ts` and, for each export, `grep -rn '<name>' bench --include='*.ts' | grep -v selftest`. Each export must have a non-self-test caller, as the table above says. `grep -n 'export function stackEnv' bench/stack.ts` must print nothing.
+   - Show `grep -n '^export' bench/ports.ts bench/bind-retry.ts bench/invocation.ts bench/side-round.ts` and, for each export, `grep -rn '<name>' bench --include='*.ts' | grep -v selftest`. Each export must have a non-self-test caller, as the table above says, including `withConfirmedReseed` (in `bench/stack.ts`) and `TeardownCheck`. `grep -n 'export function stackEnv' bench/stack.ts` must print nothing.
+   - `git diff "$BASE" HEAD -- bench/stack.ts` touches inside `runEodStack` only the signature, the `project` line and the `runEodPhase(...)` call. `git diff --exit-code "$BASE" HEAD -- bench/eod.ts` passes (it is in the protected list).
 4. **Concurrent Docker proof on the factory runner.** The exception of this issue applies: only this proof runs the Docker bench. From one checkout of the final branch, start two runs at the same time:
 
    ```sh
@@ -397,6 +427,6 @@ Record `BASE` (the full SHA of api `main` at the start of the build) before any 
 - **The runner's ephemeral range may cover 20000-29999.** Then every run fails at once with the explicit `no bench port block …` error (exit `2`), not with a random collision. The concurrent proof shows whether this happens on the factory runner. The machine that wrote this spec has `32768 60999`.
 - **A non-bench service may listen on many ports in 20000-29999.** The check skips those blocks. Running out of blocks gives a clear error.
 - **Docker without the userland proxy** (iptables only) does not show published ports to the listen check. The guards still keep benches apart, and Docker's `port is already allocated` plus the retry covers other containers.
-- **A Docker daemon that cannot remove containers** now stops the run with exit `2` (`TeardownError` or `retry skipped`) and keeps the workspace. Today such a run would go on with leftovers. This is intended: a leftover container would distort the next phase. The README explains how to remove it by hand (`docker compose -p <project> down -v`).
+- **A Docker daemon that cannot remove containers** now stops the run with exit `2` (`TeardownError`, also before an end-of-day reseed, or `retry skipped`) and keeps the workspace. Today such a run would go on with leftovers. This is intended: a leftover container would distort the next phase. The README explains how to remove it by hand (`docker compose -p <project> down -v`).
 - **Per-run clones** cost network and time on every run. That is accepted for isolation, and the nightly hosted runner clones fresh anyway.
 - **Moving `measureStack`** could change the sample order or keys by mistake. The `--color-moved` review and `check-side-round.ts`, which checks the exact metric keys and one value per metric, cover this.
