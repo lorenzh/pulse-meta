@@ -14,9 +14,10 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
 
 ## Sources read
 
-- Issue #870 and its one comment (the issue-review run). Issue review: `.factory/work/870/issue-review.md`. This spec settles all of its open points (see "Decisions").
-- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/870` answered `HTTP 404`, so this feature has no findings yet. That is normal for a feature with no children.
-- deploy clone at `f7210ec3e9905cf0c3eeaf9d86ad662008578ebf` (merge of deploy #18). Files read: `AGENTS.md`, `README.md`, `dev/README.md`, `docs/cli.md`, `package.json`, `biome.json`, `bunfig.toml`, `.gitignore`, `.github/workflows/ci.yml`, and `e2e/redact.sh`, `redact.test.sh`, `compose-e2e.sh`, `console-lib.sh`, `console-setup.sh`, `console-setup.test.sh`, `runtime-settings.sh`, `runtime-settings.test.sh`, `console-probes.sh`, `console-incidents.sh`. Also `scripts/init-secrets.sh`.
+- Issue #870 and its comments: issue review, the first plan, the breakdown and the plan review. Issue review: `.factory/work/870/issue-review.md`. This spec settles all of its open points (see "Decisions").
+- Plan review of the first plan: an append failure exited the scenario, but a readable, incomplete registry stayed trusted by later diagnostics. This revision adds persistent invalidation (Decisions "Fail closed", Required behavior 1 to 6) and the regressions L5 to L8 and W3. L2 (missing file) stays.
+- Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/870` answered `HTTP 404` again in this run, so this feature has no findings yet. That is normal for a feature with no children.
+- deploy clone at `f7210ec3e9905cf0c3eeaf9d86ad662008578ebf` (merge of deploy #18; `git ls-remote origin HEAD` gives the same SHA in this run). Files read: `AGENTS.md`, `README.md`, `dev/README.md`, `docs/cli.md`, `package.json`, `biome.json`, `bunfig.toml`, `.gitignore`, `.github/workflows/ci.yml`, and `e2e/redact.sh`, `redact.test.sh`, `compose-e2e.sh`, `console-lib.sh`, `console-setup.sh`, `console-setup.test.sh`, `runtime-settings.sh`, `runtime-settings.test.sh`, `console-probes.sh`, `console-incidents.sh`. Also `scripts/init-secrets.sh`.
 - console clone: `src/cookies.ts:10-14` names the cookies `pulse_console_session`, `pulse_console_csrf` and `pulse_console_setup`. In `strict-https` mode they get the prefix `__Host-` (`src/cookies.ts:31-34`).
 - config clone `bc87049` and the files that deploy pins at `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`.github/workflows/check.yml`, `biome.json`, `package.json`). Each was read with `gh api …?ref=04108fa…`. All three are byte-identical to the clone.
 - api clone `515031b`: `bench/budgets.json` has entries only for `api`, `config`, `contract`, `kit`, `notify`, `probe` and `status`. It has none for deploy.
@@ -25,21 +26,22 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
 ## Current behavior (deploy `f7210ec`)
 
 - `e2e/redact.sh:6-23` `redact <needles file>` replaces each non-empty needle line with `[redacted]` as a literal string. If the needles file cannot be read, it prints only `[redacted: no needles file]`. `redact_needles` (`:27-42`) writes the token arguments, the `password` and `setup_key` of `owner.env`, and each secret file line. It writes nothing else.
-- `e2e/compose-e2e.sh:80-93`: on a failure, `cleanup` prints `docker compose ps --all` and then `docker compose logs` through `redact`. The needles are the admin token, the db svc token, the status and notify token files, the owner.env values and `e2e/.secrets`.
-- `e2e/compose-e2e.sh:1124-1127`: when the probe step fails, it prints the captured child output with a plain `cat "$probe_log"`, which is unredacted. The incidents step (`:1150-1158`) and the runtime step (`:1188-1198`) scan the raw log for owner and token values and then `cat` it, on success and on failure. The scan does not cover cookies, CSRF or form tokens, TOTP codes or recovery codes.
+- `e2e/compose-e2e.sh:80-93`: on a failure, `cleanup` prints `docker compose ps --all` and then `docker compose logs` through `redact`. The needles are the admin token, the db svc token, the status and notify token files, the owner.env values and `e2e/.secrets`. `trap cleanup EXIT` is at `:122`.
+- `e2e/compose-e2e.sh:1124-1129`: when the probe step fails, it prints the captured child output with a plain `cat "$probe_log"`, which is unredacted. The incidents step (`:1149-1158`) and the runtime step (`:1186-1198`) scan the raw log for owner and token values and then `cat` it, on success and on failure. The scan does not cover cookies, CSRF or form tokens, TOTP codes or recovery codes.
 - `e2e/console-lib.sh`:
+  - `fail` (`:10`) prints `FAIL: …` on stderr and exits 1. Inside a command substitution such as `token=$(csrf …)` it ends only that subshell; whether the scenario stops depends on how the caller uses the result.
   - `req` (`:14-21`) writes body, headers and jar to files that the next request overwrites.
   - `csrf` (`:23-28`) runs inside command substitutions.
   - `form_token_args` (`:34-51`) sets `ftok`.
   - `totp_after` (`:79-92`) keeps only the last code.
   - `console_owner_signed_in` (`:111-153`) receives the recovery-code page at `:147-149` and drops it.
-- `e2e/console-setup.sh` writes the recovery codes to `$work/recovery-codes` (`:170-171`). It uses jars A, B, C, D, E and S, and its trap removes `$work` (`:31-32`).
-- `e2e/runtime-settings.sh:110-140` `form_args` reads the `csrf` and `form_token` fields of a form through `FORM_JS` (node). It does not use `csrf` or `form_token_args`. Its work files `.cookies`, `.body` and `.headers` are in `$work`, which the parent removes.
-- `.github/workflows/ci.yml:237-245`: the `dev` job runs `bash e2e/console-setup.sh dev/compose.yaml`. On failure, its step "Stack state and logs" prints `docker compose -f dev/compose.yaml logs --no-color` unredacted.
+- `e2e/console-setup.sh` sources `console-lib.sh` (`:27-28`) and writes the recovery codes to `$work/recovery-codes` (`:133`, `:170-171`). It uses jars A, B, C, D, E and S, and its trap `trap 'rm -rf "$work"' EXIT` removes `$work` (`:31-32`). It ends with `exit 0` in the two-factor branch (`:290`) or at the end of the legacy flow.
+- `e2e/runtime-settings.sh` sources `console-lib.sh` (`:17`). Its `form_args` (`:105-140`) reads the `csrf` and `form_token` fields of a form through `FORM_JS` (node). It does not use `csrf` or `form_token_args`. Its work files `.cookies`, `.body` and `.headers` are in `$work`, which the parent removes.
+- `.github/workflows/ci.yml:237-249`: the `dev` job runs `bash e2e/console-setup.sh dev/compose.yaml`. On failure, its step "Stack state and logs" prints `docker compose -f dev/compose.yaml logs --no-color` unredacted.
 
-## Decisions (open points of the issue review)
+## Decisions (open points of the issue review and of the plan review)
 
-- **Registry.** The run keeps a registry file. Its path is in the exported variable `E2E_NEEDLES`. The file is mode 600 and sits in a mode 700 directory that the run owns. The helpers append each value to it as soon as they see the value. Appends to a file survive command substitutions, child `bash` processes, overwritten response files, removed jars and removed work directories. An array cannot do that.
+- **Registry.** The run keeps a registry file. Its path is in the exported variable `E2E_NEEDLES`. The file is mode 600 and sits in a mode 700 directory that the run owns. Only the owner of the run (`compose-e2e.sh`, or the CI `dev` job) creates it; a helper never creates it. The helpers append each value to it as soon as they see the value. Appends to a file survive command substitutions, child `bash` processes, overwritten response files, removed jars and removed work directories. An array cannot do that.
   - Empty or unset `E2E_NEEDLES` means no registry. The helpers then record nothing and behave exactly as on the base.
   - The registry ignores values shorter than 6 characters (a TOTP code has exactly 6). Short values like `1` or `on` would mask ordinary text.
 - **Who records.** The shared helpers in `e2e/console-lib.sh` do the recording, so `console-probes.sh` and `console-incidents.sh` need no change. Three more places record:
@@ -47,13 +49,19 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
   - `console-setup.sh` (password, setup key, recovery-codes file),
   - `console_owner_signed_in` (password and setup key).
 - **Fallback.** `redact` also drops every line that has one of the credential-bearing record shapes S1 to S5 (listed under "Required behavior"). It prints a fixed marker in place of the dropped line. The fallback covers values that were never recorded, such as the one-time recovery page or a value seen before the registry existed. It does not claim to find unknown secrets in unlabelled text.
-- **Fail closed.** Suppose `E2E_NEEDLES` is set but does not name a readable regular file when the diagnostics are built. Then the diagnostics print only `[redacted: no needles file]`, the existing marker. An empty `E2E_NEEDLES` is not an error, because nothing was recorded.
+- **Fail closed, persistently.** A registry is trusted only while it is *valid*. Collection failure makes it invalid for good, for every later process, and every diagnostic consumer then prints no log line.
+  - **Valid** (`needles_valid`, in `e2e/redact.sh`): `E2E_NEEDLES` is empty, or all of these hold: the invalidation marker `"$E2E_NEEDLES.invalid"` does not exist; `E2E_NEEDLES` is a regular file and not a symlink; the file is readable and writable; its directory is writable. The writability checks catch an append that failed while the helper could neither remove the file nor create the marker.
+  - **Invalidation** (`needles_invalidate`): creates the empty marker `"$E2E_NEEDLES.invalid"` (mode 600) and removes the registry file, each best effort and silent. Either one alone makes `needles_valid` false. Because no helper ever creates the registry, a removed registry stays removed, so a later successful append cannot make an incomplete registry look valid again.
+  - **Who invalidates.** `needle_add` invalidates when an append fails. It also refuses to append to a registry that is already invalid. In both cases it returns 1.
+  - **Failure status.** A recording call that fails ends the scenario with `FAIL: needle registry: append failed` on stderr. The message names the rule only, never a value. A failure inside a command substitution may be swallowed by the caller, so each run owner also checks validity at exit: `compose-e2e.sh` `cleanup` and the new `EXIT` handler `setup_exit` of `console-setup.sh` turn an exit code 0 into 1 with `FAIL: needle registry: collection failed; diagnostics suppressed` on stderr when the registry is invalid.
+  - **Suppressed diagnostics.** `redact_needles` fails (removes its output, returns 1) when the registry is invalid, so `redact` prints only the existing marker `[redacted: no needles file]` and no log line. This holds for `cleanup`, `replay_redacted` and `e2e/failure-logs.sh`. An empty `E2E_NEEDLES` is valid, because nothing was recorded.
+  - **Residual limit, stated in the README.** If the file system lets the helper neither remove the registry nor create the marker, and the registry and its directory still look writable to the consumer, the consumer cannot tell. That needs an unlink failure on a writable directory; no scenario path produces it.
 - **Lifetime.**
-  - `compose-e2e.sh` creates its own registry right after it installs its `EXIT` trap. It ignores an inherited `E2E_NEEDLES`. `cleanup` removes the registry after the last diagnostic, on success and on failure.
-  - In CI, the `dev` job creates the registry in `$RUNNER_TEMP/e2e-needles` before any service starts. The console-setup step and the failure-log step get it through step `env`. The teardown step removes it first.
-- **Replay of failed child output.** When a probe, incidents or runtime child fails, `compose-e2e.sh` prints its captured output through the same needles and fallback. On success it prints that output unchanged with `cat`. Success output and the existing raw scans stay exactly as they are.
+  - `compose-e2e.sh` creates its own registry right after it installs its `EXIT` trap. It ignores an inherited `E2E_NEEDLES`. `cleanup` removes the registry directory, with the registry and any marker, after the last diagnostic, on success and on failure.
+  - In CI, the `dev` job creates the registry in `$RUNNER_TEMP/e2e-needles` before any service starts. The console-setup step and the failure-log step get it through step `env`. The teardown step removes the directory first.
+- **Replay of child output.** `compose-e2e.sh` prints the captured output of the probe, incidents or runtime child through `replay_redacted` when the child failed *or* the registry is invalid. Otherwise it prints it unchanged with `cat`, as today. Success output and the existing raw scans stay exactly as they are on a valid run.
 - **Probe secrets.** The needles of `compose-e2e.sh` also take the lines of `$probe_work/secrets` when that file exists. It holds the probe secrets that `console-probes.sh` writes. This is one more line in the same needle builder, so a failed probe step cannot show the secrets it just created.
-- **Docs.** The changed docs are `README.md` (it owns the e2e test) and `dev/README.md` (it owns the dev setup and documents `console-setup.sh`). `docs/cli.md` stays unchanged and protected. It owns the CLI install, wizard and flags; it has no text on e2e diagnostics (`grep -n -i 'e2e\|redact' docs/cli.md` finds nothing). Its operator text at `docs/cli.md:198` (`docker compose logs console | grep 'setup code'`) is about ordinary operator logs, which this change does not touch. No `docs/operation.md` exists in deploy.
+- **Docs.** The changed docs are `README.md` (it owns the e2e test) and `dev/README.md` (it owns the dev setup and documents `console-setup.sh`). `docs/cli.md` stays unchanged and protected. It owns the CLI install, wizard and flags; it has no text on e2e diagnostics (`grep -n -i 'e2e\|redact' docs/cli.md` finds nothing). Its operator text at `docs/cli.md:198` is about ordinary operator logs, which this change does not touch. No `docs/operation.md` exists in deploy.
 
 ## Scope
 
@@ -70,24 +78,27 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
 
 ## Required behavior
 
-1. **Registry helpers** (`e2e/console-lib.sh`):
-   - `needle_add <value...>` does nothing when `${E2E_NEEDLES:-}` is empty. Otherwise it appends each value of at least 6 characters as one line, with `umask 077`. It prints nothing on stdout. If the append fails, it calls `fail "needle registry: E2E_NEEDLES is not writable"`. That message names the rule only, never a value.
-   - `needles_from_response` does nothing when `${E2E_NEEDLES:-}` is empty. Otherwise it records:
+1. **Registry functions** (`e2e/redact.sh`, the owner of trust; it still only defines functions):
+   - `needles_valid` returns 0 or 1 by the rule in "Decisions". It prints nothing.
+   - `needles_invalidate` does nothing when `${E2E_NEEDLES:-}` is empty. Otherwise it runs `(umask 077; : >"$E2E_NEEDLES.invalid")` and `rm -f -- "$E2E_NEEDLES"`, both with stderr to `/dev/null`, and returns 0. It prints nothing.
+   - `needle_add <value...>` returns 0 at once when `${E2E_NEEDLES:-}` is empty. Otherwise it returns 1 without writing when `needles_valid` fails. Then, for each value of at least 6 characters, it appends the value as one line with `(umask 077; printf '%s\n' "$v" >>"$E2E_NEEDLES") 2>/dev/null`. On the first failed append it calls `needles_invalidate` and returns 1. It prints nothing on stdout or stderr.
+2. **Recording** (`e2e/console-lib.sh`, which now also sources `e2e/redact.sh` from the repository root, with a `# shellcheck source=e2e/redact.sh` line):
+   - `needles_from_response` returns 0 at once when `${E2E_NEEDLES:-}` is empty. Otherwise it passes to `needle_add`:
      - every cookie value in `$jar`: field 7 of each tab-separated line with at least 7 fields that is not a comment, where `#HttpOnly_` lines count as cookie lines;
      - the value of each `Set-Cookie:` header in `$headers`, matched without regard to case, with CR removed, up to the first `;`;
      - every `value` of `name="csrf" value="…"` and `name="form_token" value="…"` in `$body`, from every form, including forms that the scenario does not pick;
      - every recovery-code-shaped string in `$body`: 8 groups of 4 lower-case hex digits joined by `-`.
 
-     A missing file is skipped without output.
-2. **Recording points:**
-   - `req` keeps curl's exit code (`curl … || rc=$?`), calls `needles_from_response`, and returns that code. Its stdout stays exactly curl's `%{http_code}`.
-   - `csrf` and `form_token_args` record the value they select.
-   - `totp_after` records every code that `e2e/totp.mjs` prints, also codes it skips.
-   - `console_owner_signed_in` records `password` and `setup_key` once it has read the key.
-   - `form_args` in `runtime-settings.sh` records the values of the fields `csrf` and `form_token` that it puts into `fargs`.
-   - `console-setup.sh` records `password` after it creates it, `setup_key` after step 8 reads it, and each line of `$secrets_file` after step 8 writes it.
-3. **`e2e/redact.sh`:**
-   - `redact_needles` also copies every line of `$E2E_NEEDLES` when that variable is non-empty and names a readable regular file. When it is non-empty and does not, `redact_needles` removes its output file and returns 1, so a later `redact` fails closed.
+     A missing file is skipped without output. It returns 1 when a `needle_add` call returns 1.
+   - Every recording point below ends with `|| fail "needle registry: append failed"`:
+     - `req` keeps curl's exit code (`curl … || rc=$?`), calls `needles_from_response`, and returns curl's code. Its stdout stays exactly curl's `%{http_code}`.
+     - `csrf` and `form_token_args` record the value they select.
+     - `totp_after` records every code that `e2e/totp.mjs` prints, also codes it skips.
+     - `console_owner_signed_in` records `password` and `setup_key` once it has read the key.
+     - `form_args` in `runtime-settings.sh` records the values of the fields `csrf` and `form_token` that it puts into `fargs`.
+     - `console-setup.sh` records `password` after it creates it, `setup_key` after step 8 reads it, and each line of `$secrets_file` after step 8 writes it.
+3. **`e2e/redact.sh` consumers:**
+   - `redact_needles` first checks the registry. When `E2E_NEEDLES` is non-empty and `needles_valid` fails, it removes its output file and returns 1, so a later `redact` prints only `[redacted: no needles file]`. Otherwise it writes what it writes today and also every line of `$E2E_NEEDLES` when that variable is non-empty.
    - `redact` keeps literal masking. It also replaces each line that matches one of the shapes below with exactly `[suppressed: credential line]`. The test is case-insensitive, on a lower-cased copy of the original line. The awk regexes contain no `{n}` interval expressions, so mawk and gawk agree.
      - S1, cookie header: `(^|[^a-z0-9_-])(set-)?cookie[ \t]*:`
      - S2, console cookie: `pulse_console_(session|csrf|setup)[ \t]*=`
@@ -98,16 +109,17 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
      Every other line prints after masking. The unreadable-needles behavior stays.
 4. **`e2e/compose-e2e.sh`:**
    - At the top: `e2e_needles_dir=""` and `export E2E_NEEDLES=""`, which overrides an inherited value. Right after `trap cleanup EXIT`, it creates `e2e_needles_dir=$(mktemp -d)` with mode 700 and the empty file `"$e2e_needles_dir/needles"` with mode 600. Only then does it set `E2E_NEEDLES` to that file.
-   - New `collect_needles <out>` calls `redact_needles` with the arguments that cleanup uses today, plus the lines of `$probe_work/secrets` when that file exists. `cleanup` uses `collect_needles`.
+   - New `collect_needles <out>` calls `redact_needles` with the arguments that cleanup uses today, plus the lines of `$probe_work/secrets` when that file exists, and returns its status. `cleanup` uses `collect_needles`.
    - New `replay_redacted <log>` builds needles with `collect_needles`, prints `<log>` through `redact` and removes the needles file.
-   - On a failed probe child, `replay_redacted "$probe_log"` replaces `cat`. When `incidents_code != 0` or `runtime_code != 0`, `replay_redacted` prints the log. On success the log is printed with `cat` as before.
-   - The raw `hits` scans, their order, their messages and the `fail` texts stay unchanged.
-   - `cleanup` removes `$e2e_needles_dir` (when set) after its failure block, on success and on failure. Teardown order and the exit code stay unchanged.
-5. **New `e2e/failure-logs.sh <compose file>`:**
-   - It runs from the repository root and sources `e2e/redact.sh`.
-   - It prints `docker compose -f <file> ps --all`, then `docker compose -f <file> logs --no-color 2>&1` through `redact`. The needles come from `redact_needles "$needles" "" "$PWD/secrets"` plus `$E2E_NEEDLES`. It removes the needles file.
-   - A wrong argument count or a missing file prints the usage line to stderr and exits 2. Otherwise it exits 0.
-6. **CI `dev` job** (`.github/workflows/ci.yml`, only between `  dev:` and `  e2e-dev:`):
+   - The probe, incidents and runtime steps print the child log with `replay_redacted` when the child failed or `needles_valid` fails, else with `cat` as before. The raw `hits` scans, their order, their messages and the `fail` texts stay unchanged.
+   - `cleanup` starts, after `set +e`, with: when `code == 0` and `needles_valid` fails, print `FAIL: needle registry: collection failed; diagnostics suppressed` on stderr and set `code=1`. The failure block then runs as today; its logs print only the marker when the registry is invalid.
+   - `cleanup` removes `$e2e_needles_dir` (when set) after its failure block, on success and on failure. Teardown order and the exit code stay unchanged otherwise.
+5. **`e2e/console-setup.sh`:** the trap becomes `trap setup_exit EXIT` with `setup_exit()` defined at top level (so a test can extract it with `sed -n '/^setup_exit()/,/^}/p'`): it keeps `code=$?`, runs `rm -rf "$work"`, and when `code == 0` and `needles_valid` fails, prints the same `FAIL: needle registry: collection failed; diagnostics suppressed` line on stderr and exits 1; otherwise it exits with `code`.
+6. **New `e2e/failure-logs.sh <compose file>`:**
+   - It runs from the repository root, uses `set -euo pipefail` and sources `e2e/redact.sh`.
+   - It prints `docker compose -f <file> ps --all`, then `docker compose -f <file> logs --no-color 2>&1` through `redact`. The needles come from `redact_needles "$needles" "" "$PWD/secrets"`, which adds `$E2E_NEEDLES` (see item 3). It removes the needles file.
+   - A wrong argument count or a missing file prints the usage line to stderr and exits 2. When the registry is invalid it prints the `ps` output, `[redacted: no needles file]`, the `FAIL: needle registry: collection failed; diagnostics suppressed` line on stderr, and exits 1. Otherwise it exits 0.
+7. **CI `dev` job** (`.github/workflows/ci.yml`, only between `  dev:` and `  e2e-dev:`):
    - a new first `run` step after the checkouts: `install -d -m 700 "$RUNNER_TEMP/e2e-needles"` and `install -m 600 /dev/null "$RUNNER_TEMP/e2e-needles/needles"`;
    - `env: E2E_NEEDLES: ${{ runner.temp }}/e2e-needles/needles` on "Console setup, sign-in and recreation" and on "Stack state and logs";
    - "Stack state and logs" runs `bash e2e/failure-logs.sh dev/compose.yaml`;
@@ -119,17 +131,19 @@ Today `e2e/redact.sh` masks only the owner password, the owner TOTP setup key, t
 
 - The `req` change could alter its stdout and break the status capture of every scenario. Mitigation: the existing exact-stdout checks of `console-setup.test.sh`, and a new exact check `s == 200` in `redact.test.sh`.
 - The fallback could hide ordinary lines that are needed to diagnose a failure. Mitigation: the shapes are narrow, and the counterexamples below must stay visible.
-- awk dialect: ubuntu runners can use mawk. A `{4}` interval would not match there, and the fallback would silently fail open. Mitigation: no interval expressions. The test exercises S5 with a shape-only value.
+- awk dialect: ubuntu runners can use mawk. A `{4}` interval would not match there, and the fallback would silently fail open. Mitigation: no interval expressions. The test exercises S5 with a shape-only value and runs once more with mawk.
 - Over-masking short needles. Mitigation: `needle_add` skips values under 6 characters. Cookie and CSRF headers are dropped by S1 and S2 anyway.
-- `needle_add` fails a scenario when the registry is not writable. That is the intended fail-closed behavior. The message carries no value.
+- A swallowed recording failure inside `$(…)`. Mitigation: invalidation is on disk and permanent, and both run owners check validity at exit (L5, L8).
+- An invalid registry hides every log line of a failed run. That is the intended fail-closed trade: the `ps` output and the `FAIL` lines still say what failed, and a rerun gives the logs.
+- A helper recreating a removed registry would make it look valid again. Mitigation: `needle_add` checks `needles_valid` (regular file present, no marker) before every append; L5 proves that a later append in a new process fails and creates no file.
 
 ## Performance impact
 
 None of the metrics in `bench/budgets.json` (api clone `515031b`) can move: no service, image or runtime path changes, and the file has no deploy entry.
 - `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `startup_wall_ms`, the `p95_*` keys, `rps` and `image_mb`: none expected, because no service code or image changes.
 - Test CPU in deploy:
-  - `bash e2e/redact.test.sh` grows from 5 to about 20 cases, each a few short shell, awk and stub processes. Expected increase: below 1 s of user+sys CPU.
-  - `bash e2e/console-setup.test.sh` gains about 4 short processes per stub request when the registry is set. Expected increase: below 2 s of user+sys CPU.
+  - `bash e2e/redact.test.sh` grows from 5 to 33 cases, each a few short shell, awk and stub processes. Expected increase: below 2 s of user+sys CPU.
+  - `bash e2e/console-setup.test.sh` gains about 4 short processes per stub request when the registry is set, plus a `needles_valid` test per recording. Expected increase: below 2 s of user+sys CPU.
   - `bun run test` (CLI under `cli/`) should not change: no CLI file changes.
 - How to measure: on the shared, noisy machine, run four interleaved samples (base, branch, base, branch) of each of the three commands. Use `/usr/bin/time -f '%U %S'` or `bash -c 'time …'`, counting user+sys including children. For each command, report all four samples, the base mean, the branch mean and the branch-minus-base delta, plus the case counts. Wall time alone is not evidence. Do not run the Docker bench (host port collision, #834). No numeric threshold is defined, and no budget changes.
 
@@ -140,8 +154,8 @@ Security impact: yes
 The change touches log texts that carry external data (container logs and child output), CI (`ci.yml`) and temporary credential files.
 
 Checklist items that apply:
-- **Secrets in errors, logs and responses.** This is the purpose of the change. Every new error line names a file and a rule only. Recording never prints. Docs and test names describe categories, never a way to pull a credential from a log.
-- **Atomic, path-safe writes.** The registry is mode 600 in a mode 700 `mktemp -d` directory, or in `$RUNNER_TEMP`, which is private to the job. It is created before use, appended with `umask 077`, and removed after its last consumer. Nothing is written into the checkout.
+- **Secrets in errors, logs and responses.** This is the purpose of the change. Every new error line names a rule only, never a value or a path. Recording never prints. Docs and test names describe categories, never a way to pull a credential from a log. A failed collection suppresses every log line instead of trusting an incomplete registry.
+- **Atomic, path-safe writes.** The registry is mode 600 in a mode 700 `mktemp -d` directory, or in `$RUNNER_TEMP`, which is private to the job. Only the run owner creates it; helpers only append and refuse a missing, symlinked or invalidated registry. The marker is mode 600 in the same directory. Both are removed after their last consumer. Nothing is written into the checkout.
 - **Input validation.** Values parsed from response bodies and headers are only appended as literal lines and used as literal `index()` needles. They are never evaluated or used as a regex.
 - **Dependency pins.** No new action or package. The pins in `ci.yml` stay byte-identical.
 
@@ -172,10 +186,14 @@ One repository (deploy). Only its e2e scripts, tests, docs and CI change. No con
   - `api-1 | request 3f2a9c1e-5b7d-4e2f-9a1b-0c3d5e7f9a1b` (UUID shape, not a recovery code)
   - `console-1 | csrf check failed` (no `:` or `=` after the label)
 - `E2E_NEEDLES` set to a path that does not exist when the diagnostics are built: the output is only `[redacted: no needles file]`, without any log line. Printing the raw logs is wrong.
+- **Readable registry, failed append.** One value was recorded, then an append fails while the registry file stays a readable, writable regular file (for example a file size limit). Wrong: the scenario goes on, or a later consumer copies the registry and prints logs with only the first value masked. Right: the recording call fails, the registry is invalid for every later process, every consumer prints only `[redacted: no needles file]`, and the run exits 1 even when its last step reported success.
+- **No resurrection.** After invalidation removed the registry, a later `needle_add` in a new process with no limit must return 1 and create no file. A `>>` that recreates the file and makes the registry look valid is wrong.
+- **Marker alone.** The registry is still a readable regular file with all values, but `"$E2E_NEEDLES.invalid"` exists: consumers must suppress. Checking only that the registry is readable is wrong.
+- **Read-only registry.** The registry is mode 400 (no marker, readable): `needles_valid` must fail, because a helper could not have appended. A readable-only check is wrong.
 - `E2E_NEEDLES` empty, an early failure before `owner.env`: the logs print with masking and the fallback, the exit code is kept, and nothing crashes.
 - An inherited `E2E_NEEDLES=/some/other/file` is replaced by the run's own registry in `compose-e2e.sh`.
 - A value of 5 characters (`abcde`) is not recorded; a value of 6 characters is.
-- The registry and its directory must be gone after `cleanup`, on success and on failure.
+- The registry, the marker and their directory must be gone after `cleanup`, on success, on failure and after invalidation.
 
 No statistic is defined. The performance figures are four raw samples per command, with arithmetic means and the difference of the means.
 
@@ -188,11 +206,16 @@ New names. None is a contract or config name. The searches were run from the met
 | `E2E_NEEDLES` | env variable (deploy e2e and CI) | `grep -rn 'E2E_NEEDLES' .repos/contract/src .repos/config .repos/deploy` | 0 |
 | `needle_add` | shell function | `grep -rn 'needle_add' …` (same paths) | 0 |
 | `needles_from_response` | shell function | `grep -rn 'needles_from_response' …` | 0 |
-| `collect_needles` | shell function | `grep -rn 'collect_needles' .repos/deploy` | 0 |
+| `needles_valid` | shell function | `grep -rn 'needles_valid' …` | 0 |
+| `needles_invalidate` | shell function | `grep -rn 'needles_invalidate' …` | 0 |
+| `collect_needles` | shell function | `grep -rn 'collect_needles' …` | 0 |
 | `replay_redacted` | shell function | `grep -rn 'replay_redacted' …` | 0 |
+| `setup_exit` | shell function | `grep -rn 'setup_exit' …` | 0 |
 | `e2e_needles_dir` | shell variable | `grep -rn 'e2e_needles_dir' …` | 0 |
+| `<registry>.invalid` | marker file next to the registry | `grep -rn 'needles\.invalid' …` | 0 |
 | `e2e/failure-logs.sh` | script | `grep -rn 'failure-logs' …` | 0 |
-| `[suppressed: credential line]` | marker text | `grep -rn '\[suppressed: credential line\]' …` | 0 |
+| `[suppressed: credential line]` | marker text | `grep -rn 'suppressed: credential line' …` | 0 |
+| `needle registry` | prefix of the new `FAIL` texts | `grep -rn 'needle registry' …` | 0 |
 
 There are no new contract fields, keys or routes.
 
@@ -207,26 +230,27 @@ Files:
 - `e2e/failure-logs.sh` (new)
 - `e2e/redact.test.sh`
 - `e2e/console-setup.test.sh`
-- `.github/workflows/ci.yml` (only the `dev` job, see "Required behavior" item 6)
+- `.github/workflows/ci.yml` (only the `dev` job, see "Required behavior" item 7)
 - `README.md`
 - `dev/README.md`
 
 Behavior change: yes
 
-It changes what e2e failure diagnostics print, and how CI prints the `dev` job's failure logs.
+It changes what e2e failure diagnostics print, adds a fail-closed exit status when credential collection fails, and changes how CI prints the `dev` job's failure logs.
 
 ### Tool facts (cited)
 
 - Bun `1.4.0`: `package.json` `engines.bun` and `packageManager` (lines 8-10 and 28). The CI checks job uses `bun-version: 1.4.0` (config `check.yml:22-24` at `04108fa`, identical to the clone).
 - `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json:18`). `lint` = `biome check . && pulse-eslint . && pulse-workflows` (`package.json:15`). `pulse-workflows` checks `.github/workflows/*.yml` against the config action policy (config `bin/pulse-workflows.js:39-50`, `package.json:11-13` of config at `04108fa`, identical to the clone). `test` = `bun test --coverage cli` (`package.json:13`), with `bunfig.toml` `[test]` coverage settings (lines 1-3).
 - Biome `2.6.3` (`package.json:21`). `biome.json` extends `@lorenzh/pulse-config/biome.json` (identical to the clone at `04108fa`), and its `files.includes` leaves out `!e2e`, `!.github`, `!dev` and `!*.md` (`biome.json:3-26`). Biome therefore does not check any file in this change; shellcheck and the CI lint job do.
-- The CI `lint` job runs these steps: `shellcheck -x` and `bash -n` over `git ls-files '*.sh'` (`ci.yml:34-37`), `node --check` over `*.mjs` (`:38-39`), `jq empty` over `*.json` (`:40-41`), `bash e2e/console-setup.test.sh` (`:50-51`), `bash e2e/redact.test.sh` (`:58-59`), `bash e2e/runtime-settings.test.sh` (`:62-63`) and the other e2e and script tests (`:42-75`). Every `*.sh` file, including the new `e2e/failure-logs.sh`, is linted and run because these steps cover all tracked files of those types.
+- The CI `lint` job runs these steps: `shellcheck -x` and `bash -n` over `git ls-files '*.sh'` (`ci.yml:34-37`), `node --check` over `*.mjs` (`:38-39`), `jq empty` over `*.json` (`:40-41`), `bash e2e/console-setup.test.sh` (`:50-51`), `bash e2e/redact.test.sh` (`:58-59`), `bash e2e/runtime-settings.test.sh` (`:62-63`) and the other e2e and script tests (`:42-75`). Every `*.sh` file, including the new `e2e/failure-logs.sh`, is linted because these steps cover all tracked files of those types.
 - The CI `check` job is `uses: lorenzh/pulse-config/.github/workflows/check.yml@04108fa…` (`ci.yml:16-17`).
 - The `dev` job (`ci.yml:193-261`) and its steps "Console setup, sign-in and recreation" (`:237-239`), "Stack state and logs" (`:240-245`) and "Teardown" (`:246-249`).
+- On the machine of this spec run, `mawk` and `gawk` are both installed (`/usr/bin/mawk`, `/usr/bin/gawk`), and the process runs as uid 1001, not root. A file size limit (`trap '' XFSZ; ulimit -f 0` in a child `bash`) made an append to a mode 600 registry return 1 while the file stayed a readable regular file, and an empty marker could still be created. Output of such a child must go to a pipe, not to a file, because the limit also stops writes to files.
 
 ### Behavior
 
-Implement "Required behavior" items 1 to 6 exactly.
+Implement "Required behavior" items 1 to 7 exactly.
 
 Docs, in the same change:
 - **`README.md`.** Replace the last two sentences of the "Console incidents and maintenance" paragraph (`README.md:149`, "On a failure the test prints … stub docker logs."). The new text must say that, on a failure, the test prints the container logs and any failed scenario output through `e2e/redact.sh`, with these values read as `[redacted]`:
@@ -236,8 +260,15 @@ Docs, in the same change:
   - the probe secrets,
   - and every cookie, CSRF token, form token, TOTP code and recovery code that the console scenarios recorded in the run's private registry (`E2E_NEEDLES`).
 
-  It must also say that lines with a credential-bearing field print as `[suppressed: credential line]`, that a missing registry prints only `[redacted: no needles file]`, and that this applies to e2e diagnostics only, not to service logs. In the CI `dev` paragraph (`README.md:168`), add that its failure step prints the stack logs through `bash e2e/failure-logs.sh dev/compose.yaml` with the same masking.
-- **`dev/README.md:67`.** Add one sentence: with `E2E_NEEDLES` set to a mode 600 file, `console-setup.sh` records the credentials it handles there, and `bash e2e/failure-logs.sh dev/compose.yaml` prints the stack state and logs with them masked.
+  It must also say:
+  - lines with a credential-bearing field print as `[suppressed: credential line]`;
+  - a missing or invalid registry prints only `[redacted: no needles file]`, with no log line;
+  - when recording fails, the registry becomes invalid for the rest of the run and the run fails with a `needle registry` message, even if every step passed;
+  - the residual limit from "Decisions";
+  - this applies to e2e diagnostics only, not to service logs.
+
+  In the CI `dev` paragraph (`README.md:168`), add that its failure step prints the stack logs through `bash e2e/failure-logs.sh dev/compose.yaml` with the same masking and the same fail-closed rule.
+- **`dev/README.md:67`.** Add one or two sentences: with `E2E_NEEDLES` set to a mode 600 file, `console-setup.sh` records the credentials it handles there and fails when it cannot, and `bash e2e/failure-logs.sh dev/compose.yaml` prints the stack state and logs with them masked, or no log line when the registry is invalid.
 - No text quotes a sentinel or shows how to find a credential in a log.
 
 ### Tests
@@ -266,19 +297,29 @@ Docs, in the same change:
   - C2: an SMTP password file in the secrets directory is masked.
   - C3: the status and notify token files in `runtime_work` are masked.
   - C4: a probe secret in `$probe_work/secrets` is masked (candidate only).
-- **Lifecycle cases L1–L4.**
+- **Lifecycle cases L1–L8.**
   - L1, early failure: `E2E_NEEDLES` empty, no `owner_dir`. The logs print, a labelled line is suppressed, and the exit code is 1.
-  - L2, fail closed: `E2E_NEEDLES` names a missing file. The output holds `[redacted: no needles file]` and neither `plain line` nor any sentinel.
+  - L2, fail closed on a missing file: `E2E_NEEDLES` names a missing file. The output holds `[redacted: no needles file]` and neither `plain line` nor any sentinel.
   - L3: after `cleanup`, the registry directory (`e2e_needles_dir`) no longer exists.
   - L4, unreadable needles: the existing behavior of `redact` stays.
+  - L5, readable registry, failed append (the plan-review regression). A fresh valid registry. Step 1: a child `bash` records sentinel A through `csrf` (succeeds). Step 2: a second child `bash` runs `trap '' XFSZ; ulimit -f 0`, then `csrf` on a body with sentinel B; its stdout and stderr go to a pipe. Step 3: a third child `bash` without a limit calls `needle_add` with sentinel C. Step 4: `cleanup` of `compose-e2e.sh` runs with incoming exit code 0 (`( exit 0 ) && cleanup`), with stub logs that hold A, B and C in unlabelled text and `plain line`, and with `e2e_needles_dir` set to the registry directory. Expected, all literals of this spec:
+    - step 2 exits 1, its output contains `FAIL: needle registry: append failed` and not B;
+    - step 3 returns 1, and afterwards the registry path does not exist and `"$E2E_NEEDLES.invalid"` exists (no resurrection across processes);
+    - `needles_valid` fails in a fourth child `bash`;
+    - step 4 exits 1; its output contains `FAIL: needle registry: collection failed; diagnostics suppressed` and `[redacted: no needles file]`, and none of `plain line`, A, B or C;
+    - after step 4 the registry directory no longer exists (eventual cleanup).
+  - L6, marker alone: the registry is a readable regular file that holds sentinel D, the marker exists, the logs hold D and `plain line`. `cleanup` with incoming 0 exits 1 and prints neither D nor `plain line`; `replay_redacted` on a child log with D prints only `[redacted: no needles file]`.
+  - L7, read-only registry: the registry is mode 400 without a marker. `needles_valid` fails and `needle_add` returns 1. Root ignores file modes, so when `id -u` is 0 the case prints `skip: L7 (root ignores file modes)` and is not counted; the CI runner and the spec machine are not root.
+  - L8, `setup_exit` of `console-setup.sh` (extracted with `sed -n '/^setup_exit()/,/^}/p'`): with a valid registry and incoming code 0 it exits 0 and removes `$work`; with an invalidated registry and incoming code 0 it exits 1, prints `FAIL: needle registry: collection failed; diagnostics suppressed` on stderr and removes `$work`; with incoming code 1 it exits 1.
 - **Replay case P1.** `replay_redacted` (extracted from `compose-e2e.sh` like `cleanup`) on a child log that holds a recorded sentinel and a labelled line: the sentinel is masked, the labelled line is suppressed, and `plain line` stays.
-- **CI wiring cases W1–W2.** These run `bash e2e/failure-logs.sh <compose file>` with stub `docker`.
+- **CI wiring cases W1–W3.** These run `bash e2e/failure-logs.sh <compose file>` with stub `docker`.
   - W1: registry set with a sentinel. The output holds the stub `ps` line, `plain line` and no sentinel, and the script exits 0.
-  - W2: registry missing. The output holds only the `ps` line and `[redacted: no needles file]`. With no argument, the script exits 2.
+  - W2: registry missing. The output holds the `ps` line and `[redacted: no needles file]`, no `plain line`, and the script exits 1. With no argument, the script exits 2.
+  - W3: registry invalidated by a failed append as in L5 step 2. The output holds the `ps` line, `[redacted: no needles file]` and the `needle registry` FAIL line, none of the sentinels and no `plain line`; the script exits 1.
 
-The test extracts `cleanup`, `collect_needles` and `replay_redacted` from `compose-e2e.sh` with the same `sed -n '/^name()/,/^}/p'` pattern. A function that does not exist yields an empty `eval`, so K1–K5 still run on the base.
+The test extracts `cleanup`, `collect_needles` and `replay_redacted` from `compose-e2e.sh`, and `setup_exit` from `console-setup.sh`, with the same `sed -n '/^name()/,/^}/p'` pattern. A function that does not exist yields an empty `eval`, so K1–K5 still run on the base.
 
-**`e2e/console-setup.test.sh`.** It keeps exactly its seven cases A–G, their names, their expected stdout literals and the F failure check.
+**`e2e/console-setup.test.sh`.** It keeps exactly its seven cases A–G, their names, their expected stdout literals and the F failure check. It adds no case.
 - The stub `curl` additionally appends every `csrf` value it embeds in a page (in `form()`) to `$st/csrf-issued`.
 - Cases A, B, C, E and G run with `E2E_NEEDLES` set to a fresh mode 600 file in a mode 700 directory. After each of them, the registry must contain:
   - every line of `$st/csrf-issued`,
@@ -288,7 +329,7 @@ The test extracts `cleanup`, `collect_needles` and `replay_redacted` from `compo
   - the content of `$st/password`,
   - `FAKE_SETUP_KEY` (two-factor cases).
 
-  The expected values come from the stub's own state files and fixtures, never from the registry. The registry must also be mode 600.
+  The expected values come from the stub's own state files and fixtures, never from the registry. The registry must also be mode 600, and no `"$E2E_NEEDLES.invalid"` marker may exist.
 - Cases D and F run without `E2E_NEEDLES` and keep their current checks. This covers the path where nothing is recorded.
 - The existing scan of stdout and stderr stays.
 
@@ -300,16 +341,16 @@ Record the base with `BASE=$(git rev-parse HEAD)` before the first change, as a 
    - K1–K5 each print `FAIL: <category>: …printed the credential` (five leak failures, one per category, not a syntax error or a missing helper);
    - F1–F5 fail (no suppression);
    - E1–E5, C1–C3 and V1 print `ok:`;
-   - R1, C4, L2, L3, P1, W1 and W2 fail because their interface is missing. They are not part of the red proof.
+   - R1, C4, L2, L3, L5–L8, P1 and W1–W3 fail because their interface is missing. They are not part of the red proof.
    - The run exits 1.
 
    Record the exact counts.
-2. **Green on branch.** `bash e2e/redact.test.sh` on HEAD prints `ok:` for every case and `redact.test: <n> cases passed`, with `<n>` the literal case count of the file (expected 28: E1–E5, K1–K5, R1, F1–F5, V1, C1–C4, L1–L4, P1, W1–W2). It exits 0.
+2. **Green on branch.** `bash e2e/redact.test.sh` on HEAD prints `ok:` for every case and `redact.test: 33 cases passed` (E1–E5, K1–K5, R1, F1–F5, V1, C1–C4, L1–L8, P1, W1–W3; 32 with the L7 skip line when run as root). It exits 0.
 3. **Baseline controls, run on `$BASE` and on HEAD.** Each must pass on both, and the case counts are literal:
    - `bash e2e/console-setup.test.sh`: 7 cases;
    - `bash e2e/runtime-settings.test.sh`: needs `docker compose config`; if that is missing, record the missing prerequisite on both and do not call it green;
    - `bash e2e/incident-card.test.sh`, `bash e2e/snippet.test.sh`;
-   - the base `bash e2e/redact.test.sh`: 5 cases.
+   - the base `bash e2e/redact.test.sh`: 5 cases (on HEAD, item 2 replaces it).
 4. **Branch checks.** All must pass on HEAD:
    - `bash e2e/console-setup.test.sh`: `console-setup.test: 7 cases passed`, with the registry assertions;
    - `bash e2e/runtime-settings.test.sh`;
@@ -318,7 +359,7 @@ Record the base with `BASE=$(git rev-parse HEAD)` before the first change, as a 
    - `git ls-files -z '*.json' | xargs -0 -n 1 jq empty`;
    - every other step of the CI `lint` job (`ci.yml:42-75`);
    - `bun install --frozen-lockfile && bun run check`, which includes `pulse-workflows` on the changed `ci.yml`.
-5. **mawk.** If `mawk` is installed, run `bash e2e/redact.test.sh` with a `PATH` where `awk` is mawk, and get the same result as item 2. Otherwise state that it is not installed.
+5. **mawk.** Run `bash e2e/redact.test.sh` once more with a `PATH` where `awk` is mawk, and get the same result as item 2. If `mawk` is not installed, state that.
 6. **CI diff limits.** These checks compare against `$BASE`, never against the file itself:
    - `diff <(git show "$BASE":.github/workflows/ci.yml | sed '/^  dev:$/,/^  e2e-dev:$/d') <(sed '/^  dev:$/,/^  e2e-dev:$/d' .github/workflows/ci.yml)` is empty;
    - `git show "$BASE":.github/workflows/ci.yml | grep -c 'uses:'` equals `grep -c 'uses:' .github/workflows/ci.yml`;
