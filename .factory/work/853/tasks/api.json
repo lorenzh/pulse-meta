@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Configuration writes delegate to kit while preserving permissions, error precedence and audit recovery",
+      "files": [
+        "src/config-fs.ts",
+        "src/config-write.ts",
+        "src/config-fs.test.ts",
+        "src/config-admin.test.ts",
+        "src/config-write.audit.test.ts",
+        "src/config-write.crash.test.ts"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: api — Files, Behavior change, Tool facts, Baselines, Implementation, Tests (R1/R2, R3 (a)–(d) and all migrated controls), Acceptance 1–10 including 5 (a)–(c), Documentation inventory and Completion evidence; implements ## Required behavior (api) (Filesystem surface, The store step including temp-close recording and error precedence, Directory sync barriers and Invariants kept), all 13 Counterexamples, Security impact and Performance impact. Keep this interface/algorithm migration and its four test suites in one green change; preserve the approved six-file scope and all existing external behavior.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD && bun --version && bun install --frozen-lockfile",
+          "expected": "Before the first edit, record the API main SHA as BASE; Bun 1.4.0; frozen install exits 0 with package.json and bun.lock unchanged. The approved kit pin stays c6d2cba7d90c981b884dcac2a9288dd9eccad8b5; no dependency is added."
+        },
+        {
+          "command": "for run in 1 2 3; do for file in src/config-fs.test.ts src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts src/config-reload.initial.test.ts src/server.maintenance-admin.test.ts; do bun test --config=/dev/null \"$file\" || exit 1; done; bun run check || exit 1; done",
+          "expected": "Run on recorded BASE before edits. Every command exits 0 in all three runs. On a7e9c844f659b9ae536b60cca145cbd5b9d3efba the per-file pass counts are respectively 3, 62, 17, 45, 4, 18, with 0 failures; config-fs has 9 expectations, audit 78 and crash 180. Full check: 919 pass, 0 fail across 100 files, repository 0.8 line coverage threshold enforced. Focused runs print no coverage table. If main moved, record reliable literal counts from that independent BASE as the plan permits; report any flaky control rather than requiring it to pass."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-fs.test.ts || exit 1; done",
+          "expected": "Final branch: three exit-0 runs, 0 failures; identify R1, R2, R3 (a)–(d) and migrated controls 1–5 by title. R1 observes exactly [\"stat\", \"open wx 600\", \"write\", \"fchmod 640\", \"fstat\", \"fsync\", \"close\", \"open r\", \"fsync\", \"close\", \"rename\", \"open r\", \"fsync\", \"close\"] after collapsing consecutive writes, creation mode 0600, final mode 0640, expected JSON bytes and no temp. R2 proves kit adapter identity, exact five-member surface, live helper call and forbidden local-writer removal throughout production src/*.ts (backup publication rename remains allowed). R3 uses a real directory and fails operations only on the wx temp fd; a failing close really closes it first. Literal outcomes: (a) temp fsync ENOSPC then close EIO gives ConfigWriteError code error, message checks file could not be written (EIO); (b) temp fchmod EIO then close EROFS gives code readonly, message checks file is read-only (EROFS); (c) temp fsync ENOSPC with successful close gives code error, message checks file could not be written (ENOSPC); (d) close EIO alone gives code error, message checks file could not be written (EIO). All four retain old checks bytes, leave no temp or pending row and expose no atomic write failed text. Collision and symlink controls preserve foreign bytes and leave no row; fchmod EIO cleans up; stat ENOTDIR records no open; owner copying tolerates only EPERM and maps EINVAL exactly; lstat distinguishes present/ENOENT. Preserve mode/new-file/partial-write/close/fsync controls. Expectations are the literals in Tests and Required behavior, not computed from implementation."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-write.audit.test.ts || exit 1; done",
+          "expected": "Three exit-0 runs, 17 pass and 0 fail on the recorded plan base, or the independently recorded BASE count if main moved. Preserve all existing assertions except the prescribed low-level log translation. Success and rename-failure orders equal the literal lists in Tests; both write barriers and resolver barriers occur in order. No unlink occurs between failed rename and lstat; rowsAtRemove is [0]. Insert-commit-then-throw, failed abort retaining row AND temp, move-then-throw rename, resolver failures, repeated recovery, absolute-path restart, external restore and secret-free warning outcomes stay unchanged. MemFs delegates the real kit algorithm through atomic operations."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-write.crash.test.ts || exit 1; done",
+          "expected": "Three exit-0 runs, 45 pass and 0 fail on the recorded plan base, or the independently recorded BASE count if main moved. CrashFs exposes low-level kit operations, records one create change, buffers bytes through close and preserves all ROWS results in wal/delete journal modes and the insufficient-durability negative control. All named fault points retain base disk/database states; after a hook throws no further filesystem/database operation runs, and the original PowerLoss reaches attempt()."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-admin.test.ts || exit 1; done",
+          "expected": "Three exit-0 runs, 62 pass and 0 fail on the recorded plan base, or the independently recorded BASE count if main moved. Preserve all titles/assertions while migrating brokenFs, EXDEV, hand-edit, apply-failure and READ_ONLY_FS overrides to atomic operations exactly as Tests specifies. Keep stale-writer/hand-edit 412, EXDEV 503, ENOSPC temp/rename/second-directory-sync outcomes, exact sanitized errors, revisions, metrics, valid disk bytes, no early adoption and database check/window independence. Apply failure still observes exactly 2 directory syncs."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-reload.initial.test.ts || exit 1; bun test --config=/dev/null src/server.maintenance-admin.test.ts || exit 1; done",
+          "expected": "Three exit-0 runs each; respectively 4 and 18 pass, 0 fail on the recorded plan base, or independently recorded BASE counts if main moved. These files, src/start.ts and src/config-reload.ts stay unchanged and compile against ReloadFs & WriteFs."
+        },
+        {
+          "command": "for run in 1 2 3; do bun run check || exit 1; done",
+          "expected": "Final branch: three exit-0 full checks, lint and typecheck pass, tests have 0 failures, unchanged bunfig.toml enforces the repository 0.8 line threshold. Report pass-count arithmetic: independent BASE full count (919 on the plan base) plus the number of replacement/new config-fs tests minus the 3 replaced base tests. No exact coverage percentage is an expectation; do not weaken config, skip tests or bypass hooks."
+        },
+        {
+          "command": "diff <(git show \"$BASE\":src/config-write.crash.test.ts | sed -n '/^type Journal = \"wal\" | \"delete\";$/,$p') <(sed -n '/^type Journal = \"wal\" | \"delete\";$/,$p' src/config-write.crash.test.ts) && diff <(git show \"$BASE\":src/config-write.audit.test.ts | sed -n '/^\\/\\/ ---- real files and SQLite ----$/,$p') <(sed -n '/^\\/\\/ ---- real files and SQLite ----$/,$p' src/config-write.audit.test.ts)",
+          "expected": "Run in Bash after the final commit: exit 0, no output. The entire crash region starting at type Journal (including ROWS and negative control), and the audit real-file/SQLite region, are byte-identical to independent BASE blobs."
+        },
+        {
+          "command": "titles() { rg -o '^ *test\\((`[^`]*`|\"[^\"]*\")'; }\nfor f in src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts; do diff <(git show \"$BASE:$f\" | titles) <(titles < \"$f\") || exit 1; done",
+          "expected": "Run in Bash: exit 0 and no output; the three suites retain their independent BASE test titles. Keep assertions unchanged except the plan's explicitly listed fake-filesystem log-format changes."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-fs.test.ts; result=$?; [ \"$result\" -ne 0 ] || exit 1; done",
+          "expected": "Run only in the disposable BASE worktree prepared per Acceptance 4, with frozen dependencies and the branch config-fs.test.ts copied using file tools. Each test invocation exits nonzero in all three runs; report its exit code and failing titles/messages. R1 fails because the base writer uses writeTemp and records no kit sequence; R2 fails because nodeConfigFs.atomic is undefined and the local writer contains forbidden writeSync. Report migrated-control and R3 failures from the missing atomic surface separately. R3 is a compatibility control, not a red-on-base regression: base already has the close precedence it checks; prove R3 with Acceptance 5 (c). Remove the disposable worktree afterwards."
+        },
+        {
+          "command": "bun test --config=/dev/null src/config-fs.test.ts; result=$?; [ \"$result\" -ne 0 ]",
+          "expected": "Perform separately for Acceptance 5 (a) and (b), restoring clean HEAD after each: (a) replace only src/config-fs.ts and src/config-write.ts with BASE blobs, retaining branch tests: R1 and R2 fail; (b) restore production HEAD then add the unused fill(fd, b) function calling writeSync with its import to config-fs.ts: R2 fails. Record test exits and messages; mutations are temporary and must not enter the final commit."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config-fs.test.ts; result=$?; [ \"$result\" -ne 0 ] || exit 1; done",
+          "expected": "Acceptance 5 (c): from clean production HEAD, temporarily make the AtomicWriteError stage write branch ignore tempCloseError and map kit's cause unchanged. Each of three focused runs exits nonzero. R3 (a) receives checks file could not be written (ENOSPC) against literal expected checks file could not be written (EIO). R3 (b) receives code error and checks file could not be written (EIO) against literal expected code readonly and checks file is read-only (EROFS). R3 (c) and (d) still pass. Report all exits, failing titles and actual/expected messages. Restore HEAD afterwards, including the index; git status --porcelain must be empty. This mutation proves close-error compatibility; do not commit it."
+        },
+        {
+          "command": "rg -n 'atomic|fsync|rename|temp file|\\.tmp|mode|owner|read-only|precedence' README.md docs/*.md",
+          "expected": "Rerun this inventory at independent BASE and final HEAD; classify every hit as unchanged and still true with its proving line, or unrelated, using Documentation inventory. Protect all nine documents: README.md, docs/index.md, docs/install.md, docs/development.md, docs/configuration.md, docs/operation.md, docs/rest-api.md, docs/concepts.md, docs/troubleshooting.md. No README change is needed because the change only replaces writer internals and preserves documented behavior. Leave the unrelated troubleshooting maintenance-write inaccuracy unchanged; do not claim it is true."
+        },
+        {
+          "command": ": \"${BASE:?Set BASE to the recorded API implementation base}\"\nALLOWED='src/config-admin.test.ts\nsrc/config-fs.test.ts\nsrc/config-fs.ts\nsrc/config-write.audit.test.ts\nsrc/config-write.crash.test.ts\nsrc/config-write.ts'\nscope_check() {\n  local changed extra\n  changed=$(git diff --no-renames --name-only \"$BASE\" HEAD) || return 1\n  extra=$(printf '%s\\n' \"$changed\" | grep -vxF \"$ALLOWED\" || true)\n  [ -z \"$extra\" ] || { echo \"outside allow-list: $extra\"; return 1; }\n  [ -z \"$(git diff --name-only --cached)\" ] || { echo \"staged changes\"; return 1; }\n  [ -z \"$(git diff --name-only)\" ] || { echo \"unstaged changes\"; return 1; }\n  [ -z \"$(git status --porcelain)\" ] || { echo \"status not clean\"; return 1; }\n  git diff --exit-code \"$BASE\" HEAD -- . ':(exclude)src/config-admin.test.ts' ':(exclude)src/config-fs.test.ts' ':(exclude)src/config-fs.ts' ':(exclude)src/config-write.audit.test.ts' ':(exclude)src/config-write.crash.test.ts' ':(exclude)src/config-write.ts' || return 1\n}\nscope_check",
+          "expected": "Run in Bash after the last commit and again after all mutation/smoke/evidence work: exit 0. Check commits against the exact six-path allow-list using git diff --name-only BASE HEAD (with --no-renames); separately require cached diff, working-tree diff and status all empty. Protected-path diff exits 0 for every other tracked path, including all nine inventory documents, AGENTS.md, CLAUDE.md, package.json, bun.lock, bunfig.toml, biome.json, tsconfig.json, eslint.config.js, lefthook.yml, .github/, Dockerfile, bench/, scripts/, test/, src/start.ts, src/main.ts, src/admin-routes.ts, src/audit-log.ts, src/db.ts, src/backup.ts, src/config.ts, src/config-reload.ts, src/check-write.ts, src/maintenance-write.ts, src/effective-checks.ts, src/effective-maintenance.ts, src/config-reload.initial.test.ts and src/server.maintenance-admin.test.ts. No untracked fixture/harness/note files."
+        },
+        {
+          "command": "scope_check",
+          "expected": "Prove the identical preceding scope_check function in a disposable API clone at BASE, resetting to BASE before each Acceptance 7 fixture case and keeping all artifacts outside the target change. Report the eight literal results: (a) committed config-fs.ts edit: 0; (b) committed README.md edit: 1; (c) staged README.md edit: 1; (d) unstaged config-fs.ts edit: 1; (e) untracked src/x.ts: 1; (f) stage README.md edit then git restore --worktree --source=\"$BASE\" README.md: 1; (g) commit README.md edit then the same worktree-only restore: 1; (h) committed git mv src/config-fs.ts src/config-fs2.ts: 1. Cases f/g must fail even though README worktree bytes equal BASE. Scope proof covers commits, index and worktree separately; a worktree-only comparison is insufficient."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/config-fs.ts src/config-write.ts src/config-fs.test.ts src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts",
+          "expected": "Read every added line, including inline comments; list every added comment verbatim in the PR body and use 'none' only if that full read finds none. No new test file is permitted. The adapter's 0600 open, unlink guard and temp-close record each have the one-line why comment required by Implementation. Review the entire production diff against Required behavior: nodeConfigFs.atomic is kit's object reference, exactly one synchronous writeFileAtomicSync call per component write, one suffix evaluation, only open/close/rename/unlink wrapped, no copied write/metadata algorithm, audit ordering barriers retained, cleanup ownership/fault handling preserved. The close wrapper clears tempFd before closing, records tempCloseError only for that fd and rethrows unchanged, without retrying or swallowing; reused directory fds cannot be misclassified. A write-stage AtomicWriteError uses tempCloseError when set; otherwise unwrap the original cause for byte-identical mapping. Directory-sync errors retain their existing finally-close precedence and are never remapped through tempCloseError. No format, precedence or unrelated allowed-file changes."
+        },
+        {
+          "command": "bun test --config=/dev/null src/config-fs.test.ts src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts && git diff --exit-code \"$BASE\" HEAD -- package.json bun.lock",
+          "expected": "Exit 0; complete the applicable Security impact checklist in the PR evidence. Demonstrate regular-file and symlink temp collisions refuse with EEXIST without changing foreign/outside bytes; exclusive same-directory temp creation is 0600, final 0640/0444 modes and owner handling are preserved (EPERM tolerated, EINVAL rejected); stat ENOTDIR/EACCES creates nothing; EROFS and EXDEV use original mappings. R3 demonstrates temp double failures report the close code (EIO or EROFS), retain old bytes and leave no temp or pending row. Response/log/warn text is code-only with no path/content/kit message. Pin c6d2cba7d90c981b884dcac2a9288dd9eccad8b5 is unchanged and no dependency is added. Checklist evidence references the tests and production diff; no Docker benchmark."
+        },
+        {
+          "command": "TIMEFORMAT='%U %S'\ntime bun test --config=/dev/null src/config-fs.test.ts src/config-admin.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts\ntime bun run test",
+          "expected": "For each command, collect 5 interleaved BASE/branch pairs (base, branch, base, branch, ...), identical frozen installs and Bun 1.4.0. Report every raw user/system sample, user+system test-CPU seconds, each side's median and median(branch)-median(base), as information only. Record pass counts for comparability and distinguish extra branch regression work. Shared-host noise and the measured delta never fail acceptance. Do not run bun bench/run.ts or the Docker bench (#834)."
+        },
+        {
+          "command": "TIMEFORMAT='%U %S'\ntime bun test --config=/dev/null --test-name-pattern '<R1 runtime delegation test title>' src/config-fs.test.ts\ntime bun test --config=/dev/null --test-name-pattern '<R2 structure guard test title>' src/config-fs.test.ts\ntime bun test --config=/dev/null --test-name-pattern '<R3 close-error precedence titles pattern>' src/config-fs.test.ts",
+          "expected": "Substitute the actual R1/R2 titles and a pattern selecting all four R3 (a)–(d) cases from the plan's fixed regression classes. All commands exit 0 on the branch and run the selected tests. Report branch-only user+system CPU samples separately from comparable base/branch controls; this is informational, never a performance gate."
+        },
+        {
+          "command": "bun start",
+          "expected": "Acceptance 10: on a temp copy with a writable checks.json and admin token, start the real service, obtain current ETag and POST /admin/components with If-Match. Record the exact launch and HTTP commands, response 201, new component in checks.json, unchanged file mode and no *.tmp; stop the service and remove temporary state. No compose end-to-end test is specified or present in this API scope; use this required live-service check and the existing HTTP suites. Do not run the unrelated Docker bench."
+        },
+        {
+          "command": "git rev-parse HEAD && git diff --stat \"$BASE\" HEAD && git status --porcelain",
+          "expected": "Final PR evidence contains recorded BASE and final HEAD, the three-run baseline table, Acceptance 1–10 commands/exit codes/pass counts and full-count arithmetic, R1/R2 red-on-base outputs with R3's compatibility-control distinction, all three Acceptance 5 mutation outputs including the three-run R3 (a)/(b) failures with R3 (c)/(d) passing, eight-case scope table with restored-worktree cases, complete documentation inventory, every added comment (including all three required adapter why comments), security checklist, raw CPU samples/medians/delta and the real-service POST result. Include Closes lorenzh/pulse-meta#<child> with the actual child number. Final status is empty and only the six allowed API paths differ. Evidence lives in the PR body, not new API files."
+        }
+      ]
+    }
+  ]
+}
