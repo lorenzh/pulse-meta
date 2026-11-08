@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Late request failures log once and result validation retains its boundaries without duplicate checks",
+      "files": [
+        "src/server.ts",
+        "src/server.errors.test.ts",
+        "src/server.validation.test.ts",
+        "README.md",
+        "docs/rest-api.md",
+        "docs/troubleshooting.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, Steps 1-8 and Acceptance 1-11; Required behavior R1-R4; Security impact; Performance impact; Counterexamples; documentation inventory",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD && git status --porcelain && bun --version",
+          "expected": "Before any edit, record the clean implementation BASE outside the target. Planning base is e084bde0a5bc199748ec5614ed604ae79b8454cf; Bun is 1.4.0. If BASE differs, recheck source, pinned contract and documentation inventory and report differences before relying on planning counts. Use this recorded implementation BASE for every scope comparison. Install frozen dependencies with hooks retained if needed. Put evidence, fixture/gate scripts and disposable BASE checkout outside the target, never in API .factory/. Create/edit files with file tools, without shell redirection or heredocs. Do not edit context repositories, skip hooks, change dependencies or weaken tooling. If late-failure case (a) already passes on BASE, request the hold required by the spec instead of review."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/server.validation.test.ts src/server.target.test.ts src/server.test.ts || exit; done",
+          "expected": "Before edits on recorded BASE: each run exits 0 with 29 pass and 0 fail at e084bde0a5bc199748ec5614ed604ae79b8454cf, as independently recorded in the planning trial. Verify that the equals-form empty config disables coverage (no coverage table); the space form is not acceptable. If BASE differs, independently establish and report all three pass counts before claiming a passing control. Do not make a discovered flaky file a mandatory passing baseline control; report it honestly and retain it in the final full suite. Existing ordinary-error and validation controls pass 3/3 before relying on them."
+        },
+        {
+          "command": "for run in 1 2 3; do bun run check || exit; done",
+          "expected": "On clean recorded BASE before edits: three runs exit 0 with lint, typecheck and tests passing; at the planning base expect 904 pass and 0 fail per run. This repeats the plan's once-run full check three times to meet the issue's standing baseline-control rule. Record the counts for each run; if BASE differs, establish all three counts independently. Keep the repository's 80 percent line-coverage threshold and function threshold unchanged; no exact coverage percentage is an expectation. Report unrelated baseline failures instead of claiming a successful control."
+        },
+        {
+          "command": "bun test --config=/dev/null src/server.errors.test.ts",
+          "expected": "R3.1 red evidence: after adding the error tests but before changing production source, run this command three times on recorded BASE. Finished-204 case (a) and started-unfinished-200 case (b) fail 3/3 at an assertion expecting exactly one log call and receiving zero; nonzero exit is required for that reason. Coverage/import/timeouts/transport races are not valid red evidence. The pre-header unexpected, expected-error and independent privacy/continued-service compatibility controls pass on BASE. Record titles and per-case counts on every run. Observe handler/response completion through events/promises so the missing logger call produces an assertion failure rather than an unresolved log promise. Keep production source byte-identical to BASE for this evidence."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/server.validation.test.ts || exit; done",
+          "expected": "R3.2 BASE compatibility: add only tests, preserving every existing test; before the production edit, all existing and added validation tests pass on recorded BASE, exit 0 and 0 fail on each of three runs. Record the exact stable pass count and test titles. Cover every R3.2 category and Counterexamples: literal full-message parity with pinned validatePostResultRequest, non-object/type failures, UTF-16 reason boundaries, latency bounds and rounding, API-only attempts/certificate bounds, timestamp windows, location normalization, precedence, lookup counts, projection and four authenticated HTTP rejection/no-storage cases. These tests characterize existing behavior, not red regressions. Keep or reproduce this evidence in a disposable BASE checkout if needed, with production source unchanged."
+        },
+        {
+          "command": "git diff --unified=5 \"$BASE\" HEAD -- src/server.ts",
+          "expected": "R1/R2 source review against contract 1b5e7d3e268372a6241db05ae30272eab7299b10 src/schema.ts:520-532, validate.ts:165-169 and validate-core.ts:545-562: classify HttpError/ManualRouteError once, log every other failure exactly once with request failed and the original thrown value before the headersSent decision; destroy a started response without writing, retain expected-error mapping and private 500 before headers. Use shape.value after validation; remove duplicate object/checkId/timestamp-type/status/statusCode/latency/reason/location-type checks and unused aliases/imports, including now-unnecessary projection casts. Retain accessor guard and withRoundedLatency unchanged; findCheck runs only after contract success. Preserve timestamp then certDaysLeft then attempts then location ordering, API caps, trimming/default/case, explicit known-field projection, attempts default 1 and absent certDaysLeft. No schema, export, endpoint, logger wiring, auth, storage, body-limit, response-shape/status-code or dependency change. Cognitive complexity remains at most 15."
+        },
+        {
+          "command": "rg -n -F -e 'reason must be at most' -e 'reason must be a string or null' -e 'latencyMs: must be an integer' -e 'checkId must be a non-empty string' -e 'timestamp must be an integer (epoch ms)' -e 'status must be \"up\", \"degraded\" or \"down\"' -e 'statusCode must be null or an integer from 100 to 599' -e 'body must be a JSON object' -e 'location must be a string' src/server.ts",
+          "expected": "Acceptance 3: zero occurrences of each removed API-only error string; rg exits 1 solely because there are no matches. Independently inspect removed constants/imports against the pinned schema; do not compare with the newer context contract clone or infer parity from deleted source."
+        },
+        {
+          "command": "rg -n -F -e 'attempts must be an integer from 1 to ' -e 'certDaysLeft must be null or an integer from -' -e 'timestamp is older than 7 days' -e 'ms in the future' -e 'location must be at most ' -e 'body must not have accessor properties' src/server.ts",
+          "expected": "Acceptance 3: every one of these six literal strings has at least one occurrence; check each separately rather than treating one matching pattern as proof of all six. API-specific messages remain verbatim."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/server.errors.test.ts || exit; done",
+          "expected": "Acceptance 1/R3.1 green: exit 0, 0 fail, every error test passes in each run; record the stable pass count and titles. On loopback port 0 with fixed now, in-memory DB, injected admin handler and event/promise synchronization, finished 204 remains bodyless and logs exactly [[request failed, original error]]; unfinished 200 receives partial before rejection, closes with exactly one HTTP/1.1 status line, no internal error and no terminating 0 CRLF CRLF chunk. Pre-header unexpected failure is exactly 500 {\"error\":\"internal error\"}, one original-error log and no exception text. GET /nope is quiet 404 {\"error\":\"not found\"}; ManualRouteError before headers is quiet 409 {\"error\":\"conflict\"}, and after headers quietly closes the one started response. Authorization/query/body sentinels appear in neither log message nor client bytes; a following GET /healthz answers 200 and log count stays 1. Use no sleeps, real timers, global/module mocks or new production test exports; close sockets, servers and databases even on failure."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/server.validation.test.ts || exit; done",
+          "expected": "Acceptance 2/R3.2 green: exit 0 and 0 fail in each run, with the same pass count as the added validation suite on BASE. Assert complete literal messages from R3.2 and the plan table, plus independent pinned-contract comparisons where specified. Reason null/empty/1000 units accepted, 1001 rejected including 998/999 x plus emoji; latency 0/2147483647 accepted, -1/-0.4/NaN/Infinity/string/2147483647.5 rejected, 2147483647.4 accepted, 12.5 becomes 13 and 0.4 becomes 0. Attempts 100 accepted, 101 API-only rejected, absent defaults to 1, 0/1.5 contract-rejected. Certificate days plus/minus 3000000 accepted, plus/minus 3000001 API-only rejected, fraction contract-rejected, null retained and absent key absent. With NOW=864000000, age 604800000 accepted/604800001 rejected; unknown/heartbeat future 60000 accepted/60001 rejected; 10-second check future 10000 accepted/10001 rejected. Location missing/blank gives default, trim preserves case, trimmed 64 accepted/65 rejected, non-string contract-rejected. Precedence is contract then timestamp then certificate then attempts then location; findCheck counts are 0 on shape rejection and 1 on shape acceptance; extra is omitted from Result. Authenticated oversized-reason/attempts-101/certificate-3000001/location-65 POSTs each return 400 with literal ErrorResponse and no stored result. Existing accessor test still shows zero getter calls."
+        },
+        {
+          "command": "bun test --config=/dev/null src/server.validation.test.ts src/server.target.test.ts src/server.test.ts",
+          "expected": "Step 7: exit 0, 0 fail; original 29 controls plus all added validation tests pass at the planning base. Report the actual total and ensure it accounts for the new tests without deleting or changing existing ones. Preserve quiet malformed-target behavior, ordinary pre-header 500, HTTP auth/heartbeat/location/unknown-check/idempotence controls. Coverage remains disabled only for focused runs."
+        },
+        {
+          "command": "git grep -n -i -E 'request failed|unexpected|internal error|500|reason|latency|timestamp|attempts|certDaysLeft|location|result|log' -- README.md docs",
+          "expected": "R4/Acceptance 4 documentation inventory: review every touched claim hit, classifying changed with exact final lines or unchanged and still true with a proving line, including related claims within changed documents. Update README.md:80 for one request failed log, private 500 before headers and close/no second answer after headers, preserving quiet malformed targets. Update docs/rest-api.md:52,68,80 for the same error lifecycle, MAX_TIMER_MS and contract-first timestamp/certDaysLeft/attempts/location order and actual reason message. Preserve :69 MAX_REASON_LENGTH/1000 UTF-16 units and unaffected :45-51,53-67,70-79,81-103. Update docs/troubleshooting.md:83 with actual reason-length and certificate-type contract messages, preserve wrong-type reason text and remove only the unreachable :87 bullet; keep remaining API bounds verbatim. Update docs/operation.md:307 for once-per-unexpected-failure logging, pre-header 500, late close and existing error stack field. Preserve all other relevant claims. Protect unchanged docs/configuration.md, concepts.md, install.md, development.md and index.md using the plan/issue-review inventory and scope gates. All four changed docs are required, including README; no README exception applies."
+        },
+        {
+          "command": "rg -n -F 'reason must be at most 1000 characters' docs/troubleshooting.md; rg -n -F 'result.reason: must be null or a string of at most 1000 characters' docs/troubleshooting.md; rg -n -F 'MAX_LATENCY_MS' docs/rest-api.md; rg -n -F 'request failed' README.md docs/rest-api.md docs/operation.md",
+          "expected": "Acceptance 4: first and third searches each have zero matches and exit 1 for absence; second has at least one and exits 0. Last search finds request failed in each of the three named files. Inspect and record each search separately, not just the combined shell exit; manually verify the before/after-headers distinction and late close against R4."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Acceptance 5 on completed branch: exit 0, lint/typecheck/full tests pass with 0 failures under unchanged bunfig.toml, including at least 80 percent line coverage. Record the actual test count; do not use an exact coverage percentage as a gate. Do not skip hooks or weaken CI/lint/types/coverage. Real HTTP regression and ingestion tests supply API end-to-end coverage; this spec requires no Docker Compose check and prohibits the Docker bench."
+        },
+        {
+          "command": "bun start",
+          "expected": "Step 8/Acceptance 6: use isolated valid checks/token files based on examples, temporary PULSE_DB and a loopback port; exercise this actual process with authenticated POST /results attempts:101, expecting exactly 400 {\"error\":\"attempts must be an integer from 1 to 100\"}, then a valid result, expecting 204. Use a current valid timestamp and configured active check/token location. Report exact startup/request/shutdown commands and sanitized results, stop with SIGTERM and verify exit 0; clean temporary files/processes. Reproduce late failure only via injected test handlers, never a production fault endpoint."
+        },
+        {
+          "command": "git diff --unified=5 \"$BASE\" HEAD -- src/server.ts src/server.errors.test.ts src/server.validation.test.ts README.md docs/rest-api.md docs/troubleshooting.md docs/operation.md",
+          "expected": "Security-impact checklist: review input validation, secrets in logs/responses and body/size limits using R3 evidence and the pinned schema. Hostile non-objects, accessors, nonfinite latency, oversized/surrogate reasons, API bounds, old/future timestamps and unknown keys preserve rejection/projection behavior. Log message remains constant request failed with original thrown value; do not add request data, fields or stack sanitization. Client never receives a stack, thrown message or request sentinels. Body cap 1000000 bytes and reason cap 1000 UTF-16 units remain; auth order/statuses, accessor guard and dependency pins remain. Record checklist results and limits in PR evidence."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort",
+          "expected": "Acceptance 7.1 after the last commit: equals exactly these seven lines in order: README.md; docs/operation.md; docs/rest-api.md; docs/troubleshooting.md; src/server.errors.test.ts; src/server.ts; src/server.validation.test.ts. Require every listed path, reject every other path, and reject an empty diff. Compare with this literal list, never a list derived from the diff."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "Acceptance 7.2 after the last commit: exit 0, empty output; index is clean independently of committed and working-tree checks."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "Acceptance 7.3 after the last commit: exit 0, empty output; working tree is clean independently of index and committed checks."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "Acceptance 7.4 after the last commit: exit 0, empty output, including untracked files. No evidence, scripts, temporary configuration or API .factory artifacts remain in the target."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src/start.ts src/main.ts src/service.ts src/state.ts src/db.ts src/migrations.ts src/metrics.ts src/tokens.ts src/token-store.ts src/admin-routes.ts src/manual-incident-routes.ts src/location-limits.ts AGENTS.md CLAUDE.md package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github Dockerfile .dockerignore scripts bench test docs/configuration.md docs/concepts.md docs/install.md docs/development.md docs/index.md",
+          "expected": "Acceptance 7.5 after the last commit: exit 0, empty diff for all protected paths against recorded implementation BASE. Together with the exact seven-path committed allowlist, protect every unlisted file, dependency/schema/tooling/CI path and unchanged document."
+        },
+        {
+          "command": "bash /tmp/v860/scope-fixture.sh",
+          "expected": "Acceptance 8: create this temporary harness with file tools and prove the actual five scope gates above, using an external git-init fixture and its own recorded BASE; never mutate protected API paths. Report gate source and each case with exit result. A clean allowed committed change passes (0); a protected worktree-only change, index-only change, committed change, allowed uncommitted edit and untracked file each fail (nonzero). Both restored-worktree tricks fail: stage a protected change then restore only worktree bytes to fixture BASE; commit a protected change then restore only worktree bytes to fixture BASE. Ensure the exact allowlist requires all allowed files and rejects any extra, and run all independent gates even when an earlier gate fails. Scripts/fixture data stay external and are cleaned up."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD -- src/server.ts src/server.errors.test.ts src/server.validation.test.ts README.md docs/rest-api.md docs/troubleshooting.md docs/operation.md",
+          "expected": "Acceptance 9: personally read every added line, including inline comments and lint directives in every changed file. New src/server.errors.test.ts has no explanatory comments except at most one line naming the test class and expected outcome; prefer no added comments elsewhere unless necessary. Preserve existing comments unless made false by the change. List every added comment in the PR body; write none only after the complete read confirms none."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Acceptance 10, information only: execute the same command/workload with identical Bun/frozen dependencies in recorded BASE and branch checkouts, at least three interleaved pairs base,branch,base,branch,base,branch. Record both revisions, all per-run user/system CPU, user+system totals, pass counts and mean branch-minus-base delta with shared-machine noise caveat. Distinguish added-test overhead from server performance; no performance pass/fail threshold or unsupported server-latency claim. Do not run bun bench/run.ts or Docker bench because of #834 host-port collision."
+        },
+        {
+          "command": "git log --format='%h %s' \"$BASE\"..HEAD && git diff --stat \"$BASE\" HEAD && git status --porcelain",
+          "expected": "Acceptance 11 PR handoff: names Closes lorenzh/pulse-meta#<child>, recorded BASE and exact seven-file scope; includes pinned-validator source comparison, test titles, three-run late red/green outputs, three-run baseline and validation compatibility counts, verified equals-form coverage override, full-check result, manual startup/requests/shutdown, complete documentation hit dispositions with changed/proving lines, complete added-comment inventory, security checklist, interleaved CPU samples/mean delta, all five separate post-commit scope gate results and every fixture outcome. Report known limits and unrelated failures honestly. Conventional Commit subjects, hooks retained, no extra files or dirty states."
+        }
+      ]
+    }
+  ]
+}
