@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Document channel, message and test-helper conventions",
+      "files": [
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: notify — Files, proposed entry, existing-text/creation instructions, checks and completion evidence; Required behavior: The common entry; Acceptance evidence 1-3, 5-6; Non-goals, Risks and impact statements. Document reuse of src/channels/http-post.ts, src/channels/message.ts, src/errors.ts, @lorenzh/pulse-kit and test/support.ts without changing those modules. Keep message building and routing small and pure; senders, clock and ledger stay injected. Add ## Code conventions directly after ## Code design; extend a section already present on current main instead of adding a duplicate.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "prints exactly AGENTS.md; no product code, test, CI, dependency, README.md, version or generated-output changes"
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md | grep '^-[^-]'",
+          "expected": "empty output, grep exits 1: no existing lines removed"
+        },
+        {
+          "command": "grep -Fc 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md' AGENTS.md",
+          "expected": "prints 1 (at least one occurrence of the exact canonical meta URL is required)"
+        },
+        {
+          "command": "grep -c '^## Code conventions$' AGENTS.md",
+          "expected": "prints exactly 1"
+        },
+        {
+          "command": "curl -s -o /dev/null -w '%{http_code}' 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md'",
+          "expected": "prints exactly 200 for an unauthenticated request"
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md",
+          "expected": "Reading confirms: Add ## Code conventions directly after ## Code design; extend a section already present on current main instead of adding a duplicate. The entry names src/channels/http-post.ts, src/channels/message.ts, src/errors.ts, @lorenzh/pulse-kit and test/support.ts; it requires searching before writing, extracting the second copy into a shared helper, and small pure functions with effects at the existing boundary. Common prose is at most three lines after the heading. It links the convention without copying its seven rules or examples, preserves all existing text and stricter rules, and adds no enforcement or refactor."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0 using the existing unchanged package.json check script; report any unrelated baseline failure as a known limit without fixing out-of-scope files"
+        },
+        {
+          "command": "git status --short",
+          "expected": "no changed or untracked path except AGENTS.md (or empty output after committing); in particular no dist/, lockfile, test or tooling changes"
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names the issue and supplies the AGENTS.md-only diff, link/heading grep outputs, and the bun run check command and actual result. It records known limits; states documentation-only performance impact none expected and security impact no; and leaves Acceptance evidence 6 as a post-merge feature-close check with the main SHA and repeated link/meaning checks, without claiming it ran before merge."
+        },
+        {
+          "command": "verified_main_sha=$(gh api repos/lorenzh/pulse-notify/commits/main --jq .sha) && printf '%s\\n' \"$verified_main_sha\" && gh api \"repos/lorenzh/pulse-notify/contents/AGENTS.md?ref=$verified_main_sha\" --jq .content | base64 --decode",
+          "expected": "Deferred until feature close after this target PR merges (not a pre-merge task gate): record the main commit SHA returned by GitHub and read AGENTS.md at that exact SHA. Repeat Acceptance evidence 2-3 on that content: canonical URL present at least once, exactly 1 Code conventions heading, URL HTTP 200, and the three meanings. This implements this target's part of Acceptance evidence 6."
+        }
+      ]
+    }
+  ]
+}
