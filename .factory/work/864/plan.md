@@ -36,6 +36,12 @@ This is the second plan run. It answers the four defects of the plan review:
    and kit's TLS test already runs `openssl` under the same pinned `check.yml` and passes (contract
    section, "Tool facts").
 
+Third plan run: the second plan review found that the fallback bench command allowed
+`--b-ref console=…`, which `api/bench/refs.ts:5,37-39` refuses, and that the harness has no console
+metrics. The fallback is now limited to `contract`, `probe`, `status` and `notify`, and console is
+measured only with the primary `bun run test` timing, without a budget comparison ("Performance
+impact" and the console section). The refusal was reproduced in this run by calling `parseBRefs`.
+
 ## Evidence gathered for this spec
 
 - Issue review `.factory/work/864/issue-review.md` (no earlier decisions; open points 1 to 7
@@ -243,16 +249,31 @@ Other keys of the same file:
     of user + system seconds for each side. This is the quantity the harness reads
     (`Bun.spawn(...).resourceUsage()` user + system, `api/bench/measure.ts:51-73`). `/usr/bin/time`
     is not installed on the Factory runner, so use the builtin.
-  - Fallback, only if a consumer child changes more than its pin and its tests, or the primary
-    contract delta exceeds 1.5 s: the harness lives only in the api repository (`bench/run.ts`),
-    so clone it into a scratch directory outside the target repository and run it from that
-    checkout's root:
+  - Fallback, only for `contract`, `probe`, `status` or `notify`, and only if one of those
+    consumer children changes more than its pin and its tests, or the primary contract delta
+    exceeds 1.5 s: the harness lives only in the api repository (`bench/run.ts`), so clone it into
+    a scratch directory outside the target repository and run it from that checkout's root:
     `git clone https://github.com/lorenzh/pulse-api.git <scratch>/pulse-api && cd <scratch>/pulse-api && bun install --frozen-lockfile`,
     then `bun bench/run.ts --a <api main SHA> --b <api main SHA> --others-ref main --b-ref <target>=<pushed branch name or SHA> --rounds 1`,
-    where `<target>` is `contract`, `probe`, `status`, `notify` or `console`. The flags are from
+    where `<target>` is one of `contract`, `probe`, `status`, `notify`. The flags are from
     `api/bench/README.md:76-88`; `--b-ref` needs `--others-ref` and must name a ref the harness can
     `git fetch` from the public repository. The harness needs Docker with Compose. A run takes
     several minutes per round; report the target's rows of the table.
+  - console is outside the harness: `api/bench/refs.ts:5` lists the repositories `api`, `probe`,
+    `status`, `notify`, `contract`, `kit`, `config`, `parseBRefs` (`refs.ts:37-39`) refuses any other
+    name with a usage error, and `api/bench/budgets.json` (api `515031b`) has no `console` key.
+    In this planning run `parseBRefs(["console=main"], "main")` threw
+    `--b-ref: not a non-api repository: console`, and the same call accepted each of the other
+    four. So no console metric of `bench/budgets.json` can move, and the console child never
+    runs the fallback. Its only measurement is the primary one above: the median of three
+    `bun run test` runs (user + system seconds, bash `time` builtin) on `main` and on the branch,
+    reported without a budget comparison. Expected delta: none beyond run-to-run noise, because the
+    child changes only `package.json` and `bun.lock`. console's tests drive the real contract
+    client against local `Bun.serve` servers with identity bodies (for example
+    `src/connection-test.test.ts:105`, `src/server.security.test.ts:78`), and the fix adds only one
+    request header and one header check per answer on that path. If the console delta exceeds 0.5 s, or the child
+    needs to change more than its pin, it requests a hold instead of measuring further: that is
+    outside this spec.
 
 ## Security impact
 
@@ -657,6 +678,12 @@ Completion evidence: `bun run check` passes, including the existing redirect tes
 (`src/runtime-read.test.ts`, `src/connection-test.test.ts`, `src/check-write.test.ts`,
 `src/token-write.test.ts`); `git diff main -- src` is empty.
 
+Performance evidence: console is not part of the api bench harness (`api/bench/refs.ts:5,37-39`
+refuses `--b-ref console=…`; `api/bench/budgets.json` has no `console` key), so do not run
+`bench/run.ts` for it. Report the median of three `TIMEFORMAT='%U %S'; time bun run test` runs
+(user + system seconds) on `main` and on the branch, measured on one machine. Expected: a delta
+within 0.5 s (literal from "Performance impact"); above that, request a hold.
+
 ## Acceptance evidence (whole feature)
 
 1. contract red run on `1b5e7d3` source fails the memory, redirect and both upstream-text tests;
@@ -668,7 +695,9 @@ Completion evidence: `bun run check` passes, including the existing redirect tes
    for compressed JSON, the decoded-body limit and redirect refusal (status 0, destination count
    0), each with the literal outcomes of the contract section and a red counterpart on `1b5e7d3`.
 4. contract `test_cpu_s` delta reported (three runs per side), expected +0.6 to +1.0 s against the
-   9.0 s budget and the 2.0 s floor.
+   9.0 s budget and the 2.0 s floor. console reports its own median `bun run test` delta (three
+   runs per side), expected within 0.5 s, with no bench harness run (console is not a harness
+   repository).
 5. probe, status, notify and console pin the same full contract `main` SHA that contains the fix,
    with `bun.lock` updated, and `bun run check` passes in each; probe's and status's new adoption
    tests fail on the old pin and pass on the new one; notify's hostile-input tests pass unchanged.
