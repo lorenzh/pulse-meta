@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reject header-incompatible locations at startup while preserving accepted HTTP identity",
+      "files": [
+        "src/location.ts",
+        "src/location.test.ts",
+        "src/settings.test.ts",
+        "src/check.test.ts",
+        "src/main.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe: Behavior, Tests (regression first), Documentation, Completion checks 1-8 and PR text; Decisions 1-5, Required behavior 1-7, Counterexamples, Security impact, Performance impact and Acceptance evidence (feature).",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD",
+          "expected": "Before the first edit, record the actual implementation base SHA as BASE and keep it for every red/green, performance and scope comparison. If this base already rejects incompatible locations with the specified startup behavior, request a needs-input hold instead of opening review."
+        },
+        {
+          "command": "bun --version",
+          "expected": "1.4.0"
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "Regression-first run with the seven new tests added to BASE, before the production fix: \"location rejects header-incompatible character classes\" fails because no error is thrown; \"settings reject an incompatible location with a redacted StartupError\" fails because no error is thrown; \"incompatible locations exit before startup side effects\" fails because the occupied health port produces the bind-error stderr instead of the location error. \"location defaults, trimming and length stay compatible\", \"location accepts tab, space, visible ASCII and Latin-1 unchanged\", \"accepted locations complete a local HTTP check with unchanged identity\" and \"an accepted location posts an up result through the real startup path\" pass. Report per-title results only; never publish failing output containing a refused setting value. Focused-suite coverage is not the acceptance gate."
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "After implementation, all seven exact titles pass with 0 test failures: \"location defaults, trimming and length stay compatible\"; \"location rejects header-incompatible character classes\"; \"location accepts tab, space, visible ASCII and Latin-1 unchanged\"; \"settings reject an incompatible location with a redacted StartupError\"; \"accepted locations complete a local HTTP check with unchanged identity\"; \"incompatible locations exit before startup side effects\"; \"an accepted location posts an up result through the real startup path\". The accepted-range test covers exactly 224 code units. The settings test proves StartupError with the fixed message and no location or token sentinel. \"incompatible locations exit before startup side effects\" proves exit 2, empty stdout, exactly one stderr line \"pulse-probe: PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 characters\", no bind error, no location or token sentinel, and 0 API requests, with a blocker occupying the health port and a 10-second exit bound. \"accepted locations complete a local HTTP check with unchanged identity\" proves status up, statusCode 200, reason null, unchanged result location and received User-Agent for ASCII, internal-tab/punctuation/space and Latin-1 controls. \"an accepted location posts an up result through the real startup path\" proves an accepted Latin-1 location posts an up result with unchanged identity and User-Agent, then exits 0 on SIGTERM. These two startup titles exercise the real src/main.ts and satisfy the manager-approved replacement of the manual startup exercise; provide no manual reproduction command. Coverage exit status of this focused suite is not the gate; the full check owns coverage."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 with lint, typecheck and the full test suite passing; line coverage at least 0.8 with bunfig.toml unchanged. No dependency, tooling or CI changes. No compose end-to-end test is specified for this probe-only change; the local HTTP and real-startup regression titles provide end-to-end evidence."
+        },
+        {
+          "command": "grep -c 'PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 characters' src/location.ts docs/configuration.md docs/troubleshooting.md",
+          "expected": "At least 1 match in each of the three named files; the message is a fixed single-line literal with no setting value."
+        },
+        {
+          "command": "grep -c 'Latin-1' README.md",
+          "expected": "At least 1 match."
+        },
+        {
+          "command": "grep -c 'PULSE_LOCATION is longer than 64 characters' src/location.ts",
+          "expected": "1 match; the observable overlength error stays PULSE_LOCATION is longer than 64 characters and takes precedence over character validation."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/configuration.md docs/troubleshooting.md",
+          "expected": "README.md documents PULSE_LOCATION after the quick start and links to docs/configuration.md#location: trim, unset/blank default, case-sensitive identity, 64-character limit, accepted tab/space/visible ASCII/Latin-1, and exit 2 otherwise. Configuration table and Location section document the exact accepted range from Decisions, the fixed redacted error, exit 2 and generated User-Agent rationale. A paragraph under the last Migration section describes formerly false down HTTP checks, new startup rejection and the need for an accepted name with a matching API token location. Troubleshooting adds Cause/Action for the fixed error after the overlength entry. No rejected example, escaped refused value or reproduction command."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src README.md docs | grep '^+' | LC_ALL=C grep -n '[^ -~]'",
+          "expected": "No output (the final grep returns 1 for no match); every added line is printable ASCII. Rejected values are constructed only at runtime inside tests from escapes or code points, never placed raw in source, documentation or public evidence."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs | grep '^+' | grep -nE '\\\\(u|x)[0-9A-Fa-f]'",
+          "expected": "No output (the final grep returns 1 for no match); documentation contains no escaped setting values. Review prose, titles and diagnostics for concrete refused values or reproduction recipes as well; printable-ASCII checks alone do not prove disclosure compliance."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src",
+          "expected": "Security checklist for public P2 security-probe-2026-11-04-1 (#862): location is src/location.ts parseLocation/userAgent, consumed by src/check.ts generated User-Agent; class is missing startup validation at a trust boundary; impact is false down HTTP results while TCP checks and accepted controls remain up, potentially feeding quorum/incidents and exposing unescaped location text in a startup log; fix direction is early parser rejection with exit 2 and fixed redacted PULSE_LOCATION text. Only src/location.ts changes in production: trim, blank default, unchanged 64-code-unit check first, whitelist from Decisions, return accepted identity unchanged; keep DEFAULT_LOCATION, MAX_LOCATION_LENGTH and userAgent, with an RFC 9110/tab-compatibility comment and no new test-only export. Tests cover the Required behavior and Counterexamples by class, including trim boundaries, every C0 control except tab, DEL, above Latin-1 BMP, supplementary and lone-surrogate cases, length precedence and all 224 accepted code units. Refused values are built at runtime only and kept out of assertion diagnostics. Exactly two new child processes, one for each startup title; servers and children close in after/finally, the refusing child is killed on timeout, and the accepted child is stopped in finally. No scheduling, retries, authentication, token/location match, quorum, result shape, metrics, check-supplied headers or other settings changes. PR evidence names finding location/class/impact/fix direction without any working payload or reproduction command."
+        },
+        {
+          "command": "for sample in 1 2 3; do /usr/bin/time -f '%U %S' bun run test; done",
+          "expected": "Run three full-suite samples on pristine recorded BASE before edits and three on final HEAD under Bun 1.4.0. Record user+system CPU seconds per sample and both medians separately; HEAD median is below the independent 2.3 s probe test_cpu_s budget from api bench/budgets.json named by the spec. Do not change budgets or timing/tooling configuration. No startup/load/memory/image performance impact expected beyond the specified test CPU increase."
+        },
+        {
+          "command": "diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '%s\\n' README.md docs/configuration.md docs/troubleshooting.md src/check.test.ts src/location.test.ts src/location.ts src/main.test.ts src/settings.test.ts | LC_ALL=C sort)",
+          "expected": "G1 after the last commit, using the recorded implementation BASE in Bash: exit 0 and no output; committed changes are exactly these eight allowed files, including README.md. Report independently of G2-G5."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "G2 after the last commit: empty output; index has no staged changes. Report separately from committed scope and worktree."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "G3 after the last commit: empty output; worktree has no unstaged tracked changes. Report separately from committed scope and index."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "G4 after the last commit: empty output, including no untracked files."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src/settings.ts src/main.ts src/check.ts src/check-scheduler.ts src/scheduler.ts src/client.ts src/token.ts src/check-guard.ts src/header-hosts.ts package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github/workflows/ci.yml Dockerfile AGENTS.md CLAUDE.md docs/operation.md docs/index.md docs/install.md docs/development.md",
+          "expected": "G5 after the last commit: exit 0 and no output; all protected paths are byte-identical between the recorded implementation BASE and HEAD."
+        },
+        {
+          "command": "python3 -c 'import os\nimport subprocess\nimport tempfile\nfrom pathlib import Path\n\nexpected = {\n    \"S1\": \"PPPPP\",\n    \"S2\": \"FPPPF\",\n    \"S3\": \"PPFFP\",\n    \"S4\": \"PFPFP\",\n    \"S5\": \"PFFFP\",\n    \"S6\": \"FPFFF\",\n    \"S7\": \"PPPFP\",\n    \"S8\": \"PPPPP\",\n}\nwith tempfile.TemporaryDirectory(prefix=\"probe-scope-\") as directory:\n    repo = Path(directory)\n    def run(args, check=True):\n        return subprocess.run(args, cwd=repo, env=environment, text=True,\n                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)\n    def git(*args):\n        return run([\"git\", *args]).stdout.strip()\n    environment = os.environ.copy()\n    for key in list(environment):\n        if key.startswith(\"GIT_\"):\n            environment.pop(key)\n    git(\"init\", \"-q\")\n    git(\"config\", \"user.name\", \"Scope fixture\")\n    git(\"config\", \"user.email\", \"scope-fixture@example.invalid\")\n    git(\"config\", \"commit.gpgsign\", \"false\")\n    (repo / \"allowed.txt\").write_text(\"base\\n\")\n    (repo / \"protected.txt\").write_text(\"base\\n\")\n    git(\"add\", \"allowed.txt\", \"protected.txt\")\n    git(\"commit\", \"-qm\", \"fixture base\")\n    base = git(\"rev-parse\", \"HEAD\")\n    environment[\"BASE\"] = base\n    (repo / \"allowed.txt\").write_text(\"allowed\\n\")\n    git(\"add\", \"allowed.txt\")\n    git(\"commit\", \"-qm\", \"allowed change\")\n    allowed = git(\"rev-parse\", \"HEAD\")\n    def reset():\n        git(\"reset\", \"--hard\", allowed)\n    def change_protected():\n        (repo / \"protected.txt\").write_text(\"changed\\n\")\n    def report(label):\n        g1 = run([\"bash\", \"-c\", '\\''diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf \"%s\\\\n\" allowed.txt | LC_ALL=C sort)'\\''], check=False).returncode == 0\n        g2 = git(\"diff\", \"--name-only\", \"--cached\") == \"\"\n        g3 = git(\"diff\", \"--name-only\") == \"\"\n        g4 = git(\"status\", \"--porcelain\") == \"\"\n        g5 = run([\"git\", \"diff\", \"--exit-code\", base, \"HEAD\", \"--\", \"protected.txt\"], check=False).returncode == 0\n        actual = \"\".join(\"P\" if gate else \"F\" for gate in [g1, g2, g3, g4, g5])\n        assert actual == expected[label], (label, actual, expected[label])\n        print(label, \" \".join(actual))\n    report(\"S1\")\n    change_protected()\n    git(\"add\", \"protected.txt\")\n    git(\"commit\", \"-qm\", \"protected change\")\n    report(\"S2\")\n    reset()\n    change_protected()\n    report(\"S3\")\n    reset()\n    change_protected()\n    git(\"add\", \"protected.txt\")\n    report(\"S4\")\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\")\n    git(\"diff\", \"--exit-code\", base, \"--\", \"protected.txt\")\n    report(\"S5\")\n    reset()\n    change_protected()\n    git(\"add\", \"protected.txt\")\n    git(\"commit\", \"-qm\", \"protected change\")\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\")\n    git(\"diff\", \"--exit-code\", base, \"--\", \"protected.txt\")\n    report(\"S6\")\n    reset()\n    (repo / \"extra.txt\").write_text(\"untracked\\n\")\n    report(\"S7\")\n    (repo / \"extra.txt\").unlink()\n    report(\"S8\")\n'",
+          "expected": "Exit 0; disposable Git fixture outside the probe checkout is removed, and its separate G1-G5 table is exactly: S1 P P P P P; S2 F P P P F; S3 P P F F P; S4 P F P F P; S5 P F F F P; S6 F P F F F; S7 P P P F P; S8 P P P P P. Covers clean allowed-only, committed protected, unstaged protected, staged protected, restored-worktree staged, restored-worktree committed, untracked, clean again. In S5 and S6 the base-to-worktree protected diff is empty without resetting the index, yet the separate gates catch the change. Use harmless text unrelated to the finding; no fixture file enters probe and no implementation checkout is reset. Report the fixture table separately from real G1-G5."
+        },
+        {
+          "command": "gh pr view --json title,body",
+          "expected": "PR text names #862 and public P2 security-probe-2026-11-04-1, finding location src/location.ts consumed by src/check.ts User-Agent, missing startup header input validation, false down HTTP impact with TCP/valid controls unaffected and early redacted exit-2 validation fix direction. Include BASE SHA, per-title BASE/HEAD outcomes for \"location defaults, trimming and length stay compatible\"; \"location rejects header-incompatible character classes\"; \"location accepts tab, space, visible ASCII and Latin-1 unchanged\"; \"settings reject an incompatible location with a redacted StartupError\"; \"accepted locations complete a local HTTP check with unchanged identity\"; \"incompatible locations exit before startup side effects\"; \"an accepted location posts an up result through the real startup path\", full check/coverage results, real G1-G5 separately, the separate eight-state fixture table, both three-sample test CPU medians, docs/migration summary, startup exercise by the two exact titles, and known limits: DEL refused by grammar despite Bun transport acceptance; environment-inexpressible classes tested only at parser/settings level. No concrete refused value, working payload, escaped recipe, reproduction command or raw failure output containing values in title/body or acceptance evidence."
+        }
+      ]
+    }
+  ]
+}
