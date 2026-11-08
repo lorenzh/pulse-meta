@@ -1,0 +1,7 @@
+[
+  { "name": "contract", "dependsOn": [] },
+  { "name": "probe", "dependsOn": ["contract"] },
+  { "name": "status", "dependsOn": ["contract"] },
+  { "name": "notify", "dependsOn": ["contract"] },
+  { "name": "console", "dependsOn": ["contract"] }
+]
