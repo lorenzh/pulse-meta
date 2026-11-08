@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "target": "agent",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Create minimal host-agent code convention guidance",
+      "files": [
+        "AGENTS.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: agent — Files, proposed entry, checks and completion evidence; Required behavior: The common entry; Acceptance evidence 1-3, 5-6; Non-goals, Risks and impact statements. Document reuse of the crate's existing functions and modules when present without changing those modules. Keep metric parsing and formatting small and pure; host reads and sending to pulse-api stay at the edge. Create the minimal AGENTS.md shown in the section if absent; if main gains one, preserve it and add the entry after its design rules. Do not add commands, versions, Rust tooling, CLAUDE.md or code. Use the agent creation/fallback instructions. Re-read current main before editing (inspected clone e72ddb2); apply the Counterexamples to the entry.",
+      "acceptance": [
+        {
+          "command": "git diff --name-only origin/main...HEAD",
+          "expected": "prints exactly AGENTS.md; no product code, test, CI, dependency, README.md, version or generated-output changes"
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md | grep '^-[^-]'",
+          "expected": "empty output, grep exits 1: no existing lines removed; AGENTS.md is new if still absent on main"
+        },
+        {
+          "command": "grep -Fc 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md' AGENTS.md",
+          "expected": "prints an integer at least 1; the exact canonical meta URL is present"
+        },
+        {
+          "command": "grep -c '^## Code conventions$' AGENTS.md",
+          "expected": "prints exactly 1"
+        },
+        {
+          "command": "curl -s -o /dev/null -w '%{http_code}' 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md'",
+          "expected": "prints exactly 200 for an unauthenticated request"
+        },
+        {
+          "command": "git diff origin/main...HEAD -- AGENTS.md",
+          "expected": "Reading confirms: Use the agent creation/fallback instructions. The entry names the crate's existing functions and modules when present; it requires searching before writing, extracting the second copy into a shared helper, and small pure functions with effects at the existing boundary. Common prose is at most three lines after the heading. It links the convention without copying its seven rules or examples, preserves all existing text and stricter rules, and adds no enforcement or refactor."
+        },
+        {
+          "command": "git ls-tree --name-only origin/main && git ls-files -- package.json .github/workflows",
+          "expected": "At the inspected baseline the main tree lists LICENSE and README.md, and the second command prints nothing: no package.json or CI check exists. Report this in the PR; add no invented check command or tooling. Re-read current main if it has advanced."
+        },
+        {
+          "command": "git status --short",
+          "expected": "no changed or untracked path except AGENTS.md (or empty output after committing); in particular no dist/, lockfile, test or tooling changes"
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The PR body names the issue and supplies the AGENTS.md-only diff, link/heading grep outputs, and the absence of repository check tooling. It records known limits; states documentation-only performance impact none expected and security impact no; and leaves Acceptance evidence 6 as a post-merge feature-close check with the main SHA and repeated link/meaning checks, without claiming it ran before merge."
+        },
+        {
+          "command": "verified_main_sha=$(gh api repos/lorenzh/pulse-agent/commits/main --jq .sha) && printf '%s\\n' \"$verified_main_sha\" && gh api \"repos/lorenzh/pulse-agent/contents/AGENTS.md?ref=$verified_main_sha\" --jq .content | base64 --decode",
+          "expected": "Deferred until feature close after this target PR merges (not a pre-merge task gate): record the main commit SHA returned by GitHub and read AGENTS.md at that exact SHA. Repeat Acceptance evidence 2-3 on that content: canonical URL present at least once, exactly 1 Code conventions heading, URL HTTP 200, and the three meanings. This implements this target's part of Acceptance evidence 6."
+        }
+      ]
+    }
+  ]
+}
