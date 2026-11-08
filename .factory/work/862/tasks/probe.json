@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reject header-incompatible locations before startup and preserve accepted HTTP identity",
+      "files": [
+        "src/location.ts",
+        "src/location.test.ts",
+        "src/settings.test.ts",
+        "src/check.test.ts",
+        "src/main.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe: Behavior, Tests (all seven exact titles and regression-first evidence), Documentation and Completion checks 1-8; Decisions 1-5, Required behavior 1-7, Counterexamples, Security impact, Performance impact and PR text.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD; bun --version",
+          "expected": "Before any edit, record the implementation BASE SHA externally to the probe repository and retain it for every diff and timing comparison. Planning base: 9490141ef9e92044808c70bb8200db3d497d1060; runtime: exactly 1.4.0. If the implementation base differs, refresh source and pinned-tooling observations and rerun every baseline control. If the base already rejects incompatible locations as specified, request a hold instead of review. Do not add evidence files to probe."
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "Regression-first run on recorded BASE, with only the new tests added and production code unchanged: \"location rejects header-incompatible character classes\" and \"settings reject an incompatible location with a redacted StartupError\" fail because no error is thrown; \"incompatible locations exit before startup side effects\" fails because stderr is the health-bind diagnostic. Controls \"location defaults, trimming and length stay compatible\", \"location accepts tab, space and visible ASCII unchanged\", \"accepted locations complete a local HTTP check with unchanged identity\", and \"an accepted location posts an up result through the real startup path\" pass on that same BASE. Verify every child-environment control through the real entry point before listing it as passing on BASE; redesign or remove a failing control, never reclassify it as a regression. Record pass/fail per exact title without disclosing failing inputs or raw failure output. Focused coverage exit status is not a gate."
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "After implementing decisions 1-3 in parseLocation only, all seven titles from the regression-first run pass and the summary reports 0 fail. Follow the Repository: probe Tests table, Required behavior and Counterexamples, including all 96 accepted code units in the environment form, unchanged result and User-Agent identity, trim/default/case/length compatibility, length-error precedence, fixed redacted StartupError, and process rejection before listener/API/check side effects. Rejection tests construct inputs only inside test code at runtime; titles and assertion messages name classes only and do not compare refused values for equality. Child processes have bounded waits and cleanup, and loopback servers are closed in finally or the existing after hook. No non-ASCII child-environment compatibility control is claimed. The focused run is judged by these results, not its coverage exit status."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 under Bun 1.4.0: lint, typecheck and full test suite pass, with the unchanged bunfig.toml line-coverage threshold of 0.8 enforced. Preserve tooling, pins, lockfile and hooks; never weaken checks or skip commit hooks."
+        },
+        {
+          "command": "grep -c 'PULSE_LOCATION must hold only tab, space or visible ASCII characters' src/location.ts docs/configuration.md docs/troubleshooting.md; grep -c 'visible ASCII' README.md",
+          "expected": "At least 1 occurrence in each named file. Review Documentation: README.md contains the setting paragraph after quick start and links docs/configuration.md#location; configuration table and Location describe trimming, default, case, 64-character limit, tab/space/visible ASCII, fixed value-free error and exit 2. Its last Migration section separately explains previously false-down non-ASCII and control classes other than tab and delete, and previously working delete-control names now refused for header grammar; all newly refused names stop startup even for non-HTTP-only probes. Explain accepted renaming with matching API tokens. Troubleshooting has the exact new heading after the overlength entry, class-only cause, accepted-name action and exit 2. No concrete refused value, escape recipe, code point or reproduction command appears in docs."
+        },
+        {
+          "command": "grep -Fc 'The delete control is refused because the HTTP standard does not allow it in a header field.' docs/configuration.md; git diff \"$BASE\" HEAD -- README.md docs/configuration.md docs/troubleshooting.md",
+          "expected": "The literal sentence from Documentation occurs at least once in docs/configuration.md. Review every changed documentation sentence about down, including pronouns such as such names, other characters or these names: each location-related false-down claim applies only to non-ASCII characters or control characters other than tab and delete. None says or implies that every newly refused name caused false down results. Independent source: Current behavior in the plan records delete-control names posting up on BASE; they are rejected for header grammar compliance. Configuration and migration explain that distinction explicitly."
+        },
+        {
+          "command": "bun -e 'import { parseLocation } from \"./src/location.ts\"; for (const n of [64, 65]) { try { console.log(\"accepted\", parseLocation(\"a\".repeat(n)).length); } catch (e) { console.log(e.message); } }'",
+          "expected": "Run at BASE and final HEAD: stdout is exactly two lines, \"accepted 64\" and \"PULSE_LOCATION is longer than 64 characters\". The title \"location defaults, trimming and length stay compatible\" additionally proves length-error precedence. Do not grep for a literal overlength message in source; it uses MAX_LOCATION_LENGTH interpolation."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src README.md docs | grep '^+' | LC_ALL=C grep -n '[^ -~]'",
+          "expected": "No output (last grep exits 1 for no matches): every added line is printable ASCII. Refused values exist only as runtime constructions inside tests. Review the diff and public evidence for no concrete refused value, working payload, escaped recipe in prose, or reproduction command. Rejected-location errors, stderr, new test titles and assertion messages expose no setting values or credentials. Existing successful-startup logging in protected src/main.ts stays unchanged."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs | grep '^+' | grep -nE '\\\\(u|x)[0-9A-Fa-f]'",
+          "expected": "No output (last grep exits 1 for no matches): docs contain no escaped refused values. This supplements class-only disclosure review; it is not the sole security check."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run three times on clean BASE and three times on final HEAD; report the median of user+system CPU seconds for each, separately from red/green runs. Final HEAD median stays below 2.3 s. If above 2.3 s, apply only the Performance impact fallback: drop the C0-control child from the title \"incompatible locations exit before startup side effects\", retain the Latin-1 child and unit coverage, rerun required checks and timing, and report the drop. Never raise the budget or change coverage policy."
+        },
+        {
+          "command": "diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '%s\\n' README.md docs/configuration.md docs/troubleshooting.md src/check.test.ts src/location.test.ts src/location.ts src/main.test.ts src/settings.test.ts | LC_ALL=C sort)",
+          "expected": "G1 after the last commit: exit 0; committed changes from recorded implementation BASE are exactly these eight files, including README.md. No other production file or target changes."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "G2 after the last commit: empty output; the index has no uncommitted changes. Report independently of G1 and the working tree."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "G3 after the last commit: empty output; the working tree has no unstaged changes. Report independently of commits and index."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "G4 after the last commit: empty output, including untracked files."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src/settings.ts src/main.ts src/check.ts src/check-scheduler.ts src/scheduler.ts src/client.ts src/token.ts src/check-guard.ts src/header-hosts.ts src/reason.ts package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github/workflows/ci.yml Dockerfile AGENTS.md CLAUDE.md docs/operation.md docs/index.md docs/install.md docs/development.md",
+          "expected": "G5 after the last commit: exit 0; all listed protected files are byte-identical to recorded BASE. Keep scheduling, authentication, quorum, HTTP execution, settings wiring, token/location matching, dependencies and tooling unchanged. Report G1-G5 separately; a BASE-to-worktree diff cannot substitute for them."
+        },
+        {
+          "command": "python3 -c 'import os\nimport subprocess\nimport tempfile\nfrom pathlib import Path\n\nwith tempfile.TemporaryDirectory(prefix=\"pulse-862-scope-\") as tmp:\n    root = Path(tmp)\n    def git(*args):\n        return subprocess.check_output([\"git\", \"-C\", tmp, *args], text=True).strip()\n    def write(name, text):\n        (root / name).write_text(text, encoding=\"ascii\")\n    git(\"init\", \"-q\")\n    git(\"config\", \"user.name\", \"Scope fixture\")\n    git(\"config\", \"user.email\", \"scope-fixture@example.invalid\")\n    git(\"config\", \"commit.gpgsign\", \"false\")\n    git(\"config\", \"core.hooksPath\", \"/dev/null\")\n    write(\"allowed.txt\", \"base\\n\")\n    write(\"protected.txt\", \"base\\n\")\n    git(\"add\", \".\")\n    git(\"commit\", \"-qm\", \"base fixture\")\n    base = git(\"rev-parse\", \"HEAD\")\n    write(\"allowed.txt\", \"allowed change\\n\")\n    git(\"add\", \"allowed.txt\")\n    git(\"commit\", \"-qm\", \"allowed fixture\")\n    allowed = git(\"rev-parse\", \"HEAD\")\n    gates = [\n        \"\"\"diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '\\''%s\\\\n'\\'' allowed.txt | LC_ALL=C sort)\"\"\",\n        \"\"\"test -z \"$(git diff --name-only --cached)\" \"\"\",\n        \"\"\"test -z \"$(git diff --name-only)\" \"\"\",\n        \"\"\"test -z \"$(git status --porcelain)\" \"\"\",\n        \"\"\"git diff --exit-code \"$BASE\" HEAD -- protected.txt\"\"\",\n    ]\n    env = dict(os.environ, BASE=base)\n    def prove(state, expected, restored=False):\n        if restored:\n            assert git(\"diff\", base, \"--\", \"protected.txt\") == \"\", state\n        observed = \"\".join(\n            \"P\" if subprocess.run([\"bash\", \"-c\", gate], cwd=tmp, env=env,\n                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0 else \"F\"\n            for gate in gates\n        )\n        print(state, \" \".join(observed), flush=True)\n        assert observed == expected, state\n    def reset():\n        git(\"reset\", \"--hard\", allowed)\n        git(\"clean\", \"-fd\")\n    def protected():\n        write(\"protected.txt\", \"protected change\\n\")\n    prove(\"S1\", \"PPPPP\")\n    protected()\n    git(\"add\", \"protected.txt\")\n    git(\"commit\", \"-qm\", \"protected fixture\")\n    committed = git(\"rev-parse\", \"HEAD\")\n    prove(\"S2\", \"FPPPF\")\n    reset()\n    protected()\n    prove(\"S3\", \"PPFFP\")\n    reset()\n    protected()\n    git(\"add\", \"protected.txt\")\n    prove(\"S4\", \"PFPFP\")\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\")\n    prove(\"S5\", \"PFFFP\", restored=True)\n    git(\"reset\", \"--hard\", committed)\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\")\n    prove(\"S6\", \"FPFFF\", restored=True)\n    reset()\n    write(\"extra.txt\", \"untracked\\n\")\n    prove(\"S7\", \"PPPFP\")\n    reset()\n    prove(\"S8\", \"PPPPP\")\n    write(\"allowed.txt\", \"uncommitted allowed change\\n\")\n    prove(\"S9\", \"PPFFP\")\n    git(\"add\", \"allowed.txt\")\n    prove(\"S10\", \"PFPFP\")\n    reset()\n'",
+          "expected": "Exit 0; in a disposable Git repository outside probe, harmless fixture content proves G1-G5 separately for commits, index, working tree and untracked state. Output rows are exactly S1 P P P P P; S2 F P P P F; S3 P P F F P; S4 P F P F P; S5 P F F F P; S6 F P F F F; S7 P P P F P; S8 P P P P P; S9 P P F F P; S10 P F P F P. S5 stages a protected edit then restores only the worktree to fixture BASE; S6 commits a protected edit then restores only the worktree to fixture BASE. Both assert an empty protected BASE-to-worktree diff while the separate gates still fail. Report the table separately from real G1-G5 and delete the fixture; add no probe file. S9 and S10 supplement the plan table with an allowed but uncommitted edit, unstaged and then staged; both fail final cleanliness, as required by the issue review. The fixture removes all temporary files on exit."
+        },
+        {
+          "command": "PULSE_API_URL=http://127.0.0.1:9 PULSE_PROBE_TOKEN=local-only PULSE_LOCATION='eu west-1' bun run start",
+          "expected": "Accepted-control startup exercise: settings pass, fetch retry is logged instead of a location error, SIGTERM shuts down with exit 0. Stop and clean up the process. Rejection is exercised only through the title \"incompatible locations exit before startup side effects\"; publish no manual refused-input command."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/location.ts src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts README.md docs/configuration.md docs/troubleshooting.md",
+          "expected": "Review Security impact checklist and prepare value-free PR evidence for issue #862 and public P2 security-probe-2026-11-04-1. Name location: src/location.ts parseLocation before src/check.ts generates User-Agent; class: missing input validation at the configuration-to-header boundary; impact: accepted incompatible locations make HTTP checks falsely down; fix direction: startup validation with a fixed PULSE_LOCATION diagnostic and exit 2. Verify only parseLocation changes production behavior: trim/default, length check first with unchanged message, then tab/space/visible-ASCII allowlist, unchanged returned identity and userAgent; include the explanatory RFC/runtime comment and no test-only export. PR includes the narrowed accepted set, the plan's one-sentence runtime limitation, BASE/HEAD results by all seven exact test titles, BASE SHA, full-check and startup results, separate G1-G5 results, fixture table and CPU medians/fallback. State known limits and preserve the documentation distinction: delete-control names worked on BASE and are rejected by grammar, so no statement implies every refused name caused false down; NUL and lone surrogates parser-only; non-ASCII refused because of runtime header handling. Security review covers settings-boundary validation, redacted rejection diagnostics and generated-header transport; unchanged auth, size limits, SSRF/redirects, writes and pins are outside this fix. No refused setting value, working payload, construction recipe or reproduction command in public evidence; value-free diagnostic requirements apply to rejected-location paths."
+        }
+      ]
+    }
+  ]
+}
