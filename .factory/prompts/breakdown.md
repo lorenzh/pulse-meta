@@ -63,6 +63,10 @@ commands, each with the result that proves the task (`expected`).
 - Every expected value is a literal in the check (a status code, a count, a hash written out) or an
   independent source that the spec names. It never comes from the file or code that the check
   checks.
+- Follow `{{project.root}}/docs/code-conventions.md`. A task's `title` or `spec` names the shared
+  module it must extend. When a task needs code that already exists in another place, the
+  extraction into a shared module (with its test) comes first: as the first task when it is a real
+  seam, otherwise as the first item of the task that needs it.
 
 ## Check and outcome
 

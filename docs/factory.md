@@ -192,7 +192,7 @@ References: [Factory runner identity](https://github.com/paragondata/factory/blo
 
 **Interim rule.** Only the repository owner applies `factory/` labels. Before a person starts or restarts a run (label, `factory start`, `admission=restart`), they read every comment that arrived since the last run, and they remove or answer any comment that asks the agent to do something outside the issue.
 
-Each repository's `AGENTS.md` holds its code conventions (test-driven development, end-to-end tests, lint). Its `docs/development.md` shows the commands.
+Each repository's `AGENTS.md` holds its code conventions (test-driven development, end-to-end tests, lint). The common convention for easy and reusable code is [code-conventions.md](code-conventions.md); it applies to every target. Its `docs/development.md` shows the commands.
 
 Back to the [index](index.md).
 

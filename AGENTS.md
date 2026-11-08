@@ -7,6 +7,7 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 - The Factory report (`report/`): `data.mjs` builds `data.json` from the public issues, Actions runs and pull requests; the Factory workflow `report` writes `narrative.json`; `check.mjs` checks the text against the data; `index.html` is the fixed template. `factory-report-open.yml` opens the daily report issue, `factory-report.yml` publishes the merged report on GitHub Pages. See `docs/factory.md#factory-report`.
 - No product code. Never change a target repository by hand from here: write a feature issue and let Factory build it.
 - Targets: `contract`, `probe`, `api`, `status`, `notify`, `config`, `kit`, `website`, `console`, `deploy`, `agent` (`lorenzh/pulse-<name>`). Their code conventions are in each target's `AGENTS.md`.
+- The common code convention is [docs/code-conventions.md](docs/code-conventions.md) (easy and reusable code); it applies to every target.
 - Runtime dependencies in a target come only from [docs/approved-packages.md](docs/approved-packages.md).
 
 ## How a feature flows
@@ -24,6 +25,7 @@ Match the closed issues (for example #65):
 - `## What it must do`: bullet list of required behavior, per target where it matters.
 - `## Constraints`: what must not change.
 - `## Done when`: one observable check.
+- If a shared helper or module exists that the change must extend, name it.
 
 Lessons:
 - A plan sees only `main` of each target at its start, not features still in flight.

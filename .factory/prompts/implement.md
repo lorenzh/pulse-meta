@@ -106,6 +106,11 @@ Rules for every task:
   `Task: <id>` (`git commit -m "<what changed>" -m "Task: T2"`). A fix after review takes the id of
   the task that the finding belongs to. Leave no uncommitted change: a commit that the Factory makes
   has no trailer.
+- Follow the code conventions {{#if workspace.contextDirectory}}in `{{project.root}}/{{workspace.contextDirectory}}/meta/docs/code-conventions.md`{{else}}of the meta repository (`docs/code-conventions.md`){{/if}} and use the
+  shared modules that this repository's `AGENTS.md` names. Search for an existing helper, component
+  or module before you write one, and use it. When a second place needs the same markup, query,
+  check or logic, extract it into a shared module with its own test in this change; never copy it.
+  Keep presentation apart from data access, validation and side effects.
 - A step task needs no pull request body: the Factory pushes the branch and opens the draft pull
   request when it publishes.
 - When a task does not fit one run, commit what passes and return `retry` with what is left in the
