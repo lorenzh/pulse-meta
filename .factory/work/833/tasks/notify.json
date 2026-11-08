@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Corrupt subscriber stores exit 2 with private diagnostics and released locks",
+      "files": [
+        "src/subscribers-cli.ts",
+        "test/subscribers-cli.corrupt-store.test.ts",
+        "README.md",
+        "docs/operation.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Behavior, Tests cases 1-8 and existing-suite controls, Docs, and Checks and completion evidence 1-11; Required behavior 1-5; Performance impact; Security impact. Implement the CLI boundary fix, its tests and both docs together; do not commit the source fix without its regression tests because of the per-file coverage gate. Use the plan's exact N/S/T fixtures and only imports already available on BASE. Keep the store, service startup, unsupported commands and other exit codes unchanged. Record the actual pre-edit implementation BASE; if both required valid delete invocations already return code 2 on N there, request a hold instead of opening a review. Create temporary evidence/configuration/harness files outside the implementation checkout with file tools; none belongs in the changed-file list.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD\nbun --version\nbun install --frozen-lockfile",
+          "expected": "Before the first implementation edit, record HEAD as BASE in the PR body; do not substitute the planning snapshot. Bun is 1.4.0; frozen install exits 0 with hooks enabled and no tracked dependency/configuration changes. Retain BASE for every history, docs, performance and scope comparison. Never bypass hooks or weaken lint, typecheck or coverage."
+        },
+        {
+          "command": "git worktree add /tmp/notify-base \"$BASE\"\n(cd /tmp/notify-base && bun install --frozen-lockfile)",
+          "expected": "Exit 0 for both setup commands. The disposable worktree is at the recorded BASE with identical pinned dependencies. Use file tools to copy only test/subscribers-cli.corrupt-store.test.ts into it and to create /tmp/notify-nocov/bunfig.toml containing [test] and coverage = false. Do not edit either checkout's tracked bunfig.toml. If both required executable delete calls on N already return 2 on BASE, request a hold as the plan requires."
+        },
+        {
+          "command": "for run in 1 2 3; do (cd /tmp/notify-base && bun --config=/tmp/notify-nocov/bunfig.toml test test/subscribers-cli.corrupt-store.test.ts); done",
+          "expected": "Each of the three isolated runs exits 1: all regression cases 1-5 fail for the plan's behavioral reasons and controls 6-8 pass. Both executable N cases (probe@example.com and Absent@Example.com) fail status 1 !== 2 with SQLiteError: file is not a database; public N throws SQLITE_NOTADB; both fresh S cases throw SQLITE_CORRUPT at open; T with stored probe@example.com throws SQLITE_CORRUPT in deleteByEmail. Record each run's literal pass/fail counts, test names and failure reasons. Missing imports, setup failures or coverage failures do not count as red evidence."
+        },
+        {
+          "command": "for run in 1 2 3; do bun --config=/tmp/notify-nocov/bunfig.toml test test/subscribers-cli.corrupt-store.test.ts || exit \"$?\"; done",
+          "expected": "Exit 0 on all three branch runs, 0 fail. The two real executable calls use process.execPath and only PATH plus PULSE_NOTIFY_SUBSCRIPTIONS_STATE in their environment. Each exits 2, stdout is empty and stderr is exactly pulse-notify: cannot use subscription store <file>: the file is corrupt or not a database followed by one newline. Public runSubscribers on N, both S addresses and T's stored address returns exactly that single line and code 2. Every refusal preserves complete fixture bytes, removes <file>.lock and permits immediate acquireLock(..., testLockDeps()).release(). Output contains neither argument/normalized addresses nor sentinel addresses/text, raw file content, SQLite messages/codes or stack frames. S/T remain WAL fixtures built with 50 rows and the plan's precise page damage; do not require T with an absent address to fail. Report literal pass counts."
+        },
+        {
+          "command": "(cd /tmp/notify-base && bun --config=/tmp/notify-nocov/bunfig.toml test test/subscribers-cli.test.ts test/index.test.ts test/subscriptions-store.test.ts)\nbun --config=/tmp/notify-nocov/bunfig.toml test test/subscribers-cli.test.ts test/index.test.ts test/subscriptions-store.test.ts",
+          "expected": "Both commands exit 0, 0 fail; record counts on BASE and branch. Existing tests prove normalized healthy deletion deleted 1 then deleted 0, whitespace normalization, missing store deleted 0 without creation, held lock code 2 with its original owner intact, executable usage/exit 1 and service-held lock refusal, and format-2 refusal. The new file's controls 6-8 must also pass on both revisions: list/no args/wrong arity return the literal unchanged usage/code 1 before touching N; invalid address returns pulse-notify: subscribers delete: invalid address/code 1; each preserves bytes and leaves no lock. user_version=2 returns pulse-notify: PULSE_NOTIFY_SUBSCRIPTIONS_STATE: the store has an unknown format/code 2 and releases its lock. A directory path throws SQLiteError with code SQLITE_CANTOPEN and releases its lock. No unsupported command becomes a second corruption regression."
+        },
+        {
+          "command": "env -i PATH=\"$PATH\" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=/tmp/notify-smoke-corrupt/store.db bun src/index.ts subscribers delete probe@example.com\nenv -i PATH=\"$PATH\" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=/tmp/notify-smoke-healthy/store.db bun src/index.ts subscribers delete probe@example.com",
+          "expected": "Prepare independent disposable N and healthy format-1 fixtures first, with probe@example.com stored in the healthy fixture. The corrupt real-CLI smoke command exits 2, prints exactly the specified filename-bearing diagnostic on stderr with one newline and no address, and has empty stdout. The healthy command exits 0 and prints deleted 1. Record commands and outputs, byte preservation and lock release. This is the plan's CLI smoke exercise; do not start an unrelated long-running service."
+        },
+        {
+          "command": "(cd /tmp/notify-base && env -i PATH=\"$PATH\" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=/tmp/notify-smoke-schema-base/store.db bun src/index.ts subscribers delete probe@example.com)\nenv -i PATH=\"$PATH\" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=/tmp/notify-smoke-schema-branch/store.db bun src/index.ts subscribers delete probe@example.com",
+          "expected": "Create independent format-1 stores with SubscriberStore, close them, then set user_version=2 using Database and close. Both real-CLI baseline controls exit 2, stdout empty, stderr exactly pulse-notify: PULSE_NOTIFY_SUBSCRIPTIONS_STATE: the store has an unknown format followed by one newline, and no .lock remains. Record both results; this also carries the issue review's executable schema-version control."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 for the required full lint, typecheck and test pipeline with the committed coverage configuration, 0 failed tests and src/subscribers-cli.ts line coverage at least 80 %. Cognitive complexity stays at most 15 per function. Source, new tests and docs land in the same change; the source fix and its tests land together. Do not replace this gate with a focused command whose coverage omits other files."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/subscribers-cli.ts test/subscribers-cli.corrupt-store.test.ts",
+          "expected": "Review proves Required behavior 1-5 and the Security impact checklist: only instanceof SQLiteError with (errno & 0xff) equal to 11 or 26 receives the fixed corruption diagnostic; errors from open, delete and close reach the boundary. Cleanup always attempts lock release even if close throws, including corruption after a handled corruption error; unrelated exceptions are rethrown. Existing ConfigError/StartupError text, validation order, SUBSCRIBERS_USAGE and INVALID_ADDRESS_LINE stay unchanged. No test-only exports, global/module mocks, repair, integrity scan, raw error/file content or address disclosure. Test the plan's hostile non-database bytes, damaged SQLite rows, invalid-input precedence and directory path; retain existing mixed-case/whitespace normalization controls. The runSubscribers doc comment mentions unreadable-store exit 2. State that close-throw masking and extended SQLITE_CORRUPT_* variants are verified by code reading only, and newline paths are out of scope."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/operation.md",
+          "expected": "Both documents describe subscribers delete refusing a corrupt or non-database store with exit 2 and the exact pulse-notify: cannot use subscription store <path>: the file is corrupt or not a database diagnostic, no address, unchanged file bytes and released lock. The operator procedure says to restore from backup and that the CLI does not repair it. No new command, automatic repair, startup change, store-format change or service Exit codes table change is documented. This exact two-document scope agrees with the plan and issue review."
+        },
+        {
+          "command": "test -z \"$(git -C /tmp/notify-base status --porcelain)\" && for pair in 1 2 3 4 5; do (cd /tmp/notify-base && /usr/bin/time -f '%U %S' bun run test) || exit \"$?\"; /usr/bin/time -f '%U %S' bun run test || exit \"$?\"; done",
+          "expected": "Remove the copied regression file from /tmp/notify-base with file tools before measuring; the base worktree must be clean. Exit 0 for all ten full-suite measurements in base, branch, base, branch order, five per revision, using Bun 1.4.0, identical frozen dependencies and normal coverage settings. Report every user CPU, system CPU and their sum in seconds, each side's third-smallest user+system value rounded to 0.01 s, and median(branch) minus median(base). Measure child-process CPU, not wall time. The plan estimates +0.2 to +0.5 s; flag a measured delta above +1.0 s for review and report noise rather than inventing a pass threshold. Do not run the Docker bench (#834)."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD | grep -E '^\\+\\s*(//|/\\*|\\*)'",
+          "expected": "List every added comment line in the PR body, or explicitly say none if grep exits 1 because there are no matches. The new test file has no explanatory comments except, optionally, one top line naming the class and expected outcome. Source comments are limited to the accurate existing runSubscribers doc comment and a permitted primary-SQLite-code explanation; retain unrelated existing comments."
+        },
+        {
+          "command": "ALLOWED='README.md\ndocs/operation.md\nsrc/subscribers-cli.ts\ntest/subscribers-cli.corrupt-store.test.ts'\nPROTECTED='src/subscriber-store.ts src/index.ts src/failed-cli.ts src/ledger-lock.ts src/ledger.ts src/config.ts src/subscription-settings.ts test/subscribers-cli.test.ts test/index.test.ts test/subscriptions-store.test.ts test/subscriptions-support.ts package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml Dockerfile .github AGENTS.md CLAUDE.md docs/troubleshooting.md docs/configuration.md'\ncheck_scope() {\n  test \"$(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort)\" = \"$ALLOWED\" &&\n  git diff --exit-code \"$BASE\" HEAD -- $PROTECTED &&\n  test -z \"$(git diff --name-only --cached)\" &&\n  test -z \"$(git diff --name-only)\" &&\n  test -z \"$(git status --porcelain)\" &&\n  git diff --check \"$BASE\" HEAD\n}\ncheck_scope",
+          "expected": "Run after the last implementation commit against the recorded pre-edit BASE; exit 0. Committed changed paths equal the four literal allowed paths exactly, every explicit protected path has no BASE-to-HEAD diff, the index and tracked worktree diffs are separately empty, status including untracked files is empty, and the committed diff has no whitespace errors. Do not use BASE-to-worktree diff as a substitute or hide evidence with ignore rules. Preserve this combined checker verbatim in an external harness for the fixture proof, parameterizing only BASE, ALLOWED and PROTECTED."
+        },
+        {
+          "command": "bash /tmp/notify-scope-fixture.sh",
+          "expected": "Create this disposable evidence harness outside the implementation checkout with file tools. It runs the identical combined checker from the preceding acceptance in a disposable repository with BASE containing a.txt and p.txt, an allowed commit changing only a.txt, ALLOWED=a.txt and PROTECTED=p.txt. Assert and record checker exit 0 for that clean commit, then reset to it before each independent scenario and assert nonzero checker status for: protected worktree edit, protected staged edit, protected committed edit with clean status, untracked file, staged protected edit with only its worktree restored to BASE, and committed protected edit with only its worktree restored to BASE. In each of the last two scenarios also assert git diff --exit-code \"$BASE\" -- p.txt exits 0 while the combined checker rejects it. The harness exits 0 only if all seven checker expectations and both restored-worktree demonstrations hold; record every actual exit status in the PR body. Never make deliberate protected edits in the real checkout."
+        },
+        {
+          "command": "gh pr view --json body --jq .body",
+          "expected": "The notify PR body names Closes lorenzh/pulse-meta#<child> using the actual child number, the recorded BASE and Bun version, commands and results for all checks above, three red and three green runs with test names/reasons/counts, all passing base/branch controls, real-CLI smoke results, full check and coverage, semantic docs review, all ten CPU samples plus medians/delta, every added comment (or none), the complete clean-scope evidence and fixture exit statuses, and the security checklist. Explicitly report code-review-only close-throw/extended-code coverage and the newline-path limit. Do not claim a Docker bench run, runtime service performance improvement or a check that was not executed."
+        }
+      ]
+    }
+  ]
+}
