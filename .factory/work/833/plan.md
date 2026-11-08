@@ -10,6 +10,8 @@ When the subscriber store file is not a SQLite database or is a damaged SQLite d
 - Issue review `.factory/work/833/issue-review.md` has no blockers. Its proposed file set is kept unchanged (see `## Repository: notify`).
 - Plan review, finding 1: the issue asks for one line and grants no exception, so the diagnostic must stay one line for **every** path. The path is shown with a defined escaping (Required behavior 2), and CR/LF paths get acceptance tests.
 - Plan review, finding 2: an earlier draft promised unchanged bytes for every file. That is false for a file in rollback-journal mode, because the protected `SubscriberStore.open` rewrites its header. The guarantee is now stated per file kind (Required behavior 4), it matches the issue's "(as today)", and evidence covers the rollback case too.
+- Plan review round 2, finding 1: `deleteByEmail` commits the delete and then checkpoints (`src/subscriber-store.ts:308-317`), and `close()` checkpoints before it closes the connection (`src/subscriber-store.ts:518-521`). When SQLite finds damage at one of those checkpoints, a committed delete stays committed, and the connection can stay open, so `-wal`/`-shm` can remain. The CLI cannot change this without editing the protected store. Preservation is therefore defined **relative to the base revision**: the fix makes the same store calls in the same order as base on every input (Requirement 4b), so the store file and its sidecars end as base leaves them. Byte-equality and no-sidecar claims are limited to the fixtures that prove them (N, S, T, R). Docs, Security impact and the checks say no more than that.
+- Plan review round 2, finding 2: the Dockerfile copies `src` into the image (`Dockerfile:17`), so `image_mb` grows by the byte delta of `src/subscribers-cli.ts`. `## Performance impact` estimates it and names a non-Docker check. The Docker bench stays forbidden (#834).
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/833` answered `HTTP 404` on 2026-11-08, so this feature has no findings yet. No finding is cited.
 
 ## Current behavior (verified on notify `main` 3b000f2698c77a1f6cf72d7a8dcd81ecf46b9d7d)
@@ -17,7 +19,8 @@ When the subscriber store file is not a SQLite database or is a damaged SQLite d
 Evidence comes from source reading and from runs in a disposable copy of the clone (`bun install --frozen-lockfile`, Bun 1.4.0). Nothing was committed to notify.
 
 - `src/subscribers-cli.ts:21-39` `runSubscribers`: lines 22-24 check the arguments (code 1) before any file is touched. Lines 28-30 acquire the lock, call `SubscriberStore.openExisting` and `deleteByEmail`. Line 33 rethrows every error that is not `ConfigError` or `StartupError`. Lines 35-38 (`finally`) call `store?.close()` and then `lock?.release()`.
-- `src/subscriber-store.ts:165-187` `open`: `new Database(...)` (line 169) is outside the `try`. `PRAGMA journal_mode = WAL` (line 171), `synchronous` and `secure_delete` (172-173) and the `user_version` check (174-181) are inside it. On error the connection is closed and the error is rethrown (182-185). A `user_version` other than 1 throws `StartupError("PULSE_NOTIFY_SUBSCRIPTIONS_STATE: the store has an unknown format")`. `deleteByEmail` is at lines 308-317 and `close()` (checkpoint, then close) at lines 518-521.
+- `src/subscriber-store.ts:165-187` `open`: `new Database(...)` (line 169) is outside the `try`. `PRAGMA journal_mode = WAL` (line 171), `synchronous` and `secure_delete` (172-173) and the `user_version` check (174-181) are inside it. On error the connection is closed and the error is rethrown (182-185). A `user_version` other than 1 throws `StartupError("PULSE_NOTIFY_SUBSCRIPTIONS_STATE: the store has an unknown format")`.
+- `src/subscriber-store.ts:308-317` `deleteByEmail`: the `SELECT` and the `DELETE`s run in one transaction (`transaction`, line 209), which commits. Only when a row was deleted, `this.checkpoint()` (line 315, `PRAGMA wal_checkpoint(TRUNCATE)`, lines 503-515) runs **after** the commit. `close()` (lines 518-521) runs `this.checkpoint()` (line 519) and then `this.#db.close()` (line 520). If that checkpoint throws, line 520 is not reached: the connection stays open until the process exits, and SQLite can leave `<store>-wal`/`<store>-shm` behind. So damage that SQLite finds only at a checkpoint leaves a committed delete in place (in the WAL or the main file) and may leave sidecars, on base and on any CLI-only fix. No deterministic fixture triggers it: the damaged-page fixtures below fail before the commit.
 - `src/index.ts:1076-1097` `runSubscribersCli` writes each result line plus `\n`, to stdout for code 0 and to stderr otherwise. It also catches only `ConfigError`/`StartupError`. The entry block at lines 1100-1115 rethrows other errors, so Bun prints the stack and exits 1.
 - Service startup already maps any store open failure to `ConfigError("cannot use subscription store <path>: <error name>")`, so it exits 2 (`src/index.ts:517-532`, `openSubscriptions`). This stays unchanged.
 - The lock messages in `src/ledger-lock.ts:133-141, 206-208, 308` print the path as given. They are existing texts and are out of scope (Non-goals).
@@ -42,9 +45,10 @@ Evidence comes from source reading and from runs in a disposable copy of the clo
 ## Scope
 
 - notify only: `src/subscribers-cli.ts`, one new test file, `README.md`, `docs/operation.md`.
-- In `runSubscribers`, recognize a store that cannot be read and return the code-2 result. "Cannot be read" means primary SQLite code `SQLITE_CORRUPT` 11 or `SQLITE_NOTADB` 26, from any step: open, delete or close.
+- In `runSubscribers`, recognize a store that cannot be read and return the code-2 result. "Cannot be read" means primary SQLite code `SQLITE_CORRUPT` 11 or `SQLITE_NOTADB` 26, from any step: open, the delete (its transaction or its checkpoint) or close.
 - Show the store path in that diagnostic with the escaping of Required behavior 2.
-- Release the lock even when closing the store throws.
+- Release the lock even when closing the store throws, and classify on the first error (Requirement 4c).
+- Keep the store call sequence of base (Requirement 4b). The store state after a failure is defined relative to base; byte guarantees hold only for the proven fixtures (Requirement 4e).
 
 ## Non-goals
 
@@ -66,13 +70,17 @@ Evidence comes from source reading and from runs in a disposable copy of the clo
 
    So a path without backslashes and without those characters prints unchanged. The encoding is reversible, so `a\nb` (with a backslash and the letter n) and `a<LF>b` print differently. The resulting line holds no CR, LF, U+0085, U+2028 or U+2029. This is the same character set that `cleanText` in `src/channels/message.ts:56-58` already handles (`[\p{Cc}\p{Zl}\p{Zp}]`). Use a `u`-flag regex with `\p{Cc}\p{Zl}\p{Zp}`, not `\u0000`-style ranges, which Biome's recommended `noControlCharactersInRegex` rejects (seen in the prototype).
 3. **No address, no file content.** The line never holds the address argument (as given or normalized), any byte of the store file, the raw SQLite message, `errno`/`code` or a stack.
-4. **Lock and bytes.**
-   - The lock `<storePath>.lock` is released in every outcome: success, handled error, unhandled error, and a throw from `store.close()`. If `close()` throws a corruption-class error after a handled corruption error, the result is still code 2. No `<storePath>-wal` or `<storePath>-shm` file is left behind.
-   - The CLI adds no write to the store file beyond what the unchanged `SubscriberStore.open` does today. It writes no rows, runs no repair, and runs no checkpoint before the failing step.
-   - Byte guarantee per file kind, asserted by tests:
-     - (a) a file that is not a SQLite database (N), and a damaged store in WAL mode, the format notify writes (S, T): the file is **byte for byte unchanged**.
-     - (b) a damaged file in rollback-journal mode, which only an outside tool makes (R): `SubscriberStore.open` switches its header to WAL as on every open, today too. Offsets 18 and 19 go from 1 to 2, the 32-bit big-endian counters at offsets 24 and 92 grow by 1, and **no other byte changes**. The bytes after the run equal the bytes that the base revision leaves on the same input.
-   - Docs state this distinction and promise nothing wider.
+4. **Lock, store calls and bytes.**
+   - (a) **Lock.** The lock `<storePath>.lock` is released in every outcome: success, handled error, rethrown error, and a throw from `store.close()`. This is the one cleanup the CLI owns. Base skips the release when `close()` throws; the fix does not.
+   - (b) **Same store calls as base.** On every input, the fix makes exactly the store calls that base makes, in the same order: `SubscriberStore.openExisting(storePath)`; if that returned a store, `deleteByEmail(email)` once; then `close()` once, also when `deleteByEmail` threw. It adds no SQLite statement, pragma, second open, checkpoint, integrity check or repair, and no other file access to the store or its `-wal`/`-shm`/`-journal` files. So the store file and its sidecars end in the state that base leaves on the same input, whatever step fails. The fix changes only the result (code and line) and the lock release.
+   - (c) **First error wins.** If `deleteByEmail` throws, `close()` is still called. An error from that `close()` is discarded, and the result is classified on the `deleteByEmail` error. If only `close()` throws (after a successful delete), the result is classified on the `close()` error. Example: delete throws `SQLITE_CORRUPT` and close throws `SQLITE_IOERR` → code 2. Delete throws `SQLITE_BUSY` and close throws `SQLITE_CORRUPT` → the `SQLITE_BUSY` error is rethrown (exit 1, as on base, where the close error was rethrown instead).
+   - (d) **What exit 2 means.** It means that SQLite reported the store as corrupt or not a database at some step. It does **not** say whether the address was deleted. When SQLite finds the damage only at a checkpoint after the delete transaction committed (`deleteByEmail` line 315 or `close()` line 519), the committed delete stays in place, exactly as on base. When the checkpoint inside `close()` throws, the connection is not closed (line 520), and `-wal`/`-shm` can remain until the next open, exactly as on base. The CLI cannot change either without editing the protected store (Non-goals).
+   - (e) **Byte and sidecar guarantees, only for the proven fixtures** (asserted by tests and by the base-vs-branch check 4):
+     - N (not a SQLite database), S and T (damaged store in WAL mode, the format notify writes; damage found at open or in the delete read, before any commit): the file is **byte for byte unchanged**, and no `-wal`, `-shm` or `.lock` file remains.
+     - R (damaged file in rollback-journal mode, which only an outside tool makes; damage found in the delete read): `SubscriberStore.open` switches its header to WAL as on every open, today too. Offsets 18 and 19 go from 1 to 2, the 32-bit big-endian counters at offsets 24 and 92 grow by 1, and **no other byte changes**. No `-wal`, `-shm` or `.lock` file remains.
+     - For every fixture, the file bytes and the directory listing after the run equal what base leaves on the same input.
+     - No byte or sidecar claim is made for damage found at a checkpoint. Only (b) covers it, and the review checks (b) by reading the code.
+   - (f) Docs, the doc comment, Security impact and the PR body state exactly (a)-(e) and promise nothing wider. In particular, none of them says that exit 2 means "nothing was deleted", "the file is never changed" or "no sidecar remains" without these limits.
 5. **Unchanged behavior.**
    - Argument checks run first: usage or invalid address gives code 1, with no lock and no open, also when a corrupt file is present.
    - A held lock gives code 2 with the lock message.
@@ -80,30 +88,34 @@ Evidence comes from source reading and from runs in a disposable copy of the clo
    - A missing store gives `deleted 0`, code 0, and no file is created.
    - A healthy store deletes the normalized address (`deleted 1` / `deleted 0`).
    - Any other thrown error (for example `SQLITE_CANTOPEN` for a directory path) is rethrown as today, so the executable exits 1, and the lock is still released.
-6. **Suggested shape** (prototyped; `bun run check` passed on it together with the test, 811 pass / 0 fail):
+6. **Suggested shape.** An earlier variant (with `try { delete } finally { store.close() }`, where a close error replaced the delete error) was prototyped: `bun run check` passed on it with the test, 811 pass / 0 fail. The first-error-wins close of Requirement 4c is new and was not prototyped; `bun run check` in the task covers it.
    - private `isUnreadableStore(err: unknown): boolean`;
    - private `escapePath(path: string): string` (`path.replace(/[\\\p{Cc}\p{Zl}\p{Zp}]/gu, …)`);
-   - private `deleteUnderLock(deps, email): number`, which runs `acquireLock` and then `try { open; if undefined return 0; try { delete } finally { store.close() } } finally { lock.release() }`.
+   - private `deleteUnderLock(deps, email): number`, which runs `acquireLock` and then `try { open; if undefined return 0; let n; try { n = delete } catch (err) { try { store.close() } catch { /* first error wins */ } throw err } store.close(); return n } finally { lock.release() }`. (The inline comment is only for this sketch. In the source, put the swallowing close in a small private helper, for example `closeAfterError(store)`, and make sure `bun run lint` accepts it; this spec does not claim which lint rule an empty `catch` would hit.)
 
-   `runSubscribers` keeps the argument checks and wraps `deleteUnderLock` in one `try/catch`. The catch maps `ConfigError`/`StartupError` (unchanged text) and unreadable-store errors to code 2 and rethrows the rest. The implementer may choose another shape that meets 1-5. Add no new export, and do not export anything only for the test.
+   This shape makes the same store calls as base (Requirement 4b). `runSubscribers` keeps the argument checks and wraps `deleteUnderLock` in one `try/catch`. The catch maps `ConfigError`/`StartupError` (unchanged text) and unreadable-store errors to code 2 and rethrows the rest. The implementer may choose another shape that meets 1-5. Add no new export, and do not export anything only for the test.
 
 ## Risks
 
 - **Classifier too wide**: a check on the message, or on `instanceof SQLiteError` alone, would turn I/O errors or programming errors into exit 2. The `SQLITE_CANTOPEN` control guards this.
 - **Classifier too narrow**: `code === "SQLITE_CORRUPT"` misses extended variants (for example `SQLITE_CORRUPT_INDEX`, errno 779). Use the primary code from `errno`.
-- **Cleanup masking**: in today's shape, an exception from `close()` in a `finally` replaces the original error and skips `lock.release()`. Requirement 4 handles this. No deterministic fixture makes `close()` throw, so the review checks it by reading the code. State it in the PR body as a known limit.
+- **Cleanup masking**: in today's shape, an exception from `close()` in a `finally` replaces the original error and skips `lock.release()`. Requirement 4a and 4c handle this. No deterministic fixture makes `close()` throw, so the review checks it by reading the code. State it in the PR body as a known limit.
+- **Over-promising after a commit**: damage found at a checkpoint after the delete committed (`src/subscriber-store.ts:315` or `:519`) leaves the delete committed and can leave `-wal`/`-shm` (Current behavior). A doc, comment or PR text that says exit 2 means "nothing deleted", "file unchanged" or "no sidecar" in general would be false. Only the fixture-bound claims of Requirement 4e may be made.
+- **Changed store call sequence**: a fix that adds a pre-check (header read, `PRAGMA quick_check`, a read-only probe open) or skips `close()` after a delete error would change what the store file and sidecars look like compared with base. Requirement 4b forbids both; check 4 compares base and branch artifacts for N, S, T and R.
 - **Escaping drift**: Biome `noControlCharactersInRegex` (recommended set, pulse-config `biome.json:44`) rejects `\u0000-\u001f` in a regex, so use `\p{Cc}`. Some editing tools turn the text `\u2028` in a source string into the raw character. A raw U+2028 inside a regex literal is a syntax error, and inside a string it is invisible. Check with `grep -nP '[^\x00-\x7f]' src/subscribers-cli.ts test/subscribers-cli.corrupt-store.test.ts`, which must print nothing. Test names hold only printable ASCII.
-- **Over-promising bytes**: a test or doc claiming "unchanged" for R would be false. R asserts the exact header-only difference instead (Requirement 4b).
+- **Over-promising bytes**: a test or doc claiming "unchanged" for R would be false. R asserts the exact header-only difference instead (Requirement 4e).
 - **Store-dependent R test**: the R assertion encodes how the protected store opens a rollback-mode file. If a later change to the store's open stops rewriting the header, this test fails and must be updated with that change. That is intended: it is the evidence for the docs statement.
 - **Per-file coverage**: Bun enforces `coverageThreshold.lines = 0.8` from `bunfig.toml:3` per file. In the first prototype, the source change without its tests left `src/subscribers-cli.ts` at 76.32 % lines and `bun test` failed. The test file and the fix land in the same commit, or the test commit comes first.
 - **Isolated red runs**: `bunfig.toml:2` turns coverage on for every `bun test`, and `bun test --help` (1.4.0) has no flag to turn it off. Running a single file then fails on the coverage threshold of unrelated files. For isolated red/green runs, use `bun --config=<dir outside the checkout>/bunfig.toml test test/subscribers-cli.corrupt-store.test.ts`, where that bunfig holds only `[test]` and `coverage = false` (verified on base). Never edit the committed `bunfig.toml`.
 
 ## Performance impact
 
-Metrics of `bench/budgets.json` (api repository, key `notify`): only `test_cpu_s` can move (budget 3.4 s, floor 1.5 s; `bench/README.md:13` defines it as the CPU time of `bun run test`).
+Metrics of `bench/budgets.json` (api repository, key `notify`): `test_cpu_s` moves measurably (budget 3.4 s, floor 1.5 s; api `bench/README.md:13` defines it as the CPU time of `bun run test`). `image_mb` moves by a few KB. The startup metrics are not expected to move measurably. Details:
 
 - The new file runs two subprocesses of `src/index.ts` plus about a dozen small SQLite fixtures. In the prototype, the file alone took 0.73-0.77 s user+sys including runner start (three runs, `bun --config=<nocov> test <file>`). An existing small CLI file takes 0.17-0.18 s on the same machine. Expect about **+0.4 to +0.8 s** test CPU on `bun run test`.
-- `startup_cpu_ms`, `load_cpu_s`, `idle_rss_mib`, `peak_rss_mib`, `startup_wall_ms` and `image_mb` cannot move. The service path, the dependencies and the image contents are unchanged; test files are excluded from the image (`ci.yml` "Check the image has no test files"). The change sits on a CLI error path that the service never runs.
+- `image_mb` (reported, not gating; budget 126 MB; measured as `docker image inspect` `.Size` / 1e6 without rounding, api `bench/stack.ts:105-113`) grows by a negligible amount. The final stage copies `src` into the image (notify `Dockerfile:17`, `COPY src ./src`), so the larger `src/subscribers-cli.ts` (1683 bytes on base, `wc -c`) is in the image. `.dockerignore` excludes `test`, `**/test` and `**/*.test.ts`, and the Dockerfile copies only `package.json`, `node_modules` and `src` (lines 15-17), so the new test file, `README.md` and `docs/operation.md` are not in it. Rough estimate: the file grows by 1,000 to 3,500 bytes, so `image_mb` grows by about +0.001 to +0.0035 MB. No other image content changes: no dependency, lockfile or Dockerfile change.
+- `startup_cpu_ms` and `startup_wall_ms`: `src/index.ts:60` imports `runSubscribers` statically, so the service parses the slightly larger module at startup. A few KB of TypeScript more is far below the noise of these metrics (expected change 0 within measurement error). The new code runs only in the `subscribers` CLI, never in the service.
+- `load_cpu_s`, `idle_rss_mib` and `peak_rss_mib` cannot move: the service path and the dependencies are unchanged.
 
 Measurement: no Docker bench (host port collision, #834). Measure `bun run test` in the notify checkout at the recorded base and at the branch head. Use the same `node_modules` (`bun install --frozen-lockfile`) and Bun 1.4.0 for both.
 
@@ -111,6 +123,8 @@ Measurement: no Docker bench (host port collision, #834). Measure `bun run test`
 - Run five interleaved pairs: base, branch, base, branch, … (ten runs, five per side).
 - Report every user, sys and user+sys value, the median of each side (3rd smallest of five user+sys values) and the delta median(branch) − median(base), rounded to 0.01 s.
 - This is test CPU, not wall time or service performance. The machine is shared and noisy. No pass threshold beyond the existing budget is set; flag a delta above +1.0 s for review.
+
+Image size without Docker: after the last commit, report `git cat-file -s "$BASE":src/subscribers-cli.ts` (expected `1683`, a literal from the base) and `git cat-file -s HEAD:src/subscribers-cli.ts`, their difference in bytes and that difference / 1e6 as the `image_mb` estimate. The scope check (check 11) proves that no other file under `src`, no Dockerfile and no lockfile changed, so this file is the whole image content delta. Flag a delta above 10,000 bytes for review. Do not build the image and do not run the Docker bench.
 
 ## Security impact
 
@@ -120,7 +134,7 @@ Checklist items that apply:
 - **Secrets and personal data in errors and logs**: the diagnostic holds only the escaped configured path and a fixed reason. It never holds the address argument, stored or corrupt file content, the raw SQLite message or a stack. Tests assert that these are absent from stdout and stderr: the argument address (as given and lower-cased), the sentinel addresses written into the fixtures (`sentinel@example.org`, `sentinel<n>@example.org`), the text `SQLite` and stack frames (`    at `).
 - **Log injection / one line**: CR, LF, every other `Cc` character, U+2028 and U+2029 in the path are escaped (Requirement 2). A path cannot forge a second output line. Tests cover LF, CR, CRLF, backslash-n, U+2028, NEL, DEL and ESC.
 - **Input validation and order**: argument and address checks stay before any lock or open (exit 1 with a corrupt file present).
-- **Atomic, path-safe writes**: the CLI adds no write to an unreadable store (Requirement 4). Byte equality is asserted for N, S and T, and the exact header-only change for R. The lock file is removed and no sidecar remains.
+- **Atomic, path-safe writes**: the fix makes the same store calls as base and adds no write, repair or checkpoint (Requirement 4b). Byte equality and "no sidecar" are asserted for N, S and T, the exact header-only change for R, and base-vs-branch equality for all four (check 4). For damage found at a checkpoint after a commit, the state stays as base leaves it (a committed delete can stay; `-wal`/`-shm` can remain); no wider claim is made. The lock file is released in every outcome, also when `close()` throws.
 - Not touched: auth/admin routes, the probe HTTP client, dependencies, Dockerfile, CI.
 
 Hostile inputs for the security state:
@@ -153,6 +167,10 @@ One repository: only pulse-notify changes. No contract, kit or config pin moves,
   - `<dir>/a\nb.db` (a real backslash followed by `n`) → `<dir>/a\\nb.db`. A fix that does not escape the backslash makes this equal to the LF case.
   - `<dir>/a<U+2028>b<U+0085>c<U+007F>d<ESC>e.db` → `<dir>/a\u2028b\u0085c\u007fd\u001be.db`. A fix with only an ASCII range misses U+2028 and NEL. `JSON.stringify` is also wrong: it adds quotes, prints `\n` instead of `\u000a`, and leaves U+2028, NEL and DEL raw.
 - R fixture: a test that asserts unchanged bytes for R fails on base and on any correct fix. The R test must assert the exact header-only difference.
+- Docs or a doc comment saying "exit 2: nothing was deleted" or "the file stays unchanged" without the limits of Requirement 4e are wrong: damage found at the checkpoint after a committed delete (`src/subscriber-store.ts:315`) leaves the delete in place, on base and on the fix.
+- A fix that runs `PRAGMA quick_check` or reads the file header before opening, to detect corruption early, is wrong: it adds a store access that base does not make (Requirement 4b). A fix that skips `close()` when `deleteByEmail` threw is wrong for the same reason, and it leaves `-wal`/`-shm` on fixture T (check 4 then differs from base).
+- First error wins: delete throws `SQLITE_BUSY` and close throws `SQLITE_CORRUPT`. A fix that lets the close error replace the first one answers exit 2; the correct result is the rethrown `SQLITE_BUSY` (exit 1). Checked by reading the code (no deterministic fixture).
+- `image_mb` estimate: a value derived from `wc -c` of the working tree before the last commit is wrong; use `git cat-file -s` of the two commits.
 - Statistics: the only statistic is the test-CPU median. Per side it is the 3rd smallest of five user+sys samples in seconds, rounded to 0.01 s. The delta is median(branch) − median(base). Averages may be reported in addition but are not the result.
 
 ## Contract fields
@@ -270,7 +288,8 @@ Regression cases (12 tests). Each fails on base for the reason given and passes 
    - Before: bytes 18/19 are `[1, 1]`. After: `[2, 2]`.
    - `after.readUInt32BE(24) === before.readUInt32BE(24) + 1` and the same at offset 92. The length is unchanged.
    - After copying back offsets 18, 19 and 24-27, 92-95 from `before`, `after` equals `before`.
-   - `<path>.lock` does not exist.
+   - `<path>.lock` does not exist, and `readdirSync(<dir>)` is exactly `[<file name>]` (no `-wal`, `-shm` or `-journal`).
+   - The output holds no address and no `sentinel` (as in C).
    - Base: throws `SQLiteError` `SQLITE_CORRUPT` from `deleteByEmail`. The rewrite itself happens on base too.
 
 Controls (3 tests). Each must pass on the recorded base **and** on the branch, as recorded runs:
@@ -310,12 +329,14 @@ They are part of the base controls: run `bun --config=<nocov>/bunfig.toml test t
   - the escaping (backslash as `\\`, control characters, U+2028 and U+2029 as `\uXXXX`);
   - "no output line holds the address";
   - that the lock is released;
-  - that the CLI does not repair or write rows to the file;
-  - that a store in notify's own format (WAL) stays byte for byte unchanged, while a file that an outside tool switched to rollback-journal mode gets its journal-mode header set back to WAL on open, as on every open;
-  - "restore the store from a backup".
+  - that the command does not repair the file and makes the same SQLite calls as any delete (no extra check or write);
+  - that exit 2 does **not** confirm whether the address was deleted: if SQLite finds the damage only after the delete committed (at the checkpoint), the delete stays, and `-wal`/`-shm` files can remain;
+  - that a file that is not a SQLite database, and a damaged store in notify's own format (WAL) whose damage SQLite finds before the delete commits, stay byte for byte unchanged; a file that an outside tool switched to rollback-journal mode gets its journal-mode header set back to WAL on open, as on every open;
+  - "restore the store from a backup, then run `subscribers delete <address>` again".
 
   Do not document a new command, a repair or a startup change. Leave `## Exit codes` unchanged (it describes the service).
-- The README and `docs/operation.md` must agree with the test literals (diagnostic text, escape form) and with Requirement 4. Neither may say "unchanged" without the WAL/rollback distinction.
+- The README and `docs/operation.md` must agree with the test literals (diagnostic text, escape form) and with Requirement 4. Neither may say "unchanged" without the limits of Requirement 4e, and neither may say or imply that exit 2 means nothing was deleted. The README sentence names only the exit code, the line, the escaping, "no address" and the released lock, and leaves byte details to `docs/operation.md`.
+- The doc comment of `runSubscribers` follows the same rule: it may say "a corrupt store is exit 2", but no byte or "nothing deleted" promise.
 
 ### Checks and completion evidence
 
@@ -328,12 +349,14 @@ Record `BASE=$(git rev-parse HEAD)` in the notify checkout before the first edit
    - Record the test names and reasons. A failure from a missing import, a setup error or coverage does not count.
 2. **Green on the branch, three times**: the same command in the implementation checkout gives **15 pass, 0 fail**.
 3. **Base controls**: the existing-suite command above passes on base and on the branch. Record the pass/fail counts.
-4. **Rollback bytes, base vs branch** (independent artifacts):
-   - Build one R file with the fixture recipe (in a scratch directory, with the branch's `SubscriberStore`) and copy it twice.
-   - Run `env -i PATH="$PATH" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=<copy A> bun src/index.ts subscribers delete probe@example.com` in `/tmp/notify-base`. Expect exit **1**.
-   - Run the same with copy B in the implementation checkout. Expect exit **2** and the diagnostic.
-   - `cmp <copy A> <copy B>` must exit 0, so the fix adds no write.
-   - `cmp -l <orig> <copy B>` lists only offsets (1-based) 19, 20, 25-28 and 93-96, with 19/20 going `1 → 2`. Usually only 28 and 96 among the counter bytes change, unless a carry happens.
+4. **Store state, base vs branch** (independent artifacts; evidence for Requirement 4b and 4e):
+   - Build one file of each fixture N, S, T and R with the fixture recipes (in scratch directories, with the branch's `SubscriberStore`; S, T and R use the same recipe on base). Keep each original, and copy each into two fresh, separate directories A and B that hold only that file (`store.db`).
+   - In `/tmp/notify-base` run `env -i PATH="$PATH" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=<A>/store.db bun src/index.ts subscribers delete probe@example.com` for each fixture. Expect exit **1** (literal) each time.
+   - In the implementation checkout run the same with `<B>/store.db`. Expect exit **2** (literal) and the diagnostic each time.
+   - For each fixture: `cmp <A>/store.db <B>/store.db` exits 0, and `ls -A <A>` equals `ls -A <B>` and is exactly `store.db` (literal; no `-wal`, `-shm`, `-journal` or `.lock`).
+   - For N, S and T: `cmp <orig> <B>/store.db` exits 0.
+   - For R: `cmp -l <orig> <B>/store.db` lists only offsets (1-based) 19, 20, 25-28 and 93-96, with 19/20 going `1 → 2`. Usually only 28 and 96 among the counter bytes change, unless a carry happens.
+   - Record all exit statuses and the listings in the PR body.
 5. **Smoke run of the real CLI** (AGENTS.md "End-to-end checks"):
    - `env -i PATH="$PATH" PULSE_NOTIFY_SUBSCRIPTIONS_STATE=<tmp>/store.db bun src/index.ts subscribers delete probe@example.com`, where `<tmp>/store.db` is a non-database file. Report exit `2` and the stderr line.
    - Repeat with the file at `<tmp>/a<LF>b.db`. Report exit `2` and that stderr is exactly one line (`wc -l` = `1`) holding `a\u000ab.db`.
@@ -344,13 +367,16 @@ Record `BASE=$(git rev-parse HEAD)` in the notify checkout before the first edit
 8. **Docs review**: `git diff "$BASE" HEAD -- README.md docs/operation.md` shows the new exit-2 case in both files. Check that it has:
    - the same diagnostic text as the test, and the escape rule;
    - "no address" and the released lock;
-   - the WAL / rollback byte distinction of Requirement 4;
+   - in `docs/operation.md`: the byte statements of Requirement 4e with their limits (not a database / WAL damage found before the commit: unchanged; rollback-journal file: header set back to WAL), and that exit 2 does not confirm whether the address was deleted (damage found at the checkpoint after a commit leaves the delete, and `-wal`/`-shm` can remain);
+   - no sentence anywhere (README, `docs/operation.md`, doc comment, PR body) that says exit 2 means "nothing deleted", or "unchanged"/"no sidecar" without those limits;
    - nothing about a new command or a repair.
-9. **Test CPU**: five interleaved pairs as described in `## Performance impact`. The base runs use the `/tmp/notify-base` worktree after the copied test file has been **removed** (`git -C /tmp/notify-base status --porcelain` empty). Report the table and the median delta.
+9. **Test CPU and image size**:
+   - Test CPU: five interleaved pairs as described in `## Performance impact`. The base runs use the `/tmp/notify-base` worktree after the copied test file has been **removed** (`git -C /tmp/notify-base status --porcelain` empty). Report the table and the median delta.
+   - Image size estimate (no Docker): `git cat-file -s "$BASE":src/subscribers-cli.ts` must print `1683` (literal, measured on base 3b000f2); report `git cat-file -s HEAD:src/subscribers-cli.ts`, the byte delta and the delta / 1e6 as the `image_mb` change, as described in `## Performance impact`.
 10. **Comments**: the PR body lists every comment line added in the diff (`git diff "$BASE" HEAD | grep -E '^\+\s*(//|/\*|\*)'`), or says "none".
 11. **Scope** (after the last commit, in the implementation checkout):
     - `git diff --name-only "$BASE" HEAD | sort` equals exactly this list (literal, sorted): `README.md`, `docs/operation.md`, `src/subscribers-cli.ts`, `test/subscribers-cli.corrupt-store.test.ts`. No extra and no missing file.
-    - `git diff --exit-code "$BASE" HEAD -- src/subscriber-store.ts src/index.ts src/failed-cli.ts src/ledger-lock.ts src/ledger.ts src/config.ts src/subscription-settings.ts src/channels/message.ts test/subscribers-cli.test.ts test/index.test.ts test/subscriptions-store.test.ts test/subscriptions-support.ts package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml Dockerfile .github AGENTS.md CLAUDE.md docs/troubleshooting.md docs/configuration.md` exits 0.
+    - `git diff --exit-code "$BASE" HEAD -- src/subscriber-store.ts src/index.ts src/failed-cli.ts src/ledger-lock.ts src/ledger.ts src/config.ts src/subscription-settings.ts src/channels/message.ts test/subscribers-cli.test.ts test/index.test.ts test/subscriptions-store.test.ts test/subscriptions-support.ts package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml Dockerfile .dockerignore .github AGENTS.md CLAUDE.md docs/troubleshooting.md docs/configuration.md` exits 0.
     - `git diff --name-only --cached` is empty, `git diff --name-only` is empty, and `git status --porcelain` is empty (untracked files included).
     - `git diff --check "$BASE" HEAD` passes.
     - Do not use `git diff "$BASE"` (base to worktree) as a substitute, and do not add ignore rules.
@@ -370,4 +396,10 @@ Record `BASE=$(git rev-parse HEAD)` in the notify checkout before the first edit
     - `Closes lorenzh/pulse-meta#<child>` and `BASE`;
     - the commands and results of 1-12;
     - the comment list;
-    - the known limits: close-throw masking and `SQLITE_CORRUPT_*` variants are checked by reading the code only; the rollback-mode header rewrite is store behavior that stays as today; lock messages keep printing paths as given.
+    - the known limits:
+      - close-throw handling (lock release, first error wins) and `SQLITE_CORRUPT_*` variants are checked by reading the code only;
+      - "same store calls as base" (Requirement 4b) is checked by reading the code and by check 4 for N, S, T and R;
+      - damage found at a checkpoint after a committed delete leaves the delete in place and can leave `-wal`/`-shm`, as on base; exit 2 does not confirm whether the address was deleted;
+      - the rollback-mode header rewrite is store behavior that stays as today;
+      - lock messages keep printing paths as given;
+      - `image_mb` grows by the source byte delta only (estimate from check 9; no Docker build).
