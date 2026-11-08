@@ -31,6 +31,13 @@ One child: `api`. Behavior, settings, endpoints, metrics and public types stay t
 - No README change (reason under "Repository: api"). `docs/operation.md` is the only doc that
   changes.
 - `Security impact: yes` because parser and file-write code is touched, although behavior is kept.
+- Plan revision after plan-review (2026-11-08): S4 is now a verbatim fenced command with literal
+  backticks (the escaped form matched nothing on BASE); the local SIGHUP check writes fresh
+  random tokens instead of copying the refused `tokens.example.json` placeholders, uses the
+  lowest accepted reload interval `1000`, waits for the `listening` line and `/readyz` 200, and
+  proves signal delivery with two controls; every tool fact cites file and line in `package.json`,
+  `biome.json`, `bunfig.toml`, `ci.yml` and the pinned config files. The findings branch lookup
+  answered `HTTP 404` again at this revision.
 
 ## Current behavior (verified on api `main` 515031bd3fd2aa6b8993e325b24ab08f4a3510d6)
 
@@ -146,8 +153,10 @@ component writes. `src/admin-routes.ts` is not edited and still typechecks.
 - `src/config.test.ts`: the `loadChecks` test becomes a `readInitialConfig(nodeConfigFs, path)`
   test with these literal expectations: a valid `{ checks: [ok] }` file gives `ok: true` and
   `initial.config.checks` deep-equal to `[withRetryDefaults(ok)]`; a file `{` gives `ok: false`,
-  `state: "invalid"`, `error instanceof ConfigError`, `error.message ===
-  \`checks file ${broken} is not valid JSON\`` and `message === "checks file is not valid JSON"`;
+  `state: "invalid"`, `error instanceof ConfigError`,
+  ``error.message === `checks file ${broken} is not valid JSON` `` (the template literal of
+  `src/config.ts:501`, with `broken` the test's file path) and
+  `message === "checks file is not valid JSON"`;
   the leaky file `{"checks":[{"headers":{"X":HSEC},"body":BSEC}]}` gives the same shape, and
   neither `error.message` nor `message` contains `HSEC` or `BSEC`; a missing file gives
   `ok: false`, `state: "unreadable"`, `error instanceof ConfigError`, `message === "cannot read
@@ -218,8 +227,21 @@ component writes. `src/admin-routes.ts` is not edited and still typechecks.
   is not valid JSON`; valid then `file:///x` again ended at 3 lines and
   `["invalid", "invalid", "ok", "invalid"]`. 1 pass. The implementer's R6 tests must reproduce
   this on BASE (preservation control below).
-- Structural reds on BASE (deterministic): R3 grep prints 16 lines, exit 0; `readJson|parseFile`
-  count 2; R4 count 8; `grep -cF 'send \`SIGHUP\` to log it again' docs/operation.md` prints 1.
+- Structural reds on BASE (deterministic), the exact commands of the S1–S4 block under
+  "Repository: api", re-run three times at plan revision on 2026-11-08: S1 `16`, S2 `2`, S3 `8`,
+  S4a `1` (exit 0), S4b `0` (exit 1), the same each run. The first plan wrote S4a with
+  backslash-escaped backticks inside single quotes; that form prints `0` and exits 1 on BASE, so
+  the commands are now given in a fenced block and copied verbatim.
+- Local process trial on BASE (plan revision, scratch clone, the procedure of acceptance 5 with
+  `bun src/main.ts` and again with `bun start`): `PULSE_CHECKS_RELOAD_INTERVAL_MS=500` is refused
+  at startup (`must be 0 (off) or an integer from 1000 to 3600000 (milliseconds)`,
+  `src/start.ts:112`), so the procedure uses `1000`. Then the final procedure of acceptance 5
+  through `bun start` ran three times: each run logged `listening` with `"checks":2`,
+  `"reloadIntervalMs":1000`, `"fileState":"ok"`, `/readyz` 200, and steps 1–7 gave exactly
+  `ok/invalid/error` 0/0/0, 1/0/0, 1/1/0, 1/1/0, 1/1/0, 2/1/0, 3/1/0, ids `api web` at every
+  step, 1 `config reload rejected` line from step 3 on (`checks[0].url: must be an http: or
+  https: URL`), `kill -TERM` exit 0, and `pgrep -f "$T"` empty afterwards. `$!` of `bun start`
+  is the `bun run` parent; the delivery controls (steps 2 and 7) show it forwards `HUP`.
 
 ## Performance impact
 
@@ -327,24 +349,39 @@ documentation file in the list.
 
 ### Tool facts (cited)
 
-- Bun 1.4.0: `package.json` `engines.bun` and `packageManager: "bun@1.4.0"`; CI
-  `bun-version: 1.4.0` in `lorenzh/pulse-config/.github/workflows/check.yml:24` at the pinned ref
-  `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7` (`.github/workflows/ci.yml:18` `uses:` that ref).
-  The pinned `check.yml` and `biome.json` are identical to the config clone (`main`
-  bc870498cc8e2539a132ce2aac35a09db1deabd8), checked with `gh api ... ?ref=<pin>` and `diff`.
-- `bun run check` = `bun run lint && bun run typecheck && bun run test` (`package.json`
-  `scripts.check`); `lint` = `biome check . && pulse-eslint . && pulse-workflows`; `typecheck` =
-  `bun node_modules/typescript7/bin/tsc --noEmit` (TypeScript 7.0.2 via `typescript7`); `test` =
-  `bun test`. CI runs `bun run lint` (`check.yml:28`), `bun run typecheck` (`:30`) and
-  `bun run test` (`:38`); the build steps (`:31-36`) run only with `inputs.build`.
-- Biome 2.6.3 (`package.json` devDependency `@biomejs/biome`); `biome.json` extends
-  `@lorenzh/pulse-config/biome.json`, whose `files.includes` (`biome.json:10-17` at the pin) is
-  `**` minus `dist`, `node_modules`, `bun.lock`, `*.html`, `test/fixtures`; line width 100
-  (`:23`). So all changed `src/*.ts` files are linted and formatted.
-- Coverage: `bunfig.toml` `[test]` `coverage = true`, `coverageThreshold = { lines = 0.8,
-  functions = 0 }`, test files ignored. Focused runs use `--config=/dev/null`, verified on BASE
-  above (no coverage table, exit 0). The threshold is enforced only by the full
-  `bun run check`.
+All api lines are at BASE 515031bd3fd2aa6b8993e325b24ab08f4a3510d6. The config lines are at the
+pin `04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7`, which api names in `package.json:24`
+(`@lorenzh/pulse-config` devDependency) and `.github/workflows/ci.yml:18` (`uses:`). The pinned
+`.github/workflows/check.yml` and `biome.json`, read with `gh api
+"repos/lorenzh/pulse-config/contents/<path>?ref=04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7" --jq
+.content | base64 -d`, are byte-identical (`diff`, exit 0) to the config clone at `main`
+bc870498cc8e2539a132ce2aac35a09db1deabd8, checked again at plan revision on 2026-11-08.
+
+- Bun 1.4.0: `package.json:8-10` (`engines.bun` `"1.4.0"`), `package.json:35`
+  (`packageManager: "bun@1.4.0"`), `package.json:28` (`@types/bun` `1.4.0`); CI installs it with
+  `bun-version: 1.4.0` at `check.yml:22-24` (pin) and runs `bun install --frozen-lockfile` at
+  `check.yml:25-26`.
+- Scripts: `package.json:20` `check` = `bun run lint && bun run typecheck && bun run test`;
+  `package.json:16` `lint` = `biome check . && pulse-eslint . && pulse-workflows`;
+  `package.json:14` `typecheck` = `bun node_modules/typescript7/bin/tsc --noEmit`, with
+  `package.json:27` `typescript7` = `npm:typescript@7.0.2`; `package.json:15` `test` =
+  `bun test`; `package.json:12` `start` = `bun src/main.ts`.
+- CI steps (pin): `check.yml:27-28` `bun run lint`, `check.yml:29-30` `bun run typecheck`,
+  `check.yml:37-38` `bun run test`; `check.yml:31-36` (build, dist check) run only with
+  `inputs.build`, which api's `ci.yml:17-18` does not set.
+- Biome: version 2.6.3 from `package.json:23` (`@biomejs/biome`). `biome.json:2` (api) only
+  extends `@lorenzh/pulse-config/biome.json`. In that file at the pin, `biome.json:10-17`
+  `files.includes` is `**` minus `**/dist`, `**/node_modules`, `**/bun.lock`, `**/*.html`,
+  `**/test/fixtures`, with `vcs.useIgnoreFile` true (`biome.json:3-7`); `biome.json:23`
+  `lineWidth` 100; `biome.json:46` `noNonNullAssertion` error, turned off for `**/*.test.ts` by
+  `biome.json:53-63`; `biome.json:49` `noExplicitAny` error. So every changed `src/*.ts` file is
+  linted and format-checked.
+- Coverage: `bunfig.toml:1` `[test]`, `bunfig.toml:2` `coverage = true`, `bunfig.toml:3`
+  `coverageThreshold = { lines = 0.8, functions = 0 }`, `bunfig.toml:4`
+  `coveragePathIgnorePatterns` excludes `**/*.test.ts`, `test/**`, `**/test/**`, `dist/**`.
+  Focused runs pass `--config=/dev/null` (a Bun test runner flag that replaces `bunfig.toml` with
+  an empty config); verified on BASE under "Evidence from planning" (no coverage table, exit 0,
+  three runs). The threshold is enforced only by the full `bun run check`.
 
 ### Baseline controls (must pass on BASE three times; verified at planning, re-run by the implementer)
 
@@ -355,12 +392,22 @@ documentation file in the list.
   planning), three runs. If the implementer's BASE differs from
   515031bd3fd2aa6b8993e325b24ab08f4a3510d6, it re-records the counts; a test that fails on its
   BASE is reported, not made a mandatory control, and the scope is not widened to fix it.
-- Structural reds S1–S4, three runs each on BASE, each must show the BASE value:
-  S1 `git grep -nwE 'loadInitialConfig|loadConfig|loadChecks' | wc -l` → `16`;
-  S2 `grep -cE '^function (readJson|parseFile)\b' src/config.ts` → `2`;
-  S3 R4 grep count → `8`;
-  S4 `grep -cF 'send \`SIGHUP\` to log it again' docs/operation.md` → `1`, and
-  `grep -cxF '<R1 line>' docs/operation.md` → `0`.
+- Structural reds S1–S4, three runs each on BASE in the api checkout, each must show the BASE
+  value. First save the R1 line (the single line of the R1 `text` block, copied verbatim, one
+  trailing newline) to a file outside the repository, for example `/tmp/r1-859.txt`; it is the
+  independent source of S4b. Run these commands exactly as written (single quotes, literal
+  backticks, no backslashes):
+
+  ```sh
+  git grep -nwE 'loadInitialConfig|loadConfig|loadChecks' | wc -l              # S1, BASE 16
+  grep -cE '^function (readJson|parseFile)\b' src/config.ts                      # S2, BASE 2
+  grep -cE 'keepSecret|referenceOf|LIST_KEY|kind === "check"|case "check"' src/config-write.ts  # S3, BASE 8
+  grep -cF 'send `SIGHUP` to log it again' docs/operation.md                     # S4a, BASE 1 (exit 0)
+  grep -cxFf /tmp/r1-859.txt docs/operation.md                                   # S4b, BASE 0 (exit 1)
+  ```
+
+  Expected BASE values are the literals in the comments; they were observed at plan revision,
+  three runs each.
 - Preservation on BASE: copy the five candidate test files (`src/config.test.ts`,
   `src/config.maintenance.test.ts`, `src/config.examples.test.ts`, `src/config-reload.test.ts`,
   `src/config-admin.test.ts`) into a disposable BASE worktree and run C1 there three times: exit 0,
@@ -371,7 +418,8 @@ documentation file in the list.
 
 ### Acceptance (on the candidate HEAD)
 
-1. S1 prints `0` and `git grep` exits 1; S2 `0`; S3 `0`; S4 `0` and `1`; `git diff --numstat
+1. With the same commands: S1 prints `0` and `git grep` alone exits 1; S2 `0`; S3 `0` (or the
+   R4 alternative grep `0`, recorded); S4a `0` (exit 1); S4b `1` (exit 0); `git diff --numstat
    "$BASE" HEAD -- docs/operation.md` prints `1	1	docs/operation.md`;
    `git diff "$BASE" HEAD -- src/config-reload.ts` has no `+` content line (R2);
    `git diff "$BASE" HEAD -- src/config.ts src/config-reload.ts | grep -cE '^\+export '` → `0`;
@@ -384,18 +432,53 @@ documentation file in the list.
    the `listKey` narrowing; `createConfigWriter` body unchanged except where it calls the removed
    helpers (it calls none at BASE; record the diff hunk list). Protected
    `src/config-write.audit.test.ts` (17) and `src/config-write.crash.test.ts` (45) pass inside C1.
-5. Local SIGHUP check with the real process (handoff evidence, AGENTS.md "Before handoff ...
-   `bun start`"): in a temp dir, `PULSE_CHECKS_FILE`, `PULSE_DB` and `PULSE_TOKENS_FILE` pointing
-   to temp files (tokens copied from `tokens.example.json`), `PULSE_CHECKS_RELOAD_INTERVAL_MS=500`,
-   `PORT` a free loopback port, start `bun start` in the background and keep its PID (`$!`, or the
-   `bun` child of that PID; never `pidof bun` or `pkill` on the shared machine). Record
-   `GET /metrics` reload lines and `GET /checks` ids. Write invalid bytes (`url: "file:///x"`),
-   wait for one look (≥ 1 s), record; `kill -HUP <pid>`, wait 1 s, record; `kill -HUP <pid>`
-   again, wait 1 s, record. Expected literals: exactly 1 `config reload rejected` line in the log,
-   `pulse_api_config_reload_total{result="invalid"} 1`, `result="ok"` unchanged, check ids
-   unchanged. Then write a valid file, wait, and see `result="ok"` increased by 1. Stop with
-   `kill -TERM <pid>` (exit 0), remove the temp dir. Report the commands, the observations and
-   the exit status, without tokens. Then read R1 against them; they must agree.
+5. Local SIGHUP check with the real process (handoff evidence, api `AGENTS.md:83` "start the
+   service with `bun start` and exercise the changed behavior once"), on the candidate HEAD:
+   - Setup in a `mktemp -d` directory `$T` with `umask 077`, removed on exit (`trap`):
+     `$T/checks.json` holds two valid HTTP checks with ids `api` and `web` (for example
+     `{"checks":[{"id":"api","name":"API","url":"http://127.0.0.1:9/","intervalMs":60000,"timeoutMs":1000},{"id":"web","name":"Web","url":"http://127.0.0.1:9/w","intervalMs":60000,"timeoutMs":1000}]}`).
+   - Tokens: never copy `tokens.example.json`: its `replace-with-…` placeholders are refused at
+     startup (`src/tokens.ts:31` "still has the example placeholder token", proven by
+     `src/config.examples.test.ts:51-56`), and so are the public `EXAMPLE_TOKENS`
+     (`src/tokens.ts:11-14`, `:33`) and values shorter than 16 characters or with whitespace
+     (`src/tokens.ts:6`, `:30`, `:32`). Write a fresh one:
+     `printf '{"tokens":[{"location":"local","token":"%s"}]}\n' "$(openssl rand -hex 32)" >
+     "$T/tokens.json"`. The token is never printed or reported; mask 64-hex runs in any pasted
+     output.
+   - Start, from the api checkout:
+     `PULSE_CHECKS_FILE="$T/checks.json" PULSE_DB="$T/pulse.db" PULSE_TOKENS_FILE="$T/tokens.json" PULSE_CHECKS_RELOAD_INTERVAL_MS=1000 PORT=0 bun start > "$T/out.log" 2> "$T/err.log" &`
+     and keep `PID=$!`. The interval is `1000`, the lowest accepted value: `500` is refused at
+     startup (`src/start.ts:112`, `:114-124`). `PORT=0` binds a free port; never signal by
+     name (`pidof bun`, `pkill`) on the shared machine. `$!` is the `bun run` parent; at plan
+     revision it forwarded `HUP` and `TERM` to `bun src/main.ts`, and the delivery control below
+     proves this on every run.
+   - Readiness before any signal: wait (up to 10 s, polling 0.1 s) until `$T/out.log` has the
+     `"msg":"listening"` line; it must show `"fileState":"ok"`, `"checks":2`,
+     `"reloadIntervalMs":1000`. Read the port from its `"port":<n>` field and require
+     `GET http://127.0.0.1:<n>/readyz` to answer `200`. If the process exits or readiness fails,
+     stop and report `$T/err.log` (without tokens); do not send signals.
+   - Record after each step (each a literal expectation): the three
+     `pulse_api_config_reload_total` lines of `GET /metrics`, the ids of `GET /checks` (both
+     unauthenticated, `src/server.ts:422`, `:811-818`), and `grep -c 'config reload rejected'
+     "$T/err.log"` (warn lines go to stderr, `src/main.ts:34-36`).
+     1. Initial: `ok 0`, `invalid 0`, `error 0`, ids `api`, `web`, 0 lines.
+     2. Delivery control: `kill -HUP "$PID"`, wait 1 s: `ok 1` (polling skips an unchanged
+        stamp, so only a delivered signal applies the unchanged valid file; `src/start.ts:433`).
+        If `ok` stays 0, the signal did not arrive: stop, report, and do not claim the check.
+     3. Write the same file with `api`'s url `file:///x`, wait 2.5 s (≥ two looks): `ok 1`,
+        `invalid 1`, 1 line, ids `api`, `web`.
+     4. `kill -HUP "$PID"`, wait 1 s: unchanged (`ok 1`, `invalid 1`, 1 line, same ids).
+     5. `kill -HUP "$PID"` again, wait 1 s: unchanged.
+     6. Write the valid file again, wait 2.5 s: `ok 2`, `invalid 1`, 1 line.
+     7. `kill -HUP "$PID"`, wait 1 s: `ok 3` (second delivery control, after the two signals).
+   - Stop with `kill -TERM "$PID"; wait "$PID"`: exit status `0`; then `pgrep -f "$T"` prints
+     nothing (no leftover process of this run), and the temp dir is removed.
+   - Report the commands, every recorded value, the rejected line (path and message only) and
+     the exit status, without tokens. Then read R1 against them; they must agree (steps 3–5: one
+     line and one count across a look and two `SIGHUP`s; step 6: the valid file applies).
+   - The expected values come from this list, not from the run; at plan revision the same
+     steps 1–7 gave exactly these values on BASE, three runs (see "Evidence from planning"), so the check
+     also confirms that the runtime is unchanged.
 6. Scope (commits, index and worktree separately, against the recorded implementation `BASE`,
    after the last commit of every task):
    - `git diff --name-only "$BASE" HEAD | sort` equals exactly the sorted Files list (or the
