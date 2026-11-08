@@ -14,9 +14,9 @@ Design reference for pulse-console (self-hosted first, hosted later), exported f
 
 ## Scope: what is v1
 
-The canvas has three groups. Only boards titled "SH · …" are a source for v1 work items, wherever they sit on the canvas (canvas notes "scope" and the host and container note).
+The canvas has three groups. Only boards whose title starts with "SH" ("SH · …" or "SH <n> · …") are a source for v1 work items, wherever they sit on the canvas (canvas notes "scope" and the host and container note).
 
-- Self-hosted boards (titles start with "SH ·" or "SH <number> ·"): v1, also the host and container check boards (`SHHostCheck*`, `SHContainer*`, issues #836 and #839) in the row below "Later". One organisation, invites only, no billing or plans.
+- Self-hosted boards (title starts with "SH"): v1, also the host and container check boards (`SHHostCheck*`, `SHContainer*`, issues #836 and #839) in the row below "Later". One organisation, invites only, no billing or plans.
 - Hosted boards (titles start with "Hosted, later"): not v1.
 - "Later" boards (status page settings, notification channels, agent access, AI assistance): not v1. MCP and AI assistance are not part of the MVP (issue #460).
 
@@ -100,7 +100,7 @@ Other files:
 | `shell.js` | Drawer behaviour of the app shell on narrow widths |
 | `ds/losoft-app/tokens.css` | losoft App tokens: colours (light and dark), spacing, radii, type, font faces |
 | `ds/losoft-app/components/bundle.css` | losoft App components (`la-*` classes) |
-| `ds/losoft-app/components/bundle.js` | losoft App components for charts; loaded by 2 boards |
+| `ds/losoft-app/components/bundle.js` | losoft App components for charts; loaded by 5 boards (`CheckDetail`, `SHCheckDetail`, `SHCheckEdit`, `SHHostCheckEdit`, `SHContainerCheckEdit`) |
 
 ## How to read the files
 
