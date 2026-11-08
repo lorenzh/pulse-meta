@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Hide empty incident preview titles on server and client with regression coverage and matching docs",
+      "files": [
+        "src/incident-preview.ts",
+        "src/incident-preview.test.ts",
+        "src/console-script.ts",
+        "e2e/run.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/incidents.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Implementation 1-5, Baseline controls B1/R1/browser red, and Acceptance 1-11; Required behavior 1-6, Counterexamples, Performance impact, Security impact and Risks. This is one small fix with its tests and mandatory four-document update. Keep the title element and use hidden exactly when title === \"\"; preserve raw filled titles and stored update/resolve titles. If already implemented, hold as specified. All disposable helpers, empty config, red runners, scope fixtures and timing logs stay outside the implementation checkout's tracked scope; never edit the read-only context clones or add a test file.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD && bun --version",
+          "expected": "Before the first edit, record the actual implementation commit as BASE and Bun version 1.4.0. Inspection revision in the spec is aa5dc1808d55f9e6655f4da78388957b522c189a; use the actual recorded BASE for every comparison. Prepare an unchanged disposable BASE copy with bun install --frozen-lockfile and an absolute empty EMPTY_CONFIG file using file tools. Record all commands, counts and statuses. Do not infer runtime readiness or passes from the spec."
+        },
+        {
+          "command": "bun test --config=\"$EMPTY_CONFIG\" ./src/incident-preview.test.ts",
+          "expected": "In the unchanged disposable BASE copy, run B1 three times independently: exit 0, 3 pass, 0 fail, and no All files coverage table on each run. Use --config= with an equals sign; the space form and --coverage=false are not substitutes. Do not turn the one observed full-base check or an unrelated flaky suite into a mandatory three-run passing control."
+        },
+        {
+          "command": "bun test --config=\"$EMPTY_CONFIG\" ./src/incident-preview.test.ts --test-name-pattern 'empty title hides its heading'",
+          "expected": "Add exactly the two regression cases of Implementation 3 to the existing file, named empty title hides its heading and filled title keeps escaped text and outer spaces. First run the new empty case on unchanged BASE production code in the disposable copy three times: exit 1, 0 pass, 1 fail each time because the output contains <h3 data-part=\"title\"></h3> (R1, Expected to not contain that string). Assert absence of this empty visible heading and presence of <h3 data-part=\"title\" hidden></h3>. Dependency, coverage or setup failures are not red evidence."
+        },
+        {
+          "command": "bun test --config=\"$EMPTY_CONFIG\" ./src/incident-preview.test.ts --test-name-pattern 'filled title keeps escaped text and outer spaces'",
+          "expected": "On unchanged BASE production code with the added filled-title case, three runs each exit 0, 1 pass, 0 fail, no coverage table. Input title is \" <b>x</b> \"; the exact heading is <h3 data-part=\"title\"> &lt;b&gt;x&lt;/b&gt; </h3>, with outer spaces, no hidden and no b element. Keep all three existing tests unchanged, including the resolved title \" Slow\"."
+        },
+        {
+          "command": "bun \"$INCIDENT_JS_ON_RUNNER\"",
+          "expected": "In a disposable BASE copy with Chromium installed, use an untracked temporary copy of e2e/run.ts that runs only checkIncidentsWith(browser, true) with the new checks and unchanged production code. Three independent runs fail the empty-title regression for axe id empty-heading using all default rules on the whole page; analyze before a missing-hidden assertion could stop this red probe. Do not accept auth, install, Chromium or earlier-suite failures as the red reason. The equivalent incident-only runner passes three times on the branch. Do not add a tracked helper or weaken the full browser gate."
+        },
+        {
+          "command": "bun \"$INCIDENT_JS_OFF_RUNNER\"",
+          "expected": "Separately run the disposable incident-only runner calling checkIncidentsWith(browser, false) on BASE three times: exit 1 each time for the missing hidden attribute on the empty server title, without injecting axe. The equivalent runner passes three times on the branch. Run the JavaScript-off probe independently so the JavaScript-on failure cannot prevent its evidence."
+        },
+        {
+          "command": "bun test --config=\"$EMPTY_CONFIG\" ./src/incident-preview.test.ts",
+          "expected": "On the branch, three runs each exit 0, 5 pass, 0 fail, no coverage table: the literal 3 existing cases plus the 2 new cases named above. The empty heading has the bare hidden attribute; the filled heading stays escaped and visible. These green results accompany the stated three-run red results on BASE. Coverage stays enforced by the full check below."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 with the repository bunfig.toml and its 80 percent line-coverage threshold: Biome, pulse-eslint, pulse-workflows, root and e2e typechecks, and the complete test suite pass. Do not weaken config, CI or hooks, and do not use git commit --no-verify. If a BASE full check fails for an unrelated reason, report it without weakening any gate; the spec records only one full-base pass, not a three-run control."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "Exit 0; log contains the literal ok: incident composer, empty title: axe default rules 0 violations and one ok: line per new case. Implementation 4 runs on the authenticated whole /incidents/new page: initial empty title is hidden and not visible; without navigation, input events through fill A, clear, and fill <b>B</b> plus a trailing space yield visible A, hidden, visible literal <b>B</b> with its trailing space and no preview b element. Also verify change-event updates. Direct new AxeBuilder({ page }).analyze() reports violations.length === 0 for initial empty, filled and cleared states, with no tags, disabled rules, include/exclude or navigation via axeOn. Count exactly 0 page requests during fill steps only, outside axe; api.writes() is unchanged; 0 CSP violations and 0 page errors; previewParts excluding title is unchanged. Empty and existing filled live previews equal their server previews after Update preview, including hidden state. Stored titles on update and resolve forms remain visible and unchanged when message/status controls change; the resolve id=40 title remains 200 x characters. With JavaScript off, initial GET and empty Update preview have hidden; filled Update preview has no hidden and text Checkout slow, with 0 API writes and no injected axe. Keep other pages' WCAG-tagged audits and seeded U+200B incident out of the new unrestricted audit."
+        },
+        {
+          "command": "PULSE_API_URL=\"$LOCAL_FAKE_API_URL\" PULSE_CONSOLE_DB=\"$TEMP_DATA_DIR/console.db\" bun start",
+          "expected": "Exercise the running service once as required by console AGENTS.md: using a local fake API, a disposable data directory and an authenticated /incidents/new, observe hidden on empty, visible after typing, hidden after clearing, visible after retyping. Report the actual command and observed states with no external writes. If this startup cannot reach the incident composer, use bun e2e/run.ts --serve on its stateful incidents fake instead and explain why; record that command and the same observed states."
+        },
+        {
+          "command": "git diff --unified=3 \"$BASE\" HEAD -- src/incident-preview.ts src/console-script.ts e2e/run.ts README.md docs/configuration.md docs/incidents.md docs/development.md",
+          "expected": "Read the diff against Implementation 1-5 and Required behavior 1-6. Server hidden is conditional on exactly parts.title === \"\" in shared previewSection, so initial GET /incidents/new, GET /incidents/new?from=<id>, Update preview and 422 re-renders all use it before script execution. Client sets heading.hidden to title.value === \"\" only inside the title-input guard; no title input leaves the stored title untouched. No trimming, placeholder, aria-hidden-only hiding, CSS-only hiding, new classifier, DOM removal, request, timer or storage. Whitespace-only and U+200B-only nonempty titles keep their existing raw visible heading behavior. All four docs change together: README and configuration describe when the title heading shows, configuration links to incidents.md, incidents describes both server and live visibility while preserving untitled-title rules, and development describes default axe checks for empty/filled/cleared/refilled and JavaScript-off Update preview. No endpoint, field, setting, API body, route, validation, dependency, CSP or filled-preview text changes; escaping and status-renderer parity remain intact. Security impact remains no, as described in the spec; no separate security infrastructure or Docker bench is needed."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort",
+          "expected": "After the last implementation commit, output equals exactly these 8 paths in this order: README.md; docs/configuration.md; docs/development.md; docs/incidents.md; e2e/run.ts; src/console-script.ts; src/incident-preview.test.ts; src/incident-preview.ts (one path per line). Compare to this independent literal list, not to a list derived from the diff or implementation. Any missing or extra path fails. README is allowed and required."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last commit, output is empty. Check the index separately from committed and working-tree changes; this fails even if an indexed protected edit was followed by restoring only the working tree to BASE."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last commit, output is empty. Check the working tree separately from the index and committed changes."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last commit, output is empty, including untracked paths; no disposable runner, config, fixture or timing output remains in the implementation checkout."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md package.json bun.lock bunfig.toml biome.json eslint.config.js tsconfig.json e2e/tsconfig.json Dockerfile lefthook.yml .github assets scripts test src/server.ts src/incident-routes.ts src/incident-pages.ts src/incident-form.ts src/incident-read.ts src/incident-write.ts src/styles.ts docs/index.md",
+          "expected": "After the last commit, exit 0 and no diff for every explicit protected path. This checks committed history against the recorded implementation BASE, including when a committed protected edit is masked by restoring only the working-tree file to BASE."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- . ':(exclude)src/incident-preview.ts' ':(exclude)src/incident-preview.test.ts' ':(exclude)src/console-script.ts' ':(exclude)e2e/run.ts' ':(exclude)README.md' ':(exclude)docs/configuration.md' ':(exclude)docs/incidents.md' ':(exclude)docs/development.md'",
+          "expected": "After the last commit, exit 0 and no diff: every path outside the exact 8 allowed paths is protected, including unanticipated files. Combine with the exact committed-path equality, separate cached/worktree checks and empty status above."
+        },
+        {
+          "command": "node \"$SCOPE_FIXTURE_RUNNER\"",
+          "expected": "Create this disposable fixture driver using file tools outside the implementation checkout and read-only clones. It runs the preceding scope checks with one allowed and one protected path against a recorded fixture BASE, asserts every expected result, and exits 0 only if all 7 scenarios behave correctly: (1) clean committed allowed change passes all checks; (2) committed protected change fails committed-path and protected-diff checks; (3) index-only protected change fails --cached; (4) working-tree-only protected change fails git diff --name-only and status; (5) untracked file fails status; (6) staged protected change followed by restoring only its working tree to BASE still fails --cached; (7) committed protected change followed by restoring only its working tree to BASE still fails BASE-to-HEAD and protected-diff checks. Include the commands and outputs for every scenario in the PR body. Do not substitute working-tree comparisons for history/index checks."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "As information only, run five interleaved base/branch pairs (base, branch, base, branch, until 10 samples) using unchanged BASE tests without temporary red tests, the branch suite, Bun 1.4.0, the same lockfile and repository coverage config. Report every user+system CPU sample including children, each revision's median as the 3rd of 5 sorted values, median_branch minus median_base in seconds to 2 decimals and percent of median_base to 1 decimal. Report failures and shared-machine noise honestly; no performance pass/fail threshold and no Docker bench (#834)."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD && gh pr view --json body --jq .body",
+          "expected": "Read every added line yourself, including inline comments, and verify the PR body names every added comment; write none only after that full read. No new test file is allowed; hold if one becomes necessary so issue review, plan and task can be reconciled. The body names Closes lorenzh/pulse-meta#<child> with the actual child number, all checks and three-run red/green evidence, service exercise command/states, fixture outputs and scope results, four-doc consistency, interleaved CPU samples/medians/delta, and the known whitespace-only/U+200B-only visible-heading limit. Describe the completed implementation and actual results; do not claim execution from this breakdown state."
+        }
+      ]
+    }
+  ]
+}
