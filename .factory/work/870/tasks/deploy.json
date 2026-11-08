@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "target": "deploy",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Mask recorded and uncollected credentials across e2e failure diagnostics",
+      "files": [
+        "e2e/console-lib.sh",
+        "e2e/console-setup.sh",
+        "e2e/runtime-settings.sh",
+        "e2e/redact.sh",
+        "e2e/compose-e2e.sh",
+        "e2e/failure-logs.sh",
+        "e2e/redact.test.sh",
+        "e2e/console-setup.test.sh",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "dev/README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: deploy, complete Behavior, Docs and Tests sections; Required behavior items 1-6; all Counterexamples; Acceptance (deploy) items 1-10; Performance impact and Security impact. Implement one run-owned credential registry across shared console helpers, standalone setup and runtime form collection; consume it with literal masking, S1-S5 fallback suppression and missing-registry fail-closed behavior in compose cleanup, failed child replay and the CI dev diagnostic script. Preserve all scenario requests/checks/success output, raw security scans and failure status. Extend the 28-case redaction regression and the existing seven setup cases, update README.md and dev/README.md in the same change, and restrict ci.yml to the specified dev wiring. Keep docs/cli.md and all protected paths unchanged. This is a single end-to-end masking mechanism: collection, registry lifetime, consumers and regression belong together.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD",
+          "expected": "Before any implementation edit, record this full SHA as BASE in the PR evidence and export BASE for subsequent checks. Use the actual implementation base, not a later merge-base or the plan's inspected SHA. Prepare disposable baseline and red-proof worktrees outside the implementation checkout; keep an unchanged baseline worktree BASE_DIR for controls and timing. No target .factory, plan, evidence or scope-checker file is committed."
+        },
+        {
+          "command": "(cd \"$BASE_DIR\" && bash e2e/redact.test.sh && bash e2e/console-setup.test.sh && bash e2e/incident-card.test.sh && bash e2e/snippet.test.sh)",
+          "expected": "Unchanged production and test files at recorded BASE: all commands exit 0; redact.test reports 5 cases, console-setup.test reports 7 cases, and the incident-card and snippet controls pass. Run these controls rather than relying on previous spec-run evidence. Preserve the five original redaction cases' names, sentinels and assertions in the candidate."
+        },
+        {
+          "command": "(cd \"$BASE_DIR\" && bash e2e/runtime-settings.test.sh)",
+          "expected": "Run on the unchanged recorded base and require exit 0 when docker compose config is available. If that prerequisite is missing, name it for the base and candidate separately and do not call either run green."
+        },
+        {
+          "command": "(cd \"$RED_BASE_DIR\" && bash e2e/redact.test.sh)",
+          "expected": "RED_BASE_DIR is a disposable worktree at recorded BASE with only the candidate e2e/redact.test.sh copied over using file tools; production stays unchanged. Run all 28 cases even after failures. K1-K5 each fail because cleanup printed their credential category, five independent leak failures, not a missing helper, syntax error or stub failure; F1-F5 fail for missing suppression. E1-E5, C1-C3 and V1 pass. R1, C4, L2, L3, P1, W1 and W2 may fail for missing interfaces and are excluded from the leak proof. Exit 1; record every result and exact counts. Absent collect_needles/replay_redacted extraction yields empty eval, allowing K1-K5 to execute on the base. Remove this disposable worktree after recording evidence."
+        },
+        {
+          "command": "bash e2e/redact.test.sh",
+          "expected": "Exit 0 and exactly 'redact.test: 28 cases passed'; every case reports ok. Implement all Repository: deploy Tests cases E1-E5, K1-K5, R1, F1-F5, V1, C1-C4, L1-L4, P1 and W1-W2 without dropping assertions. K1-K5 collect only through real helpers in child Bash processes, remove response/jar files before actual compose cleanup, mask all sentinels in unlabelled stub logs and retain the neighbouring plain line. Cover two rotated jar and Set-Cookie values, successive CSRF values, selected/decoy/runtime form tokens, two generated TOTP values and response-only recovery codes (all ten retained; first and tenth in logs). req stdout is exactly 200. R1 proves registry contents, mode 600 and the 5/6-character boundary. F1-F5 prove unrecorded shape suppression; V1 preserves all five ordinary counterexamples including seven-digit code and UUID shapes. C1-C4 cover Authorization, SMTP, status/notify files and probe secrets. Lifecycle, replay and CI cases prove early failure exit 1, missing/unreadable needles fail closed, removal of registry directory, child-output masking, ps/plain-line visibility and failure-logs usage exit 2. No actual credentials in fixtures."
+        },
+        {
+          "command": "bash e2e/console-setup.test.sh",
+          "expected": "Exit 0 and exactly 'console-setup.test: 7 cases passed'. Keep A-G names, literal stdout, request/form-token checks, the F failure check and stdout/stderr credential scan. A/B/C/E/G use a private registry (directory 700, file 600); independent stub state proves all issued CSRF and form tokens, every TOTP code, all ten recovery codes, owner password and setup key are recorded when applicable. D/F leave E2E_NEEDLES unset and preserve original checks. form() records issued CSRF values in its independent state file. No recording output changes success text."
+        },
+        {
+          "command": "bash e2e/runtime-settings.test.sh && bash e2e/incident-card.test.sh && bash e2e/snippet.test.sh",
+          "expected": "Exit 0 for all three on HEAD; existing baseline controls and assertions remain. Runtime form selection, overrides, decoded values and scenario behavior are unchanged while form_args records the csrf/form_token values it puts into fargs. Name a missing Docker Compose prerequisite explicitly instead of claiming a pass."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 shellcheck -x",
+          "expected": "Exit 0 from the repository root; include tracked new e2e/failure-logs.sh. No added dependency and no weakened shellcheck gate."
+        },
+        {
+          "command": "git ls-files -z '*.sh' | xargs -0 -n 1 bash -n",
+          "expected": "Exit 0 for every tracked shell file, including the new diagnostic script."
+        },
+        {
+          "command": "git ls-files -z '*.mjs' | xargs -0 -n 1 node --check",
+          "expected": "Exit 0."
+        },
+        {
+          "command": "git ls-files -z '*.json' | xargs -0 -n 1 jq empty",
+          "expected": "Exit 0."
+        },
+        {
+          "command": "docker compose version && shellcheck --version && jq --version && node --version && v=$(docker compose version --short) && printf '%s\\n2.23.0\\n' \"${v#v}\" | sort -V -C -r",
+          "expected": "Exit 0; the lint job's tool check passes with Compose at least 2.23.0."
+        },
+        {
+          "command": "bash e2e/outage-history.test.sh && bash e2e/metric-is.test.sh && bash e2e/manual-count.test.sh && bash e2e/published-port.test.sh && bash e2e/dev-console-prefills.test.sh && bash e2e/subscriptions.test.sh && scripts/check-setup.sh && bash scripts/check-setup.test.sh && bash scripts/secrets-init.test.sh && bash scripts/bump-images.test.sh && bash scripts/wait-ready.test.sh && bash scripts/init-secrets.test.sh",
+          "expected": "Every remaining CI lint-job test/check exits 0, including Docker-backed checks with their prerequisites. Run each check even if an earlier one fails; report actual failures or the precise missing prerequisite, never a partial chain as a full lint-job pass."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "Exit 0 on HEAD with Bun 1.4.0: lint (including pulse-workflows on ci.yml), typecheck and the entire CLI coverage suite pass. Retain existing coverage thresholds and tooling/package/lock pins."
+        },
+        {
+          "command": "if command -v mawk >/dev/null; then\n  awk_dir=$(mktemp -d)\n  ln -s \"$(command -v mawk)\" \"$awk_dir/awk\"\n  PATH=\"$awk_dir:$PATH\" bash e2e/redact.test.sh\n  code=$?\n  rm -rf \"$awk_dir\"\n  test \"$code\" -eq 0\nelse\n  printf \"%s\\n\" \"mawk is not installed\"\nfi",
+          "expected": "If mawk is installed, exit 0 with the same literal 28-case pass result. Otherwise record that mawk is not installed. Suppression S1-S5 uses no awk interval expressions; check original lines before literal replacement and keep the visible counterexamples."
+        },
+        {
+          "command": "diff <(git show \"$BASE\":.github/workflows/ci.yml | sed '/^  dev:$/,/^  e2e-dev:$/d') <(sed '/^  dev:$/,/^  e2e-dev:$/d' .github/workflows/ci.yml)\ntest \"$(git show \"$BASE\":.github/workflows/ci.yml | grep -c 'uses:')\" = \"$(grep -c 'uses:' .github/workflows/ci.yml)\"\ntest \"$(git show \"$BASE\":.github/workflows/ci.yml | grep -c 'persist-credentials: false')\" = \"$(grep -c 'persist-credentials: false' .github/workflows/ci.yml)\"\ngrep -n 'e2e/failure-logs.sh dev/compose.yaml\\|E2E_NEEDLES\\|e2e-needles' .github/workflows/ci.yml",
+          "expected": "Each diff/test passes independently; the first diff is empty and each count is equal to BASE. Every grep hit is inside dev. Inspect the dev diff too: only private registry creation after checkouts and before services, explicit E2E_NEEDLES on setup and diagnostics, the failure-logs command, and registry removal before existing teardown. All action pins, persist-credentials settings, job gates, checkouts, other jobs and teardown behavior remain byte-identical."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- e2e/console-lib.sh e2e/console-setup.sh e2e/runtime-settings.sh e2e/redact.sh e2e/compose-e2e.sh e2e/failure-logs.sh",
+          "expected": "Security checklist and compatibility inspection confirms Required behavior 1-6 exactly: silent append-only E2E_NEEDLES registry, minimum length 6, umask 077 and value-free append failure; all jar cookies (including HttpOnly), case-insensitive Set-Cookie values, all response CSRF/form values and recovery codes recorded before overwrite. req preserves curl status/stdout even on failure; totp_after records skipped codes too; selected helpers, owner setup and runtime fields record as specified. Literal values are never evaluated or treated as regexes. compose overrides inherited E2E_NEEDLES, creates mode 700/600 state immediately after the trap, masks failure cleanup and failed probe/incidents/runtime replay with existing tokens plus probe secrets, and removes state after the last consumer on success/failure. Missing registry removes the needles output and prints only the existing fail-closed marker. failure-logs validates arguments, prints ps then masked logs, removes temporary needles and exits as specified. Scenario requests, selection, assertions, success/skip text, raw scans and their ordering, fail messages, teardown order and failure status stay unchanged. No service behavior, logger, auth flow, setup-code collection, action/package dependency, pin or Compose change."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md dev/README.md",
+          "expected": "Both required docs change in the same implementation: README e2e paragraph names admin/service tokens, owner password/key, secret files, probe secrets and the five recorded categories, E2E_NEEDLES private registry, [redacted], [suppressed: credential line], missing-registry marker and the e2e-only boundary; README CI dev paragraph names bash e2e/failure-logs.sh dev/compose.yaml. dev/README explains mode 600 E2E_NEEDLES collection and the masked stack diagnostic command. No sentinel quoted or credential-extraction recipe; ordinary operator documentation in docs/cli.md remains protected."
+        },
+        {
+          "command": "E2E_SETUP=dev bash e2e/compose-e2e.sh",
+          "expected": "With sibling service checkouts, Docker/Compose and free ports 3000, 8080 and 8082, exit 0 with ==> All checks passed and the required dev ok lines, preserving scenario checks/success output. Run every check of the touched dev job as well (init-secrets, dev build/start, wait-ready, console setup, diagnostic failure wiring, teardown, CLI dependency install and source CLI stack.sh dev); W1-W2 exercise its failure command with stubs. If prerequisites are absent name them exactly. PR CI dev and e2e-dev jobs must pass; unit/stub tests alone do not establish live-stack success. Do not run the Docker bench (#834)."
+        },
+        {
+          "command": "for suite in cli redact console; do\n  case \"$suite\" in\n    cli) test_command=(bun run test) ;;\n    redact) test_command=(bash e2e/redact.test.sh) ;;\n    console) test_command=(bash e2e/console-setup.test.sh) ;;\n  esac\n  for tree in \"$BASE_DIR\" \"$PWD\" \"$BASE_DIR\" \"$PWD\"; do\n    /usr/bin/time -f \"%U %S\" bash -c 'cd \"$1\"\nshift\n\"$@\"' _ \"$tree\" \"${test_command[@]}\"\n  done\ndone",
+          "expected": "For each command run sequential base, branch, base, branch samples under the same environment, with dependencies ready in both trees and the base tests unchanged. Report all four user+system CPU samples including children, base/branch means, branch-minus-base delta and case counts (redact 5 versus 28, console 7 versus 7). Explain material differences. Do not substitute wall time, define a new numeric threshold, alter budgets or run the Docker bench."
+        },
+        {
+          "command": "python3 -c 'import os, subprocess\nallowed = [\"e2e/console-lib.sh\",\"e2e/console-setup.sh\",\"e2e/runtime-settings.sh\",\"e2e/redact.sh\",\"e2e/compose-e2e.sh\",\"e2e/failure-logs.sh\",\"e2e/redact.test.sh\",\"e2e/console-setup.test.sh\",\".github/workflows/ci.yml\",\"README.md\",\"dev/README.md\"]\nbase = os.environ[\"BASE\"]\ngot = subprocess.check_output([\"git\", \"diff\", \"--name-only\", base, \"HEAD\"], text=True).splitlines()\nassert sorted(got) == sorted(allowed), \"committed paths differ from the exact allowlist\"\nprint(\"ok: exact committed path list\")\n'",
+          "expected": "After the last implementation commit, exit 0: base-to-HEAD changed paths equal the exact 11-path task files list, with neither omissions nor additions. Review allowed-file diffs for the narrow edits; do not compare only base to the working tree."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last implementation commit, output is empty; check independently of committed scope and worktree."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last implementation commit, output is empty; check independently of index and committed scope."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last implementation commit, output is empty, including untracked fixtures/evidence."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml common minimal full demo dev/compose.yaml e2e/compose.e2e.yaml e2e/compose.runtime.yaml e2e/compose.subscriptions.yaml e2e/console-probes.sh e2e/console-incidents.sh e2e/subscriptions.sh e2e/runtime-settings.test.sh e2e/totp.mjs docs scripts cli .github/workflows/release.yml",
+          "expected": "Exit 0 after the last implementation commit. These concrete protected files/directories stay unchanged in commits; a clean worktree or a base-to-worktree comparison does not substitute for this check."
+        },
+        {
+          "command": "python3 -c 'import pathlib, subprocess, tempfile\nallowed = [\"e2e/console-lib.sh\",\"e2e/console-setup.sh\",\"e2e/runtime-settings.sh\",\"e2e/redact.sh\",\"e2e/compose-e2e.sh\",\"e2e/failure-logs.sh\",\"e2e/redact.test.sh\",\"e2e/console-setup.test.sh\",\".github/workflows/ci.yml\",\"README.md\",\"dev/README.md\"]\nprotected = [\"AGENTS.md\",\"CLAUDE.md\",\"package.json\",\"bun.lock\",\"bunfig.toml\",\"biome.json\",\"tsconfig.json\",\"eslint.config.js\",\"lefthook.yml\",\"common\",\"minimal\",\"full\",\"demo\",\"dev/compose.yaml\",\"e2e/compose.e2e.yaml\",\"e2e/compose.runtime.yaml\",\"e2e/compose.subscriptions.yaml\",\"e2e/console-probes.sh\",\"e2e/console-incidents.sh\",\"e2e/subscriptions.sh\",\"e2e/runtime-settings.test.sh\",\"e2e/totp.mjs\",\"docs\",\"scripts\",\"cli\",\".github/workflows/release.yml\"]\ndef git(repo, *args):\n    return subprocess.check_output([\"git\", \"-C\", str(repo), *args], text=True)\ntracked_protected = subprocess.check_output([\"git\", \"ls-files\", \"--\", *protected], text=True).splitlines()\nwith tempfile.TemporaryDirectory(prefix=\"870-scope-\") as directory:\n    repo = pathlib.Path(directory)\n    git(repo, \"init\", \"-q\")\n    def write(path, value):\n        target = repo / path\n        target.parent.mkdir(parents=True, exist_ok=True)\n        target.write_text(value)\n    for path in sorted(set(allowed + tracked_protected)):\n        write(path, \"base\\n\")\n    def commit():\n        git(repo, \"-c\", \"user.name=scope fixture\", \"-c\", \"user.email=scope@example.invalid\", \"-c\", \"commit.gpgsign=false\", \"commit\", \"-qm\", \"fixture\")\n    git(repo, \"add\", \".\")\n    commit()\n    base = git(repo, \"rev-parse\", \"HEAD\").strip()\n    def checks(expected):\n        changed = git(repo, \"diff\", \"--name-only\", base, \"HEAD\").splitlines()\n        return {\n            \"allowlist\": sorted(changed) == sorted(expected),\n            \"index\": git(repo, \"diff\", \"--name-only\", \"--cached\") == \"\",\n            \"worktree\": git(repo, \"diff\", \"--name-only\") == \"\",\n            \"status\": git(repo, \"status\", \"--porcelain\") == \"\",\n            \"protected\": subprocess.run([\"git\", \"-C\", str(repo), \"diff\", \"--quiet\", base, \"HEAD\", \"--\", *protected]).returncode == 0,\n        }\n    def reset():\n        git(repo, \"reset\", \"--hard\", base)\n    assert all(checks([]).values())\n    for path in allowed:\n        write(path, \"allowed\\n\")\n    git(repo, \"add\", \"--\", *allowed)\n    commit()\n    assert all(checks(allowed).values())\n    reset()\n    write(\"AGENTS.md\", \"protected\\n\")\n    result = checks([])\n    assert not result[\"worktree\"] and not result[\"status\"]\n    reset()\n    write(\"AGENTS.md\", \"protected\\n\")\n    git(repo, \"add\", \"AGENTS.md\")\n    result = checks([])\n    assert not result[\"index\"] and not result[\"status\"]\n    reset()\n    write(\"AGENTS.md\", \"protected\\n\")\n    git(repo, \"add\", \"AGENTS.md\")\n    commit()\n    result = checks([])\n    assert result[\"index\"] and result[\"worktree\"] and result[\"status\"]\n    assert not result[\"allowlist\"] and not result[\"protected\"]\n    reset()\n    write(\"AGENTS.md\", \"protected\\n\")\n    git(repo, \"add\", \"AGENTS.md\")\n    write(\"AGENTS.md\", \"base\\n\")\n    assert git(repo, \"diff\", \"--name-only\", base) == \"\"\n    result = checks([])\n    assert not result[\"index\"] and not result[\"worktree\"] and not result[\"status\"]\n    reset()\n    write(\"AGENTS.md\", \"protected\\n\")\n    git(repo, \"add\", \"AGENTS.md\")\n    commit()\n    write(\"AGENTS.md\", \"base\\n\")\n    assert git(repo, \"diff\", \"--name-only\", base) == \"\"\n    result = checks([])\n    assert not result[\"allowlist\"] and not result[\"protected\"] and not result[\"worktree\"] and not result[\"status\"]\nprint(\"ok: 7 scope fixture states; fixture removed\")\n'",
+          "expected": "Exit 0 and 'ok: 7 scope fixture states; fixture removed'. Use the exact task allowlist and protected list outside the checkout. Clean control and allowed committed changes pass; unstaged, staged, cleanly committed protected changes and both restored-worktree variants fail the relevant independent checks. Both restored variants show an empty base-to-worktree diff while index/commit/allowlist checks expose the unauthorized change. Remove the fixture afterwards."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD",
+          "expected": "Public diff adds no real credential; only synthetic sentinel values inside e2e/*.test.sh. PR text contains categories only, no extraction recipe. PR evidence records full BASE, independent baseline control results, all 28 branch cases, five category leak failures on base with exact counts, registry permissions/lifetime, suppression/fail-closed behavior, compatibility/security review, mawk result, CI diff restrictions, full required-check results, live-stack/CI outcomes or precise missing prerequisites, all interleaved CPU samples/means/deltas, and the seven-state scope fixture and separate committed/index/worktree/status/protected checks. Do not claim a service emits credentials based on stub evidence. Remove disposable worktrees and evidence from the checkout before handoff."
+        }
+      ]
+    }
+  ]
+}
