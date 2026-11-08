@@ -92,6 +92,10 @@ code with `grep` and `tsc`, duplication by reading and `grep` across the clones.
 cites file and line. A lint or typecheck error, a swallowed error, or a risky branch without a test
 can be a finding; an item that only concerns style (formatting, naming taste) is a note, never an
 issue candidate. Run each script under `timeout`, at most 10 minutes each.
+Judge the code against `{{project.root}}/docs/code-conventions.md` and count two finding
+categories: duplication (a second copy of markup, a query, a check or logic, with both locations)
+and mixed concerns (a handler, route or controller that builds markup or holds business logic
+inline). Start the `title` of such a finding with `Duplication:` or `Mixed concerns:`.
 
 **Security audits: disclosure.** The pulse repositories and this report are public. For a `P1` or
 `P2` security finding the committed report names the location (file and line), the class (for

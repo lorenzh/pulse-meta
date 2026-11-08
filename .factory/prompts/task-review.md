@@ -66,6 +66,11 @@ with status `needs-input` that quotes the output: this state should not run then
    responses; auth order and status codes; body and size limits; input validation at trust
    boundaries, with validators that never throw; accessor and getter execution; SSRF and
    redirects; atomic, path-safe file writes; dependency pins (`docs/approved-packages.md` in meta).
+7. Check the task against the code conventions in `{{project.root}}/{{workspace.contextDirectory}}/meta/docs/code-conventions.md`
+   and the shared modules that this repository's `AGENTS.md` names. Report a second copy of existing
+   markup, a query, a check or logic, hand-written code that a shared helper covers, and a new shared
+   helper without a test as should-fix findings, with both locations as proof. A should-fix finding
+   is not a reason to reject, unless this repository's `AGENTS.md` says so.
 
 ## Verdict
 
