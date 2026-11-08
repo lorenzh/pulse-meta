@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Keep settings report starts within 60 seconds with serialized polls and cancellable shutdown",
+      "files": [
+        "src/settings-poll.ts",
+        "src/settings-poll.heartbeat.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status — Behavior (D1-D4), Checks 1-9, Completion evidence and Acceptance evidence (feature); Required behavior R1-R8, Counterexamples C1-C11, Scope, Risks, Performance impact and Security impact.",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD)\ngit rev-parse \"$BASE\"",
+          "expected": "Before editing any file, record the fresh implementation branch's main base SHA (bcd83dad0975954b687ce89fc8ad369ba3a94e8a or later, as specified by Completion evidence). Retain that exact SHA as BASE throughout implementation, all later commits and checks; put it in the PR body. Never reset BASE to a later implementation commit."
+        },
+        {
+          "command": "git worktree add /tmp/status-base \"$BASE\"\n# Copy only the new src/settings-poll.heartbeat.test.ts to /tmp/status-base/src/ using file tools.\n(cd /tmp/status-base && bun install --frozen-lockfile && bun test src/settings-poll.heartbeat.test.ts)",
+          "expected": "Red assertions against the recorded base production poller, with the new suite importing only base-existing exports (no REPORT_LEAD_MS import). Test 1: 60000/1000 and 60000/4000 fail with report-start gaps 62000 and 68000; the other four matrix cases pass. Tests 2, 3, 4, 5, 7b, 7c, 7d and 7e fail for timing, overlap or shutdown behavior. All six test 9 cases fail: old read gaps 60000, 61000, 64000, 65000, 64000, 59000 instead of 54000, 55000, 58000, 59000, 58000, 55000. Tests 6, 7a and both test 8 cases pass. An install, import or compile failure is not red evidence. Record commands and failing assertions in the PR. Keep this worktree until all base CPU and delayed-answer measurements finish."
+        },
+        {
+          "command": "bun test src/settings-poll.heartbeat.test.ts",
+          "expected": "All cases of Checks 1-9 pass, 0 failing tests; focused coverage exit status is not the acceptance criterion (bunfig.toml enables an 0.8 line threshold; the full suite gates it). Harness uses only injected now/setTimeout/clearTimeout/fetch, advances earliest timers after draining promise jobs, never advances time inside fetch, and measures GET and PUT fetch-call start times with integer ms. Fake fetch has preconnect, abort rejection, held-request support, valid 200 settings/ETag/wire header and 204 report answers; tests exercise the real startSettingsPoll with resolveSettings. Test 1 covers pollMs 60000 and default 15000 at 0, 1000, 4000 ms latency, asserts DEFAULT_SETTINGS_POLL_MS === 15000, >=4 reports per case, every report-start gap <=60000, max in-flight <=1 and minimum read gaps >=54000 or >=15000 respectively. Test 2 alternates 0/4000 ms reads and separately 0/5000 ms timeouts, report latency 0: >=4 reports, gaps <=60000, no overlap. Test 3 uses 4000 ms reports and separately reports timing out at 5000 ms: gaps <=60000, no overlap, next read recovers. Test 4 uses a token, pollMs 120000, latency 1000: >=4 reports, gaps <=60000; this is a heartbeat check, not the no-token cap check. Test 5 uses pollMs 1000, holds the second read and calls pollNow three times: no concurrent GET, exactly 1 extra poll after release, all 3 promises resolve only after its report completes, background polling continues after another 1000 ms. Test 6 throws from resolve after its first 2 calls, runs 120000 ms at pollMs 60000 and observes <=4 GETs (no stale-anchor tight loop). Test 7a stops idle: 300000 ms later no new fetch and no timers; 7b stops during a held read: signal aborted, no local reread/apply/report, no timers after 300000 ms; 7c stops during a held report: signal aborted, no later fetch/timer or 'status settings report failed' log after 300000 ms; 7d stops with pollNow waiting behind a held read: waiting promise resolves without another fetch; 7e pollNow after stop resolves with zero fetches, repeated stop harmless. Test 8 has no token at pollMs 60000 and 120000: zero fetches, ready true, readLocal times exactly [0,60000,120000,180000,240000,300000] in both cases. Test 9 has a token and report latency 0, >=5 GET starts per case: pollMs 60000 with read latency 0,1000,4000,5000-timeout gives exact read gaps 54000,55000,58000,59000 and each read minus preceding report start 54000; pollMs 120000/read 4000 gives gaps 58000 and offset 54000; pollMs 55000/read 4000 gives gaps 55000 and offset 51000. All asserted bounds/lists are literal values, not values imported or computed from scheduler constants."
+        },
+        {
+          "command": "bun test src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts",
+          "expected": "All tests in the three unchanged existing suites pass, 0 failing tests; a focused run may exit nonzero only for coverage. Existing 15000 ms delay assertion, settings precedence/last-good behavior, ETag, readiness, rejection and public-response behavior remain intact."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 on the PR head: Biome, pulse-eslint and pulse-workflows pass, both TypeScript projects pass, full bun test passes with >=0.8 line coverage and cognitive complexity <=15 per function. CI check job is green. No tooling, dependency pins, lockfile, coverage threshold or existing tests are changed to make it pass."
+        },
+        {
+          "command": "git diff \"$BASE\" -- src/settings-poll.ts",
+          "expected": "Review against Behavior/D1-D4 and R1-R8: first poll immediate; one active lane and at most one coalesced waiting pollNow poll; no catch-up or request overlap; waiting pollNow resolves after its own fresh read/report and never rejects an internal poll error (logged as today). Every poll clears the pending poll timer and records pollStart; anchor is read right before the report, or pollStart if no report started. Without a token due = pollStart + min(pollMs,60000); with a token due = min(pollStart + min(pollMs,60000), anchor + 54000). When idle after completion, schedule max(0,due-now); queued pollNow takes priority. REPORT_LEAD_MS = SETTINGS_TIMEOUT_MS + 1000 stays internal; existing exports, interfaces and constant values stay unchanged. One AbortController per poll covers both fetchJson and requestJson; stop stays synchronous/idempotent, clears timers, aborts either request and prevents subsequent local reread/apply/report/rearm/report-failure logging. Comments explain the heartbeat and read reserve. Security impact remains no: unchanged report body/buildReport arguments, methods, routes, headers/auth, manual redirects, 5000 ms timeout, size limit, validators, ETag, readiness, 404, settings semantics, public responses and no-token semantics; no new exports, routes, dependencies, shared helpers or changes in another repository."
+        },
+        {
+          "command": "git diff \"$BASE\" -- README.md docs/configuration.md",
+          "expected": "Review both changed passages against D1 Two bounds/R8. README Live page settings and docs/configuration describe start-to-start scheduling; above 54000 ms, reads are 54 to 59 s apart, never more than the configured interval, and can be faster than configured, not always faster. Configuration distinguishes next read <=54 s after the previous report start from read-to-read spacing; 54 s plus previous read duration determines when the configured interval is shortened, values >=60000 behave the same. README explicitly says report starts stay at most 60 s apart whatever the HTTP time is within the 5000 ms request timeout, and reports follow every read/apply attempt. Keep the remainder of that README paragraph and all other README sections unchanged."
+        },
+        {
+          "command": "grep -nE 'every 54 s|about 54 s|at most (about )?54 s apart' README.md docs/configuration.md",
+          "expected": "No output, exit 1. Neither file promises fixed 54 s read-to-read spacing."
+        },
+        {
+          "command": "grep -c '54 to 59 s' README.md docs/configuration.md\ngrep -c 'can be faster' docs/configuration.md\ngrep -c '60 s' README.md",
+          "expected": "Each file has at least 1 occurrence of the literal '54 to 59 s'; docs/configuration.md has at least 1 'can be faster'; README.md has at least 1 '60 s'. Every grep exits 0. Manual documentation review above also passes; phrase counts alone do not establish the timing semantics."
+        },
+        {
+          "command": "bun /tmp/status-delayed-api.ts",
+          "expected": "Create the temporary fake-api measurement script outside the repository with file tools (not a committed task file). In a separate terminal it serves 127.0.0.1:19090, delays every answer 4000 ms, logs each GET/PUT arrival in ms, serves valid settings 200 with ETag \"e1\", then 304 for If-None-Match, and reports 204, with the harness's valid wire headers/body. Use it for runs A/B below; independent expected timings/counts are the literals in Completion evidence. Free ports may be substituted consistently."
+        },
+        {
+          "command": "PULSE_API_URL=http://127.0.0.1:19090 PULSE_STATUS_API_TOKEN=heartbeat-test PULSE_STATUS_SETTINGS_POLL_MS=15000 PORT=18080 bun start",
+          "expected": "Delayed-answer run A, execute on the base in /tmp/status-base and on the branch, 3 runs per side, each window 300000 ms starting at the first settings GET. Base GET count 14 ±1, gap 23000 ms; branch count 20 ±1, gap 15000 ms. PUT count equals GET count ±1. Measure status-process utime+stime from /proc/<pid>/stat fields 14/15 at each window's endpoints (clock ticks, 10 ms resolution); report each side's median CPU ms and CPU ms/poll. Gate: branch median minus base median <=300 ms (expected well under 100 ms). PR includes exact executed commands, arrival logs, counts and CPU numbers. This measures the documented runtime rate increase under slow API responses, including its CPU cost."
+        },
+        {
+          "command": "PULSE_API_URL=http://127.0.0.1:19090 PULSE_STATUS_API_TOKEN=heartbeat-test PULSE_STATUS_SETTINGS_POLL_MS=60000 PORT=18080 bun start",
+          "expected": "Delayed-answer run B, on base and branch until >=4 report starts per side. First report about 4000 ms. All report-start gaps: base 68000 ±50 ms, branch 58000 ±50 ms, branch always <60000 ms. Read-start gaps: base 68000 ±50 ms, branch 58000 ±50 ms. Each GET arrival minus previous PUT arrival: base 64000 ±50 ms, branch 54000 ±50 ms. Stop with Ctrl-C, clean exit 0 (the required bun start exercise). PR includes actual commands, request times and results, keeping read spacing separate from report-to-next-read timing."
+        },
+        {
+          "command": "# After preserving red evidence, remove the copied new test from /tmp/status-base/src/ using file tools before baseline full-suite measurements.\nfor attempt in 1 2 3; do (cd /tmp/status-base && /usr/bin/time -f '%U %S' bun test); done\nfor attempt in 1 2 3; do /usr/bin/time -f '%U %S' bun test; done",
+          "expected": "All full test runs pass: base runs its original suite without the copied regression test; branch runs its full suite including the new test. PR records user+system seconds on base and branch and their medians; branch median minus base median <0.2 s for test_cpu_s (expected increase <0.1 s). Full API Docker A/B benchmarking in Performance impact remains optional; if performed, use its specified command and status budgets, not a substitute for delayed-answer measurements."
+        },
+        {
+          "command": "git worktree remove /tmp/status-base",
+          "expected": "After red, delayed-answer and CPU measurements, the copied untracked heartbeat test has been removed with file tools and the worktree is removed cleanly (exit 0); stop the temporary fake API and remove temporary measurement artifacts. Keep all evidence in the PR, not in extra repository files."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" | sort",
+          "expected": "After the last implementation commit, output exactly these 4 lines: README.md; docs/configuration.md; src/settings-poll.heartbeat.test.ts; src/settings-poll.ts (one per line, sorted). BASE is the recorded pre-edit SHA, so this checks committed, staged and unstaged changes alike; no index-only or working-tree-only substitute is accepted (C11)."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" -- src/settings-poll.test.ts src/server.runtime-settings.test.ts src/server.settings-churn.test.ts src/settings.ts src/runtime-settings.ts src/start.ts src/main.ts package.json bun.lock bunfig.toml biome.json eslint.config.js tsconfig.json AGENTS.md .github",
+          "expected": "Exit 0, no diff against the recorded implementation base, after the last commit. All protected files and workflows remain unchanged, including committed changes; a check against the working tree or index alone cannot prove this."
+        },
+        {
+          "command": "git ls-files --others --exclude-standard -- . ':!.repos'",
+          "expected": "No output, exit 0 after the last commit; no stray untracked files, with Factory .repos clones excluded."
+        },
+        {
+          "command": "git diff --check \"$BASE\"",
+          "expected": "Exit 0 and no output after the last commit, comparing all implementation changes with the recorded pre-edit base. PR body includes the base SHA, red assertion evidence, focused and full green commands/results, CI check, unchanged-suite and scope outputs, documentation review, delayed-answer A/B logs/counts/CPU, test_cpu_s medians and clean shutdown result as required by Completion evidence and Acceptance evidence (feature)."
+        }
+      ]
+    }
+  ]
+}
