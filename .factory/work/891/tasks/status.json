@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Count observed early client data before the manual release and prove the self-check is stable",
+      "files": [
+        "src/subscribe-test-support.ts",
+        "src/subscribe-timing.test.ts",
+        "README.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: status, Steps 1-8 and Acceptance 1-13; Required behavior 1-5; Decisions; Performance impact; Security impact. Implement the optional beforeRelease(client) hook after the unchanged 50-turn loop and before both the byte snapshot and release. Use bounded waitUntil(client.received().length > 0) only for the existing early-answer variant; preserve the silent call-timeout, D22 and enumeration callers. Add the gated wrong-server regression whose hook opens the gate, observes client data and records the still-live release timer, then asserts positive bytes, literal live state and check-2 rejection in that order. Preserve every existing assertion. Update only README Development and docs/development Checks with the matching explanation. Keep all evidence, base overlays, mutation copies and scope fixtures outside the implementation repository; no production, dependency, tooling or other target change. This is one small test-and-docs change with no independent implementation seam.",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD); git rev-parse HEAD; bun --version; bun install --frozen-lockfile",
+          "expected": "Before any edit, record the full implementation-base SHA permanently and Bun 1.4.0; installation exits 0 without changing pins or the lockfile. Re-read driver, both self-check variants and shared callers if the implementation base differs from inspected 2cefdf1cfbbd7cce175a9df97dbdafdec0e925aa. Never redefine BASE after a commit. Prepare a disposable writable checkout of this exact BASE outside the implementation tree, install the same lockfile there, and record its absolute path as BASE_CHECKOUT and the implementation path as CANDIDATE_CHECKOUT. Never edit a read-only .repos clone."
+        },
+        {
+          "command": "(cd \"$BASE_CHECKOUT\" && for i in 1 2 3; do bun test --config=/dev/null src/subscribe-timing.test.ts -t '^D22'; done)",
+          "expected": "On unmodified BASE, all 3 invocations exit 0 with 10 pass, 0 fail each. If BASE is newer than the inspected SHA, use only counts actually measured and recorded on that base before edits, as permitted by Acceptance 1; do not derive expectations from the candidate."
+        },
+        {
+          "command": "(cd \"$BASE_CHECKOUT\" && bun test --config=/dev/null src/subscribe-enumeration.test.ts && bun test --config=/dev/null src/subscribe-timing.test.ts -t self-check && bun run lint && bun run typecheck)",
+          "expected": "Every named baseline control runs and passes on the unmodified recorded base: enumeration 4 pass, 0 fail; isolated self-check 1 pass, 0 fail; lint and typecheck exit 0. Record each command and actual result. For a newer base, counts must come from that recorded base before edits. A baseline failure must be investigated and reported rather than labeled a pass."
+        },
+        {
+          "command": "(cd \"$BASE_CHECKOUT\" && bun run test)",
+          "expected": "Record the unmodified base full-suite exit status, every attributed failure and the Ran count (662 tests across 44 files at the inspected SHA). This is an observation, not a claim of baseline stability; preserve failures honestly."
+        },
+        {
+          "command": "(cd \"$BASE_CHECKOUT\" && for i in 1 2 3; do bun test --config=/dev/null src/subscribe-timing.test.ts -t 'late is still counted'; done)",
+          "expected": "After writing the gated regression and overlaying ONLY src/subscribe-timing.test.ts onto BASE, leaving its support driver unchanged, all 3 isolated runs exit 1 with 0 pass, 1 fail and AssertionError: false == true at the NEW test's assert.ok(driven.bytesBeforeRelease > 0). The gate opens only in beforeRelease, which the base driver ignores. No runtime import absent from the base; use RawClient only as a type if needed. Missing imports, coverage-only exits, syntax errors, wait exhaustion or another assertion are not valid red evidence. The regression retains the self-check: prefix and records release state before release."
+        },
+        {
+          "command": "git -C \"$BASE_CHECKOUT\" restore --source=\"$BASE\" --staged --worktree -- src/subscribe-timing.test.ts; git -C \"$BASE_CHECKOUT\" status --porcelain",
+          "expected": "Restore the regression-only overlay immediately after red evidence. Base checkout status is empty, and its HEAD remains the originally recorded BASE before the comparison loop and CPU sampling. No overlay or mutation reaches those measurements."
+        },
+        {
+          "command": "for i in 1 2 3; do bun test --config=/dev/null src/subscribe-timing.test.ts -t 'late is still counted'; done",
+          "expected": "With the hook and existing self-check fix implemented, all 3 isolated regression invocations exit 0, 1 pass, 0 fail each. The new regression first asserts bytesBeforeRelease > 0, then recorded scheduler.timers[1] state equals literal live, then checkRequest throws matching /0/. The gate and wait use no real timer, delay or fixed-turn synchronization."
+        },
+        {
+          "command": "bun test --config=/dev/null src/subscribe-timing.test.ts && bun test --config=/dev/null src/subscribe-timing.test.ts -t '^D22' && bun test --config=/dev/null src/subscribe-enumeration.test.ts",
+          "expected": "All commands exit 0: timing file 12 pass, 0 fail (11 base plus 1 regression); D22 10 pass, 0 fail; enumeration 4 pass, 0 fail. For a newer base, repeat its recorded control counts and require exactly one additional timing test. The unchanged call-timeout variant completes without a positive-data hook, as do zero-byte D22 and enumeration callers. Focused runs use --config=/dev/null solely to avoid partial-suite coverage failure; committed coverage config stays unchanged."
+        },
+        {
+          "command": "(cd \"$MUTATION_CHECKOUT\" && bun test --config=/dev/null src/subscribe-timing.test.ts -t self-check)",
+          "expected": "Run separately in a disposable candidate copy for each mutation of Steps 5, restoring the candidate between cases: m1 moves the hook after the byte snapshot, m2 moves it after release, m3 removes openGate() from the regression hook. m1 and m2 each fail with AssertionError: false == true at the regression's positive-byte assertion; m3 fails with gave up waiting for early answer at the client. Record commands, expected diagnostics and actual outputs for all three. Discard the copy and keep the implementation unmutated."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts; git diff --exit-code \"$BASE\" HEAD -- src/subscribe-enumeration.test.ts",
+          "expected": "After the last commit, no existing assertion is removed or changed, including all of checkRequest, positive bytes, /0/ and /1500/ rejections and [5000, 2000, 2000]. The support diff adds only the optional beforeRelease?: (client: RawClient) => Promise<void> | void field, one-line JSDoc and await options.beforeRelease?.(client); between the unchanged 50-turn loop and byte snapshot. Only the early-answer variant gets the condition hook; no beforeRelease: undefined with exactOptionalPropertyTypes. wrongServer gains the optional gate for the early write, with no gate on ordinary callers. Enumeration diff exits 0."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD -- src/subscribe-test-support.ts src/subscribe-timing.test.ts | sed -n '/^+++ /d; s/^+//p' | grep -nE 'setTimeout|setInterval|sleep|Bun\\.sleep|Date\\.now|performance\\.now'",
+          "expected": "Empty output, grep exit 1 for no matches. Added code has no real clock, timers, sleeps, larger fixed turn count, unbounded wait or external network; reuse the existing 20,000-turn waitUntil bound and ephemeral loopback servers with cleanup. Security impact remains no as specified: no production route, parser, validator, logging, settings or dependency change."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/development.md",
+          "expected": "Only README.md Development and docs/development.md Checks change, each with one or two matching short sentences: timing tests fire release manually; early-answer self-checks wait for observed client data before counting bytes and firing release; real-handler checks still require zero pre-release bytes. No other sections, settings or public 2 s answer delay change."
+        },
+        {
+          "command": "git rev-parse HEAD; bun --version; for i in $(seq 1 50); do printf 'run %s start\\n' \"$i\"; bun run test; run_exit=$?; printf 'run %s exit=%s\\n' \"$i\" \"$run_exit\"; done",
+          "expected": "On the FINAL committed candidate, one sequence of 50 consecutive complete invocations on one machine has 0 failures attributed to src/subscribe-timing.test.ts. Capture all output outside the repository and report all 50 exit statuses and every failing test with its preceding Bun file header; count is base plus 1 (663 across 44 files at inspected base). Apply Decisions: a timing failure ends the sequence, fix and restart at 1; only the known src/server.test.ts 502 when the API is down and src/subscribe-enumeration.test.ts R8 L9 full (half waiting, half partial): valid and invalid get the same 503 page failures may continue, counted and listed. Any other failure ends the sequence, requires investigation and base proof if pre-existing, then restart. Report failed sequences too. No single-file loop, --rerun-each, isolated retry or aggregation substitutes. PR summary: 50/50 consecutive full runs with 0 subscribe-timing failures; <n>/50 exited 0; other failures: <file> <test> x<k>, ... . A 50/50 exit-0 result is reported only if observed."
+        },
+        {
+          "command": "(cd \"$BASE_CHECKOUT\" && git rev-parse HEAD && git status --porcelain && for i in $(seq 1 50); do printf 'base run %s start\\n' \"$i\"; bun run test; run_exit=$?; printf 'base run %s exit=%s\\n' \"$i\" \"$run_exit\"; done)",
+          "expected": "An unmodified BASE checkout, with overlay removed and empty status, completes the same 50-run full-suite comparison on the same machine. Report all exits and attributed failure counts per file/test beside the candidate result. Base failures are informational and retained; no passing or flaking count is invented. This comparison does not replace candidate stability evidence."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 on the final commit with normal lint, typecheck, full tests and unchanged 80% line coverage gate. Report every attempt. A failure solely in either known unrelated base flake may be rerun under Decisions; an actual passing attempt is required. Use Conventional Commit subjects and normal pre-commit hooks, never --no-verify. No Docker benchmark or bun bench/run.ts; no public behavior change requires a service smoke test."
+        },
+        {
+          "command": "for i in 1 2 3 4 5; do printf 'pair %s base\\n' \"$i\"; (cd \"$BASE_CHECKOUT\" && /usr/bin/time -f '%U %S' bun run test); sample_exit=$?; printf 'base exit=%s\\n' \"$sample_exit\"; printf 'pair %s branch\\n' \"$i\"; (cd \"$CANDIDATE_CHECKOUT\" && /usr/bin/time -f '%U %S' bun run test); sample_exit=$?; printf 'branch exit=%s\\n' \"$sample_exit\"; done",
+          "expected": "Information only: five sequential interleaved base/branch pairs on the same machine, Bun 1.4.0, lockfile installation and coverage settings, against clean BASE and final candidate. Keep every sample including failures; report user CPU, system CPU, summed child-inclusive CPU, exit status and attributed failures. Median is the third of five sorted sums per revision; report branch-minus-base median in seconds (2 decimals) and percent of base median (1 decimal). Do not run concurrent samples, Docker bench or bun bench/run.ts (#834)."
+        },
+        {
+          "command": "test \"$(git diff --name-only \"$BASE\" HEAD | sort)\" = \"$(printf '%s\\n' README.md docs/development.md src/subscribe-test-support.ts src/subscribe-timing.test.ts)\"",
+          "expected": "Exit 0 after the last commit: committed changes against the immutable implementation BASE equal exactly the four literal paths, no missing or extra path. This single task's scope is also the cumulative branch scope. Evidence and temporary tooling remain outside the repository, and no ignore rules are added."
+        },
+        {
+          "command": "test -z \"$(git diff --name-only --cached)\" && test -z \"$(git diff --name-only)\" && test -z \"$(git status --porcelain)\"",
+          "expected": "Each of the three checks passes separately after the last commit: cached names empty; worktree diff names empty; porcelain status empty including untracked files. Record each independent result; a clean worktree alone does not replace index or history checks."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- . ':(exclude)README.md' ':(exclude)docs/development.md' ':(exclude)src/subscribe-test-support.ts' ':(exclude)src/subscribe-timing.test.ts'",
+          "expected": "Exit 0, empty diff: every tracked path outside the exact four-file allowlist is protected against committed changes. Run independently of index, worktree and status checks."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md package.json bun.lock bunfig.toml biome.json eslint.config.js lefthook.yml tsconfig.json Dockerfile .dockerignore .github public e2e bench scripts docs/configuration.md docs/index.md docs/install.md docs/operation.md docs/theming.md docs/troubleshooting.md src/subscribe-enumeration.test.ts src/subscribe-routes.test.ts src/server.ts src/server.test.ts",
+          "expected": "Exit 0, empty diff for these explicit protected paths, in addition to the all-other-paths check. No changes from status #70, #71 or #72 are redone or touched."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- $(git ls-tree -r --name-only \"$BASE\" src | grep -vx 'src/subscribe-test-support.ts\\|src/subscribe-timing.test.ts') && git diff --check \"$BASE\" HEAD",
+          "expected": "Both checks exit 0: every other base src path is unchanged, and committed changes have no whitespace errors. The complementary all-other-paths check also protects newly added unauthorized paths."
+        },
+        {
+          "command": "test \"$(git -C \"$SCOPE_FIXTURE\" diff --name-only \"$FIXTURE_BASE\" HEAD | sort)\" = allowed.txt; test -z \"$(git -C \"$SCOPE_FIXTURE\" diff --name-only --cached)\"; test -z \"$(git -C \"$SCOPE_FIXTURE\" diff --name-only)\"; test -z \"$(git -C \"$SCOPE_FIXTURE\" status --porcelain)\"; git -C \"$SCOPE_FIXTURE\" diff --exit-code \"$FIXTURE_BASE\" HEAD -- protected.txt; git -C \"$SCOPE_FIXTURE\" diff --check \"$FIXTURE_BASE\" HEAD",
+          "expected": "Prove these checks independently in a disposable Git fixture outside the implementation tree with tracked allowed.txt and protected.txt and its own immutable FIXTURE_BASE. Record setup/mutation commands, each expected outcome and each actual exit status for Acceptance 10 cases a-g. Unstaged protected change fails worktree check; staged fails cached check; committed with clean worktree fails exact allowlist and protected-history diff; untracked fails status. For restored-worktree traps, stage protected change then restore only worktree to fixture base, and separately commit protected change then restore only worktree: git diff FIXTURE_BASE -- protected.txt is empty in both, but index/status reject the first and committed protected diff/status reject the second. A clean commit changing only allowed.txt passes every check. Restore/reset only this disposable fixture between cases; never mutate protected status files or redefine implementation BASE."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD; git log --format=%s \"$BASE\"..HEAD",
+          "expected": "Read EVERY added line, including inline comments and JSDoc. PR body quotes every added or changed comment line word for word, at least the beforeRelease JSDoc; use none only for a category verified empty after that read. Add no explanatory comments to the new regression and create no new test file. Commit subjects follow Conventional Commits. PR body includes Closes lorenzh/pulse-meta#<child>, names #891 and BASE, and reports all Acceptance 1-12 evidence, actual loop summary, comparison failures, every check attempt, raw CPU samples/medians/delta and scope fixture outcomes. Name both known unrelated base flakes explicitly as unfixed limits. Keep all evidence outside the repository; only the four listed files ship."
+        }
+      ]
+    }
+  ]
+}
