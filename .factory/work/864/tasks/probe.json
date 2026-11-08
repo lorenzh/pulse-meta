@@ -5,34 +5,38 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Probe adopts the merged contract fix and proves redirect refusal and safe retry logs",
+      "title": "Probe adopts the fixed contract and proves safe redirect retries and JSON logs",
       "files": [
         "package.json",
         "bun.lock",
         "src/client.test.ts"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: probe, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Performance impact, Security impact and Acceptance evidence (whole feature) 4. After contract merges, the first consumer records its full main SHA containing #864 as a shared finding and every consumer verifies/reuses that SHA. Keep the pin/lock update and both adoption regressions in one task; preserve fetchChecks, postResult and error mapping except compatibility fixes demonstrated necessary by bun run check.",
+      "spec": "## Repository: probe, Shared finding, all Behavior bullets and Completion evidence; Rollout order 2, Performance impact, Security impact and Acceptance evidence (whole feature) 5. After contract merges, record/reuse its full main SHA in the shared finding; update pin/lock and both adoption tests together. Keep fetchChecks/postResult/apiError behavior; only compatibility fixes demonstrated necessary by bun run check are in scope for the older 7ce23aa pin jump.",
       "acceptance": [
         {
           "command": "bun test src/client.test.ts",
-          "expected": "With both new local-native-fetch tests added, run first on old contract pin 7ce23aaf3fa3e038f65ecfed755188b83bde143f and retain the intended assertion failures. With the merged fix installed, all tests pass, 0 fail: an initial /checks 302 triggers exactly 1 retry, returns the valid second answer and sends 0 requests to the redirect destination; an initial 200 malformed body logs invalid JSON: response body is not valid JSON without its marker and succeeds on retry. Use injected sleep/schedule and clean up local port-0 servers. A focused coverage exit is not the gate."
+          "expected": "Run new local native-fetch regressions first on old pin 7ce23aaf3fa3e038f65ecfed755188b83bde143f and retain intended assertion failures, then on fixed pin: all tests pass, 0 fail. Fake /checks first answers 302 to a second 127.0.0.1:0 server then valid checks: exactly 1 retry, returned checks and 0 destination requests. First answer 200 malformed marker-bearing body then valid: first log includes 'invalid JSON: response body is not valid JSON' and excludes marker; retry succeeds. Follow existing wire-mismatch retry test's injected sleep/schedule and clean up servers. Focused coverage exit is not the gate."
         },
         {
-          "command": "bun install --frozen-lockfile && bun run check",
-          "expected": "exit 0; lint, typecheck, full tests and unchanged 80% line-coverage gate pass on the fixed package. Any compatibility edit beyond the listed files is limited to a failure from this check and explained in the commit."
+          "command": "bun install && bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck, full tests and unchanged >=80% line coverage pass. Fix only compatibility failures caused by the contract pin jump; explain any such fix."
         },
         {
           "command": "git diff main -- package.json bun.lock",
-          "expected": "package.json changes only the contract pin line to a full merged contract main SHA containing #864 and version 2.5.2, independently verified against the shared finding and contract main; bun.lock matches that same pin. Other dependency pins stay unchanged."
+          "expected": "Only the contract dependency line changes in package.json, to github:lorenzh/pulse-contract#<full merged main SHA containing #864/version 2.5.2>; bun.lock resolves that same SHA. Verify the merge on contract main independently and record/reuse the shared finding from the first consumer so probe, status, notify and console adopt the same SHA. Commit package.json and bun.lock together; other pins stay unchanged."
         },
         {
-          "command": "/usr/bin/time -v bun test",
-          "expected": "Record baseline and candidate user plus system test CPU seconds in the PR; Performance impact estimates an increase under 0.5 s. If compatibility work changes service code beyond pin/tests, also run the spec's bun bench/run.ts --a <old main> --b <branch> with concrete revisions and report the numbers."
+          "command": "bash -c 'TIMEFORMAT=\"%U %S\"; for run in 1 2 3; do time bun run test; done'",
+          "expected": "Run on main and candidate, three runs per side on one machine; report each user+system sum and median. Spec expects probe.test_cpu_s delta <+0.1 s. Use bash builtin time, not absent /usr/bin/time."
+        },
+        {
+          "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref probe=<pushed-branch-or-SHA> --rounds 1",
+          "expected": "Run if compatibility work changes more than the pin and tests. First clone pulse-api into <scratch>/pulse-api outside probe and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, target probe, --others-ref main and a publicly fetchable candidate ref. Docker with Compose is required; report probe rows against the API-owned budgets."
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "Whitespace and required CI checks pass. PR records old/new adoption test outputs, full merged contract SHA and finding provenance, required-check results, test CPU before/after and applicable Security impact evidence for redirect/header protection, fixed log text, unchanged body bounds and full-SHA/lockfile adoption. No unrelated shared-client behavior is reimplemented."
+          "expected": "Whitespace exits 0 and repository-required CI checks pass. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR includes old/new adoption outputs and test CPU medians plus conditional fallback evidence; production client/error mapping is not reimplemented."
         }
       ]
     }

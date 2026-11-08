@@ -12,23 +12,27 @@
         "docs/operation.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: notify, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Security impact and Acceptance evidence (whole feature) 4. After contract merges, record or verify/reuse the same full merged main SHA as the other consumers. Preserve #553's noRedirect and capture wrappers, fixed apiError texts, URL redaction and rejected-item handling; document that the shared client now also protects redirects and compressed responses under Bun.",
+      "spec": "## Repository: notify, Shared finding, all Behavior bullets and Completion evidence; Rollout order 2, Performance impact, Security impact and Acceptance evidence (whole feature) 5. After contract merges, record/reuse the same full merged main SHA as other consumers. Keep noRedirect/capture wrappers, fixed apiError text, URL redaction, rejected-item handling and all #553 guards unchanged.",
       "acceptance": [
         {
-          "command": "bun install --frozen-lockfile && bun run check",
-          "expected": "exit 0; lint, typecheck, full tests and unchanged 80% line-coverage gate pass, including unchanged test/api-hostile.test.ts, test/api-limits.test.ts and test/security-review.test.ts. Existing redirect, hostile-response/log-redaction and body-limit assertions remain green."
+          "command": "bun install && bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck, full tests and unchanged >=80% line coverage pass, including unmodified test/api-hostile.test.ts, test/api-limits.test.ts and test/security-review.test.ts."
         },
         {
           "command": "git diff --exit-code main -- src test/api-hostile.test.ts test/api-limits.test.ts test/security-review.test.ts",
-          "expected": "exit 0 with no output: production guards and the named security regressions are unchanged."
+          "expected": "exit 0, no output; production guards and the three hostile-input suites remain unchanged."
         },
         {
           "command": "git diff main -- package.json bun.lock docs/operation.md",
-          "expected": "package.json changes only the contract pin to the same full merged contract main SHA containing #864/version 2.5.2 adopted by the other consumers, verified against main and the shared finding; bun.lock agrees. Operation docs say the shared client also refuses redirects and compressed responses under Bun and notify keeps its own redirect manual wrapper."
+          "expected": "Only the contract dependency line changes in package.json, to github:lorenzh/pulse-contract#<full merged main SHA containing #864/version 2.5.2>; bun.lock resolves that same SHA. Verify the merge on contract main independently and record/reuse the shared finding from the first consumer so probe, status, notify and console adopt the same SHA. Commit package.json and bun.lock together; other pins stay unchanged. Operation docs say the shared client also refuses redirects and compressed answers under Bun and notify keeps its own redirect manual wrapper."
+        },
+        {
+          "command": "bash -c 'TIMEFORMAT=\"%U %S\"; for run in 1 2 3; do time bun run test; done'",
+          "expected": "Per Performance impact's primary measurement in each changed repository, run three test suites per side on main and candidate on the same machine, reporting individual user+system sums and medians. Use bash builtin time, not /usr/bin/time; no extra test CPU is expected from this pin/docs adoption."
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "Whitespace and required CI checks pass. PR records full merged SHA/finding provenance, required-check results including unchanged hostile-input suites, empty src diff and applicable Security impact evidence for retained secret-safe logs, redirect protection, body limits and full-SHA/lockfile consistency. Pin adoption adds no runtime dependency or setting and removes none of #553's guards."
+          "expected": "Whitespace exits 0 and repository-required CI checks pass. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records unchanged hostile-input-suite results, empty src diff and CPU medians; notify's #553 guards are retained."
         }
       ]
     }

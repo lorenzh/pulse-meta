@@ -5,33 +5,37 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Console adopts the fixed contract without changing its read or write wrappers",
+      "title": "Console adopts the fixed contract with its read and write wrappers unchanged",
       "files": [
         "package.json",
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Security impact and Acceptance evidence (whole feature) 4. After contract merges, record or verify/reuse the same full merged main SHA as the other consumers. Keep src/api-read.ts and src/connection-test.ts redirect manual wrappers, writes and src/api-failure.ts wire-label behavior unchanged.",
+      "spec": "## Repository: console, Shared finding, all Behavior bullets and Completion evidence; Rollout order 2, Performance impact, Security impact and Acceptance evidence (whole feature) 5. After contract merges, record/reuse the same full merged main SHA as other consumers. Update pin/lock together; preserve src/api-read.ts and src/connection-test.ts manual redirect wrappers, writes and src/api-failure.ts wire-label logic.",
       "acceptance": [
         {
-          "command": "bun install --frozen-lockfile && bun run check",
-          "expected": "exit 0; lint, both typecheck projects, full tests and unchanged 80% line-coverage gate pass, including src/runtime-read.test.ts, src/connection-test.test.ts, src/check-write.test.ts and src/token-write.test.ts redirect cases."
+          "command": "bun install && bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, both typecheck projects including e2e, full tests and unchanged >=80% line coverage pass, including existing redirect cases in src/runtime-read.test.ts, src/connection-test.test.ts, src/check-write.test.ts and src/token-write.test.ts."
         },
         {
           "command": "git diff --exit-code main -- src",
-          "expected": "exit 0 with no output: read/write wrappers and wire-label logic are unchanged."
+          "expected": "exit 0, no output; read/write wrappers and wire-label logic are unchanged."
         },
         {
           "command": "git diff main -- package.json bun.lock",
-          "expected": "Only the contract pin changes in package.json, to the same full merged contract main SHA containing #864/version 2.5.2 adopted by the other consumers, verified against main and the shared finding; bun.lock agrees. No other dependency pin changes."
+          "expected": "Only the contract dependency line changes in package.json, to github:lorenzh/pulse-contract#<full merged main SHA containing #864/version 2.5.2>; bun.lock resolves that same SHA. Verify the merge on contract main independently and record/reuse the shared finding from the first consumer so probe, status, notify and console adopt the same SHA. Commit package.json and bun.lock together; other pins stay unchanged."
+        },
+        {
+          "command": "bash -c 'TIMEFORMAT=\"%U %S\"; for run in 1 2 3; do time bun run test; done'",
+          "expected": "Per Performance impact's primary measurement in each changed repository, run three test suites per side on main and candidate on the same machine, reporting individual user+system sums and medians. Use bash builtin time, not /usr/bin/time; no extra test CPU is expected from this pin adoption."
         },
         {
           "command": "bun run check:browser",
-          "expected": "exit 0 with the fixed contract installed; existing console browser flows remain passing."
+          "expected": "exit 0 with installed Playwright Chromium; existing console browser flows pass against the adopted contract."
         },
         {
           "command": "gh pr view --json body,statusCheckRollup",
-          "expected": "CI check, docker, browser and deploy-dev pass. The deploy-dev evidence includes the repository-required Compose dev stack with this checkout and E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml, exit 0 as defined in .github/workflows/ci.yml; do not edit deploy or weaken that check. PR records full merged SHA/finding provenance, required-check/browser/Compose results, empty src diff and applicable Security impact evidence for preserved manual redirects, body limits, secret-safe diagnostics and full-SHA/lockfile consistency."
+          "expected": "Required CI check, docker, browser and deploy-dev jobs pass. deploy-dev must build the pulse-deploy main dev Compose stack with this checkout, wait ready, then run E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml with exit 0, as .github/workflows/ci.yml/AGENTS.md require. Do not edit deploy or weaken this job. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records browser/Compose results, empty src diff and CPU medians."
         },
         {
           "command": "git diff --check",

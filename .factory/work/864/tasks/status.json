@@ -5,7 +5,7 @@
     {
       "id": "T1",
       "kind": "final",
-      "title": "Status adopts bounded shared reads and proves the readiness poll refuses redirects",
+      "title": "Status adopts bounded shared reads and proves the API poll refuses redirects",
       "files": [
         "package.json",
         "bun.lock",
@@ -13,31 +13,39 @@
         "README.md"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: status, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Performance impact, Security impact and Acceptance evidence (whole feature) 4. After contract merges, record or verify/reuse the same full merged main SHA as the other consumers. Keep the pin, lockfile, local adoption regression and runtime documentation together.",
+      "spec": "## Repository: status, Shared finding, all Behavior bullets and Completion evidence; Rollout order 2, Performance impact, Security impact and Acceptance evidence (whole feature) 5. After contract merges, record/reuse the same merged main SHA as the other consumers. Keep pin, lockfile, local poll regression and runtime documentation together; verify the existing browser dist-module allowlist.",
       "acceptance": [
         {
           "command": "bun test src/api-poll.test.ts",
-          "expected": "Run the new native-fetch local-port-0 /checks 302 regression first against old pin 1b5e7d3e268372a6241db05ae30272eab7299b10 and retain the assertion failure. On the fixed pin all tests pass, 0 fail: the poll records error rather than ok and the second server receives 0 requests. Clean up servers and stop the poll; a focused coverage exit is not the gate."
+          "expected": "Run new native-fetch regression on old pin 1b5e7d3e268372a6241db05ae30272eab7299b10 and retain intended assertion failure, then on fixed pin: all tests pass, 0 fail. Local /checks answers 302 to a second 127.0.0.1:0 server; poll records error rather than ok and destination receives 0 requests. Use injected poll timers; stop poll and close servers. Focused coverage exit is not the gate."
         },
         {
           "command": "bun test src/server.contract-modules.test.ts src/settings-poll.test.ts",
-          "expected": "All tests pass, 0 fail; /pulse-contract/client.js and /pulse-contract/version.js return status 200, every imported dist module remains covered by src/server.ts's existing allowlist, and the settings-poll redirect case still records exactly 3 reads. Inspect the fixed package's module imports against that allowlist without adding a source change; focused coverage exit is not the gate."
+          "expected": "All tests pass, 0 fail; /pulse-contract/client.js and /pulse-contract/version.js return 200, and settings-poll's redirect case still counts exactly 3 reads. Inspect imports of fixed contract dist/index.js and its modules against existing src/server.ts allowlist: every imported module is served without a new allowlist entry. Focused coverage exit is not the gate."
         },
         {
-          "command": "bun install --frozen-lockfile && bun run check",
-          "expected": "exit 0; lint, both typecheck projects, full tests and unchanged 80% line-coverage gate pass."
+          "command": "bun install && bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, both typecheck projects including e2e, full tests and unchanged >=80% line coverage pass."
         },
         {
           "command": "git diff main -- package.json bun.lock README.md",
-          "expected": "Only the contract pin changes in package.json, to the same full merged contract main SHA containing #864/version 2.5.2 used by the other consumers, verified against main and the shared finding; bun.lock agrees. README states every API request follows no redirect, Bun server reads refuse compressed responses and browser poller decoding stays inside the 5 MiB cap."
+          "expected": "Only the contract dependency line changes in package.json, to github:lorenzh/pulse-contract#<full merged main SHA containing #864/version 2.5.2>; bun.lock resolves that same SHA. Verify the merge on contract main independently and record/reuse the shared finding from the first consumer so probe, status, notify and console adopt the same SHA. Commit package.json and bun.lock together; other pins stay unchanged. README says every API request follows no redirect, server-side Bun reads refuse compressed answers, and browser poller decoding runs inside the 5 MiB cap."
         },
         {
-          "command": "/usr/bin/time -v bun test",
-          "expected": "Record baseline and candidate user plus system test CPU seconds in the PR against Performance impact's estimate under +0.5 s. If service code changes beyond the planned pin/test/docs scope, also run the spec's bun bench/run.ts --a <old main> --b <branch> with concrete revisions and report its numbers."
+          "command": "bash -c 'TIMEFORMAT=\"%U %S\"; for run in 1 2 3; do time bun run test; done'",
+          "expected": "Run on main and candidate, three runs per side on one machine; report each user+system sum and median. Spec expects status.test_cpu_s delta <+0.1 s. Use bash builtin time, not absent /usr/bin/time."
+        },
+        {
+          "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref status=<pushed-branch-or-SHA> --rounds 1",
+          "expected": "Run if implementation changes more than the planned pin/tests/docs adoption. First clone pulse-api into <scratch>/pulse-api outside status and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, target status, --others-ref main and a publicly fetchable candidate ref. Docker with Compose is required; report status rows against the API-owned budgets."
+        },
+        {
+          "command": "bun run check:a11y",
+          "expected": "exit 0 with installed Playwright Chromium; existing status browser/accessibility checks pass against the adopted contract."
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "Whitespace and required CI checks pass. PR records old/new adoption regression outputs, full merged contract SHA/finding provenance, module-allowlist verification, unchanged 3-read settings redirect control, full-check and CPU evidence, browser decoder limit and applicable Security impact evidence for body limits, redirect refusal and pinned dependency/lockfile consistency."
+          "expected": "Whitespace exits 0 and repository-required CI checks, including browser/accessibility, pass. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records old/new poll regression outputs, unchanged module allowlist, 3-read settings control, CPU medians and applicable fallback rows; state the browser identity/streaming-decoder limit."
         }
       ]
     }
