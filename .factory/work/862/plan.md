@@ -27,6 +27,7 @@ Disclosure rule (manager decision): this spec, the task acceptance and the PR te
   - the value-free rule covers only rejection diagnostics (the protected `src/main.ts:158` logs an accepted location);
   - the overlength message is checked at runtime, not by a source grep;
   - the focused test run is judged by its results, and only the full `bun run check` enforces exit status and coverage.
+- Plan-review fix of this run: the docs no longer say that every refused name made HTTP checks `down`. The delete control is exempt from that statement, because on the base a name with it posted `up` (Current behavior). The docs state its grammar reason in one fixed sentence, and completion check 3 covers it.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/862` answered `HTTP 404` in this run, so there are none yet.
 
 ## Current behavior (evidence)
@@ -98,7 +99,7 @@ Probe clone `.repos/probe` at `9490141ef9e92044808c70bb8200db3d497d1060`. Runtim
   - A probe whose location holds a non-ASCII character, a control character other than tab, or the delete control no longer starts.
   - For each of these classes except the delete control, every HTTP check of such a probe reports a false `down` today. TCP, TLS, DNS and domain checks of such a probe work today, and that probe now stops too.
   - The migration note tells operators to choose an accepted name and keep it equal to the token's `location` on the API, which then needs a new token.
-- **The delete control:** refused although Bun 1.4.0 passes it. A name with it is not a valid field value under RFC 9110, and a proxy or a later runtime may refuse it. The migration note covers it as one of the control characters.
+- **The delete control:** refused although Bun 1.4.0 passes it. A name with it is not a valid field value under RFC 9110, and a proxy or a later runtime may refuse it. The docs and the migration note cover it on its own: names that hold it used to work, and they are now refused by the grammar rule. No doc sentence says that it made HTTP checks `down` (Documentation and completion check 3).
 - **Trim hides cases:** `String.prototype.trim` removes some refused characters at the ends (line terminators and several non-ASCII spaces). Tests place refused characters inside the name, so the check really runs.
 - **String form:** a test that builds values only in the in-process form can pass where production fails (runtime limitation above). Transport tests build accepted values in the environment form, and the startup tests go through a real child environment.
 - **Child environments** cannot carry some JavaScript strings (a NUL, lone surrogates). Those classes are tested at the parser and settings level only.
@@ -163,6 +164,7 @@ For each rule: inputs that a correct implementation must handle and that a wrong
 - **String form:** each of the 96 accepted code units, inside a name in the environment form, completes a local HTTP check as `up`. A test that uses only in-process strings would also pass a Latin-1 rule, which is wrong.
 - **Message:** the stderr line equals the literal of decision 3 with the `pulse-probe: ` prefix. A message that holds the value or a newline, or adds a stack, fails.
 - **Startup order:** with a refused location and an occupied `PULSE_HEALTH_PORT`, the location message must win over `cannot listen on ...`. An implementation that validates after `startHealth` prints the bind error, which is wrong (this is what the base does, as verified). The fake API counts 0 requests.
+- **Docs claim:** a doc sentence such as "names with other characters made every HTTP check `down`", read so that it covers the delete control, is wrong. On the base a name with the delete control posted `up`. The docs must give the grammar reason for that class (Documentation).
 
 No statistics are involved.
 
@@ -254,8 +256,9 @@ The focused run is judged by its test results only: pass or fail per title, and 
   - The table row adds "only tab, space or visible ASCII".
   - The Location section states the accepted range in words: tab, plus space through `~` (U+0020 to U+007E).
   - It says that control characters other than tab, the delete control and every non-ASCII character (accented letters included) stop the start with the exact message and exit 2.
-  - It says that the message never shows the value, and why the rule exists: the value goes into the `User-Agent` header, and such names made every HTTP check `down`.
-  - Add a migration paragraph under the last `## Migration`: a location with other characters used to start, and then every HTTP check reported `down`. It now stops the start with exit 2, also for a probe that runs only TCP, TLS, DNS or domain checks. Choose an accepted name and give the probe a token whose `location` matches it.
+  - It says that the message never shows the value, and why the rule exists. The value goes into the `User-Agent` header. Names with a non-ASCII character or a control character other than tab and delete made every HTTP check `down`. The delete control is a separate case: it is refused because of the header grammar, not because of an observed `down`. The doc states it in this exact sentence: `The delete control is refused because the HTTP standard does not allow it in a header field.` The `down` statement must not include the delete control (Current behavior: on the base, a name that holds it posted `up`).
+  - Add a migration paragraph under the last `## Migration`. A location with a non-ASCII character or a control character other than tab and delete used to start, and then every HTTP check reported `down`. A location with the delete control used to start and work, and it is now refused by the grammar rule above. Each of these now stops the start with exit 2, also for a probe that runs only TCP, TLS, DNS or domain checks. Choose an accepted name and give the probe a token whose `location` matches it.
+  - No doc sentence says or implies that every newly refused name made HTTP checks `down`. Wording such as "such names", "other characters" or "these names" must not cover the delete control when it is followed by a `down` claim.
 - `docs/troubleshooting.md`: a new entry after the overlength entry, headed ``## `PULSE_LOCATION must hold only tab, space or visible ASCII characters` ``.
   - Cause: the trimmed name holds another character, for example an accented letter or a pasted control character.
   - Action: rewrite the name with accepted characters, keep it equal to the token's `location`, and restart.
@@ -271,6 +274,8 @@ Run with Bun 1.4.0 in the probe checkout.
 3. **Messages in code and docs:**
    - `grep -c 'PULSE_LOCATION must hold only tab, space or visible ASCII characters'` gives at least 1 in each of `src/location.ts`, `docs/configuration.md` and `docs/troubleshooting.md`. The new message is a fixed literal (decision 3), so it appears verbatim in the source.
    - `grep -c 'visible ASCII' README.md` gives at least 1.
+   - `grep -c 'The delete control is refused because the HTTP standard does not allow it in a header field.' docs/configuration.md` gives at least 1. The literal comes from the Documentation section of this spec.
+   - Review check (no grep can prove it): read every sentence about `down` in the changes to `README.md`, `docs/configuration.md` and `docs/troubleshooting.md`. Each one names only non-ASCII characters and control characters other than tab and delete, never the delete control and never all refused names. The expected value comes from Current behavior in this spec: on the base, a name with the delete control posted `up`.
    - The overlength message is checked at runtime, not with a source grep, because `src/location.ts:9` builds it from a template. In the probe checkout, run:
 
      ```sh
