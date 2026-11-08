@@ -91,11 +91,13 @@ stale claim (status `docs/install.md:3`, console `docs/index.md:15`). They are i
 
 Shared rules for every corrected passage:
 
-1. It names pulse-deploy, the setup `full` and the file `full/compose.yaml`, with navigable links:
+1. It names pulse-deploy, the setup `full` and the file `full/compose.yaml`, with both of these
+   navigable links in every corrected passage, without exception (all five passages, including
+   console `README.md:70`):
    - `https://github.com/lorenzh/pulse-deploy/blob/main/full/compose.yaml`
    - `https://github.com/lorenzh/pulse-deploy/blob/main/full/README.md` (optionally with
      `#start-stop-reset` or `#variables`; no other anchor).
-   A link to the pulse-deploy repository root alone is not enough.
+   A link to the pulse-deploy repository root alone is not enough. A2 checks this per file.
 2. It no longer says or implies that pulse-api holds the whole-stack Compose file or its variables.
    Links to pulse-api docs stay only where they describe the api service itself (install,
    configuration of the api).
@@ -112,6 +114,14 @@ Shared rules for every corrected passage:
      container. Do not write the broad claim "Compose does not pass `.env` values into the
      container".
 5. Text in English, short plain sentences (status `AGENTS.md:92`, console `AGENTS.md:96`).
+6. The new text avoids the stale wordings that A1 searches for: "pulse-api's repository ...
+   Compose", "pulse-api `compose.yaml`", a line that names pulse-api before "Compose variables",
+   "Compose does not pass `.env`", and `` `docker compose up` ``. A1 bans only these associations
+   with pulse-api and the bare command; the phrase "Compose variables of the stack" itself is
+   allowed in a line that does not name pulse-api (for example the new deploy bullet in console
+   `docs/index.md`). A historical note in deploy's own words ("replaces pulse-api's former
+   `compose.yaml`") does not match A1 and is allowed but not required. If a correct sentence
+   still trips A1, rephrase it; never weaken A1.
 
 Per passage:
 
@@ -125,9 +135,9 @@ Per passage:
   page, from `full/compose.yaml`. Links per rule 1. Port wording is optional here; if present it
   follows rule 4.
 - console `README.md:70`: keep everything before the last sentence. Replace
-  "(pulse-api `compose.yaml`)" with the `full` setup of pulse-deploy and its `full/compose.yaml`
-  link, and keep "published on host loopback only", naming
-  `127.0.0.1:${PULSE_CONSOLE_PORT:-8082}` → container port 8082.
+  "(pulse-api `compose.yaml`)" with the `full` setup of pulse-deploy, linking both
+  `full/compose.yaml` and `full/README.md` (rule 1), and keep "published on host loopback only",
+  naming `127.0.0.1:${PULSE_CONSOLE_PORT:-8082}` → container port 8082.
 - console `docs/configuration.md:101-103`: the heading may stay or become
   "In the pulse-deploy `full` setup". The paragraph names `full` and links both URLs of rule 1;
   says `PULSE_CONSOLE_PORT` is also the Compose variable for the host port and that `full` does not
@@ -136,8 +146,11 @@ Per passage:
   `PULSE_API_URL: http://api:3000` and the api has no published host port. The pulse-api
   configuration link goes, or stays only as a reference for the api service itself.
 - console `docs/index.md:15`: keep the pulse-api configuration link as "the service that the
-  console will call"; move "the Compose variables of the stack" to a separate bullet that links
-  pulse-deploy `full/README.md#variables` (and `full/compose.yaml`).
+  console will call", and drop the stack variables from that bullet (the pulse-api line no longer
+  mentions Compose). Add a separate bullet for the Compose variables of the stack that names the
+  pulse-deploy `full` setup and links both `full/README.md#variables` (or `full/README.md`) and
+  `full/compose.yaml` (rule 1). That bullet may keep the words "Compose variables of the stack"
+  because it does not name pulse-api (rule 6).
 
 ## Documentation inventory
 
@@ -226,6 +239,11 @@ Each must be rejected by review and, where a grep can see it, by the acceptance 
   `scripts/init-secrets.sh`: rejected.
 - the text "Compose does not pass `.env` values into the container": rejected (overbroad).
 - a passage that links api `bench/compose.bench.yaml`: rejected.
+- console `docs/index.md` keeps "[pulse-api configuration](...), ..., and the Compose variables of
+  the stack" on one line and only appends a deploy link: rejected (still assigns the stack
+  variables to pulse-api; A1 pattern `pulse-api.*Compose variables` matches).
+- console `README.md:70` links only `full/compose.yaml` and not `full/README.md`: rejected by A2
+  (rule 1 has no exemption).
 - a diff that also touches `docs/operation.md`, `AGENTS.md`, `bunfig.toml`, a test or a new file:
   rejected by the exact-list scope checks.
 
@@ -247,18 +265,29 @@ implementation time (an independent source; record its SHA).
 A1. Stale claims gone (expected value: the literal patterns; exit 1 = no match):
 
 ```sh
-grep -n -i -E "pulse-api('s)? (repository|repo)[^.]*compose|pulse-api('s)? \`?compose\.ya?ml|Compose variables of the stack|Compose does not pass \`?\.env|docker compose up\`" $ALLOWED
+grep -n -i -E "pulse-api('s)? (repository|repo)[^.]*compose|pulse-api('s)? \`?compose\.ya?ml|pulse-api.*Compose variables|Compose does not pass \`?\.env|docker compose up\`" $ALLOWED
 # expect exit 1
 ```
 
 On the recorded heads this grep matches all five stale passages (status `README.md:59`,
 `docs/install.md:3`; console `README.md:70`, `docs/configuration.md:103`, `docs/index.md:15`) and
 exits 0, so it fails on the base for the stated reason. Run it on `BASE` and on `HEAD`.
+The pattern `pulse-api.*Compose variables` is line-scoped: it matches the base `docs/index.md:15`
+(pulse-api link and stack variables on one line) but not a separate deploy bullet that says
+"Compose variables of the stack" without naming pulse-api. Verified in this spec run: on a
+simulated corrected `docs/index.md` (pulse-api bullet without the variables, plus a deploy bullet
+"[Compose variables of the stack](.../full/README.md#variables) ... [`full/compose.yaml`](...)")
+and a simulated status passage with `docker compose -f full/compose.yaml up -d` and "replaces
+pulse-api's former `compose.yaml`", the grep exits 1. So every wording that Required behavior
+asks for passes A1.
 
-A2. Required links present: each changed file prints a count ≥ 1 for
+A2. Required links present: every file in `ALLOWED` prints a count ≥ 1 for
 `https://github.com/lorenzh/pulse-deploy/blob/main/full/compose.yaml` and for
 `https://github.com/lorenzh/pulse-deploy/blob/main/full/README.md`
-(`grep -c -F '<url>' <file>`; console `README.md` needs only the `full/compose.yaml` link).
+(`grep -c -F '<url>' <file>`; expected value: the literal 1 as lower bound; no file is exempt,
+matching rule 1). The `full/README.md` count also counts links with an allowed anchor. On the
+recorded heads every count is 0, so A2 fails on the base. The reviewer confirms that both links sit
+in the corrected passage itself, not elsewhere in the file.
 Every `pulse-deploy` URL in the diff matches
 `^https://github.com/lorenzh/pulse-deploy/blob/main/full/(compose\.yaml|README\.md(#start-stop-reset|#variables)?)$`
 (extract with `git diff "$BASE" HEAD | grep -o 'https://github.com/lorenzh/pulse-deploy[^) ]*' | sort -u`).
@@ -382,8 +411,8 @@ Steps:
    Required behavior.
 3. Commit; run A1-A9 with `ALLOWED="README.md docs/configuration.md docs/index.md"`.
 
-Completion evidence: A1 exit 1; A2 counts (both URLs in `docs/configuration.md`; `full/README.md`
-link in `docs/index.md`; `full/compose.yaml` link in `README.md`); A3/A4 against the recorded
+Completion evidence: A1 exit 1; A2 counts ≥ 1 for both URLs in each of `README.md`,
+`docs/configuration.md` and `docs/index.md`; A3/A4 against the recorded
 deploy SHA; the README still says the image listens on `0.0.0.0:8082` and that `full` publishes
 the console on host loopback only; `docs/configuration.md` states host
 `127.0.0.1:${PULSE_CONSOLE_PORT:-8082}` → container 8082, that `full` does not pass
