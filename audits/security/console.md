@@ -28,7 +28,7 @@
 
 ## Issue candidates
 
-The commands below describe each check without a working attack. The reproductions stay outside the repository.
+Checks below omit attack details for P1 and P2 findings. Private reproductions stay outside the repository and are removed after review.
 
 ### SEC-1 `security-console-2026-11-08-1` (P3): an API check id with a lone UTF-16 surrogate makes the Checks list and the automatic incident detail answer 500
 
@@ -39,14 +39,32 @@ The commands below describe each check without a working attack. The reproductio
 - Impact: whoever can define a check id through the checks file of pulse-api (`checks.json`), or an api that answers with such an id, takes the Checks list down for every console user until the id is gone. Console forms cannot send such an id: form bodies and queries are decoded as UTF-8. Whether pulse-api keeps the surrogate after its own database round trip was not tested; the checks file is served as it was read.
 - Fix direction: treat ids that are not well-formed (`!id.isWellFormed()`) like the unaddressable ids `.` and `..`: render them as text without a link and call no API for them. Or let the contract id rule refuse strings that are not well-formed. Add a test with such an id on the list, detail and incident pages.
 
-### SEC-2 `security-console-2026-11-08-2` (P3): filling the pre-session form-token pool from one client expires everyone's open sign-in, setup and link forms
+### SEC-2 `security-console-2026-11-08-2` (P2): pre-session token isolation permits unauthenticated cross-client denial of sign-in
 
-- Location: `src/form-tokens.ts:4` (`FORM_TOKEN_ANON_MAX = 2000`) and `src/form-tokens.ts:93` (a full pool drops its oldest entry). Every anonymous GET of a form page issues a token (`src/server.ts:420`, `anonForm`), and a client without a cookie gets a new binding each time.
-- Class: unauthenticated resource exhaustion of a shared, bounded store (availability). The bound is documented (`docs/configuration.md:171`); the effect on other clients is not.
-- Check: a signed-in-console fixture. Open the sign-in form as the victim client, fill the pre-session pool from a second client with anonymous form-page GETs, then send the victim's correct credentials with its earlier token. Run it once with fewer GETs than the bound and once with as many as the bound. Probe exit 0.
-- Effect: `correct sign-in after 1900 anonymous GET /sign-in from another client (219 ms): 303 expired=false`; `correct sign-in after 2000 anonymous GET /sign-in from another client (262 ms): 409 expired=true`.
-- Impact: one unauthenticated client that keeps the pool full makes every correct sign-in, setup-code entry and invite or reset form answer `409` "This form has expired", over and over. Nobody can sign in during the flood. Signed-in pages are not affected, because their pool is separate, and the throttle does not count these refusals.
-- Fix direction: do not let one client push out the tokens of others. Bound the anonymous tokens per client address (the socket peer, as the throttle does), or evict the newest entry of the binding with the most tokens instead of the globally oldest. Alternatively, accept a pre-session token whose CSRF binding verifies even after eviction (for example an HMAC of binding, path and issue time, with a used-token list for replays). Add a test where a second client fills the pool.
+- Location: `src/form-tokens.ts:93`.
+- Class: unauthenticated cross-client resource exhaustion of the shared pre-session form-token store (availability).
+- Check: private local HTTP control and hostile-input comparison, independently rebuilt and run by audit-review. Invocation, request sequence and payload withheld from the public report. Probe exit 0.
+- Effect (sanitized): valid sign-in control `303`, `expired=false`; isolated hostile-input case `409`, `expired=true`; existing signed-in Team page `200` in both cases. All assertions passed.
+- Impact: an unauthenticated client can invalidate other clients' open sign-in forms, denying new sessions while interference continues. Setup and account-link forms share the affected store. Existing signed-in pages remain usable. P2: ordinary anonymous network input causes cross-client availability loss without privileged access or malformed upstream data. The local probe verifies affected sign-in forms, not a universal inability to sign in under every request interleaving.
+- Fix direction: isolate anonymous clients' resource use and prevent one client from evicting another client's valid forms. Preserve CSRF binding, expiry and single-use checks. Add cross-client availability regression coverage.
+
+## Audit review
+
+Independent review on 2026-11-08, started at 13:57:07 UTC. Both findings reproduced; none removed. SEC-1 stays P3 because it requires a contrived API id. SEC-2 is raised from P3 to P2 for unauthenticated cross-client availability loss, and its attack details are removed. Final counts: P1 0, P2 1, P3 1; two issue candidates. All eight checklist items remain checked; no review gate remains.
+
+| Re-run command or check | Exit code | Output |
+| --- | --- | --- |
+| `jq . audits/security/console.json` | 0 | JSON parses; findings, ids, severities and all eight checklist statuses checked against Markdown. |
+| `git -C .repos/console rev-parse HEAD` | 0 | `aa5dc1808d55f9e6655f4da78388957b522c189a`, matching the report. |
+| `git -C .repos/<target> rev-parse HEAD` for contract, kit, config, api | 0 | contract `6370c25d79123f4b81f2482756b6d5487bebb88c`; kit `536133f3e8b708179fa01feeb02395a0e1961e07`; config `bc870498cc8e2539a132ce2aac35a09db1deabd8`; api `515031bd3fd2aa6b8993e325b24ab08f4a3510d6`. Console's exact contract/config pins were installed from its lockfile rather than using the newer sibling clones. |
+| `git diff 5a400cb601fdc82d9b0bfb76e2902f0a083c8428 -- docs/approved-packages.md` | 0 | No changes to the package policy since the examined meta commit. |
+| `bun install --frozen-lockfile --ignore-scripts` in the disposable console copy | 0 | 125 packages installed, including console's pinned contract, kit and config revisions. |
+| `timeout 15m bun test` in the copy | 0 | 1991 pass, 0 fail; 13001 assertions across 90 files; 95.43 s. Includes `api-failure.test.ts`: "a code getter runs 0 times and gives a network error", `server.security.test.ts` POST-order and leak-scan tests, `overview-read.test.ts` manual-redirect checks, `forms.test.ts` and `database.test.ts`. |
+| `timeout 5m bun run lint` in the copy | 0 | `pulse-workflows: ok (1 files, 11 uses)`; Biome reports 1 warning and 7 infos, no fixes applied. |
+| `timeout 120s bun audit` in the copy | 1 | 1 vulnerability (1 moderate): `minimatch@10.2.6`, `GHSA-g3hv-75wg-m249`; confirms N6. |
+| Private local security probes; invocation and attack details withheld for SEC-2 | 0 | SEC-1: ordinary ids give `200`; malformed-id Checks list and automatic incident detail give `500`, log error `URIError`; Overview and incident list stay `200`. SEC-2: valid sign-in control `303`, affected form `409 expired=true`, existing signed-in Team page `200`. |
+
+Review limitations: the full Bun suite, lint, advisory check and both findings were rerun; source, dependency pins, Dockerfile and pinned CI workflows were inspected. The review did not repeat every original ad hoc probe, the Docker image build or browser checks. SEC-1's pulse-api SQLite round trip remains untested. SEC-2's setup/account-link effects follow the shared-store implementation; only sign-in was independently exercised. Copies were made with `cp -a` because `rsync` is unavailable. All local probe services were closed and the disposable copy and private reproduction were removed.
 
 ## Notes
 

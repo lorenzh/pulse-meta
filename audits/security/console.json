@@ -73,18 +73,36 @@
       "id": "security-console-2026-11-08-2",
       "repos": ["console"],
       "location": "src/form-tokens.ts:93",
-      "severity": "P3",
+      "severity": "P2",
       "candidate": true,
-      "title": "Filling the pre-session form-token pool from one unauthenticated client expires everyone's open sign-in, setup and link forms (409)",
-      "class": "Unauthenticated resource exhaustion of a shared bounded store (availability): FORM_TOKEN_ANON_MAX = 2000 (src/form-tokens.ts:4), a full pool drops its globally oldest entry (src/form-tokens.ts:93), and every anonymous form-page GET issues a token (src/server.ts:420).",
-      "command": "Signed-in-console fixture: open the sign-in form as the victim client, fill the pre-session pool from a second client with anonymous form-page GETs (once below and once at the documented bound), then send the victim's correct credentials with its earlier token.",
+      "title": "Pre-session token isolation permits unauthenticated cross-client denial of sign-in",
+      "class": "Unauthenticated cross-client resource exhaustion of the shared pre-session form-token store (availability).",
+      "command": "Private local HTTP control and hostile-input comparison, independently rebuilt and run by audit-review. Invocation, request sequence and payload withheld from the public report.",
       "exitCode": 0,
-      "excerpt": "correct sign-in after 1900 anonymous GET /sign-in from another client (219 ms): 303 expired=false; correct sign-in after 2000 anonymous GET /sign-in from another client (262 ms): 409 expired=true",
-      "impact": "One unauthenticated client that keeps the pool full makes every correct sign-in, setup-code entry and invite or reset form answer 409 'This form has expired', over and over. Nobody can sign in during the flood. Signed-in pages are not affected (separate pool).",
-      "fixDirection": "Do not let one client push out the tokens of others: bound anonymous tokens per client address (the socket peer, as the throttle does), or evict from the largest binding instead of the globally oldest entry. Or make a pre-session token verifiable without the store (HMAC of binding, path and time, plus a used-token list). Add a test where a second client fills the pool.",
+      "excerpt": "Valid sign-in control: 303, expired=false. Isolated hostile-input case: 409, expired=true. Existing signed-in Team page: 200 in both cases. All assertions passed; private probe exit 0.",
+      "impact": "An unauthenticated client can invalidate other clients' open sign-in forms, denying new sessions while interference continues. Setup and account-link forms share the affected store. Existing signed-in pages remain usable. P2: ordinary anonymous network input causes cross-client availability loss without privileged access or malformed upstream data. The local probe verifies affected sign-in forms, not a universal inability to sign in under every request interleaving.",
+      "fixDirection": "Isolate anonymous clients' resource use and prevent one client from evicting another client's valid forms. Preserve CSRF binding, expiry and single-use checks. Add cross-client availability regression coverage.",
       "commits": { "console": "aa5dc1808d55f9e6655f4da78388957b522c189a" }
     }
   ],
+  "review": {
+    "date": "2026-11-08",
+    "startedAt": "13:57:07 UTC",
+    "consoleCommit": "aa5dc1808d55f9e6655f4da78388957b522c189a",
+    "summary": "Both findings independently reproduced; none removed. SEC-1 retained at P3. SEC-2 raised from P3 to P2 and its attack details removed. Final counts: P1 0, P2 1, P3 1; 2 issue candidates. All 8 checklist items remain checked; no review gate remains.",
+    "commands": [
+      { "command": "jq . audits/security/console.json", "exitCode": 0, "excerpt": "JSON parses; findings, ids, severities and all 8 checklist statuses checked against Markdown." },
+      { "command": "git -C .repos/console rev-parse HEAD", "exitCode": 0, "excerpt": "aa5dc1808d55f9e6655f4da78388957b522c189a" },
+      { "command": "git -C .repos/<target> rev-parse HEAD (contract, kit, config, api)", "exitCode": 0, "excerpt": "contract 6370c25d79123f4b81f2482756b6d5487bebb88c; kit 536133f3e8b708179fa01feeb02395a0e1961e07; config bc870498cc8e2539a132ce2aac35a09db1deabd8; api 515031bd3fd2aa6b8993e325b24ab08f4a3510d6. Console's exact contract/config pins were installed from its lockfile rather than using the newer sibling clones." },
+      { "command": "git diff 5a400cb601fdc82d9b0bfb76e2902f0a083c8428 -- docs/approved-packages.md", "exitCode": 0, "excerpt": "No changes to the package policy since the examined meta commit." },
+      { "command": "bun install --frozen-lockfile --ignore-scripts (disposable console copy)", "exitCode": 0, "excerpt": "125 packages installed, including console's pinned contract, kit and config revisions." },
+      { "command": "timeout 15m bun test (disposable console copy)", "exitCode": 0, "excerpt": "1991 pass, 0 fail; 13001 expect() calls across 90 files; 95.43s. Includes api-failure.test.ts: 'a code getter runs 0 times and gives a network error', server.security.test.ts POST-order and leak-scan tests, overview-read.test.ts manual-redirect checks, forms.test.ts and database.test.ts." },
+      { "command": "timeout 5m bun run lint (disposable console copy)", "exitCode": 0, "excerpt": "pulse-workflows: ok (1 files, 11 uses). Biome reports 1 warning and 7 infos; no fixes applied." },
+      { "command": "timeout 120s bun audit (disposable console copy)", "exitCode": 1, "excerpt": "1 vulnerability (1 moderate): minimatch@10.2.6, GHSA-g3hv-75wg-m249; confirms note N6." },
+      { "command": "Private local security probes; invocation and attack details withheld for SEC-2", "exitCode": 0, "excerpt": "SEC-1: normal list/detail 200; malformed-id Checks list and automatic incident detail 500, log error URIError; Overview and incident list 200. SEC-2: valid sign-in control 303, affected form 409 expired=true, existing signed-in Team page 200." }
+    ],
+    "limitations": "Review reran the full Bun suite, lint, advisory check and both findings, and inspected the source, dependency pins, Dockerfile and pinned CI workflows. It did not repeat every original ad hoc probe, the Docker image build or browser checks. SEC-1's pulse-api SQLite round trip remains untested. SEC-2's setup/account-link effects follow the shared-store implementation; only sign-in was independently exercised. Copies were made with cp -a because rsync is unavailable. All local probe services were closed and the disposable copy and private reproduction were removed."
+  },
   "notes": [
     { "id": "N1", "location": "src/main.ts:88", "text": "Bun's fetch uses HTTP_PROXY/HTTPS_PROXY/NO_PROXY from the environment for every pulse-api call. With HTTP_PROXY set and an http API URL, the proxy received GET http://api.invalid:3000/admin/config with the admin bearer token. Docker sets these variables in a container when the client config has proxies. The docs do not mention proxies." },
     { "id": "N2", "location": "src/database.ts:148", "text": "chmodSync on an existing DB path follows a symlink: the target of a symlink at PULSE_CONSOLE_DB went from 644 to 600 before the start failed with SQLITE_NOTADB. The mode only gets stricter, and planting the link needs write access to the data directory." },
