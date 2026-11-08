@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Console adopts the fixed contract without changing its read or write wrappers",
+      "files": [
+        "package.json",
+        "bun.lock"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Security impact and Acceptance evidence (whole feature) 4. After contract merges, record or verify/reuse the same full merged main SHA as the other consumers. Keep src/api-read.ts and src/connection-test.ts redirect manual wrappers, writes and src/api-failure.ts wire-label behavior unchanged.",
+      "acceptance": [
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, both typecheck projects, full tests and unchanged 80% line-coverage gate pass, including src/runtime-read.test.ts, src/connection-test.test.ts, src/check-write.test.ts and src/token-write.test.ts redirect cases."
+        },
+        {
+          "command": "git diff --exit-code main -- src",
+          "expected": "exit 0 with no output: read/write wrappers and wire-label logic are unchanged."
+        },
+        {
+          "command": "git diff main -- package.json bun.lock",
+          "expected": "Only the contract pin changes in package.json, to the same full merged contract main SHA containing #864/version 2.5.2 adopted by the other consumers, verified against main and the shared finding; bun.lock agrees. No other dependency pin changes."
+        },
+        {
+          "command": "bun run check:browser",
+          "expected": "exit 0 with the fixed contract installed; existing console browser flows remain passing."
+        },
+        {
+          "command": "gh pr view --json body,statusCheckRollup",
+          "expected": "CI check, docker, browser and deploy-dev pass. The deploy-dev evidence includes the repository-required Compose dev stack with this checkout and E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml, exit 0 as defined in .github/workflows/ci.yml; do not edit deploy or weaken that check. PR records full merged SHA/finding provenance, required-check/browser/Compose results, empty src diff and applicable Security impact evidence for preserved manual redirects, body limits, secret-safe diagnostics and full-SHA/lockfile consistency."
+        },
+        {
+          "command": "git diff --check",
+          "expected": "exit 0"
+        }
+      ]
+    }
+  ]
+}

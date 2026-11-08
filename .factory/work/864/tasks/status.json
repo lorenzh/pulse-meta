@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "target": "status",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Status adopts bounded shared reads and proves the readiness poll refuses redirects",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/api-poll.test.ts",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: status, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Performance impact, Security impact and Acceptance evidence (whole feature) 4. After contract merges, record or verify/reuse the same full merged main SHA as the other consumers. Keep the pin, lockfile, local adoption regression and runtime documentation together.",
+      "acceptance": [
+        {
+          "command": "bun test src/api-poll.test.ts",
+          "expected": "Run the new native-fetch local-port-0 /checks 302 regression first against old pin 1b5e7d3e268372a6241db05ae30272eab7299b10 and retain the assertion failure. On the fixed pin all tests pass, 0 fail: the poll records error rather than ok and the second server receives 0 requests. Clean up servers and stop the poll; a focused coverage exit is not the gate."
+        },
+        {
+          "command": "bun test src/server.contract-modules.test.ts src/settings-poll.test.ts",
+          "expected": "All tests pass, 0 fail; /pulse-contract/client.js and /pulse-contract/version.js return status 200, every imported dist module remains covered by src/server.ts's existing allowlist, and the settings-poll redirect case still records exactly 3 reads. Inspect the fixed package's module imports against that allowlist without adding a source change; focused coverage exit is not the gate."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, both typecheck projects, full tests and unchanged 80% line-coverage gate pass."
+        },
+        {
+          "command": "git diff main -- package.json bun.lock README.md",
+          "expected": "Only the contract pin changes in package.json, to the same full merged contract main SHA containing #864/version 2.5.2 used by the other consumers, verified against main and the shared finding; bun.lock agrees. README states every API request follows no redirect, Bun server reads refuse compressed responses and browser poller decoding stays inside the 5 MiB cap."
+        },
+        {
+          "command": "/usr/bin/time -v bun test",
+          "expected": "Record baseline and candidate user plus system test CPU seconds in the PR against Performance impact's estimate under +0.5 s. If service code changes beyond the planned pin/test/docs scope, also run the spec's bun bench/run.ts --a <old main> --b <branch> with concrete revisions and report its numbers."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "Whitespace and required CI checks pass. PR records old/new adoption regression outputs, full merged contract SHA/finding provenance, module-allowlist verification, unchanged 3-read settings redirect control, full-check and CPU evidence, browser decoder limit and applicable Security impact evidence for body limits, redirect refusal and pinned dependency/lockfile consistency."
+        }
+      ]
+    }
+  ]
+}

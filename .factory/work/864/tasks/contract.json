@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "target": "contract",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Shared JSON clients bound response memory, refuse redirects and return fixed diagnostics",
+      "files": [
+        "src/client.ts",
+        "src/version.ts",
+        "test/client.test.ts",
+        "test/request-json.test.ts",
+        "test/version.test.ts",
+        "test/client-transport.test.ts",
+        "test/client-memory.test.ts",
+        "test/client-memory-child.ts",
+        "dist/client.js",
+        "dist/version.js",
+        "README.md",
+        "docs/index.md",
+        "package.json"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: contract, Behavior items 1-6, all Tests and Completion evidence; Decisions 1-7, Required behavior R1-R5, Counterexamples, Performance impact, Security impact and Acceptance evidence (whole feature) 1-3. Keep the shared request-init/encoding changes and their native-transport, memory and diagnostic regressions together; write tests first and retain the red run.",
+      "acceptance": [
+        {
+          "command": "bun test test/client-memory.test.ts test/client-transport.test.ts test/client.test.ts test/request-json.test.ts test/version.test.ts",
+          "expected": "Before the fix, run the new/changed tests with src restored from 1b5e7d3e268372a6241db05ae30272eab7299b10, as Completion evidence specifies, and retain failing names and all three measured peakGrowthMiB values. Failures must demonstrate growth above 64 MiB, followed redirects and both upstream-text leaks, rather than setup errors. Restore candidate src afterwards. After the fix all tests pass, 0 fail; a focused coverage-threshold exit is not the acceptance gate."
+        },
+        {
+          "command": "bun test test/client-memory.test.ts test/client-transport.test.ts",
+          "expected": "All tests pass, 0 fail. Separate native-Bun child cases for fetchJson 200, fetchJson 500 and requestJson POST 200 each have peakGrowthMiB < 64 for a streamed 256 MiB brotli fixture, with kinds network, http and network respectively. Preserve the 30 s child kill, 60 s test timeout, baseline after fixture creation/GC, 5 ms RSS sampling and 1000 ms observation after completion. Local same-origin 302, cross-origin 301/307, 303/308 and HTTPS-to-HTTP cases return http with their literal status and destination count 0 despite x-api-key; cover both TLS 302 (Tests) and 307 (Counterexamples). Generate the certificate in mkdtemp with openssl and clean up; if CI lacks openssl, request the specified needs-input hold instead of skipping."
+        },
+        {
+          "command": "bun test test/client-transport.test.ts test/client.test.ts test/request-json.test.ts test/version.test.ts",
+          "expected": "All tests pass, 0 fail. Both clients send redirect manual, decompress false and accept-encoding identity, retaining authorization and overriding a caller gzip preference. Bun rejects gzip, br, deflate, zstd, x-unknown and identity, gzip before reading/validation, with network cause text response content-encoding is not supported; absent, empty and case/space-normalized identity remain readable. Refused non-2xx writes give http without message. HTTP then wire then encoding precedence holds, including GET 200/wire 2/br, GET 503/br and POST 412/gzip; identity Content-Length/chunked bodies above 5242880 bytes and existing custom caps remain too-large. Both malformed-body markers yield the literal response body is not valid JSON. Wire 2 and a 4000-character marker header yield the literal x-pulse-contract: unsupported wire version, expected 1 through every GET/write error and response metadata path named in Tests, with neither marker serialized. Existing wire comparison, interruption, cancellation, empty-write, ErrorResponse.message and validator controls stay passing."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; existing lint, build, typecheck, full tests and 80% line-coverage gate pass, including the independent dist smoke test and existing security tests. No public result/type/export, wire version, timeout/abort behavior, default 5 MiB cap, runtime dependency or setting changes; no new src module or dist-module import."
+        },
+        {
+          "command": "bun run build && git diff --exit-code -- dist",
+          "expected": "exit 0 after committing generated dist; the fresh build matches committed dist/client.js and dist/version.js, with other dist files included only if the build changes them. The private decompress init type does not add a public declaration."
+        },
+        {
+          "command": "node --version && node /tmp/pulse-contract-864-node/client.mjs",
+          "expected": "Create the uncommitted scratch script outside the repository as Completion evidence describes, importing the candidate dist/index.js and using local node:http peers and a streamed 256 MiB brotli fixture. Node major version is 24; identity JSON gives ok true; 302 gives http 302 with destination count 0; brotli gives too-large, not network, with peak RSS growth < 64 MiB. Record the exact Node version and measured output in the PR."
+        },
+        {
+          "command": "grep -nE 'from \"(node:|bun)' src/client.ts src/version.ts",
+          "expected": "No output (grep exit 1): browser client sources import neither node: nor bun runtime modules. The automated source regression also passes."
+        },
+        {
+          "command": "node -p \"require('./package.json').version\" && git diff main -- package.json README.md docs/index.md",
+          "expected": "Version prints 2.5.2; package.json changes only version. README and docs add console to consumer lists and document both clients' init, no redirects, Bun-only encoding refusal, Node/browser capped streaming, browser forbidden accept-encoding and opaque-redirect http status 0, precedence, fixed texts, network mapping, encoded non-2xx write behavior and the 2.5.2 patch note. WIRE_VERSION stays 1."
+        },
+        {
+          "command": "/usr/bin/time -v bun test",
+          "expected": "Run on baseline main before the change and on the candidate, retaining user plus system CPU seconds for each. Report the measured difference in the PR against Performance impact's estimated +1 to 4 s; do not invent measurements or loosen coverage/budgets."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "Whitespace check and required CI check pass. PR records the red/green failing names/results and three memory measurements, independent Node 24 output, CPU before/after, version 2.5.2, regenerated-dist evidence and the browser streaming-decoder limit. Map every applicable Security impact item to its proving tests/commands: fixed secret-safe errors, default/custom body bounds including early discard, no redirect credential forwarding, unknown/combined coding refusal, unchanged approved runtime dependencies and full-SHA consumer rollout after merge."
+        }
+      ]
+    }
+  ]
+}

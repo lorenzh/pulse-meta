@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Probe adopts the merged contract fix and proves redirect refusal and safe retry logs",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/client.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe, Shared finding, all Behavior bullets and Completion evidence; Rollout order step 2, Performance impact, Security impact and Acceptance evidence (whole feature) 4. After contract merges, the first consumer records its full main SHA containing #864 as a shared finding and every consumer verifies/reuses that SHA. Keep the pin/lock update and both adoption regressions in one task; preserve fetchChecks, postResult and error mapping except compatibility fixes demonstrated necessary by bun run check.",
+      "acceptance": [
+        {
+          "command": "bun test src/client.test.ts",
+          "expected": "With both new local-native-fetch tests added, run first on old contract pin 7ce23aaf3fa3e038f65ecfed755188b83bde143f and retain the intended assertion failures. With the merged fix installed, all tests pass, 0 fail: an initial /checks 302 triggers exactly 1 retry, returns the valid second answer and sends 0 requests to the redirect destination; an initial 200 malformed body logs invalid JSON: response body is not valid JSON without its marker and succeeds on retry. Use injected sleep/schedule and clean up local port-0 servers. A focused coverage exit is not the gate."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; lint, typecheck, full tests and unchanged 80% line-coverage gate pass on the fixed package. Any compatibility edit beyond the listed files is limited to a failure from this check and explained in the commit."
+        },
+        {
+          "command": "git diff main -- package.json bun.lock",
+          "expected": "package.json changes only the contract pin line to a full merged contract main SHA containing #864 and version 2.5.2, independently verified against the shared finding and contract main; bun.lock matches that same pin. Other dependency pins stay unchanged."
+        },
+        {
+          "command": "/usr/bin/time -v bun test",
+          "expected": "Record baseline and candidate user plus system test CPU seconds in the PR; Performance impact estimates an increase under 0.5 s. If compatibility work changes service code beyond pin/tests, also run the spec's bun bench/run.ts --a <old main> --b <branch> with concrete revisions and report the numbers."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "Whitespace and required CI checks pass. PR records old/new adoption test outputs, full merged contract SHA and finding provenance, required-check results, test CPU before/after and applicable Security impact evidence for redirect/header protection, fixed log text, unchanged body bounds and full-SHA/lockfile adoption. No unrelated shared-client behavior is reimplemented."
+        }
+      ]
+    }
+  ]
+}
