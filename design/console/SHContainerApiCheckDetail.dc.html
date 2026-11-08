@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Container check, api · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Quillbird monitoring</a></li><li aria-hidden="true">/</li><li><a href="SHChecks.dc.html">Checks</a></li><li aria-hidden="true">/</li><li aria-current="page">{{cn}}</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><a class="pill-st" href="https://status.quillbird.example" target="_blank" rel="noopener"><span class="la-status la-status--down"><span class="la-status__mark"></span></span>status.quillbird.example</a><span class="cs-tools"><a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a>
+<form method="post" action="SHSignIn.dc.html" style="margin: 0;"><button type="submit" class="la-iconbtn la-iconbtn--sm" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button></form>
+<button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div class="stack-8">
+<div class="row"><span class="la-badge">container</span><span class="la-badge la-badge--info">{{ccomp}}</span><span class="lbl ident" title="{{cid}}">id {{cid}} · created 2026-10-14 in the console</span></div>
+<h1 class="page-title">{{cn}}</h1>
+<div class="row-12"><span class="la-status {{htone}}"><span class="la-status__mark"></span><span class="la-status__label" style="font-weight: 600;">{{stateLine}}</span></span><span class="lbl">container {{cx}} · host check <a href="{{hostHref}}">app-01</a></span><span class="la-badge la-badge--info">console · editable</span></div>
+</div>
+<div class="row">
+<a class="la-btn la-btn--primary" href="SHContainerCheckEdit.dc.html">Edit check</a>
+<button type="button" class="la-iconbtn icon-btn--outline" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for web on app-01"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</div>
+
+<div class="la-tabs" role="tablist" aria-label="Check views">
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="true" tabindex="0">Overview</button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Samples <span class="la-tabs__count">· latest only</span></button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Incidents <span class="la-tabs__count">· {{incN}}</span></button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Settings</button>
+</div>
+
+<sc-if value="{{isDown}}" hint-placeholder-val="{{true}}">
+<div class="la-callout la-callout--error" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">{{calloutTitle}}</p><p class="la-callout__text">{{calloutText}}</p></div>
+<a class="la-btn la-btn--secondary la-btn--sm" href="{{hostHref}}" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 16px;">Open host app-01</a>
+</div>
+</sc-if>
+<sc-if value="{{isUp}}" hint-placeholder-val="{{false}}">
+<div class="la-callout la-callout--success" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">{{calloutTitle}}</p><p class="la-callout__text">{{calloutText}}</p></div>
+<a class="la-btn la-btn--secondary la-btn--sm" href="{{hostHref}}" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 16px;">Open host app-01</a>
+</div>
+</sc-if>
+
+<div class="g-side">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="lv-h">
+<div class="la-panel__head"><h2 class="eb" id="lv-h">{{valuesTitle}}</h2><span class="lbl">{{sampleNote}}</span></div>
+<div class="la-panel__body stack" style="gap: 18px;">
+<ul role="list" class="mts" aria-label="Container values as percent">
+<sc-for list="{{meters}}" as="m" hint-placeholder-count="2">
+<li class="mt{{m.cls}}">
+<div class="mt__top"><span class="mt__name">{{m.name}}</span><span class="mt__val mono">{{m.val}}</span><span class="la-status {{m.tone}} la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">{{m.word}}</span></span></div>
+<div class="mt__bar" role="meter" aria-label="{{m.name}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{m.pct}}" aria-valuetext="{{m.text}}"><span class="mt__fill {{m.fill}}" style="{{m.fillStyle}}"></span><span class="mt__tick mt__tick--deg" style="{{m.degStyle}}"></span><span class="mt__tick mt__tick--down" style="{{m.downStyle}}"></span></div>
+<span class="lbl">{{m.note}}</span>
+</li>
+</sc-for>
+</ul>
+<ul role="list" class="kvs" aria-label="Container state">
+<sc-for list="{{kvs}}" as="k" hint-placeholder-count="8">
+<li class="kv"><span class="kv__k">{{k.k}}</span><span class="kv__v mono" title="{{k.v}}">{{k.v}}</span></li>
+</sc-for>
+</ul>
+<p class="lbl" style="margin: 0;">Memory is percent of the container's limit. CPU and memory come from cgroup v2; name, state, health and restarts come from the runtime socket on the host.</p>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="th-h">
+<div class="la-panel__head"><h2 class="eb" id="th-h">Thresholds</h2><span class="lbl">optional · same format as host checks</span></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Metric</th><th scope="col" class="num">Degraded above</th><th scope="col" class="num">Down above</th><th scope="col" class="num">Held for</th><th scope="col" class="num">Now</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<sc-for list="{{limits}}" as="l" hint-placeholder-count="3">
+<tr>
+<td class="m">{{l.metric}}</td><td class="num">{{l.deg}}</td><td class="num">{{l.down}}</td><td class="num">{{l.forS}}</td><td class="num">{{l.now}}</td>
+<td style="white-space: nowrap;"><span class="la-status la-status--dense {{l.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{l.word}}</span></span></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="ho-h">
+<div class="la-panel__head"><h2 class="eb" id="ho-h">Host check</h2><a class="cs-pha" href="{{hostHref}}">Open</a></div>
+<div class="la-panel__body stack" style="gap: 8px;">
+<span class="la-status {{hostTone}}"><span class="la-status__mark"></span><span class="la-status__label" style="font-weight: 600;">{{hostState}}</span></span>
+<a href="{{hostHref}}" style="font-weight: 600; color: var(--text); text-decoration: none;">app-01</a>
+<span class="lbl">{{hostNote}}</span>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="cfg-h">
+<div class="la-panel__head"><h2 class="eb" id="cfg-h">Configuration</h2><span class="lbl">source: console · editable</span></div>
+<div class="la-panel__body">
+<dl class="dl" style="grid-template-columns: 120px minmax(0, 1fr);">
+<dt>Host check</dt><dd><a href="{{hostHref}}">app-01</a> <span class="lbl">host-app-01</span></dd>
+<dt>Container</dt><dd class="mono ident" style="font-size: 13px;" title="{{cx}}">{{cx}}</dd>
+<dt>Reported by</dt><dd>The host push, every 60 s. No secret of its own.</dd>
+<dt>Runtime socket</dt><dd class="mono ident" style="font-size: 13px;" title="PULSE_AGENT_CONTAINER_SOCKET on app-01">PULSE_AGENT_CONTAINER_SOCKET on app-01</dd>
+<dt>Component</dt><dd>{{ccomp}}</dd>
+<dt>Maintenance</dt><dd class="lbl"><a href="SHMaintenance.dc.html">none planned</a></dd>
+</dl>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="ci-h">
+<div class="la-panel__head"><h2 class="eb" id="ci-h">Incidents</h2><a class="cs-pha" href="SHIncidents.dc.html">All</a></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<sc-for list="{{incidents}}" as="i" hint-placeholder-count="2">
+<li style="padding: 12px 20px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px;"><span class="spread"><a href="SHIncidents.dc.html" style="font-weight: 600; color: var(--text); text-decoration: none;">{{i.title}}</a><span class="la-badge {{i.tag}}">{{i.status}}</span></span><span class="lbl">{{i.meta}}</span></li>
+</sc-for>
+</ul>
+</section>
+</div>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"container":{"editor":"enum","options":["web","api","worker"],"default":"api"},"state":{"editor":"enum","options":["live","host not reporting"],"default":"live"},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const cx = this.props.container ?? 'web';
+    const silent = (this.props.state ?? 'live') === 'host not reporting';
+    const ok = 'la-status--up', warn = 'la-status--degraded', bad = 'la-status--down', none = 'la-status--unknown';
+    const D = {
+      web: { comp: 'Website', id: '3f9a1c7e2b04', limit: 512, mem: 61, cpu: 22, health: 'healthy', restarts: 0, down: true },
+      api: { comp: 'API', id: 'c41e8b9a7d12', limit: 1024, mem: 30, cpu: 12, health: 'healthy', restarts: 0, down: false },
+      worker: { comp: 'Background jobs', id: '9b7d03e5f6a1', limit: 512, mem: 43, cpu: 8, health: 'no health check', restarts: 1, down: false }
+    }[cx];
+    const isDown = silent || D.down;
+    const tick = (v) => (v == null ? 'display: none' : 'left: ' + v + '%');
+    const meter = (name, pct, val, deg, note, tone, word, stale) => ({ name, pct, val, tone, word, cls: stale ? ' mt--stale' : '', fill: tone === warn ? 'mt__fill--warn' : '', fillStyle: 'width: ' + pct + '%', degStyle: tick(deg), downStyle: tick(null), text: pct + ' percent' + (deg ? ', degraded above ' + deg : ''), note });
+    const mib = (pct) => Math.round(D.limit * pct / 100) + ' of ' + D.limit.toLocaleString('en-US') + ' MiB';
+    const image = 'registry.quillbird.example/' + cx + ':2026.10.3';
+    const kvs = (state, health, restarts, exit) => [{ k: 'State', v: state }, { k: 'Health', v: health }, { k: 'Restarts', v: restarts }, { k: 'Exit code', v: exit }, { k: 'Container id', v: D.id }, { k: 'Image', v: image }, { k: 'Runtime', v: 'Docker 27.3' }, { k: 'Memory limit', v: D.limit + ' MiB' }];
+    const lim = (metric, deg, forS, now, tone, word) => ({ metric, deg: deg, down: '—', forS, now, tone, word });
+    let v;
+    if (silent) {
+      v = { stateLine: 'Down since 14:08 UTC · host host-app-01 not reporting', calloutTitle: 'Down: host host-app-01 not reporting', calloutText: 'The host check app-01 sent no sample within period + grace, so every container check on it is down. Fix the host check first; this check recovers with the next host push.', valuesTitle: 'Last known values', sampleNote: 'last host push 14:05:03 UTC · 27 min ago',
+        meters: [meter('Memory of limit', D.mem, D.mem + '%', 90, mib(D.mem) + ' · degraded above 90% · held for 120 s', none, 'last known', true), meter('CPU', D.cpu, D.cpu + '%', null, 'no CPU limit set on the check', none, 'last known', true)],
+        kvs: kvs('running · last known', D.health, D.restarts + ' in 600 s', '—'),
+        limits: [lim('memory', '90%', '120 s', D.mem + '%', none, 'not evaluated'), lim('restarts', '3', '600 s', String(D.restarts), none, 'not evaluated')],
+        incN: 1, incidents: [{ title: '#144 · app-01 is not reporting', tag: 'la-badge--error', status: 'open', meta: '2026-10-30 14:08 · 24 min so far · covers this check' }] };
+    } else if (D.down) {
+      v = { stateLine: 'Down since 14:09 UTC · container web exited (137)', calloutTitle: 'Down: container web exited (137)', calloutText: 'Exit code 137 means the process was killed (SIGKILL), often by the out-of-memory killer. The runtime restarted it 4 times within 10 minutes. Host app-01 reports swap 97% > 90%.', valuesTitle: 'Latest values', sampleNote: 'host push 14:32:04 UTC · 8 s ago',
+        meters: [meter('Memory of limit', 97, '97%', 90, '497 of 512 MiB at the last sample while running · degraded above 90% · held for 120 s', warn, 'Over limit', false), meter('CPU', 0, '0%', null, 'stopped · it used 38% before it exited at 14:09:44 · no CPU limit set on the check', none, 'stopped', false)],
+        kvs: kvs('exited (137)', 'no health check', '4 in 600 s', '137 · SIGKILL'),
+        limits: [lim('memory', '90%', '120 s', '97%', warn, 'Degraded · overridden by Down'), lim('restarts', '3', '600 s', '4', warn, 'Degraded · overridden by Down')],
+        incN: 1, incidents: [{ title: '#145 · web on app-01 is down', tag: 'la-badge--error', status: 'open', meta: '2026-10-30 14:09 · 23 min so far · exited (137)' }] };
+    } else {
+      const run = cx === 'api' ? 'running · healthy' : 'running · no health check';
+      v = { stateLine: 'Up · ' + run, calloutTitle: 'Up: container ' + cx + ' is ' + (cx === 'api' ? 'running and healthy' : 'running'),
+        calloutText: cx === 'api' ? 'The host push of 14:32:04 UTC lists api as running with health healthy. No restarts within 600 s.' : 'The host push of 14:32:04 UTC lists worker as running; its image has no health check. It restarted once within 600 s, below the degraded limit of more than 3.',
+        valuesTitle: 'Latest values', sampleNote: 'host push 14:32:04 UTC · 8 s ago',
+        meters: [meter('Memory of limit', D.mem, D.mem + '%', 90, mib(D.mem) + ' · degraded above 90% · held for 120 s', ok, 'OK', false), meter('CPU', D.cpu, D.cpu + '%', null, 'no CPU limit set on the check', ok, 'OK', false)],
+        kvs: kvs('running', D.health, D.restarts + ' in 600 s', '—'),
+        limits: [lim('memory', '90%', '120 s', D.mem + '%', ok, 'OK'), lim('restarts', '3', '600 s', String(D.restarts), ok, 'OK')],
+        incN: 0, incidents: [{ title: 'No incidents', tag: '', status: 'none', meta: 'None for this check in the last 30 days' }] };
+    }
+    return {
+      theme, themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme', toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      incN: v.incN, cn: cx + ' on app-01', cx, cid: 'container-' + cx + '-app-01', ccomp: D.comp,
+      isDown, isUp: !isDown, htone: isDown ? bad : ok, hostHref: silent ? 'SHHostCheckDetailSilent.dc.html' : 'SHHostCheckDetail.dc.html',
+      ...v,
+      hostTone: silent ? bad : warn,
+      hostState: silent ? 'Down · not reporting' : 'Degraded · swap 97% > 90%',
+      hostNote: silent ? 'last sample 14:05:03 UTC, no push within period + grace (180 s)' : 'last sample 14:32:04 UTC · reports this container every 60 s'
+    };
+  }
+}
+</script>
+</body>
+</html>

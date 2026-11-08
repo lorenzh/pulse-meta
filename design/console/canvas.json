@@ -483,6 +483,96 @@
       "h": 844,
       "title": "SH \u00b7 Declare incident \u00b7 mobile",
       "is_interactive": true
+    },
+    "SHHostCheckEdit.dc.html": {
+      "x": 0,
+      "y": 27300,
+      "w": 1440,
+      "h": 2140,
+      "title": "SH \u00b7 Host check: create / edit (agent push)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerCheckEdit.dc.html": {
+      "x": 1520,
+      "y": 27300,
+      "w": 1440,
+      "h": 1240,
+      "title": "SH \u00b7 Container check: create / edit",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHHostCheckDetail.dc.html": {
+      "x": 3040,
+      "y": 27300,
+      "w": 1440,
+      "h": 1360,
+      "title": "SH \u00b7 Host check detail (degraded)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHHostCheckDetailSilent.dc.html": {
+      "x": 4560,
+      "y": 27300,
+      "w": 1440,
+      "h": 1360,
+      "title": "SH \u00b7 Host check detail (not reporting)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerCheckDetail.dc.html": {
+      "x": 6080,
+      "y": 27300,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, web (exited 137)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerCheckDetailHostSilent.dc.html": {
+      "x": 7600,
+      "y": 27300,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, web (host not reporting)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerApiCheckDetail.dc.html": {
+      "x": 0,
+      "y": 29700,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, api (running)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerApiCheckDetailHostSilent.dc.html": {
+      "x": 1520,
+      "y": 29700,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, api (host not reporting)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerWorkerCheckDetail.dc.html": {
+      "x": 3040,
+      "y": 29700,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, worker (running)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SHContainerWorkerCheckDetailHostSilent.dc.html": {
+      "x": 4560,
+      "y": 29700,
+      "w": 1440,
+      "h": 980,
+      "title": "SH \u00b7 Container check detail, worker (host not reporting)",
+      "expand": "fill",
+      "is_interactive": true
     }
   },
   "order": [
@@ -519,6 +609,16 @@
     "SHChecks.dc.html",
     "SHCheckDetail.dc.html",
     "SHCheckEdit.dc.html",
+    "SHHostCheckEdit.dc.html",
+    "SHContainerCheckEdit.dc.html",
+    "SHHostCheckDetail.dc.html",
+    "SHHostCheckDetailSilent.dc.html",
+    "SHContainerCheckDetail.dc.html",
+    "SHContainerCheckDetailHostSilent.dc.html",
+    "SHContainerApiCheckDetail.dc.html",
+    "SHContainerApiCheckDetailHostSilent.dc.html",
+    "SHContainerWorkerCheckDetail.dc.html",
+    "SHContainerWorkerCheckDetailHostSilent.dc.html",
     "SHIncidents.dc.html",
     "SHIncidentDetail.dc.html",
     "SHIncidentComposer.dc.html",
@@ -626,6 +726,21 @@
       "w": 420,
       "text": "v1 scope: the self-hosted boards above the Later row. The hosted rows at the top and the Later row are not a source for v1 work items.",
       "fill": "orange",
+      "size": "m"
+    },
+    "rowSH7": {
+      "x": 0,
+      "y": 27000,
+      "text": "Self-hosted: host and container checks (#836, #839)",
+      "kind": "title1",
+      "maxW": 9000
+    },
+    "hostNote": {
+      "x": 9120,
+      "y": 27300,
+      "w": 420,
+      "text": "v1 work item screens for the push agent: the type selector in SH Check edit now offers Host and Container. No time-series charts for host values, only current values and state. No list of discovered containers: only containers with a configured check are stored.",
+      "fill": "teal",
       "size": "m"
     }
   },

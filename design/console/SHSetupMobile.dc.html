@@ -40,8 +40,8 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <sc-if value="{{s1}}" hint-placeholder-val="{{false}}">
 <div class="stack-8"><h1 class="mb-title">Secure the owner account</h1><p class="lead" style="margin: 0; font-size: var(--fs-small);">Required. The owner must use an authenticator app. This step cannot be skipped.</p></div>
 <p class="lbl" style="margin: 0;">On this phone, add the key to your authenticator app by hand or paste the link into it.</p>
-<div class="la-field"><span class="la-field__label" id="sm-k">Setup key</span><div class="secret" aria-labelledby="sm-k"><code>JBSW Y3DP EHPK 3PXP K4QT 2M7C</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
-<div class="la-field"><span class="la-field__label" id="sm-u">otpauth link</span><div class="secret" aria-labelledby="sm-u"><code style="font-size: 12px;">otpauth://totp/Quillbird%20monitoring:mara%40quillbird.example?secret=JBSWY3DPEHPK3PXPK4QT2M7C&amp;issuer=Quillbird%20monitoring</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><span class="la-field__label" id="sm-k">Setup key</span><div class="secret" aria-labelledby="sm-k"><code>EXAM PLEE XAMP LEEX AMPL E234</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><span class="la-field__label" id="sm-u">otpauth link</span><div class="secret" aria-labelledby="sm-u"><code style="font-size: 12px;">otpauth://totp/Quillbird%20monitoring:mara%40quillbird.example?secret=EXAMPLEEXAMPLEEXAMPLE234&amp;issuer=Quillbird%20monitoring</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
 <div class="la-field"><label class="la-field__label" for="sm-c">6-digit code</label><input class="la-input mono" id="sm-c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="482 913" style="font-size: 20px; letter-spacing: 0.2em;"></div>
 </sc-if>
 
@@ -95,7 +95,7 @@ class Component extends DCLogic {
       stepLabel: 'Step ' + shown[i] + ' of 4',
       nextLabel: ['Create owner account', 'Confirm code', 'Continue', 'Finish setup'][i],
       nextOpen: !blocked && i !== 3, nextBlocked: blocked,
-      codes: ['7KQ4-M2XD-91', 'P8WN-3TJC-46', 'H2VR-QL7E-08', 'Z5MB-YK1F-73', 'C9TD-6NWA-25', 'R4LX-HP8G-62', 'W1EQ-J5SU-37', 'F6NZ-2CBV-94', 'U3KG-T9MR-50', 'D7YH-4XPL-16'],
+      codes: ['EXMP-LE00-01', 'EXMP-LE00-06', 'EXMP-LE00-05', 'EXMP-LE00-10', 'EXMP-LE00-02', 'EXMP-LE00-07', 'EXMP-LE00-09', 'EXMP-LE00-04', 'EXMP-LE00-08', 'EXMP-LE00-03'],
       saved: this.state.saved,
       toggleSaved: () => this.setState({ saved: !this.state.saved }),
       next: () => this.setState({ step: steps[Math.min(3, i + 1)] }),
