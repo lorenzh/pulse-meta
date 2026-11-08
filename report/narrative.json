@@ -1,55 +1,55 @@
 {
   "template": 1,
-  "issue": 785,
-  "as_of": "2026-11-06T13:15:59.622Z",
-  "lead": "Seit dem letzten Bericht hat die Factory {d_runs|int} Läufe gemacht und {d_features_done|int} Features abgeschlossen, darunter #567, jetzt das teuerste Feature. Insgesamt stehen {features_done|int} von {features|int} Features und {usd|usd} an bekannten Kosten in den Daten; {runs_cost_unknown|int} Läufe melden keine Kosten. Das Plan-Review schickt jetzt {plan_back_rate|pct} der Pläne zurück, das Build-Review {review_back_rate|pct} der Änderungen. Kein neuer PR bekam Commits von Hand.",
+  "issue": 896,
+  "as_of": "2026-11-08T12:13:31.441Z",
+  "lead": "Seit dem letzten Bericht hat die Factory {d_runs|int} Läufe gemacht und {d_features_done|int} Features abgeschlossen, darunter #570, jetzt das teuerste Feature. Insgesamt stehen {features_done|int} von {features|int} Features und {usd|usd} an bekannten Kosten in den Daten; {runs_cost_unknown|int} Läufe melden keine Kosten. Das Plan-Review schickt jetzt {plan_back_rate|pct} der Pläne zurück, das Build-Review {review_back_rate|pct} der Änderungen. Kein neuer PR bekam Commits von Hand.",
   "notes": {
     "duration": "Ein abgeschlossenes Feature braucht im Median {lead_h_median|hm}, das langsamste Zehntel ab {lead_h_p90|hm}. Ein PR ist im Median etwa {pr_merge_min_median|int} Minuten offen; das Archiv kann diesen Wert nur annähern. Die Factory arbeitete zusammen {factory_h|dec1} Stunden.",
     "steps": "Nach bekannten Kosten ist build/implement der teuerste Schritt, vor spec/plan und audit/audit. build/implement läuft auch am häufigsten. audit/audit lief nur wenige Male, kostet pro Lauf im Median aber am meisten. spec/breakdown und build/task-review laufen nur auf Codex und melden keine Kosten.",
-    "days": "Der teuerste Tag ist weiter der letzte im Archiv. An zweiter Stelle steht jetzt der vorletzte Tag der Daten. Für den Tag nach dem Archiv fehlen Datensätze. Seit der Datenlücke meldet an jedem Tag mehr als die Hälfte der Läufe keine Kosten. Der letzte Tag ist noch nicht vorbei.",
-    "targets": "Die Specs in meta sind nach bekannten Kosten der größte Posten. Unter den Targets liegt jetzt console vorn, vor api. api hat weiter die meisten gemergten PRs und die meisten PRs mit Hand-Commits. console, website und deploy kosten pro Issue am meisten, bei nur wenigen Issues.",
+    "days": "Der teuerste Tag ist weiter der letzte im Archiv. An zweiter Stelle steht jetzt der Tag, an dem #570 und #573 begannen. Für den Tag nach dem Archiv fehlen Datensätze. Seit der Datenlücke meldet an jedem Tag mehr als die Hälfte der Läufe keine Kosten. Der letzte Tag ist noch nicht vorbei.",
+    "targets": "Die Specs in meta sind nach bekannten Kosten der größte Posten. Unter den Targets liegt weiter console vorn, vor api. api hat weiter die meisten gemergten PRs und die meisten PRs mit Hand-Commits. console, website und deploy kosten pro Issue am meisten, bei nur wenigen Issues.",
     "human_fixes": "Die Tabelle zeigt {prs_human|int} PRs mit Hand-Commits; pulse-api stellt davon die meisten. pulse-contract#39 hat die meisten Hand-Commits in einem PR. Seit dem letzten Bericht kamen {d_prs_human|int} PRs mit Hand-Commits hinzu."
   },
   "changes": [
     {
       "title": "Neue Läufe meist ohne Kosten",
-      "text": "{d_runs_cost_unknown|int} der {d_runs|int} neuen Läufe melden keine Kosten, mehr als die Hälfte. Die neuen bekannten Kosten von {d_usd|usd} fallen nur in build/implement, spec/plan, audit/audit und merge/review an; die Review-Schritte melden für ihre neuen Läufe keine Kosten."
+      "text": "{d_runs_cost_unknown|int} der {d_runs|int} neuen Läufe melden keine Kosten, mehr als die Hälfte. Die neuen bekannten Kosten von {d_usd|usd} fallen wieder nur in build/implement, spec/plan, audit/audit und merge/review an; die Review-Schritte melden für ihre neuen Läufe keine Kosten."
     },
     {
       "title": "Plan-Review schickt öfter zurück",
-      "text": "Das Plan-Review schickte {d_plan_back|int} Pläne zurück, die Quote steigt auf {plan_back_rate|pct}. Am häufigsten kam #569 zurück, mehrfach in Folge am letzten Tag der Daten. Das Build-Review schickte {d_review_back|int} Änderungen zurück, #771 und #776 davon mehrfach."
+      "text": "Das Plan-Review schickte {d_plan_back|int} Pläne zurück, die Quote steigt auf {plan_back_rate|pct}. #573 kam an einem Abend siebenmal zurück, #570 fünfmal. Das Build-Review schickte {d_review_back|int} Änderungen zurück, #819 und #892 davon je dreimal."
     },
     {
-      "title": "Erste Holds im Task-Review",
-      "text": "Es kamen {d_holds|int} Holds hinzu. Zum ersten Mal hielt build/task-review an, zweimal bei #776. build/implement hielt bei #768, #771 und #784 an, spec/issue-review bei #569."
+      "title": "Holds jetzt auch im Build-Review",
+      "text": "Es kamen {d_holds|int} Holds hinzu, die meisten in build/implement. build/review hielt neu bei #819, #829, #882, #884 und #892 an. #787 hielt viermal an, so oft wie sonst nur #706."
     },
     {
-      "title": "#567 und #774 abgeschlossen",
-      "text": "Abgeschlossen sind jetzt auch #566, #567, #647, #741, #754, #765, #774 und #777. Offen sind #571, #773 und #780. Neue Merge-Konflikte gab es bei #671 und #751. Seit dem letzten Bericht schlugen {d_actions_failed|int} Actions-Läufe fehl."
+      "title": "#569, #570 und #573 abgeschlossen",
+      "text": "Abgeschlossen sind jetzt auch #569, #570, #573, #773, #780 und #815. Offen sind #571 und das neue #885. Neue Merge-Konflikte gab es bei #787 und #809. Seit dem letzten Bericht schlugen {d_actions_failed|int} Actions-Läufe fehl."
     }
   ],
   "case_study": {
-    "note": "#567 ist mit {case_usd|usd} jetzt das nach bekannten Kosten teuerste Feature, vor #564 und #565, und betraf {case_targets|int} Targets. Die Daten enthalten seine {case_runs|int} Läufe; mehr als die Hälfte davon meldet keine Kosten.",
+    "note": "#570 ist mit {case_usd|usd} jetzt das nach bekannten Kosten teuerste Feature, vor #573 und #567, und betraf {case_targets|int} Targets. Die Daten enthalten seine {case_runs|int} Läufe, mehr als bei jedem anderen Feature; knapp die Hälfte davon meldet keine Kosten.",
     "items": [
       {
         "label": "Plan in Runden",
-        "text": "spec/plan lief in mehreren Runden; dazwischen schickte das Plan-Review den Plan mehrfach zurück. Nur #619 und #564 kamen insgesamt öfter zurück."
+        "text": "spec/plan lief an einem Nachmittag in mehreren Runden; das Plan-Review schickte den Plan fünfmal zurück, erst die letzte Runde ging durch. #570 hat damit die teuerste Spec aller Features, knapp vor #573."
       },
       {
-        "label": "Console-Child #751",
-        "text": "Das Console-Child #751 hatte mehr als die Hälfte der Läufe des Features und die meisten Build-Kosten. build/task-review schickte es mehrfach zurück, die Vorbereitung schlug fehl, es folgte ein Merge-Konflikt. Das Build-Review schickte den Code {case_review_back|int}-mal zurück; ein Hold folgte nicht."
+        "label": "Notify-Child #810",
+        "text": "Das Notify-Child #810 hatte die meisten Läufe des Features und die meisten Build-Kosten. build/task-review schickte es dreimal zurück, build/implement hielt einmal an, danach schickte das Build-Review den Code zweimal zurück."
+      },
+      {
+        "label": "Status-Child #809",
+        "text": "Bei #809 schlug die Vorbereitung fehl, es folgte ein Merge-Konflikt mit merge/resolve und merge/review. Danach schickte das Build-Review den Code zweimal zurück."
       },
       {
         "label": "Spec und Build",
-        "text": "Der Build kostete mehr als die Spec. Zusammen verbrauchten die Läufe {case_tokens_m|dec1} M Tokens."
-      },
-      {
-        "label": "Hand-Commits",
-        "text": "Für die PRs sind keine Hand-Commits erfasst ({case_human_fixes|int})."
+        "text": "Der Build kostete mehr als doppelt so viel wie die Spec. Zusammen verbrauchten die Läufe {case_tokens_m|dec1} M Tokens. Das Build-Review schickte {case_review_back|int}-mal zurück; Holds gab es bei #807, #808, #809 und #810, alle in build/implement. Hand-Commits sind keine erfasst ({case_human_fixes|int})."
       },
       {
         "label": "Dauer",
-        "text": "Vom ersten Lauf bis zum Abschluss vergingen {case_lead_h|hm}. Das ist genau die Grenze zum langsamsten Zehntel aller Features ({lead_h_p90|hm})."
+        "text": "Vom ersten Lauf bis zum Abschluss vergingen {case_lead_h|hm}. Damit liegt #570 im langsamsten Zehntel aller Features (ab {lead_h_p90|hm})."
       }
     ]
   },
@@ -62,27 +62,27 @@
     {
       "id": "F2",
       "title": "Plan-Review schickt mehr als jeden dritten Plan zurück",
-      "text": "Das Plan-Review schickte {plan_back|int} von {plan_review_runs|int} Plänen zurück ({plan_back_rate|pct}), {d_plan_back|int} davon seit dem letzten Bericht. #619 kam öfter zurück als jedes andere Issue, vor #564. #569 kam am letzten Tag der Daten mehrfach in Folge zurück, nachdem spec/issue-review dort am Vortag mit einem Hold angehalten hatte. Die teuerste Spec aller Features hat weiter #568."
+      "text": "Das Plan-Review schickte {plan_back|int} von {plan_review_runs|int} Plänen zurück ({plan_back_rate|pct}), {d_plan_back|int} davon seit dem letzten Bericht. #573 kam so oft zurück wie #619, öfter als jedes andere Issue, alle Male an einem Abend. #570 kam fünfmal zurück. Die beiden teuersten Specs aller Features haben jetzt #570 und #573, vor #568."
     },
     {
       "id": "F3",
       "title": "Nach Task-Review-Rückläufern folgt meist ein Hold",
-      "text": "build/task-review schickte seit dem letzten Bericht bei #750, #751, #769, #776 und #784 Aufgaben zurück. #776 kam dort öfter zurück als jedes andere Child, und build/task-review hielt dort zweimal selbst mit einem Hold an. Bei #784 hielt danach build/implement an, wie zuvor bei #645, #649, #657, #681, #694, #701, #721, #722 und #725. Bei #750, #751 und #769 folgte kein Hold, wie zuvor bei #695 und #736. Insgesamt gab es {holds|int} Holds, die meisten in build/implement."
+      "text": "build/task-review schickte seit dem letzten Bericht bei #787, #807, #810 und #820 Aufgaben zurück. Bei allen vier hielt danach build/implement an, wie zuvor bei #645, #649, #657, #681, #694, #701, #706, #721, #722, #725 und #784. Ohne folgenden Hold blieben weiter nur #695, #736, #750, #751 und #769. #776 kam dort am häufigsten zurück. Insgesamt gab es {holds|int} Holds, die meisten in build/implement."
     },
     {
       "id": "F4",
       "title": "build/implement trägt die größten Kosten",
-      "text": "Nach bekannten Kosten ist build/implement der teuerste Schritt, vor spec/plan. Der teuerste Tag ist weiter der letzte Archivtag. #567 hat jetzt die höchsten Build-Kosten aller Features, vor #565 und #564; es begann am vorletzten Tag der Daten, dem zweitteuersten Tag. Unter den Targets kostet console jetzt am meisten, vor api."
+      "text": "Nach bekannten Kosten ist build/implement der teuerste Schritt, vor spec/plan. Der teuerste Tag ist weiter der letzte Archivtag. #570 hat jetzt die höchsten Build-Kosten aller Features, vor #569 und #567; es begann am zweitteuersten Tag. Unter den Targets kostet console weiter am meisten, vor api."
     },
     {
       "id": "F5",
-      "title": "Rückläufer im Build-Review, keine neuen Hand-Commits",
-      "text": "Das Build-Review schickte {review_back|int} von {review_runs|int} Änderungen zurück ({review_back_rate|pct}), am häufigsten bei #596; seit dem letzten Bericht kamen #771 und #776 mehrfach zurück. {prs_human|int} PRs bekamen Commits von Hand, die meisten in pulse-api, seit dem letzten Bericht keiner ({d_prs_human|int}). {first_pass|pct} der Target-PRs haben keine Hand-Commits."
+      "title": "Build-Review hält nach Rückläufern selbst an",
+      "text": "Das Build-Review schickte {review_back|int} von {review_runs|int} Änderungen zurück ({review_back_rate|pct}), am häufigsten bei #596. Seit dem letzten Bericht kamen #819 und #892 je dreimal zurück; bei beiden hielt danach build/review selbst mit einem Hold an. {prs_human|int} PRs bekamen Commits von Hand, die meisten in pulse-api, seit dem letzten Bericht keiner ({d_prs_human|int}). {first_pass|pct} der Target-PRs haben keine Hand-Commits."
     },
     {
       "id": "F6",
       "title": "Fehlgeschlagene Läufe vor Merge-Konflikten",
-      "text": "Die Vorbereitung schlug bei #39, #55, #549, #592, #722 und neu bei #671 und #751 fehl. Bei jedem dieser Issues folgte ein Merge-Konflikt mit merge/resolve und merge/review ({merge_runs|int} Merge-Läufe insgesamt). #647, das Feature zu #671, hat jetzt die längste Durchlaufzeit, vor #545 und #554. Insgesamt schlugen {actions_failed|int} von {actions_total|int} Actions-Läufen fehl, {d_actions_failed|int} davon seit dem letzten Bericht; welche, zeigen die Daten nicht."
+      "text": "Die Vorbereitung schlug bei #39, #55, #549, #592, #671, #722, #751 und neu bei #787 und #809 fehl. Bei jedem dieser Issues folgte ein Merge-Konflikt mit merge/resolve und merge/review ({merge_runs|int} Merge-Läufe insgesamt). #569, das Feature zu #787, hat jetzt die längste Durchlaufzeit, vor #647 und #545. Insgesamt schlugen {actions_failed|int} von {actions_total|int} Actions-Läufen fehl, {d_actions_failed|int} davon seit dem letzten Bericht; welche, zeigen die Daten nicht."
     }
   ],
   "recommendations": [
@@ -94,36 +94,36 @@
       ]
     },
     {
-      "title": "Plan-Rückläufer bei #569 und #619 auswerten",
-      "text": "Für #569, #567 und #619 festhalten, was das Plan-Review in jeder Runde bemängelte. Bei #569 prüfen, ob die Entscheidung aus dem Hold im Issue-Review im Plan ankam. Kommt ein Plan mehrfach zurück, soll nach einer festen Zahl von Runden ein Hold eine Person fragen, statt weiter Läufe zu verbrauchen.",
+      "title": "Plan-Rückläufer bei #570 und #573 auswerten",
+      "text": "Für #573, #570 und #619 festhalten, was das Plan-Review in jeder Runde bemängelte. Kommt ein Plan mehrfach zurück, soll nach einer festen Zahl von Runden ein Hold eine Person fragen, statt weiter Läufe zu verbrauchen. Bei #570 und #573 lassen sich die Kosten jeder Runde gegen das Ergebnis halten.",
       "findings": [
         "F2"
       ]
     },
     {
       "title": "Task-Review und Holds zusammen prüfen",
-      "text": "Für #776 und #784 festhalten, welche Entscheidung der Hold verlangte und ob das Task-Review sie schon benannt hatte. #750, #751 und #769 daneben legen, die ohne Hold durchkamen. Fehlt die Entscheidung im Feature-Issue, soll die Anleitung zum Schreiben von Feature-Issues sie verlangen.",
+      "text": "Für #787, #807, #810 und #820 festhalten, welche Entscheidung der Hold verlangte und ob das Task-Review sie schon benannt hatte. #750, #751 und #769 daneben legen, die ohne Hold durchkamen. Fehlt die Entscheidung im Feature-Issue, soll die Anleitung zum Schreiben von Feature-Issues sie verlangen.",
       "findings": [
         "F3"
       ]
     },
     {
       "title": "Teure Features aufschlüsseln",
-      "text": "Für #567, #565 und #564 die build/implement-Läufe nach Tokens und Dauer aufschlüsseln und festhalten, was sie teuer machte. Für #567 liegen die Einzelläufe in den Daten; dort mit dem Console-Child #751 beginnen.",
+      "text": "Für #570, #569 und #567 die build/implement-Läufe nach Tokens und Dauer aufschlüsseln und festhalten, was sie teuer machte. Für #570 liegen die Einzelläufe in den Daten; dort mit dem Notify-Child #810 beginnen.",
       "findings": [
         "F4"
       ]
     },
     {
-      "title": "Rückläufer-Schleifen begrenzen",
-      "text": "Schickt das Build-Review ein Child mehrfach zurück, wie #596, #771 und #776, soll nach einer festen Zahl von Runden ein Hold eine Person fragen. Die Hand-Commits in pulse-api neben das jeweilige Review-Ergebnis legen. So zeigt sich, was das Review hätte finden sollen.",
+      "title": "Holds im Build-Review auswerten",
+      "text": "Für #819 und #892 festhalten, welche Entscheidung der Hold im Build-Review verlangte. Prüfen, ob dieser Hold die feste Grenze für Rückläufer-Runden ist; wenn nicht, eine solche Grenze einführen, wie sie #596 gebraucht hätte. Die Hand-Commits in pulse-api neben das jeweilige Review-Ergebnis legen.",
       "findings": [
         "F5"
       ]
     },
     {
       "title": "Fehlschläge vor dem Build klären",
-      "text": "Die Ursache der fehlgeschlagenen Vorbereitung bei #671 und #751 festhalten. Weil bei jedem betroffenen Issue ein Merge-Konflikt folgte, prüfen, ob die Vorbereitung an einem veralteten Branch scheitert. Die neuen fehlgeschlagenen Actions-Läufe einzeln den Workflows zuordnen.",
+      "text": "Die Ursache der fehlgeschlagenen Vorbereitung bei #787 und #809 festhalten; bei #787 schlug sie zweimal fehl. Weil bei jedem betroffenen Issue ein Merge-Konflikt folgte, prüfen, ob die Vorbereitung an einem veralteten Branch scheitert. Die neuen fehlgeschlagenen Actions-Läufe einzeln den Workflows zuordnen.",
       "findings": [
         "F6"
       ]
