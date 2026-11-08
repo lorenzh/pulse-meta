@@ -10,7 +10,7 @@
         "AGENTS.md"
       ],
       "behaviorChange": false,
-      "spec": "## Repository: console — Files, proposed entry, existing-text/creation instructions, checks and completion evidence; Required behavior: The common entry and The console entry; Acceptance evidence 1-6; Non-goals, Risks and impact statements. Document reuse of src/html.ts, src/states.ts, @lorenzh/pulse-kit, test/ and test/rendered-audit.ts without changing those modules. Also implement The console entry: *-pages.ts are pure (data in, markup out, no I/O); all eight helper categories come from shared helpers, never a screen-local copy, with missing helpers added there with tests in future changes. Every page-rendering src/server.*.test.ts must run expectCalloutsOnly on the rendered body. Document these rules only; no helper extraction or test retrofit in this feature. Add ## Code conventions directly after ## Code design; extend a section already present on current main instead of adding a duplicate.",
+      "spec": "## Repository: console — Files, proposed entry, checks and completion evidence; Required behavior: The common entry and The console entry; Acceptance evidence 1-6; Non-goals, Risks and impact statements. Document reuse of src/html.ts, src/states.ts, @lorenzh/pulse-kit, test/ and test/rendered-audit.ts without changing those modules. Also implement The console entry: *-pages.ts are pure (data in, markup out, no I/O); all eight helper categories come from shared helpers, never a screen-local copy, with missing helpers added there with tests in future changes. Every page-rendering src/server.*.test.ts must run expectCalloutsOnly on the rendered body. Document these rules only; no helper extraction or test retrofit in this feature. Add ## Code conventions directly after ## Code design; extend a section already present on current main instead of adding a duplicate. Re-read current main before editing (inspected clone f0988d9); apply the Counterexamples to the entry.",
       "acceptance": [
         {
           "command": "git diff --name-only origin/main...HEAD",
@@ -22,7 +22,7 @@
         },
         {
           "command": "grep -Fc 'https://github.com/lorenzh/pulse-meta/blob/main/docs/code-conventions.md' AGENTS.md",
-          "expected": "prints 1 (at least one occurrence of the exact canonical meta URL is required)"
+          "expected": "prints an integer at least 1; the exact canonical meta URL is present"
         },
         {
           "command": "grep -c '^## Code conventions$' AGENTS.md",
@@ -37,12 +37,12 @@
           "expected": "Reading confirms: Add ## Code conventions directly after ## Code design; extend a section already present on current main instead of adding a duplicate. The entry names src/html.ts, src/states.ts, @lorenzh/pulse-kit, test/ and test/rendered-audit.ts; it requires searching before writing, extracting the second copy into a shared helper, and small pure functions with effects at the existing boundary. Common prose is at most three lines after the heading, and the complete console entry at most six lines of prose. It links the convention without copying its seven rules or examples, preserves all existing text and stricter rules, and adds no enforcement or refactor."
         },
         {
-          "command": "for term in '*-pages.ts' 'no I/O' 'inputs' 'selects' 'choices' 'field errors' 'tables' 'callouts' 'empty states' 'outcome pages' 'src/server.*.test.ts' 'expectCalloutsOnly' 'test/rendered-audit.ts'; do grep -Fi -- \"$term\" AGENTS.md || exit 1; done",
-          "expected": "exit 0; all 13 literal terms occur in the Code conventions entry (case-insensitive for Inputs). Reading confirms all eight categories use shared helpers in src/html.ts and src/states.ts, a screen writes no copy, missing helpers are added there with tests when needed, and every page-rendering src/server.*.test.ts runs expectCalloutsOnly from test/rendered-audit.ts on the rendered body. This checks the documented rule, not existing code compliance."
+          "command": "entry=$(awk '/^## Code conventions$/{show=1;next} show && /^## /{exit} show' AGENTS.md) && for term in '*-pages.ts' 'no I/O' 'inputs' 'selects' 'choices' 'field errors' 'tables' 'callouts' 'empty states' 'outcome pages' 'src/server.*.test.ts' 'expectCalloutsOnly' 'test/rendered-audit.ts'; do printf '%s\\n' \"$entry\" | grep -Fi -- \"$term\" || exit 1; done",
+          "expected": "exit 0; all 13 literal terms occur in the Code conventions entry (case-insensitive for Inputs). Reading confirms all eight categories use shared helpers in src/html.ts and src/states.ts, a screen writes no copy, missing helpers are added there with tests when needed, and every page-rendering src/server.*.test.ts runs expectCalloutsOnly from test/rendered-audit.ts on the rendered body. This checks the documented rule, not existing code compliance. Reading explicitly rejects any entry that permits *-pages.ts to load data, call the API client or read process.env: these modules must be pure, data in and markup out, with no I/O."
         },
         {
           "command": "bun run check",
-          "expected": "exit 0 using the existing unchanged package.json check script; report any unrelated baseline failure as a known limit without fixing out-of-scope files"
+          "expected": "exit 0 using the unchanged package.json:18 check script; report an unrelated baseline failure as a known limit without fixing out-of-scope files"
         },
         {
           "command": "git status --short",
