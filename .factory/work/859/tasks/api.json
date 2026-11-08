@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reload documentation matches existing behavior and unused config paths are removed",
+      "files": [
+        "docs/operation.md",
+        "src/config-reload.ts",
+        "src/config.ts",
+        "src/config-write.ts",
+        "src/config.test.ts",
+        "src/config.maintenance.test.ts",
+        "src/config.examples.test.ts",
+        "src/config-reload.test.ts",
+        "src/config-reload.initial.test.ts"
+      ],
+      "behaviorChange": false,
+      "spec": "## Repository: api, implementation steps 1-4 and Acceptance A0-A7; Required behavior R1-R7; Security impact; Performance impact; Completion evidence (PR body)",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD && git status --porcelain && bun --version",
+          "expected": "Before the first edit, record the clean implementation BASE and API checkout path outside the repository; use that same BASE for every comparison. Bun is 1.4.0. Planning BASE is 515031bd3fd2aa6b8993e325b24ab08f4a3510d6; if implementation BASE differs, repeat all A0 controls before relying on the recorded values. Materialize the plan's structural.sh, sighup.sh, gate.sh, fixture.sh, exact nine-path allowed.txt, full protected.txt and exact R1 paragraph in /tmp/v859/r1.txt using file tools. Scripts/data stay outside the target; use file tools for edits, never shell redirection or heredocs to create/edit files. In subsequent commands API is the implementation checkout, BASE is the recorded implementation base, and /tmp/v859/base is a disposable checkout of that base with the same frozen dependencies. Stop and report any unreproduced baseline control instead of changing expected values. Never weaken tooling or skip commit hooks."
+        },
+        {
+          "command": "for run in 1 2 3; do bun test --config=/dev/null src/config.test.ts src/config.maintenance.test.ts src/config.examples.test.ts src/config-reload.test.ts src/config-fs.test.ts src/config-file-state.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts src/config-admin.test.ts src/config-db.test.ts src/config-export.test.ts || exit; done",
+          "expected": "A0 C1, on clean BASE before edits: each of three runs exits 0 with 194 pass, 0 fail, Ran 194 tests across 11 files. Focused runs use --config=/dev/null, the empty configuration verified on BASE; no known-flaky file is a mandatory baseline control. Full-suite coverage remains enforced by bun run check."
+        },
+        {
+          "command": "for run in 1 2 3; do bun run check || exit; done",
+          "expected": "A0 C2, on clean BASE before edits: all three runs exit 0, each 900 pass, 0 fail, All files line coverage 97.82. Lint, typecheck and tests all pass with the pinned tooling. Record the counts and coverage per run."
+        },
+        {
+          "command": "for run in 1 2 3; do bash /tmp/v859/structural.sh \"$API\" /tmp/v859/r1.txt || exit; done",
+          "expected": "A0 C3, before edits: all three runs produce S1 lines=16 exit=0; S2 2/0; S3 8/0; S4 1/0; S5 1/0; S6 0/1; S7 0/1; S8 3/0; S9 2/0; S10 5/0. Use the A1 reference commands verbatim, including literal unescaped backticks in S4's single-quoted old sentence. Counts are matching lines; search exit 1 means absence, not an execution failure."
+        },
+        {
+          "command": "for run in 1 2 3; do bash /tmp/v859/sighup.sh \"$API\" || exit; done",
+          "expected": "A0 C4 on BASE before edits, and A5 again on the final branch after A2: three runs at each revision match the same seven-step table. Through bun start, isolate inherited settings and use a temporary database/checks file, PORT=0, PULSE_CHECKS_RELOAD_INTERVAL_MS=1000 and a fresh openssl rand -hex 32 token, never unchanged tokens.example.json. Wait for the listening log and /readyz 200 before signals; find the actual listening service PID, not the wrapper. Steps ready, valid SIGHUP delivery control, invalid poll, first invalid SIGHUP, second invalid SIGHUP, restored-valid poll, final valid SIGHUP give cumulative ok/invalid/error respectively 0/0/0, 1/0/0, 1/1/0, 1/1/0, 1/1/0, 2/1/0, 3/1/0. Rejected-line counts are 0,0,1,1,1,1,1; effective ids are api,web throughout. Each signal command succeeds separately with bounded waits. Exactly one rejected line reads config reload rejected: <T>/checks.json: checks[0].url: must be an http: or https: URL. Token occurrences in logs: 0. TERM exits 0 with no leftover service or child process; clean up temporary data. Compare every printed state with these literals, including absent zero-valued series. Record commands and sanitized output without tokens."
+        },
+        {
+          "command": "for run in 1 2 3; do bash /tmp/v859/fixture.sh \"$API\" \"$BASE\" /tmp/v859/gate.sh /tmp/v859/allowed.txt /tmp/v859/protected.txt || exit; done",
+          "expected": "A0 C5 and A6: three disposable-fixture runs outside the target, every F0-F8 line starts with ok. F0 allowed change only: gate 0. F1 protected committed: gate 1, commits+protected failures. F2 protected staged: gate 1, index+status. F3 protected unstaged: gate 1, worktree+status. F4 untracked file: gate 1, status. F5 stage protected change then restore only worktree bytes to BASE: gate 1, index+worktree+status. F6 commit protected change then restore only worktree bytes to BASE: gate 1, commits+worktree+status+protected. F7 unlisted committed path: gate 1, commits. F8 one allowed path left unchanged: gate 1, commits. Both restored-worktree tricks must fail despite worktree bytes matching BASE. Save per-state status/exit evidence and remove all fixture clones/data."
+        },
+        {
+          "command": "git diff --unified=5 \"$BASE\" HEAD -- src/config-reload.ts src/config.ts src/config-write.ts src/config.test.ts src/config.maintenance.test.ts src/config.examples.test.ts",
+          "expected": "R2-R5: remove loadInitialConfig and its comment; remove config.ts readJson, parseFile and its comment, loadConfig, loadChecks, and the stale parseConfigText comment reference. Retain readFileSync for readTokensJson and every still-used import, including Check. Remove only the three migrated loader tests and imports used solely by them; every other test in those three old suites stays byte-identical. In config-write.ts, FileKind is exactly component, LIST_KEY only maps component to components, listKey returns components, replacement assigns given directly, and keepSecret/referenceOf/check deletion and response branches are gone. entityOf directly returns the component entity after its delete guard; no one-case switch. Update the writer kind/ref/audit-id comments as R4 specifies. Keep ConfigKind, checkView, configView, validated, the component incident guard, revision checks, lock, pending audit, exclusive temp/data+directory fsync/rename/adopt and failure handling unchanged. Live reload code, startup fallback, log text, metrics and signal wiring are unchanged; no production export solely for testing."
+        },
+        {
+          "command": "bash /tmp/v859/structural.sh \"$API\" /tmp/v859/r1.txt && git diff --numstat \"$BASE\" HEAD -- docs/operation.md",
+          "expected": "A1 on final branch: S1-S5 each lines=0 exit=1; S6 lines=1 exit=0 at line 228; S7 lines=1 exit=0; S8 lines=3 exit=0; S9 lines=2 exit=0; S10 lines=5 exit=0. R1 pattern is copied from the spec, never derived from docs/operation.md. S6 proves the exact canonical paragraph about shared warning-line memory, suppression even for changed bytes, different rejection, valid-apply reset and unchanged forced-read semantics. Operation numstat is exactly 1 insertion, 1 deletion, docs/operation.md; only line 228 changes. Caller/title/comment searches contain none of the removed loader names or writer branches. Structural absence/exact-new-line assertions S1-S7 fail on BASE for their stated reasons; the runtime characterization tests pass there."
+        },
+        {
+          "command": "bun test --config=/dev/null src/config.test.ts src/config.maintenance.test.ts src/config.examples.test.ts src/config-reload.test.ts src/config-reload.initial.test.ts src/config-fs.test.ts src/config-file-state.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts src/config-admin.test.ts src/config-db.test.ts src/config-export.test.ts",
+          "expected": "A2 and R5-R6: exit 0, 0 fail. Report the pass count and all added test names. R5 uses readInitialConfig(nodeConfigFs, path), real files in its own mkdtemp removed by onTestFinished, and fixed expectations: successful checks [{id:a,name:A,url:http://localhost:1/,intervalMs:1000,retries:0,retryDelayMs:1000}], components [], maintenance tuples [[a,1893463200000,1893466800000]], sha256 revision matching /^sha256-[0-9a-f]{64}$/. Both malformed JSON inputs return ok=false/state=invalid/message=checks file is not valid JSON/ConfigError, error text checks file <path> is not valid JSON and neither HSEC nor BSEC. Missing file returns unreadable, cannot read the file (ENOENT), ConfigError text cannot read checks file <path>: ENOENT and undefined stampKey. Checked-in example returns invalid with checks[6].secret still has the example placeholder secret and no placeholder value. R6 uses fake fs/log/metrics/apply, now=0 and existing PATH/VALID/INITIAL, with the exact REJECT_URL and REJECT_INTERVAL lines in the spec. Invalid poll plus two forced reloads leaves [REJECT_URL], [invalid], INITIAL revision and 0 applies; new bytes/stamp with the same rejection leaves counts unchanged. Different message then valid then original rejection yields [REJECT_URL,REJECT_INTERVAL,REJECT_URL], [invalid,invalid,ok,invalid] and 1 apply. EACCES poll plus two forced reloads logs exactly config reload rejected: /etc/pulse/checks.json: cannot read the file (EACCES), records [invalid], reads 3 times and leaks no error-message text. Preserve other parser/token/example/retry/error-metric assertions."
+        },
+        {
+          "command": "bun test --config=/dev/null src/config.test.ts src/config.maintenance.test.ts src/config.examples.test.ts src/config-reload.test.ts src/config-reload.initial.test.ts",
+          "expected": "A2 characterization control: run once more in the disposable BASE checkout after copying only the new/changed test files there using file tools, leaving production source at the recorded BASE. Exit 0, 0 fail. Record the revision, count and names. These tests characterize existing behavior and are not claimed as failing-on-BASE regressions. Delete the scratch checkout after evidence and performance collection."
+        },
+        {
+          "command": "bun run check",
+          "expected": "A2 on final implementation: exit 0, 0 fail; lint, typecheck and full tests pass, including protected database check-write and component validation/revision/redaction/crash/audit controls. Line coverage is at least 80%; report the actual pass count and All files coverage line. The plan's trial 903 pass and 97.97% are historical evidence, not a mandated final test count. Keep bunfig.toml thresholds, all tooling/dependency pins and hooks unchanged. Compose end-to-end setups live in pulse-deploy; no compose check is specified for this API-only change."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD -- docs/operation.md src/config-reload.ts src/config.ts src/config-write.ts src/config.test.ts src/config.maintenance.test.ts src/config.examples.test.ts src/config-reload.test.ts src/config-reload.initial.test.ts",
+          "expected": "A3: personally read every added line, including inline comments in all changed files. The new src/config-reload.initial.test.ts contains exactly one comment line naming the class and expected outcome and no other comments. List every added comment in the PR body, including modified production comments and any inline ones; write none only after the full read and only if there are none."
+        },
+        {
+          "command": "git grep -n -i -E 'reload|sighup|loadinitialconfig|loadconfig|loadchecks|writer|atomic|checks.*(file|database)|components.*file|log(ged)? it again|reload_total' -- README.md docs",
+          "expected": "A4/R7 complete document inventory, identical to the plan and issue review: docs/operation.md changed at line 228 only; retain surrounding relevant lines 7,128,215,219,226,230,232,234,249,263. README.md unchanged and still true at 11 and 58 (database check writes/file components; polling/SIGHUP); docs/concepts.md unchanged and still true at 46 and 124 (applied windows/two sources); docs/configuration.md unchanged and still true at 3,14,44,94,200,216,231 (runtime reload, interval, validation); docs/install.md unchanged and still true at 47 (atomic replace/directory mount); docs/troubleshooting.md unchanged and still true for this correction at 50,139,147,163 (safe startup read error, secret apply, reload/retry); docs/rest-api.md unchanged and still true at 421,437,441,473 (database checks/windows, component file writes/parsers/transactions), while 542,569,589 are client reloads; docs/development.md unchanged and still true at 27 (parser layout); docs/index.md unchanged and still true at 5-11 (links, no hit). No README change is needed because inaccurate prose and unused internal paths change no runtime behavior, setting, endpoint or public type. Exactly 84 matching lines across 8 files: README 3, concepts 2, configuration 15, development 2, install 3, operation 28, rest-api 21, troubleshooting 10; index 0. Read all relevant hits against the corrected paragraph and list the lines read in the PR; no document contradicts the corrected warning semantics. The pre-existing maintenance-write wording at troubleshooting:163 remains an explicitly recorded out-of-scope limit. All eight unchanged documents stay byte-identical to BASE under A6."
+        },
+        {
+          "command": "bun test --config=/dev/null src/check-write.security.test.ts src/config-admin.test.ts src/config-db.test.ts src/config-write.audit.test.ts src/config-write.crash.test.ts src/config-fs.test.ts src/config-reload.test.ts src/config-reload.initial.test.ts",
+          "expected": "Security-impact checklist: exit 0, 0 fail. Review diff plus evidence for no secrets in error/log/response text, unchanged atomic/path-safe component writes, parser validation, auth ordering/status codes, body/size limits and dependency pins. Keep the live database heartbeat digests/keep markers and checkView/configView redaction. Carry the plan's hostile-input checks into security handoff: heartbeat-shaped component body is rejected; PUT and DELETE for a file-only check id each answer 409 via the database writer and never rewrite the file; malformed file with secret-like values at startup and SIGHUP leaks none. Record checks/results and any limits; no changes outside the nine-file scope."
+        },
+        {
+          "command": "bash /tmp/v859/gate.sh \"$API\" \"$BASE\" /tmp/v859/allowed.txt /tmp/v859/protected.txt",
+          "expected": "A6 after the last implementation commit: exit 0. Independently require git diff --name-only \"$BASE\" HEAD equals exactly the task's nine files (sorted), git diff --name-only --cached empty, git diff --name-only empty, git status --porcelain empty, and git diff --exit-code \"$BASE\" HEAD -- <protected files> exits 0. allowed.txt is exactly files above, including the new test; reject any other path. protected.txt explicitly contains README.md, docs/concepts.md, docs/configuration.md, docs/install.md, docs/troubleshooting.md, docs/rest-api.md, docs/development.md, docs/index.md, AGENTS.md, CLAUDE.md, src/admin-routes.ts, src/start.ts, src/main.ts, src/config-fs.ts, src/config-holder.ts, src/check-write.ts, src/check-store.ts, src/maintenance-write.ts, src/maintenance-store.ts, src/effective-checks.ts, src/effective-maintenance.ts, src/audit-log.ts, src/metrics.ts, src/tokens.ts, src/admin-tokens.ts, src/config-write.audit.test.ts, src/config-write.crash.test.ts, src/config-admin.test.ts, src/config-fs.test.ts, checks.example.json, tokens.example.json, admin-tokens.example.json, package.json, bun.lock, bunfig.toml, biome.json, tsconfig.json, eslint.config.js, lefthook.yml, .github/workflows/ci.yml, Dockerfile, bench/budgets.json. Compare protected paths against actual implementation BASE, not the previous commit. Save gate and the three F0-F8 fixture runs. No verification artifact remains in the target."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "A7 information only: use identical Bun 1.4.0/frozen dependencies in BASE and branch checkouts, at least three interleaved pairs in order base,branch,base,branch,base,branch. Record revisions, command, pass counts, raw user+system CPU samples, medians and delta; shared-machine noise is a known limit and the delta is not a pass gate. Do not run bun bench/run.ts or Docker bench because of #834's host port collision."
+        },
+        {
+          "command": "git log --format='%h %s' \"$BASE\"..HEAD && git diff --stat \"$BASE\" HEAD && git status --porcelain",
+          "expected": "Completion evidence in the PR body: Closes lorenzh/pulse-meta#<child>; recorded BASE; all A0 controls with three results each; A1 branch search table; A2 actual counts, added test names and coverage line plus BASE-source characterization; A3 full added-comment list; A4 complete nine-document inventory/dispositions and lines read; A5 three sanitized runtime runs with readiness/delivery/shutdown controls; A6 clean final gate plus three fixture outputs; A7 interleaved raw samples, medians and delta; security checklist/evidence; known limits (unchanged troubleshooting:163 and noisy shared machine). Conventional Commit subjects, hooks retained, no uncommitted changes and no extra tracked files."
+        }
+      ]
+    }
+  ]
+}
