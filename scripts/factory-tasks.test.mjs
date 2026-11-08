@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { markerLine, runMarkerLine } from '@paragondata/factory-app';
 import { checkDir, events, progress, sectionFiles, validateTaskFile } from './factory-tasks.mjs';
 
 const BOT = 'pulse-factory[bot]';
@@ -166,4 +167,27 @@ test('checkDir: one task file per target, Files: coverage, no extra file', () =>
   writeFileSync(join(dir, 'tasks/web.json'), JSON.stringify({ ...doc(final('T1', ['public/x.js'])), target: 'web' }));
   rmSync(join(dir, 'tasks/old.json'));
   assert.deepEqual(checkDir(dir), []);
+});
+
+// Factory 0.10 with --run-url writes v4 records; the line comes from the installed CLI's serializer.
+const claim4 = (state) => ({ kind: 'claim', run: '900-1', generation: 1, base: 0, depth: 0, workflow: 'build', state,
+  admission: 'label', harness: 'claude', model: 'implementer', runUrl: 'https://github.com/lorenzh/pulse-meta/actions/runs/900' });
+const run4 = (state, reason, states, message = 'done') => ({
+  login: BOT,
+  body: `Factory ran build/${state}.\n\n${message}\n\nToken usage: 1 total.\n\nFactory finished the state.\n` +
+    runMarkerLine(claim4(state), { kind: 'done', run: '900-1', generation: 1, depth: 0, workflow: 'build', states,
+      statuses: [], complete: false, next: true, reason, usage: { total: 1 } }),
+});
+const failure4 = { login: BOT, body: `Factory run 900-1 failed with HARNESS_TIMEOUT.\n${markerLine({ kind: 'failure', run: '900-1', generation: 1, code: 'HARNESS_TIMEOUT' })}` };
+
+test('v4 run records count like v3 ones, also mixed on one issue', () => {
+  assert.match(run4('implement', 'transition', ['task-review']).body, /<!-- factory-record v4 \{"kind":"run",/);
+  const v4only = status(three, [run4('implement', 'transition', ['task-review']),
+    run4('task-review', 'transition', ['implement'], `ok\n\ntask-accepted: T1 @ ${SHA1}`)]);
+  assert.deepEqual([v4only.status, v4only.next, v4only.taskBase], ['open', 'T2', SHA1]);
+  const mixed = status(three, [toTaskReview, accept('T1', SHA1), failure4,
+    run4('implement', 'transition', ['task-review']), run4('task-review', 'transition', ['implement'], `ok\n\ntask-accepted: T2 @ ${SHA2}`)]);
+  assert.deepEqual([mixed.status, mixed.next, mixed.taskBase], ['final', 'T3', SHA2]);
+  const rejected = status(three, [toTaskReview, run4('task-review', 'transition', ['implement'], 'defect\n\ntask-rejected: T1')]);
+  assert.deepEqual([rejected.status, rejected.next], ['fix-task', 'T1']);
 });

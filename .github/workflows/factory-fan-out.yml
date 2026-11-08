@@ -52,7 +52,7 @@ jobs:
 
       - name: Check the CLI minor line
         env:
-          FACTORY_CLI_MINOR: "0.8"
+          FACTORY_CLI_MINOR: "0.10"
         run: |
           installed="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js --version)"
           if [[ "${installed%.*}" != "$FACTORY_CLI_MINOR" || ! "${installed##*.}" =~ ^(0|[1-9][0-9]*)$ ]]; then

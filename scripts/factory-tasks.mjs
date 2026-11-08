@@ -20,7 +20,7 @@ export const MAX_TASKS = 8;
 export const MAX_REJECTIONS = 3; // the third rejection of one task becomes a hold
 export const MAX_RETRIES = 2; // more retries of one task make it stuck
 const TASK_KEYS = ['id', 'kind', 'title', 'files', 'behaviorChange', 'acceptance', 'spec'];
-const RECORD = /<!-- factory-record v3 (\{.*\}) -->/;
+const RECORD = /<!-- factory-record v[34] (\{.*\}) -->/; // v4 since 0.10 (run link); old issues keep v3
 const VERDICT = /^task-(accepted|rejected): (T[1-9]\d*)(?: @ ([0-9a-f]{40}))?\s*$/;
 const CARRIED = /^task-carried: (T[1-9]\d*) @ ([0-9a-f]{40})\s*$/gm; // the owner's line for a task whose records GitHub hides
 
