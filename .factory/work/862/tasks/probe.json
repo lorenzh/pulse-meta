@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Reject header-incompatible locations before startup and preserve accepted location identity",
+      "files": [
+        "src/location.ts",
+        "src/location.test.ts",
+        "src/settings.test.ts",
+        "src/check.test.ts",
+        "src/main.test.ts",
+        "docs/configuration.md",
+        "docs/troubleshooting.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe — all Behavior, Tests, Docs and Completion evidence bullets; ## Required behavior steps 1–4 and startup boundary; ## Counterexamples; ## Acceptance evidence checks 1–5; ## Security impact checklist and ## Rollout order migration guidance. Write the refused-input regressions first and record their failure before changing src/location.ts. Keep the existing settings/startup/check wiring and dependency pins.",
+      "acceptance": [
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "Before the production fix, record the red run: new refused-input parser/settings and child-process assertions fail because main accepts the inputs, not because of coverage or setup. Accepted-location HTTP controls still pass. Bound child waits and always clean up children and local servers; test NUL only in-process. Report this baseline evidence in the pull request."
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts",
+          "expected": "After the fix, 0 test failures: every row of ## Counterexamples is covered with literal expectations, including forbidden controls, DEL, code units above U+00FF, surrogate pairs/halves, trim/default behavior, case, punctuation, internal tab/space, Latin-1 and the 64/65 UTF-16-unit boundary. Length is checked before characters and retains 'PULSE_LOCATION is longer than 64 characters'. Refused character inputs give exactly 'PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 (U+0080 to U+00FF) characters'; settings wraps this as StartupError without newline, input fragments or tok-secret. Focused runs may fail only the global coverage threshold; that gate belongs to bun run check."
+        },
+        {
+          "command": "bun test src/check.test.ts",
+          "expected": "0 test failures: real fetch to servers on 127.0.0.1:0 with parseLocation(' Zürich 1 ') and parseLocation('Eu-West') gives status 'up', statusCode 200 and literal locations 'Zürich 1' and 'Eu-West'; peers receive literal User-Agent values 'pulse-probe (Zürich 1)' and 'pulse-probe (Eu-West)'. Focused coverage alone is not the acceptance result."
+        },
+        {
+          "command": "bun test src/main.test.ts",
+          "expected": "0 test failures: each environment-representable refused-location child exits 2 promptly, emits exactly one stderr line 'pulse-probe: PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 (U+0080 to U+00FF) characters', emits empty stdout, leaks neither SENTINEL nor marker and makes 0 API requests before any check or result post. Settings validation precedes health binding. The accepted ' Zürich 1 ' child completes the local HTTP check, posts status 'up' with location 'Zürich 1', sends literal User-Agent 'pulse-probe (Zürich 1)' and exits 0 on SIGTERM. These child/fake-peer tests provide the local end-to-end coverage; probe has no compose end-to-end suite. Focused coverage alone is not the acceptance result."
+        },
+        {
+          "command": "bun test src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts",
+          "expected": "After the fix, all four focused suites have 0 test failures, including the formerly red refused-input cases and accepted-location controls. The full-suite coverage gate is checked separately."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0: repository lint, typecheck and the full test suite pass with at least 80% line coverage; existing scheduling, authentication, TCP and other check tests stay green."
+        },
+        {
+          "command": "PULSE_PROBE_TOKEN=x PULSE_LOCATION=\"$(printf 'a\\001b')\" bun run start",
+          "expected": "Exit 2 with the one diagnostic 'pulse-probe: PULSE_LOCATION must hold only tab, space, visible ASCII or Latin-1 (U+0080 to U+00FF) characters'; no supplied setting value or token is printed and checks do not start. Report the manual command and result in the pull request."
+        },
+        {
+          "command": "PULSE_PROBE_TOKEN=x PULSE_LOCATION=default bun run start",
+          "expected": "The default location starts as before without a PULSE_LOCATION error; stop the process with SIGTERM and observe exit 0. Use only local fake peers for any API/check exercise. Report the manual command and result in the pull request."
+        },
+        {
+          "command": "git diff --check && git diff --stat && git diff -- src/location.ts src/location.test.ts src/settings.test.ts src/check.test.ts src/main.test.ts docs/configuration.md docs/troubleshooting.md README.md",
+          "expected": "Exit 0 for whitespace checks; review confirms only the eight planned paths change. Against ## Required behavior and ## Security impact, the rule runs after trim/default and length, accepts only U+0009, U+0020–U+007E and U+0080–U+00FF, preserves accepted strings/userAgent/result identity, and prevents invalid values reaching fetch with fixed value-free errors. A one-line code comment explains HTTP field compatibility. Against the Docs bullets, configuration table/Location, migration note, troubleshooting heading and README link document the exact rule/error, exit 2, and renaming refused locations in both probe and API token. No scheduling, retry, authentication, quorum, contract or dependency changes. The pull request reports red/green, full checks, manual results, applicable security checklist conclusions and known limits as required by Completion evidence."
+        }
+      ]
+    }
+  ]
+}
