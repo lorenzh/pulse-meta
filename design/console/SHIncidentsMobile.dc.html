@@ -31,7 +31,17 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <a class="la-btn la-btn--primary" href="SHComposerMobile.dc.html" style="width: 100%;">Declare incident</a>
 
 <section class="stack" style="gap: 10px;" aria-labelledby="mo-h">
-<h2 class="eb" id="mo-h">Open · 2</h2>
+<h2 class="eb" id="mo-h">Open · 4</h2>
+<a href="SHContainerCheckDetail.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none; border-color: var(--error);">
+<span class="row"><span class="mono" style="font-size: 13px; color: var(--muted);">#145</span><span class="la-badge la-badge--error">major</span><span class="la-badge">automatic · read-only</span></span>
+<span style="font-size: 17px; font-weight: 600;">web on app-01 is down</span>
+<span class="spread"><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Open</span></span><span class="lbl">since 14:09 · exited (137)</span></span>
+</a>
+<a href="SHHostCheckDetail.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none; border-color: var(--warning);">
+<span class="row"><span class="mono" style="font-size: 13px; color: var(--muted);">#144</span><span class="la-badge">minor</span><span class="la-badge">automatic · read-only</span></span>
+<span style="font-size: 17px; font-weight: 600;">app-01 swap above 90%</span>
+<span class="spread"><span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Open</span></span><span class="lbl">since 14:08 · swap 97%</span></span>
+</a>
 <a href="SHIncidentDetailMobile.dc.html" class="la-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none; border-color: var(--warning);">
 <span class="row"><span class="mono" style="font-size: 13px; color: var(--muted);">#143</span><span class="la-badge">minor</span><span class="la-badge">manual</span></span>
 <span style="font-size: 17px; font-weight: 600;">Card payments are slower than usual</span>
@@ -57,7 +67,7 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <nav class="mb-tabs" aria-label="Main">
 <a href="SHOverviewMobile.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
 <a href="SHChecks.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks</a>
-<a href="SHIncidentsMobile.dc.html" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents · 2</a>
+<a href="SHIncidentsMobile.dc.html" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents · 4</a>
 <a href="SHSystem.dc.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
 </nav>
 </div>

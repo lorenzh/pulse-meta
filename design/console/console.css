@@ -411,3 +411,39 @@ body:has([data-theme="dark"]){background:#271b32}
 .la-shell--narrow .page-head > .stack-8 > .row,.la-shell--narrow .page-head > .stack-8 > .row-12{flex-wrap:wrap}
 .la-shell--narrow .page-head > .stack-8 .lbl{white-space:normal}
 .dt-checks td:first-child .la-status__label{white-space:normal}
+
+/* host and container checks (#836, #839): threshold rows, meter list, key values, secret field.
+   System candidates: ThresholdEditor, Meter list, KeyValueList, SecretField. */
+.thr{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.thr__head,.thr__row{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center}
+.thr__head{font:500 var(--fs-label)/16px var(--font-sans);color:var(--muted)}
+.thr__row .la-select,.thr__row .la-input-wrap{width:100%;min-width:0}
+.secfield{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.secfield .la-input{flex:1 1 240px;min-width:0}
+.la-shell--narrow .thr__head{display:none}
+.la-shell--narrow .thr__row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.la-shell--narrow .thr__row > :first-child{grid-column:1/-1}
+.la-shell--narrow .thr__row > .la-iconbtn{justify-self:end}
+.mts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px}
+.la-shell--narrow .mts{grid-template-columns:minmax(0,1fr)}
+.mt{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mt__top{display:flex;align-items:baseline;gap:12px;min-width:0}
+.mt__name{font:500 var(--fs-ui)/20px var(--font-sans);min-width:0;overflow-wrap:anywhere}
+.mt__val{margin-left:auto;font:600 var(--fs-ui)/20px var(--font-mono)}
+.mt__bar{position:relative;height:8px;border-radius:var(--radius-sm);background:var(--rule)}
+.mt__fill{display:block;height:100%;border-radius:var(--radius-sm);background:var(--status-up)}
+.mt__fill--warn{background:var(--status-degraded)}
+.mt--stale .mt__fill{background:var(--muted);opacity:.55}
+.mt__tick{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--status-degraded)}
+.mt__tick--down{background:var(--status-down)}
+.kvs{list-style:none;margin:0;padding:14px 0 0;border-top:1px solid var(--rule);display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px 24px}
+.kv{display:flex;flex-direction:column;gap:2px;min-width:0}
+.kv__k{font:400 var(--fs-label)/16px var(--font-sans);color:var(--muted)}
+.kv__v{font-size:var(--fs-ui);overflow-wrap:anywhere}
+.la-shell--narrow .page-head > .stack-8{flex:1 1 100%}
+.la-shell--narrow .page-head > .stack-8 > .row-12{flex:1 1 100%}
+
+/* identifiers and hostnames never break mid-word: one line, ellipsis, full text in the title */
+.ident,.dl dd.ident,.kv__v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dl dd.ident{display:block}
+.page-head > .stack-8 .ident{display:block}

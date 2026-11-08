@@ -22,8 +22,8 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <div class="pc" data-theme="{{theme}}" data-density="compact">
 <div class="la-shell la-shell--contained">
 <aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
-<a class="la-side__link" href="SHChecks.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
-<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">2 open</span></a>
+<a class="la-side__link" href="SHChecks.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
 <a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
 <p class="la-side__group">Instance</p>
 <a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
@@ -42,7 +42,7 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <div class="page-head">
 <div>
 <h1 class="page-title">Checks</h1>
-<p class="page-sub" title="35 checks · 31 from checks.json (read-only here), 4 created in the console (1 shadowed by checks.json) · 4 are heartbeats"><span class="mono">35</span> checks · <span class="mono">31</span> from checks.json (read-only here), <span class="mono">4</span> created in the console (<span class="mono">1</span> shadowed by checks.json) · <span class="mono">4</span> are heartbeats</p>
+<p class="page-sub" title="39 checks · 31 from checks.json (read-only here), 8 created in the console (1 shadowed by checks.json) · 4 are heartbeats, 1 is a host and 3 are containers"><span class="mono">39</span> checks · <span class="mono">31</span> from checks.json (read-only here), <span class="mono">8</span> created in the console (<span class="mono">1</span> shadowed by checks.json) · <span class="mono">4</span> are heartbeats, <span class="mono">1</span> is a host and <span class="mono">3</span> are containers</p>
 </div>
 <div class="row">
 <button type="button" class="la-btn la-btn--secondary">Export as checks.json</button>
@@ -66,10 +66,10 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <sc-if value="{{hasChecks}}" hint-placeholder-val="{{true}}">
 <div class="row-12" role="search" aria-label="Filter checks" style="gap: 12px 16px;">
 <label class="search" style="margin-left: 0; flex: 1 1 260px; max-width: 360px;"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Filter by name or address</span><input type="search" placeholder="Name or address"></label>
-<label class="sel-lab">Type <span class="la-select"><select onChange="{{setType}}"><option value="all">All types</option><option value="http">HTTP</option><option value="tls">TLS</option><option value="tcp">TCP</option><option value="dns">DNS</option><option value="domain">Domain</option><option value="heartbeat">Heartbeat</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Type <span class="la-select"><select onChange="{{setType}}"><option value="all">All types</option><option value="http">HTTP</option><option value="tls">TLS</option><option value="tcp">TCP</option><option value="dns">DNS</option><option value="domain">Domain</option><option value="host">Host</option><option value="container">Container</option><option value="heartbeat">Heartbeat</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
 <label class="sel-lab">Component <span class="la-select"><select onChange="{{setComp}}"><option value="all">All components</option><option>Website</option><option>Dashboard</option><option>API</option><option>Payments</option><option>Email delivery</option><option>Background jobs</option><option>Docs</option><option value="none">No component</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
-<label class="sel-lab">Source <span class="la-select"><select onChange="{{setSrc}}"><option value="all">All sources</option><option value="file">checks.json (read-only) · 31</option><option value="console">console (editable) · 4</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
-<label class="sel-lab">State <span class="la-select"><select onChange="{{pickState}}"><option value="all">Any state · 35</option><option value="down">Down · 1</option><option value="quorum">Failing at one location · 1</option><option value="up">Up · 31</option><option value="maint">Maintenance · 1</option><option value="shadow">Shadowed by checks.json · 1</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Source <span class="la-select"><select onChange="{{setSrc}}"><option value="all">All sources</option><option value="file">checks.json (read-only) · 31</option><option value="console">console (editable) · 8</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">State <span class="la-select"><select onChange="{{pickState}}"><option value="all">Any state · 39</option><option value="down">Down · 2</option><option value="degraded">Degraded · 1</option><option value="quorum">Failing at one location · 1</option><option value="up">Up · 33</option><option value="maint">Maintenance · 1</option><option value="shadow">Shadowed by checks.json · 1</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
 <span class="lbl" style="margin-left: auto;" role="status">{{shown}}</span>
 </div>
 
@@ -83,7 +83,7 @@ a{color:var(--accent-text)}a:hover{color:var(--text)}
 <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
 <tr>
 <td style="white-space: nowrap;"><span class="la-status la-status--dense {{r.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{r.state}}</span></span></td>
-<td class="tt"><a href="SHCheckDetail.dc.html">{{r.name}}</a><span class="sub" title="{{r.target}}">{{r.target}}</span></td>
+<td class="tt"><a href="{{r.href}}">{{r.name}}</a><span class="sub" title="{{r.target}}">{{r.target}}</span></td>
 <td><span class="la-badge tag--{{r.srcTone}}">{{r.src}}</span><span class="lbl" style="display: block;">{{r.srcNote}}</span></td>
 <td><span class="la-badge">{{r.type}}</span></td>
 <td>{{r.comp}}</td>
@@ -115,11 +115,13 @@ class Component extends DCLogic {
     const theme = this.state.theme ?? this.props.theme ?? 'light';
     const isDark = theme === 'dark';
     const S = {
-      up: ['Up', 'la-status--up'], down: ['Down', 'la-status--down'], quorum: ['Failing at 1 of 3', 'la-status--degraded'],
+      up: ['Up', 'la-status--up'], down: ['Down', 'la-status--down'], quorum: ['Failing at 1 of 3', 'la-status--degraded'], degraded: ['Degraded', 'la-status--degraded'],
       maint: ['Maintenance', 'la-status--maintenance'], shadow: ['Shadowed by checks.json', 'la-status--unknown']
     };
     const all = [
       ['down', 'Invoice export API', 'POST https://api.quillbird.example/v1/exports', 'http', 'API', 'office fsn-1 down · iad-1 up', '30s', '99.92%', 'timeout', '14:32:01 · timeout 10 s'],
+      ['down', 'web on app-01', 'container web · host check app-01', 'container', 'Website', 'via host app-01', '60s', '99.12%', '—', '14:32:04 · exited (137)'],
+      ['degraded', 'app-01', 'app-01.quillbird.example · agent', 'host', 'API', 'push agent', '60s', '99.71%', '—', '14:32:04 · swap 97% > 90%'],
       ['quorum', 'Docs site', 'GET https://docs.quillbird.example', 'http', 'Docs', 'iad-1 down · 2 up', '1m', '99.99%', '412 ms', '14:31:44 · 503 from iad-1'],
       ['maint', 'SMTP relay', 'smtp.quillbird.example:587', 'tcp', 'Email delivery', '3 locations', '1m', '99.97%', '38 ms', 'until 15:00 · maintenance window'],
       ['up', 'Website', 'GET https://quillbird.example', 'http', 'Website', '3 of 3 up', '30s', '99.98%', '148 ms', '14:32:04 · 200'],
@@ -145,6 +147,8 @@ class Component extends DCLogic {
       ['up', 'Invoice reminders', 'heartbeat · every 1 h · grace 10 min', 'heartbeat', 'Background jobs', 'ping', '1h', '100.00%', '—', '14:00:41 · ping received'],
       ['up', 'Ledger export', 'heartbeat · every 15 min · grace 5 min', 'heartbeat', 'Background jobs', 'ping', '15m', '99.97%', '—', '14:30:12 · ping received'],
       ['up', 'Search indexer', 'heartbeat · every 5 min · grace 2 min', 'heartbeat', 'Background jobs', 'ping', '5m', '99.95%', '—', '14:30:02 · ping received'],
+      ['up', 'api on app-01', 'container api · host check app-01', 'container', 'API', 'via host app-01', '60s', '99.97%', '—', '14:32:04 · running · healthy'],
+      ['up', 'worker on app-01', 'container worker · host check app-01', 'container', 'Background jobs', 'via host app-01', '60s', '99.90%', '—', '14:32:04 · running · 1 restart'],
       ['up', 'Postgres primary', 'db-1.internal:5432', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '30s', '100.00%', '2 ms', '14:32:00 · open'],
       ['up', 'Postgres replica', 'db-2.internal:5432', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '30s', '99.99%', '2 ms', '14:32:00 · open'],
       ['up', 'Redis', 'cache.internal:6379', 'tcp', 'Background jobs', '2 up · fsn-1 blocked', '1m', '100.00%', '1 ms', '14:31:30 · open'],
@@ -155,7 +159,7 @@ class Component extends DCLogic {
       ['up', 'Staging API', 'GET https://staging-api.quillbird.example/healthz', 'http', '—', '3 of 3 up', '1m', '99.64%', '91 ms', '14:31:49 · 200'],
       ['shadow', 'Changelog', 'GET https://quillbird.example/changelog', 'http', 'Docs', '—', '5m', '—', '—', 'id changelog is now in checks.json · not run']
     ];
-    const consoleNames = ['Staging app', 'Staging API', 'Bounce webhook'];
+    const consoleNames = ['Staging app', 'Staging API', 'Bounce webhook', 'app-01', 'web on app-01', 'api on app-01', 'worker on app-01'];
     const srcOf = (r) => (r[0] === 'shadow' || consoleNames.indexOf(r[1]) >= 0 ? 'console' : 'file');
     const example = this.props.example ?? 'list';
     const noChecks = example === 'no checks yet';
@@ -163,7 +167,8 @@ class Component extends DCLogic {
     const rows = noChecks ? [] : all.filter((r) => (type === 'all' || r[3] === type) && (st === 'all' || r[0] === st) && (src === 'all' || srcOf(r) === src) && (comp === 'all' || r[4] === comp || (comp === 'none' && r[4] === '—')))
       .map((r) => {
         const file = srcOf(r) === 'file';
-        return { state: S[r[0]][0], tone: S[r[0]][1], name: r[1], target: r[2], type: r[3], comp: r[4], loc: r[5].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '), every: r[6], up: r[7], p95: r[8], last: r[9].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '),
+        const href = r[1] === 'app-01' ? 'SHHostCheckDetail.dc.html' : (r[3] === 'container' ? 'SHContainer' + (r[1].indexOf('web ') === 0 ? '' : (r[1].indexOf('api ') === 0 ? 'Api' : 'Worker')) + 'CheckDetail.dc.html' : 'SHCheckDetail.dc.html');
+        return { state: S[r[0]][0], tone: S[r[0]][1], name: r[1], href, target: r[2], type: r[3], comp: r[4], loc: r[5].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '), every: r[6], up: r[7], p95: r[8], last: r[9].split(' · ').map((x) => (x.length <= 18 ? x.replace(/ /g, '\u00a0') : x)).join(' · '),
           src: file ? 'checks.json' : 'console', srcNote: file ? 'read-only' : (r[0] === 'shadow' ? 'Delete and Export only' : 'editable'), srcTone: file ? 'neutral' : 'accent2',
           shadow: r[0] === 'shadow', menu: r[0] !== 'shadow' };
       });
