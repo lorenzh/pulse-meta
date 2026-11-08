@@ -187,6 +187,11 @@ list of names and no fixed count.
   emits, and check every quoted text against a run of that validator (acceptance 6). A literal
   search of `src/` is not enough, because template messages such as the token limit do not
   appear in the source as written.
+- **Coverage in focused runs.** `bunfig.toml` applies its 0.8 line threshold to any `bun test`
+  run, also to a run of one file, which loads only part of `src/`. A focused run with that
+  config exits 1 even when every test passes. Focused runs (red and green) therefore use
+  `bun test --config=/dev/null <file>`. The coverage gate itself stays in the full-suite
+  `bun test` and `bun run check`, which use the unchanged `bunfig.toml`. See the tool facts.
 - **main moving.** If contract `main` advances past `96f33aa` before implementation, record the
   new `BASE`, re-enumerate the exports and the missing names, and document any new names too.
   The literal 49 list stays as the expected value only for `96f33aa`. For a newer base, the
@@ -246,6 +251,8 @@ wrong implementation would get it wrong.
 | Docs `` `StatusLockedField`s `` inside a code span that crosses a line break | documented | A code-span-only matcher reports it missing. A single-line span parser gave 50 instead of 49 on the base, and a multi-line one mis-pairs backticks around the fenced blocks. |
 | Base `96f33aa`, unchanged docs | fails with exactly the 49 names of the baseline table | Any other count shows a parser or matcher bug. |
 | Docs quote the token error of `subscriptionTokenRequestSchema` | `must be at most 128 characters`, the emitted message for a 129-character token (a 128-character token passes) | Quoting the template `must be at most ${TOKEN_MAX} characters`, or checking the text with `grep -F` over `src/`, which finds no match for the expanded text. |
+| Focused run `bun test test/docs-inventory.test.ts` with the repository `bunfig.toml` | not used as evidence: it exits 1 with `0 fail` on coverage alone (measured 49.95 % lines for a probe that imports `src/index.ts`); focused runs use `--config=/dev/null` | Reading that exit 1 as a red regression, or "fixing" it by lowering the threshold in `bunfig.toml`. |
+| Coverage switched off for the gate | `bun run check` keeps coverage on with the unchanged `bunfig.toml` | Adding `--config=/dev/null` or `coverage = false` to `package.json` or `bunfig.toml`. |
 
 There are no statistics in this change.
 
@@ -280,7 +287,26 @@ package metadata and the tooling config do not change.
   only `src` (`tsconfig.build.json` `include: ["src"]`, `rootDir: "src"`), so `dist/` is not
   affected.
 - Coverage: `bunfig.toml:2-4` sets coverage on, a line threshold of 0.8, and ignores `test/**`,
-  so the new file does not change the coverage denominator.
+  so the new file does not change the coverage denominator. `bunfig.toml` has no other keys
+  (`bunfig.toml:1-4` is the whole file).
+- Coverage in focused runs (measured with Bun 1.4.0 on a writable copy of `96f33aa`, with a
+  throwaway probe test that imports `src/index.ts`; the probe was deleted afterwards):
+  - `bun test <one file>` applies the 0.8 line threshold to only the source files that this one
+    file loads. The probe passed its assertions (`2 pass`, `0 fail`) but reported `All files`
+    49.95 % lines and exited 1. Bun prints no threshold message: exit 1 with `0 fail` is the
+    sign of a coverage exit.
+  - `--coverage` takes no value in Bun 1.4.0: `bun test --coverage=false …` exits 1 with
+    `error: The argument '--coverage' does not take a value.`
+  - `-c, --config=<val>` replaces `$cwd/bunfig.toml` (`bun test --help`).
+    `bun test --config=/dev/null <file>` loads no bunfig, so coverage is off. The probe exited 0
+    when its assertions passed and 1 with `1 fail` when one assertion failed, with no coverage
+    table. Because `bunfig.toml` holds only the three coverage keys, this flag drops only
+    coverage for that run.
+  - The full suite keeps the gate: `bun test` on the base with the probe added reported
+    `All files` 99.44 % lines; with one failing probe assertion it exited 1 with `1 fail`, and
+    with passing assertions it exited 0. Without the probe, `bun run check` on `96f33aa` exited 0
+    with `378 pass`, `0 fail`, `Ran 378 tests across 27 files`, and `git status --porcelain` and
+    `git diff -- dist` stayed empty.
 - Biome: `biome.json:2` extends `@lorenzh/pulse-config/biome.json`. At pin
   `51e95b0eb463b27a196a33b428607bd92443e4f0` (`package.json:32`, `ci.yml:17`) its
   `files.includes` (`:10-17`) lints `**` except `dist`, `node_modules`, `bun.lock`, `*.html` and
@@ -310,14 +336,20 @@ package metadata and the tooling config do not change.
    missing names. At `96f33aa` the expected values are literally 316 and the 49-name table
    above.
 3. Write `test/docs-inventory.test.ts` (red). Run it alone three times against the unchanged
-   `docs/index.md` of `BASE`: `bun test test/docs-inventory.test.ts`, three runs. Each run must
-   fail only on the inventory assertion, and the reported missing set must equal the
-   independent list of step 2. It must include `subscriptionRequestSchema`,
-   `subscriptionTokenRequestSchema`, `subscriptionAnswerSchema` and the 12 type names. All
-   fixture cases must pass in these runs: only the real-inventory assertion fails.
+   `docs/index.md` of `BASE`, with coverage off as described in "Coverage in focused runs":
+   `bun test --config=/dev/null test/docs-inventory.test.ts`, three runs. Each run must exit 1
+   with `1 fail`, and the one failing test is the real-inventory assertion. The reported
+   missing set must equal the independent list of step 2. It must include
+   `subscriptionRequestSchema`, `subscriptionTokenRequestSchema`, `subscriptionAnswerSchema`
+   and the 12 type names. All fixture cases and the runtime cross-check pass in these runs.
+   Then run the full suite once with the repository's `bunfig.toml` (coverage gate on):
+   `bun test` must also exit 1 with exactly `1 fail` (the same assertion) and `All files` line
+   coverage of at least 80 %. Never run the focused command with the repository `bunfig.toml`
+   and read its exit status: that run exits 1 on coverage alone (see the tool facts).
 4. Document the missing names in `docs/index.md` (green), then update `README.md` and
    `AGENTS.md`.
-5. Run `bun test test/docs-inventory.test.ts` and `bun run check`. Both pass.
+5. Run `bun test --config=/dev/null test/docs-inventory.test.ts` (exit 0, `0 fail`) and
+   `bun run check` (exit 0, coverage gate on through the unchanged `bunfig.toml`).
 6. Commit with a Conventional Commit subject (for example
    `docs: document every public export and check the inventory`).
 
@@ -326,25 +358,38 @@ package metadata and the tooling config do not change.
 Where each expected value comes from is stated in brackets.
 
 1. **Baseline control.** `bun run check` on `BASE` with lockfile-installed dependencies: the
-   result is recorded, and it passes on `96f33aa`. [The command's exit status on the base. If it
+   result is recorded, and it passes on `96f33aa` (this spec run measured exit 0 with
+   `Ran 378 tests across 27 files`, `0 fail`). [The command's exit status on the base. If it
    does not pass there, record the failure and do not claim it as a control.]
-2. **Regression.** `bun test test/docs-inventory.test.ts` with the new test on `BASE` docs fails
-   3 out of 3 runs. The missing names it reports equal the 49 names of the baseline table.
-   [Literal list in this spec, from an enumeration independent of the test.] Run this in an
-   isolated writable checkout of the implementation repository, never in `.repos/`. Copy in only
-   the new test file. A missing file, missing `node_modules` or a different failing assertion is
-   not regression evidence.
+2. **Regression.** In an isolated writable checkout of `BASE` (never in `.repos/`), with only
+   the new test file copied in:
+   - `bun test --config=/dev/null test/docs-inventory.test.ts` exits 1 with `1 fail` in 3 out of
+     3 runs. The failing test is the real-inventory assertion, and the missing names it reports
+     equal the 49 names of the baseline table. [Literal list in this spec, from an enumeration
+     independent of the test; `1 fail` is a literal.]
+   - One full-suite run `bun test` with the repository's `bunfig.toml` exits 1 with exactly
+     `1 fail` (the same assertion), and its `All files` line coverage is at least 80 %. [Literal
+     count and the threshold of `bunfig.toml:3`.]
+   - Not regression evidence: a missing file, missing `node_modules`, a different failing
+     assertion, or an exit 1 with `0 fail` (that is the coverage threshold of a focused run
+     without `--config=/dev/null`).
+   - Remove the copied test from the base checkout before the performance samples.
 3. **Fixtures.** Every fixture case of "Inventory test" item 7 passes, with literal expected
-   name lists and literal expected failures. [Literals written in the test, not computed by the
-   parser.]
+   name lists and literal expected failures, both in the red runs of acceptance 2 and in the
+   green runs of acceptance 5. [Literals written in the test, not computed by the parser.]
 4. **Runtime cross-check.** The assertion that every key of `import("../src/index.ts")` is
    discovered passes on the final commit. Its literal fixture (runtime `["a", "b"]`, discovered
    `["a"]`, which gives `["b"]`) passes. [The runtime module keys come from a source that does
    not depend on the parser. The fixture values are literals.]
-5. **Green.** On the final commit, `bun test test/docs-inventory.test.ts` passes. `bun run check`
-   passes, with the steps lint, build, typecheck and test (exit 0). The output of `bun run check`
-   shows `docs-inventory.test.ts` among the test files, which proves that `check` runs the
-   inventory assertion. [The commands' exit statuses.]
+5. **Green.** On the final commit:
+   - `bun test --config=/dev/null test/docs-inventory.test.ts` exits 0 with `0 fail`. This
+     focused run has coverage off on purpose; the coverage gate is checked by the next item.
+   - `bun run check` exits 0, with the steps lint, build, typecheck and test, and with the
+     unchanged `bunfig.toml` (coverage on, line threshold 0.8). Its output shows
+     `docs-inventory.test.ts` among the test files, which proves that `check` runs the inventory
+     assertion, and reports `0 fail` and more than 27 test files.
+   - `bunfig.toml` is unchanged (acceptance 8), so the coverage gate is not weakened.
+   [The commands' exit statuses; 27 is the literal file count of the base run.]
 6. **Docs content.** The 49 names (or the re-enumerated list for a newer base) each appear in
    `docs/index.md` with a short description and their type, signature or value. The three
    subscription schemas are named explicitly. `docs/index.md:10` ("Every type exported …") is
