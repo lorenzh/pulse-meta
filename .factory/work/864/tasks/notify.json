@@ -31,8 +31,12 @@
           "expected": "Per Performance impact's primary measurement in each changed repository, run three test suites per side on main and candidate on the same machine, reporting individual user+system sums and medians. Use bash builtin time, not /usr/bin/time; no extra test CPU is expected from this pin/docs adoption."
         },
         {
+          "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref notify=<pushed-branch-or-SHA> --rounds 1",
+          "expected": "Run if the child changes more than its pin and tests, per Performance impact. First clone pulse-api into <scratch>/pulse-api outside notify and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, --b-ref notify, --others-ref main and a publicly fetchable candidate ref. The feature's fallback supports contract, probe, status and notify only; never substitute console. Docker with Compose is required; report notify rows against the API-owned budgets."
+        },
+        {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",
-          "expected": "Whitespace exits 0 and repository-required CI checks pass. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records unchanged hostile-input-suite results, empty src diff and CPU medians; notify's #553 guards are retained."
+          "expected": "Whitespace exits 0 and repository-required CI checks pass. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records unchanged hostile-input-suite results, empty src diff, CPU medians and applicable fallback rows; notify's #553 guards are retained."
         }
       ]
     }

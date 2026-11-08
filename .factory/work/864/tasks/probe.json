@@ -32,7 +32,7 @@
         },
         {
           "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref probe=<pushed-branch-or-SHA> --rounds 1",
-          "expected": "Run if compatibility work changes more than the pin and tests. First clone pulse-api into <scratch>/pulse-api outside probe and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, target probe, --others-ref main and a publicly fetchable candidate ref. Docker with Compose is required; report probe rows against the API-owned budgets."
+          "expected": "Run if compatibility work changes more than the pin and tests, per Performance impact. First clone pulse-api into <scratch>/pulse-api outside probe and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, --b-ref probe, --others-ref main and a publicly fetchable candidate ref. The feature's fallback supports contract, probe, status and notify only; never substitute console. Docker with Compose is required; report probe rows against the API-owned budgets."
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",

@@ -11,7 +11,7 @@
         "bun.lock"
       ],
       "behaviorChange": true,
-      "spec": "## Repository: console, Shared finding, all Behavior bullets and Completion evidence; Rollout order 2, Performance impact, Security impact and Acceptance evidence (whole feature) 5. After contract merges, record/reuse the same full merged main SHA as other consumers. Update pin/lock together; preserve src/api-read.ts and src/connection-test.ts manual redirect wrappers, writes and src/api-failure.ts wire-label logic.",
+      "spec": "## Repository: console, Shared finding, all Behavior bullets, Completion evidence and Performance evidence; Rollout order 2, Performance impact (console primary timing only), Security impact and Acceptance evidence (whole feature) 4-5. After contract merges, record/reuse the same full merged main SHA as other consumers. Update pin/lock together; preserve src/api-read.ts and src/connection-test.ts manual redirect wrappers, writes and src/api-failure.ts wire-label logic. Console is outside the api benchmark harness; hold if changes beyond the pin adoption are needed.",
       "acceptance": [
         {
           "command": "bun install && bun install --frozen-lockfile && bun run check",
@@ -27,7 +27,7 @@
         },
         {
           "command": "bash -c 'TIMEFORMAT=\"%U %S\"; for run in 1 2 3; do time bun run test; done'",
-          "expected": "Per Performance impact's primary measurement in each changed repository, run three test suites per side on main and candidate on the same machine, reporting individual user+system sums and medians. Use bash builtin time, not /usr/bin/time; no extra test CPU is expected from this pin adoption."
+          "expected": "Run three bun run test suites on main and three on the candidate on one machine; report each user+system sum, both medians and their delta. Use bash builtin time, not /usr/bin/time. Expected median delta is within 0.5 s; request a hold if it exceeds 0.5 s or implementation needs more than package.json/bun.lock pin adoption. Report without a budget comparison: api/bench/budgets.json at api 515031b has no console key, and api/bench/refs.ts:5,37-39 rejects console. Do not run bench/run.ts or --b-ref console for this child."
         },
         {
           "command": "bun run check:browser",
@@ -35,7 +35,7 @@
         },
         {
           "command": "gh pr view --json body,statusCheckRollup",
-          "expected": "Required CI check, docker, browser and deploy-dev jobs pass. deploy-dev must build the pulse-deploy main dev Compose stack with this checkout, wait ready, then run E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml with exit 0, as .github/workflows/ci.yml/AGENTS.md require. Do not edit deploy or weaken this job. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records browser/Compose results, empty src diff and CPU medians."
+          "expected": "Required CI check, docker, browser and deploy-dev jobs pass. deploy-dev must build the pulse-deploy main dev Compose stack with this checkout, wait ready, then run E2E_CONSOLE_FLOW=two-factor bash e2e/console-setup.sh dev/compose.yaml with exit 0, as .github/workflows/ci.yml/AGENTS.md require. Do not edit deploy or weaken this job. PR records full merged contract SHA and shared-finding provenance, check results and the applicable Security impact checklist: fixed secret-safe diagnostics, bounded bodies, redirect protection and full-SHA/lockfile consistency. No new dependency or setting. PR records browser/Compose results, empty src diff, all six primary timing results, CPU medians and delta within 0.5 s, without a console budget comparison or fallback harness run."
         },
         {
           "command": "git diff --check",

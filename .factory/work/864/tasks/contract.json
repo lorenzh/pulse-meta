@@ -67,7 +67,7 @@
         },
         {
           "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref contract=<pushed-branch-or-SHA> --rounds 1",
-          "expected": "Conditional on primary contract test CPU delta >1.5 s. Clone https://github.com/lorenzh/pulse-api.git to <scratch>/pulse-api outside the target and run bun install --frozen-lockfile there first. Harness belongs to api, not contract or a consumer; replace both api-main-SHA arguments with the same concrete api main revision and target with contract. --b-ref uses a publicly fetchable pushed branch or SHA; --others-ref main is required. Docker with Compose is required. Record contract rows using the independently specified API bench/budgets.json/README failure rule."
+          "expected": "Conditional on primary contract test CPU delta >1.5 s. Clone https://github.com/lorenzh/pulse-api.git to <scratch>/pulse-api outside the target and run bun install --frozen-lockfile there first. Harness belongs to api, not contract or a consumer; replace both api-main-SHA arguments with the same concrete api main revision and use --b-ref contract for this child. The feature's fallback is limited to contract, probe, status and notify; console is excluded by api/bench/refs.ts and has no budget key. --b-ref uses a publicly fetchable pushed branch or SHA; --others-ref main is required. Docker with Compose is required. Record contract rows using the independently specified API bench/budgets.json/README failure rule."
         },
         {
           "command": "git diff --check && gh pr view --json body,statusCheckRollup",

@@ -37,7 +37,7 @@
         },
         {
           "command": "cd <scratch>/pulse-api && bun bench/run.ts --a <api-main-SHA> --b <api-main-SHA> --others-ref main --b-ref status=<pushed-branch-or-SHA> --rounds 1",
-          "expected": "Run if implementation changes more than the planned pin/tests/docs adoption. First clone pulse-api into <scratch>/pulse-api outside status and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, target status, --others-ref main and a publicly fetchable candidate ref. Docker with Compose is required; report status rows against the API-owned budgets."
+          "expected": "Run if the child changes more than its pin and tests, per Performance impact. First clone pulse-api into <scratch>/pulse-api outside status and bun install --frozen-lockfile there; it owns bench/run.ts. Use identical concrete api main SHAs on both sides, --b-ref status, --others-ref main and a publicly fetchable candidate ref. The feature's fallback supports contract, probe, status and notify only; never substitute console. Docker with Compose is required; report status rows against the API-owned budgets."
         },
         {
           "command": "bun run check:a11y",
