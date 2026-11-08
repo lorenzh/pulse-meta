@@ -53,11 +53,11 @@
         },
         {
           "command": "TIMEFORMAT='%U %S'; time bun run test",
-          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. Expected no change beyond noise; fallback required above +0.3 s."
+          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. Expected no change beyond noise. Run notify's fallback only when notify's own primary delta is above +0.3 s, as required by both Performance impact and Repository: notify, Completion evidence."
         },
         {
           "command": "git clone https://github.com/lorenzh/pulse-api.git \"$SCRATCH/pulse-api\"; (cd \"$SCRATCH/pulse-api\" && bun install --frozen-lockfile && bun bench/run.ts --a \"$API_MAIN\" --b \"$API_MAIN\" --others-ref main --b-ref \"notify=$TARGET_REF\" --rounds 1)",
-          "expected": "Conditional fallback only after the primary threshold is exceeded. The harness runs from the scratch api checkout, never this consumer or contract repository. Record the full api main SHA as API_MAIN for both sides and the public fetchable candidate branch/SHA as TARGET_REF; Docker with Compose, git and network required. Report notify's rows and compare to api/bench/budgets.json using the plan's budget/floor rule; no api metric is expected to move. Delete the scratch checkout afterwards. Do not use --b-ref console."
+          "expected": "Run this fallback only when notify's own primary branch-minus-base median CPU delta is above +0.3 s; at or below +0.3 s, do not run it. This matches Performance impact and Repository: notify, Completion evidence. The harness runs from the scratch api checkout. Record the full api main SHA as API_MAIN for both sides and the public fetchable candidate branch/SHA as TARGET_REF; Docker with Compose, git and network required. Report notify's rows and compare to api/bench/budgets.json using the plan's budget/floor rule; no api metric is expected to move. Delete the scratch checkout afterwards. Supported fallback targets are contract, probe, status and notify; console has no fallback."
         },
         {
           "command": "Review candidate security checklist and preserved consumer guards",

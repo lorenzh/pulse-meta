@@ -66,7 +66,7 @@
         },
         {
           "command": "git clone https://github.com/lorenzh/pulse-api.git \"$SCRATCH/pulse-api\"; (cd \"$SCRATCH/pulse-api\" && bun install --frozen-lockfile && bun bench/run.ts --a \"$API_MAIN\" --b \"$API_MAIN\" --others-ref main --b-ref \"probe=$TARGET_REF\" --rounds 1)",
-          "expected": "Conditional fallback only after the primary threshold is exceeded. The harness runs from the scratch api checkout, never this consumer or contract repository. Record the full api main SHA as API_MAIN for both sides and the public fetchable candidate branch/SHA as TARGET_REF; Docker with Compose, git and network required. Report probe's rows and compare to api/bench/budgets.json using the plan's budget/floor rule; no api metric is expected to move. Delete the scratch checkout afterwards. Do not use --b-ref console."
+          "expected": "Run this fallback only when probe's own primary branch-minus-base median CPU delta is above +0.3 s; at or below +0.3 s, do not run it. This matches Performance impact and Repository: probe, Completion evidence. The harness runs from the scratch api checkout. Record the full api main SHA as API_MAIN for both sides and the public fetchable candidate branch/SHA as TARGET_REF; Docker with Compose, git and network required. Report probe's rows and compare to api/bench/budgets.json using the plan's budget/floor rule; no api metric is expected to move. Delete the scratch checkout afterwards. Supported fallback targets are contract, probe, status and notify; console has no fallback."
         },
         {
           "command": "Review candidate security checklist and preserved consumer guards",

@@ -53,7 +53,7 @@
         },
         {
           "command": "TIMEFORMAT='%U %S'; time bun run test",
-          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. Expected delta within 0.5 s; above 0.5 s request a hold. Console has no api/bench/budgets.json key and never runs bench/run.ts."
+          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. This primary comparison is console's only performance measurement, as required by Performance impact and Repository: console, Completion evidence. Expected delta within 0.5 s; above 0.5 s request a hold. Console has no api/bench/budgets.json key and never runs bench/run.ts; other repositories crossing their own fallback thresholds do not change this rule."
         },
         {
           "command": "Review candidate security checklist and preserved consumer guards",
