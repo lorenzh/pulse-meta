@@ -1,23 +1,15 @@
 # pulse website design
 
-Design reference for the pulse website, exported from the design canvas "pulse Website" as version 28 on 31 October 2026. Read-only input for the website project; the built site lives in lorenzh/pulse-website.
+Design reference for the pulse website, exported from the design canvas "pulse Website". Read-only input for the website project; the built site lives in lorenzh/pulse-website.
 
 ## Source
 
 | | |
 | --- | --- |
 | Artifact | [pulse Website](https://claude.ai/artifact/TTYEJrYqPVdDdEeYwwdhvA) (claude.ai, Design type). The artifact is the source of truth; this folder is a copy. |
-| Exported from | version 28 (canvas numbering). The artifact service version id of that export was not recorded and cannot be recovered. |
-| Artifact version on 7 November 2026 | `1794088431-aba7`. It is newer than this export: it adds a "Coming soon" docs menu, a pulse-console section on Home, and more (see below). |
+| Exported from artifact version | `1794088431-aba7` |
+| Export date | 8 November 2026 |
 | Design system | losoft, [artifact](https://claude.ai/artifact/LpY9zNebhf9hVcb8cJwbwH), version `1793220369-a87d` (also in `canvas.json` under `designSystems`). `losoft-tokens.json` is the artifact's `project/ds/losoft/tokens.json`. |
-
-Differences between this folder and the artifact on 7 November 2026 (not re-exported):
-
-- `Main.dc.html`: Home board is 8300 px high in the artifact (5400 here); changed texts for latency, notification channels and architecture, new cards "CDN-ready caching" and "Hot backups", a pulse-console block and a "Self-hosting is next" section.
-- `Docs.dc.html`, `DocsApi.dc.html`: a "Coming soon" menu (Console, Deploy and pulse CLI) with a "coming soon" tag; hover rules are no longer inside `@media (hover:hover)`; the REST intro text changed.
-- `Hosted.dc.html`: a card "The same open-source console" (in progress) and a "Web console" table row; board height 4800 px (4500 here).
-- `canvas.json`: board heights only.
-- `losoft-tokens.json`: identical.
 
 To check or update this export, use the `syncing-designs` skill (`.agents/skills/syncing-designs/SKILL.md`); add a "Changes in version <id>" section here.
 
@@ -36,6 +28,19 @@ Content rules for the build:
 
 - Product facts on the site must match the current code and docs of the pulse repos; the docs pages are generated from the repos' `docs/*.md` at pinned commits.
 - The hosted offer does not exist yet. Prices, regions, availability promises, data location and the waitlist are placeholders until a person replaces them. So is every other commitment about the hosted offer (backups, upgrades, who runs the servers, staying up when the customer's network is down, included notifications, white-labelling): each is a marked placeholder, and a test checks the hosted table, plans and included cards.
+
+## Changes in version 1794088431-aba7
+
+The previous export was "version 28" (31 October 2026; its service version id was not recorded), so this section covers everything since then.
+
+- Home (`Main.dc.html`, now 8300 px high, was 5400): changed texts for latency and SLOs (the status page can show a 90-day p50/p95 chart and the budget left), notification channels (Slack, Microsoft Teams, email, webhooks, a file) and the health endpoints; new cards "CDN-ready caching" (ETag and 304) and "Hot backups" (SQLite WAL, backup command); the architecture text names the console as an optional fifth service and says "four core services".
+- Home, new sections: "Self-hosting without the busywork" with a card "A console for your own instance" (invite-only team with roles, admin token stays on the server, optional MCP endpoint off by default) and a card "Up in one command" (pulse init, pulse up, pulse status; Compose setups; pinned images); and "See it in action" with design previews of the status page, the console and a terminal demo of the planned pulse CLI.
+- Docs (`Docs.dc.html`, `DocsApi.dc.html`): the sidebar has a "Coming soon" group (Console, Deploy and pulse CLI) with a "coming soon" tag. The REST intro says the probes' own read route (was: the read routes) needs a token. New style `.ph` for the tag.
+- Hosted (`Hosted.dc.html`, 4800 px high, was 4500): a card "The same open-source console" and a table row "Web console", both tagged "in progress".
+- `canvas.json`: heights of Home and Hosted; the file is now byte-for-byte the artifact's (escaped characters, no final newline).
+- `losoft-tokens.json`: identical; design system version `1793220369-a87d` unchanged.
+
+Open question (known issue): in `Docs.dc.html` and `DocsApi.dc.html` the rules `.pl a:hover`, `.pl .nav a:hover` and `.pl .toc a:hover` are no longer inside `@media (hover:hover)`. This contradicts the content rule below ("Every hover effect, on all pages, sits under `@media (hover: hover)`"). The export is not edited by hand: the artifact needs the fix, or the rule needs an exception for the docs pages. Until then the build follows the rule below.
 
 ## Changes in version 28
 
