@@ -268,10 +268,30 @@ median = the 3rd value of the 5 sorted sums; delta = branch median − base medi
 No contract or config names change. New names exist only in pulse-status test code:
 `DriveOptions.beforeRelease` (test support), the `gate` parameter of the local `wrongServer`, the
 wait label `early answer at the client`, and the test name
-`self-check: early data that arrives late is still counted before the release`. No collision:
-`grep -rn 'beforeRelease' .repos/contract/src .repos/config .repos/status/src .repos/kit/src`
-printed nothing, and
-`grep -rn 'early answer at the client\|late is still counted' .repos/status/src` printed nothing.
+`self-check: early data that arrives late is still counted before the release`, plus the test's
+local opener (for example `openGate`). Searches run in this spec state on contract `6370c25`, config
+`bc87049`, kit `536133f` and status `2cefdf1`:
+
+- `grep -rn 'beforeRelease' .repos/contract/src .repos/config .repos/status/src .repos/kit/src --exclude-dir=node_modules --exclude-dir=.git`:
+  no output (exit 1).
+- `grep -rn 'early answer at the client\|late is still counted' .repos/status/src`: no output
+  (exit 1).
+- `gate`, as a whole word:
+  `grep -rnw 'gate' .repos/contract/src .repos/config .repos/kit/src .repos/status/src --exclude-dir=node_modules --exclude-dir=.git`
+  printed only prose in config: `README.md:43`, `:70`, `:92` ("gate jobs", "gate job", "the gate
+  checked") and the comment `.github/workflows/release.yml:3` ("after its gate jobs"). None is an
+  identifier, a key or a field. contract, kit and status `src` have no match.
+- `gate` and `openGate` as substrings:
+  `grep -rn 'gate\|openGate' .repos/status/src .repos/contract/src .repos/kit/src` matched only
+  unrelated words (`surrogate` in `status/src/xml.ts:22,26` and `runtime-settings.ts:401`,
+  `aggregateUptime`/`AggregatedUptime` in `contract/src/components.ts`, `schema.ts:839`,
+  `index.ts:75`) and the local array `gates` inside one test of `status/src/poller.test.ts:900-921`.
+  That array is local to another file's test and is not visible in `subscribe-timing.test.ts`.
+  `src/subscribe-timing.test.ts` itself has no `gate` today, so the new parameter of `wrongServer`
+  shadows nothing.
+
+The `gate` name is a parameter local to the test-only function `wrongServer`; it is not exported
+and does not appear in any contract, config or API surface.
 
 ## Repository: status
 
@@ -281,10 +301,12 @@ Files:
 - `README.md` (changed)
 - `docs/development.md` (changed)
 
-Behavior change: no
+Behavior change: yes
+Test-only behavior change: `driveSubscribe` gains the `beforeRelease` hook, `wrongServer` gains the `gate`, and the early-answer self-check now waits for client data; no production module, setting, endpoint, tooling or CI changes.
 
-Only test code and developer docs change; no production module, setting,
-endpoint or tooling changes.
+If the recorded base already has this behavior (a `beforeRelease`-style hook between the 50-turn
+loop and the byte count, and an early-answer self-check that already waits for client data before
+the count), request a hold with `needs-input` instead of a review.
 
 ### Tool facts (cited)
 
@@ -331,15 +353,18 @@ endpoint or tooling changes.
    `bun install --frozen-lockfile`. Create a disposable base checkout outside the implementation
    tree (for example `git clone <repo> /tmp/status-base && git -C /tmp/status-base checkout "$BASE"`,
    then install there too). Never use `.repos/`.
-2. Baseline controls on the base checkout. Each must run and exit 0 there (they did at `2cefdf1`
-   in this spec run):
+2. Baseline controls on the base checkout. Each of the first four bullets is a control: it must
+   run and exit 0 there (they did at `2cefdf1` in this spec run). The fifth bullet (one full
+   `bun run test`) is an observation, not a control: it may exit 1 on the base because of the known
+   flakes, and it is not required to pass.
    - `bun test --config=/dev/null src/subscribe-timing.test.ts -t "^D22"`, 3 runs: `10 pass`, `0 fail` each.
    - `bun test --config=/dev/null src/subscribe-enumeration.test.ts`: `4 pass`, `0 fail`.
    - `bun test --config=/dev/null src/subscribe-timing.test.ts -t "self-check"`: `1 pass`, `0 fail`.
      Isolated, it passes; the race shows only under load.
    - `bun run lint` and `bun run typecheck`: exit 0.
-   - One full `bun run test`: record the exit status, `Ran <n> tests across <m> files`
-     (`662`/`44` at `2cefdf1`) and any attributed failures. This is not claimed stable.
+   - Observation only (not a control): one full `bun run test`. Record the exit status,
+     `Ran <n> tests across <m> files` (`662`/`44` at `2cefdf1`) and any attributed failures. It is
+     not claimed stable and is not required to exit 0.
 3. Red: write the regression (required behavior 3 and 4) and the gate in
    `src/subscribe-timing.test.ts`. Copy **only** that file into the base checkout (the base
    `src/subscribe-test-support.ts` stays). Run
@@ -375,9 +400,13 @@ endpoint or tooling changes.
 The source of each expected value is given in brackets.
 
 1. **Baseline controls.** Step 2 runs on `BASE`, with the commands, counts and exit statuses
-   recorded. Every control named there exits 0 with `0 fail` and the counts given there, or, if
-   `BASE` is newer than `2cefdf1`, with the counts printed by that base run, recorded before any
-   edit. [Literal counts measured at `2cefdf1` in this spec; for a newer base, the base run itself.]
+   recorded. Each of the four controls of step 2 (the D22 runs, the enumeration file, the isolated
+   self-check, and `bun run lint` plus `bun run typecheck`) exits 0, the test controls with `0 fail`
+   and the counts given there, or, if `BASE` is newer than `2cefdf1`, with the counts printed by that
+   base run, recorded before any edit. The full-suite observation of step 2 is excluded from this
+   pass requirement: its exit status, test count and attributed failures are recorded as they are,
+   and an exit 1 there does not fail this check. [Literal counts measured at `2cefdf1` in this spec;
+   for a newer base, the base run itself.]
 2. **Red, 3 of 3.** Step 3 output for all three runs: exit 1, `0 pass`, `1 fail`, the new test's
    name and `AssertionError: false == true` at `assert.ok(driven.bytesBeforeRelease > 0)`.
    [Literals; the prototype in this spec produced exactly this 3 of 3.]
