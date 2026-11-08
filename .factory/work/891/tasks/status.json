@@ -12,12 +12,12 @@
         "README.md",
         "docs/development.md"
       ],
-      "behaviorChange": false,
+      "behaviorChange": true,
       "spec": "## Repository: status, Steps 1-8 and Acceptance 1-13; Required behavior 1-5; Decisions; Performance impact; Security impact. Implement the optional beforeRelease(client) hook after the unchanged 50-turn loop and before both the byte snapshot and release. Use bounded waitUntil(client.received().length > 0) only for the existing early-answer variant; preserve the silent call-timeout, D22 and enumeration callers. Add the gated wrong-server regression whose hook opens the gate, observes client data and records the still-live release timer, then asserts positive bytes, literal live state and check-2 rejection in that order. Preserve every existing assertion. Update only README Development and docs/development Checks with the matching explanation. Keep all evidence, base overlays, mutation copies and scope fixtures outside the implementation repository; no production, dependency, tooling or other target change. This is one small test-and-docs change with no independent implementation seam.",
       "acceptance": [
         {
           "command": "BASE=$(git rev-parse HEAD); git rev-parse HEAD; bun --version; bun install --frozen-lockfile",
-          "expected": "Before any edit, record the full implementation-base SHA permanently and Bun 1.4.0; installation exits 0 without changing pins or the lockfile. Re-read driver, both self-check variants and shared callers if the implementation base differs from inspected 2cefdf1cfbbd7cce175a9df97dbdafdec0e925aa. Never redefine BASE after a commit. Prepare a disposable writable checkout of this exact BASE outside the implementation tree, install the same lockfile there, and record its absolute path as BASE_CHECKOUT and the implementation path as CANDIDATE_CHECKOUT. Never edit a read-only .repos clone."
+          "expected": "Before any edit, record the full implementation-base SHA permanently and Bun 1.4.0; installation exits 0 without changing pins or the lockfile. Re-read driver, both self-check variants and shared callers if the implementation base differs from inspected 2cefdf1cfbbd7cce175a9df97dbdafdec0e925aa. If the base already has a beforeRelease-style hook between the 50-turn loop and byte count and the early-answer self-check already waits for observed client data there, request a needs-input hold instead of review, as required by the repository section. This task has behaviorChange true for the test-only driver and self-check behavior; no production behavior changes. Never redefine BASE after a commit. Prepare a disposable writable checkout of this exact BASE outside the implementation tree, install the same lockfile there, and record its absolute path as BASE_CHECKOUT and the implementation path as CANDIDATE_CHECKOUT. Never edit a read-only .repos clone."
         },
         {
           "command": "(cd \"$BASE_CHECKOUT\" && for i in 1 2 3; do bun test --config=/dev/null src/subscribe-timing.test.ts -t '^D22'; done)",
@@ -29,7 +29,7 @@
         },
         {
           "command": "(cd \"$BASE_CHECKOUT\" && bun run test)",
-          "expected": "Record the unmodified base full-suite exit status, every attributed failure and the Ran count (662 tests across 44 files at the inspected SHA). This is an observation, not a claim of baseline stability; preserve failures honestly."
+          "expected": "Record the unmodified base full-suite exit status, every attributed failure and the Ran count (662 tests across 44 files at the inspected SHA). This is Step 2's fifth bullet, an observation explicitly excluded from Acceptance 1's passing-control requirement: exit 1 is permitted here and does not fail the baseline acceptance. Only the four baseline controls must pass. Preserve failures honestly; do not claim base stability."
         },
         {
           "command": "(cd \"$BASE_CHECKOUT\" && for i in 1 2 3; do bun test --config=/dev/null src/subscribe-timing.test.ts -t 'late is still counted'; done)",
@@ -84,8 +84,16 @@
           "expected": "Exit 0 after the last commit: committed changes against the immutable implementation BASE equal exactly the four literal paths, no missing or extra path. This single task's scope is also the cumulative branch scope. Evidence and temporary tooling remain outside the repository, and no ignore rules are added."
         },
         {
-          "command": "test -z \"$(git diff --name-only --cached)\" && test -z \"$(git diff --name-only)\" && test -z \"$(git status --porcelain)\"",
-          "expected": "Each of the three checks passes separately after the last commit: cached names empty; worktree diff names empty; porcelain status empty including untracked files. Record each independent result; a clean worktree alone does not replace index or history checks."
+          "command": "test -z \"$(git diff --name-only --cached)\"",
+          "expected": "Exit 0 after the last commit: git diff --name-only --cached prints nothing. Record the index check independently against the immutable implementation BASE history checks; an empty worktree diff does not replace this check."
+        },
+        {
+          "command": "test -z \"$(git diff --name-only)\"",
+          "expected": "Exit 0 after the last commit: git diff --name-only prints nothing. Record this working-tree check separately from the index, history and status checks."
+        },
+        {
+          "command": "test -z \"$(git status --porcelain)\"",
+          "expected": "Exit 0 after the last commit: git status --porcelain prints nothing, including no untracked files. Record this status check separately; it does not replace committed protected-path or exact allowlist checks."
         },
         {
           "command": "git diff --exit-code \"$BASE\" HEAD -- . ':(exclude)README.md' ':(exclude)docs/development.md' ':(exclude)src/subscribe-test-support.ts' ':(exclude)src/subscribe-timing.test.ts'",
