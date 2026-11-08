@@ -46,6 +46,8 @@ jobs:
       FACTORY_ADMISSION: ${{ inputs.admission }}
       FACTORY_GENERATION: ${{ inputs.generation }}
       FACTORY_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      # The run page is recorded on the claim; it is a link only, and the attempt stays in the run id.
+      FACTORY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       FACTORY_GITHUB_ACTOR: ${{ vars.FACTORY_GITHUB_ACTOR }}
     outputs:
       continue: ${{ steps.run.outputs.continue }}
@@ -159,7 +161,7 @@ jobs:
 
       - name: Check the CLI minor line
         env:
-          FACTORY_CLI_MINOR: "0.8"
+          FACTORY_CLI_MINOR: "0.10"
         run: |
           installed="$(node ./node_modules/@paragondata/factory-cli/dist/bin.js --version)"
           if [[ "${installed%.*}" != "$FACTORY_CLI_MINOR" || ! "${installed##*.}" =~ ^(0|[1-9][0-9]*)$ ]]; then
@@ -289,7 +291,8 @@ jobs:
           --issue "$FACTORY_ISSUE" --detect-workflow --workspace multigit --apply
           --runner-admission "$FACTORY_ADMISSION"
           ${FACTORY_GENERATION:+--generation "$FACTORY_GENERATION"}
-          --run-id "$FACTORY_RUN_ID" --record-author "${FACTORY_GITHUB_ACTOR%'[bot]'}" --chain-limit 24
+          --run-id "$FACTORY_RUN_ID" --run-url "$FACTORY_RUN_URL"
+          --record-author "${FACTORY_GITHUB_ACTOR%'[bot]'}" --chain-limit 24
           --continue-output "$GITHUB_OUTPUT"
           2> >(tee "$RUNNER_TEMP/factory-run.err" >&2)
 
