@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "console adopts the fixed contract client and documents API response requirements",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console, all Behavior and Completion evidence; shared merged-contract finding in probe; Disclosure rule; Scope verification; Performance impact; Security impact; Rollout order; Acceptance evidence items 4-6",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD)",
+          "expected": "Before the first edit, record the full implementation-base SHA in task evidence; retain this BASE for every scope and performance check."
+        },
+        {
+          "command": "bash \"$SCRATCH/scope-fixture.sh\"",
+          "expected": "Create this disposable Git fixture script outside every repository and prove the five checks in plan.md, Scope verification, before relying on them. Record each check separately in all seven states: clean control: checks 1-5 pass, check 1 empty; allowed committed: check 1 allowed singleton, checks 2-5 pass; protected unstaged: checks 3,4 detect, checks 1,2,5 pass; protected staged: checks 2,4 detect, checks 1,3,5 pass; protected staged then worktree restored to base: git diff \"$BASE\" empty but checks 2,3,4 detect; protected committed with clean index/worktree: check 1 protected path, check 5 exit 1, checks 2-4 pass; protected committed then worktree restored to base: git diff \"$BASE\" empty but checks 1,3,4,5 detect, check 2 passes. Use an allowed file and a protected file, verify exact-path rejection against this task’s lists, and delete fixture/script afterwards."
+        },
+        {
+          "command": "bun install; bun install --frozen-lockfile",
+          "expected": "After contract merges, read the shared finding of its full merged main SHA containing #864 and version 2.5.2; the first consumer records it and the other consumers reuse exactly that SHA. package.json and bun.lock pin that SHA together. No other dependency changes; request a hold if adoption needs any path outside this task's allowed list."
+        },
+        {
+          "command": "git diff --numstat \"$BASE\" HEAD -- package.json",
+          "expected": "Exactly 1\t1\tpackage.json; the only changed line is the contract dependency pin."
+        },
+        {
+          "command": "git diff --numstat \"$BASE\" HEAD -- bun.lock",
+          "expected": "Exactly 2\t2\tbun.lock; every added/deleted line contains pulse-contract, limited to the workspace dependency and package entry."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- package.json bun.lock",
+          "expected": "The contract SHA equals the independently recorded merged-contract shared finding; every other dependency and package field is unchanged."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 under Bun 1.4.0, including source/e2e typechecks and full 80% line coverage. Existing src/runtime-read.test.ts, src/connection-test.test.ts, src/check-write.test.ts and src/token-write.test.ts redirect tests pass unchanged; src/ and e2e/ diffs remain empty."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/configuration.md",
+          "expected": "README.md pulse-api requirements and docs/configuration.md API read rules require PULSE_API_URL to be the final endpoint, no redirect followed and uncompressed API responses. The setup connection test documents compressed answers as a failed connection. No new setting."
+        },
+        {
+          "command": "bun start",
+          "expected": "Required AGENTS.md handoff: start with local fake api and exercise the setup connection/read once. Report command and result; stop service and remove temporary database/fixtures outside the repository."
+        },
+        {
+          "command": "TIMEFORMAT='%U %S'; time bun run test",
+          "expected": "Run three times on the recorded implementation base and three on the branch, on one machine under Bun 1.4.0. Record user + system seconds rounded to 0.01 s, each median and branch-minus-base delta; no means. This primary comparison is console's only performance measurement, as required by Performance impact and Repository: console, Completion evidence. Expected delta within 0.5 s; above 0.5 s request a hold. Console has no api/bench/budgets.json key and never runs bench/run.ts; other repositories crossing their own fallback thresholds do not change this rule."
+        },
+        {
+          "command": "Review candidate security checklist and preserved consumer guards",
+          "expected": "Preserve api-read.ts and connection-test.ts manual redirects, api-failure.ts wire labels and write mapping exactly. No source/e2e changes. Pin matches the merged contract finding; document inherited compressed-response refusal and fixed diagnostics. Public evidence follows the disclosure rule."
+        },
+        {
+          "command": "Review task acceptance evidence and PR text against plan.md, Disclosure rule and Security impact",
+          "expected": "Public P2 security disclosure: findings security-contract-2026-11-03-1, -3, -4 and -5 name location, class, impact and fix direction only. Every security case in tasks, acceptance evidence and PR text is limited to title, class, expected outcome and budget. No working payload, fixture setup, server layout, routing, response order, header value, body content, encoder setting, response-construction steps or parameters, reproduction command, redirect recipe or oversized-response recipe. Test code alone chooses construction and builds hostile inputs at runtime. Audit all Counterexamples, including small compressed bodies, multi-coding header value, non-canonical identity spelling, precedence, body/header-text disclosure and Node/browser compatibility, against the current wording; no old fixture instructions survive. No new runtime or dev dependency, setting, exported name, result shape or wire version; timeout/abort behavior, default 5 MiB cap and caller maxBytes preserved."
+        },
+        {
+          "command": "Review PR completion evidence",
+          "expected": "Name #864 and inherited shared-client finding locations/classes/impacts/fix directions without inputs; report merged SHA, required checks, documentation changes, performance medians and five separate scope outputs with fixture proof. Request a hold if any file outside this exact allowed list needs changing. Console has no harness metric and no fallback; hold above 0.5 s CPU delta."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | sort",
+          "expected": "After the last commit, exact allowed list (sorted): README.md, bun.lock, docs/configuration.md, package.json. Every listed path is required. No other path; inspect every allowed diff for unrelated changes."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last commit: empty output; index checked independently against HEAD."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last commit: empty output; working tree checked independently against index."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last commit: empty output, including untracked files. All scratch evidence scripts, fixture directories and temporary checkouts are deleted."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md .github/workflows/ci.yml biome.json bunfig.toml tsconfig.json eslint.config.js lefthook.yml Dockerfile src e2e",
+          "expected": "After the last commit: exit 0. This checks committed changes against the recorded implementation base; a base-to-working-tree diff is not a substitute."
+        }
+      ]
+    }
+  ]
+}
