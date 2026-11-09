@@ -9,6 +9,7 @@ pulse-meta is the meta repository of pulse (uptime monitor and status page). Ove
 - Targets: `contract`, `probe`, `api`, `status`, `notify`, `config`, `kit`, `website`, `console`, `deploy`, `agent` (`lorenzh/pulse-<name>`). Their code conventions are in each target's `AGENTS.md`.
 - The common code convention is [docs/code-conventions.md](docs/code-conventions.md) (easy and reusable code); it applies to every target.
 - Runtime dependencies in a target come only from [docs/approved-packages.md](docs/approved-packages.md).
+- Releases (tags, images, the deploy CLI, the planned release line and the manual steps): [docs/releasing.md](docs/releasing.md).
 
 ## How a feature flows
 1. A person opens a feature issue here.
