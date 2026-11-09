@@ -14,7 +14,13 @@ every render site, and the commands.
 
 Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/922` answered
 HTTP 404 on 2026-11-09, so there are no findings yet. Only one repository changes, so no question
-repeats across sections and no shared finding is expected.
+repeats across sections and no shared finding is expected (rechecked in the second plan run:
+still HTTP 404; console `main` still `45b2d48`).
+
+Changes after the plan review: B2 now has three recorded runs per file on `45b2d48` (baseline
+table), and the manual check (acceptance 9) has a reproducible preparation (setup and
+authenticator enrolment against a disposable fake api with a fixture token, then a restart
+without the token), run end to end on `45b2d48`.
 
 ## Recorded inspection base
 
@@ -53,13 +59,16 @@ Install: `bun install --frozen-lockfile` in a scratch copy of the clone (125 pac
 | Control | Command | Runs | Result (each run) |
 | --- | --- | --- | --- |
 | B1 seven suites | `bun --config=$E test src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts` | 3 | exit 0, `309 pass`, `0 fail`, `Ran 309 tests across 7 files` |
-| B2 per file (same form, one file each) | tokens / probes / incidents / incidents-write / maintenance / notifications / status-page | 1 each | exit 0; 52 / 40 / 32 / 77 / 46 / 27 / 35 pass, 0 fail (sum 309) |
+| B2 per file (same form, one file each: `bun --config=$E test src/server.<name>.test.ts`) | tokens / probes / incidents / incidents-write / maintenance / notifications / status-page | 3 each (21 runs) | exit 0 in all 21 runs; 52 / 40 / 32 / 77 / 46 / 27 / 35 pass, 0 fail in each of the three runs (sum 309); no coverage table printed |
 | B3 full check | `bun run check` (lint, typecheck, `bun test` with the `bunfig.toml` 80 % line threshold) | 3 | exit 0, `1993 pass`, `0 fail`, `Ran 1993 tests across 90 files` |
 
 B1 test CPU (user+sys from `/usr/bin/time`, information only): 16.42, 16.33, 16.52 s.
 
 The expected values of these controls are the literals in this table (counts from execution, not
-from grep). The implementer repeats B1 three times on its `BASE` before edits and records exit
+from grep). B2 ran as three rounds over the seven files (round 1: all seven files, then round 2,
+then round 3) on 2026-11-09 in a scratch clone at `45b2d48` after `bun install --frozen-lockfile`;
+every one of the 21 runs printed the per-file count of the table, `0 fail` and exit `0`.
+The implementer repeats B1 and B2 three times each on its `BASE` before edits and records exit
 codes and counts. No coverage percentage is an expectation; B3 expects exit 0, the pass count and
 the unchanged 80 % line threshold of `bunfig.toml:3`.
 
@@ -203,7 +212,8 @@ and `incident-pages.ts:65`. Probe pages that reuse `selfBanner` (`selfRefused` o
    T4/P1 refusal, T5/P2 and T9/P7 not-logged, T6/P3 expired change, T7/P4 revoked notice, P5 group
    warning. A coverage error, a timeout, a dependency error or a different assertion is not the
    required red. The five other suites with the audit pass on `BASE` (expected: exit 0 with their
-   B2 counts plus any added tests); they are coverage, not regression tests, and the PR says so.
+   B2 counts plus any added tests, three runs each); they are coverage, not regression tests, and
+   the PR says so.
 3. **Green.** With the production change: B1 form on all seven files three times, exit 0,
    `0 fail`, pass count = 309 + number of added tests (report the number and list the added test
    names). The same red tests pass.
@@ -223,12 +233,53 @@ and `incident-pages.ts:65`. Probe pages that reuse `selfBanner` (`selfRefused` o
 7. **Docs.** The two added paragraphs exist at the anchors below; every protected doc is
    byte-identical to `BASE` (scope check 8).
 8. **Scope** at every task boundary, as in the repository section.
-9. **Manual check.** `bun start` once (console `AGENTS.md`, "Before handoff of a user-visible
-   change"), with a disposable `PULSE_CONSOLE_DB` and secret key file in a `mkdtemp` directory, no
-   admin token and `PULSE_API_URL=http://127.0.0.1:9` (nothing listens). After setup and sign-in,
-   `GET /tokens` and `GET /probes` show the no-token text inside
-   `<section class="callout callout-error" role="alert">` with its icon, and no `style=`. Report
-   the commands and result, never a real secret.
+9. **Manual check.** `bun start` (console `AGENTS.md:95`, "Before handoff of a user-visible
+   change"). Setup cannot finish without a token and a reachable api: `testConnection` refuses a
+   missing token (`src/connection-test.ts:93-94`) and `postSetupOwner` answers `502` before
+   `commitSetup` (`src/server.ts:621-629`); an Owner must also enrol an authenticator before any
+   page opens (`commitSetup` starts an `enrol` session and redirects to `/account/authenticator`,
+   `src/server.ts:684-686`), which needs `PULSE_CONSOLE_SECRET_KEY_FILE` (64 lowercase hex
+   characters, `src/secret-key.ts:20-22`). So the check has two phases. Every helper file lives in
+   a `mkdtemp` directory outside the target and is deleted afterwards; nothing enters the target.
+   This procedure was run end to end on `45b2d48` on 2026-11-09 (results below).
+   - Helpers (written with the file tools, outside the target):
+     - `fake-api.ts`: a Bun server on `127.0.0.1` port `0` that prints its URL and answers
+       `GET /admin/config` with `{"revision":"sha256-"+64×"a","checks":[],"components":[],"maintenance":[]}`
+       and `GET /admin/tokens/self` with the `selfToken()` row of `test/token-fixtures.ts:33-41`
+       written out as a literal, both with headers `content-type: application/json` and
+       `x-pulse-contract: 1` (as `okFor` in `src/server.setup.test.ts:64-74`); any other path `404`.
+     - `secret.key`: a fixture key of 64 lowercase hex characters, mode `600`.
+     - `totp.ts`: prints the RFC 6238 code (SHA-1, 6 digits, 30 s) of a base32 key with
+       `node:crypto` only, not with `src/totp.ts` (the code under test is not its own oracle).
+     - A fixture admin token of at least 32 characters (`PULSE_CONSOLE_ADMIN_TOKEN` shorter than
+       32 exits `2` with "must hold at least 32 characters", seen on `45b2d48`), for example
+       `fixture-admin-token-922-manual-check-0000`. Not a real secret.
+     - A free port `P`, taken from a Bun server on port `0` that is stopped at once.
+   - Phase 1 (setup with the fake api): start `fake-api.ts`; in the target run
+     `PULSE_API_URL=<fake url> PULSE_CONSOLE_ADMIN_TOKEN=<fixture> PULSE_CONSOLE_DB=<tmp>/console.db PULSE_CONSOLE_SECRET_KEY_FILE=<tmp>/secret.key PULSE_CONSOLE_PORT=<P> bun start`.
+     With one `curl` cookie jar and `Origin: http://127.0.0.1:<P>` on every POST: read the setup
+     code from the log; `GET /setup`, `POST /setup` (`code`, `csrf`, `form_token`) → `303`;
+     `GET /setup/owner`, `POST /setup/owner` (`csrf`, `form_token`, `api_url=<fake url>`, email,
+     name, a 12+ character password twice, `action=complete`) → `303`;
+     `GET /account/authenticator`, `POST` `action=new` → `303`; `GET /account/authenticator`,
+     read `id="totp-secret"`, `POST` `action=confirm` with the code of `totp.ts` → `200`;
+     `GET /` → `200`. Stop the console with `SIGTERM`, then stop the fake api.
+   - Phase 2 (no token, api gone): same `PULSE_CONSOLE_DB`, secret key file and port, no
+     `PULSE_CONSOLE_ADMIN_TOKEN`, `PULSE_API_URL=http://127.0.0.1:9`. The saved api URL wins (the
+     log warns "PULSE_API_URL differs from the API URL saved at setup; the saved URL is used") and
+     nothing listens there. With the same cookie jar (the session is stored in the database),
+     `GET /tokens` and `GET /probes`.
+   - Result on `45b2d48` (base): both `200`; each page holds the text
+     `The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.`
+     exactly 2 times (the T1 banner and the T4 body), the legacy
+     `<section class="state state-error" role="alert">`, and 0 `style=`; the fixture admin token
+     occurs 0 times in both logs.
+   - Expected on the branch (literals): both `200`; the no-token text exactly 2 times per page;
+     `grep -c 'state state-'` = `0`; the count of `role="alert"` equals the count of
+     `<section class="callout callout-error" role="alert">` and is at least `1`; each such
+     section holds `<svg` (the icon of `calloutIcon("error")`); `style=` count `0`; the fixture
+     admin token, the password and the setup code occur in no page and the token in no log line.
+     Report the commands, the status codes and these counts; never a real secret.
 10. **Performance**, as in `## Performance impact`.
 11. **Comments.** The change adds no new test file. Read every added line and list every added
     comment (inline ones included) in the PR body, or write `none` after that read.
