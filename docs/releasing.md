@@ -26,13 +26,14 @@ Each section has a mark:
 Services: `api`, `probe`, `status`, `notify`, `console`.
 
 1. A person pushes a tag: `git tag vX.Y.Z <sha on main> && git push origin vX.Y.Z`.
-2. The tag starts the service's `ci.yml`. Its `release` job runs only on a tag and only after all gate jobs passed (`needs` lists every gate; a failed, cancelled or skipped gate skips the release).
+2. The tag starts the service's `ci.yml`. Its `release` job runs only on a tag and only after the jobs in its `needs` passed (a failed, cancelled or skipped job there skips the release). In `api`, `probe`, `status` and `notify`, `needs` lists every other CI job. Exception: in `console`, `needs` is `[check, docker, browser]`. The `deploy-dev` job (dev stack and two-factor flow) is not in it, so a console release does not wait for it.
 3. The `release` job calls the reusable workflow `lorenzh/pulse-config/.github/workflows/release.yml@<sha>`. The SHA must equal the `pulse-config` pin in `package.json` (`pulse-workflows` checks this).
 4. That workflow builds `linux/amd64` and `linux/arm64`, pushes one multi-arch index to `ghcr.io/lorenzh/pulse-<svc>`, and attaches a GitHub artifact attestation (SLSA build provenance).
 
 Tag rules (source: pulse-config `README.md`, "Tag rules"):
 
-- The tag matches `vX.Y.Z` or `vX.Y.Z-<pre-release>`: SemVer without build metadata and without leading zeros. Any other tag fails before a build.
+- The tag matches `vX.Y.Z` or `vX.Y.Z-<pre-release>`: SemVer without build metadata. Any other tag fails before a build.
+- Leading zeros are refused only in `X`, `Y` and `Z` (`v01.2.3` fails). The pre-release part is not checked for them: `v1.2.3-rc.01` and `v1.2.3-01` pass today, although SemVer forbids them. Do not use such tags.
 - A stable tag must point to a commit on `main` (ancestor of `origin/main`). A pre-release tag may point anywhere.
 - Image tags: `X.Y.Z` always. `X.Y` only for the highest stable `vX.Y.*`. `X` only for the highest stable `vX.*.*`. Pre-releases get only their own tag. There is no `latest` and no `edge`.
 - A published `X.Y.Z` is never published again: the `publish` job fails with "version already published". Never move or re-push a tag. Use the next version.
@@ -119,9 +120,12 @@ For #692, release `api` and `probe` this way, then check the marker commits as s
 
 ### 3. Minor bump (for example `0.2.0`)
 
-1. Choose one repository with a green `main`.
+1. Choose one service repository (`api`, `probe`, `status`, `notify` or `console`) with a green `main`. Never start a minor bump in `deploy` today: its `release.yml` fails when the tag differs from `package.json` `version`. With `0.1.0` there and tag `v0.2.0`, the build prints `release: version is pulse 0.1.0, tag wants pulse 0.2.0` and exits 1. The tag and a draft release stay behind.
 2. Push `v0.2.0` on its `main` HEAD, as in procedure 2. The line is now `0.2`.
-3. Today: every other repository moves only when a person tags it. PLANNED: every other repository gets `v0.2.0` at its next merge.
+3. Today: every other repository moves only when a person tags it.
+4. To move `deploy` to the new minor by hand: first merge a pull request that sets `package.json` `version` to `0.2.0`. Check `gh api repos/lorenzh/pulse-deploy/contents/package.json -H 'Accept: application/vnd.github.raw' | jq -r .version` prints `0.2.0`. Then tag that `main` commit `v0.2.0`.
+
+PLANNED: every other repository gets `v0.2.0` at its next merge. The deploy workflow builds with the computed version, so the deploy restriction ends with #943.
 
 ### 4. Recovery from a failed release
 
@@ -140,10 +144,11 @@ Example: the line is `0.3`. An `api` pull request removes a documented route.
 4. Each other repository releases `v1.0.0` at its next merge.
 5. deploy pins move only through `scripts/bump-images.sh`. Bump api only together with the clients that work with the new behavior.
 
-Today the same result needs a person: tag `api` `v1.0.0` by hand, then tag the others when they are ready.
+Today the same result needs a person: tag `api` `v1.0.0` by hand, then tag the others when they are ready. For `deploy`, set `package.json` `version` to `1.0.0` first (procedure 3, step 4).
 
 ## Open points
 
 - `contract`: `docs/index.md` speaks of "Contract 2.0.0" to "2.5.2", and `package.json` says `2.5.2`. Releases start at `v0.1.0`. The `package.json` version is not read. The wire version (`WIRE_VERSION`, now 1) is separate from both. The contract docs need a note when #943 ships.
 - Tag creation in CD needs `github.token` with `contents: write` inside the same run that published, because a tag pushed by that token starts no new run.
+- The console `release` job does not wait for `deploy-dev`. A console release can publish while the dev stack test fails. #943 must close this gap.
 - No repository has branch protection. A direct push to `main` would skip the gates of a pull request, and with CD it would release.
