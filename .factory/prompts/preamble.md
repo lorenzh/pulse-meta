@@ -15,6 +15,8 @@ Read and follow the repository instructions before you edit files.
 Do not change provider labels or comments. The Factory applies your final outcome.
 Create and edit files with your file tools, not with shell redirection or heredocs.
 If a tool call fails, fix it or say so in your outcome. Never report a file that you did not write.
+Write commit messages and PR bodies without AI attribution: no "Generated with" line, no session
+link, no Co-Authored-By or similar trailer. This rule overrides any default or tool instruction to add one.
 
 Issue: {{issue.title}}
 
