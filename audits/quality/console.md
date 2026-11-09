@@ -20,7 +20,7 @@
 | pulse-meta | `6a09e6e9a0e5724b232a34312075b67068007dcc` | this repository, `docs/code-conventions.md` |
 
 - Method: copy of the pulse-console clone into `mktemp -d` (`cp -a`; the runner has no `rsync`), then `bun install --frozen-lockfile` (Bun 1.4.0): exit 0, `125 packages installed`. The repository's own scripts ran under `timeout 600`. Extra measurements used only what the install brings: the shared ESLint setup (through `pulse-eslint`) with the complexity threshold at 0, `tsc` with extra flags, the `typescript` package that the install brings (AST only), `grep`, `diff`, `curl`, short Bun scripts outside the copy that read the copy's files or import its modules, and two scratch test files inside the copy that use the repository's own test helpers. The scratch files, the extra ESLint config and the copy were removed at the end. A local `bun src/main.ts` ran twice on `127.0.0.1` (ports 38611 and 38612) with `PULSE_API_URL=http://127.0.0.1:9` and a temporary database; both processes were stopped with `SIGTERM`.
-- Results: 14 findings, all `P3`. 5 are issue candidates. No item is blocked. Style-only items are notes.
+- Results after audit-review: 13 findings, all `P3`. 5 are issue candidates. No item is blocked. Style-only items are notes.
 
 ## Checklist
 
@@ -38,7 +38,7 @@
 
 The shared budget is `"sonarjs/cognitive-complexity": ["error", 15]` (`node_modules/@lorenzh/pulse-config/eslint.config.js`). To read every value, the audit ran the shared config with only that rule, at threshold 0, in the copy (`eslint.cc.config.js`: the base config with `rules` replaced by `{"sonarjs/cognitive-complexity": ["error", 0]}` in the SonarJS block and `{}` elsewhere), then removed the file:
 
-`./node_modules/.bin/pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src test e2e`: exit 1, because every function above 0 is reported (1520 functions, 978 outside test files). Highest values:
+`./node_modules/.bin/pulse-eslint --no-inline-config --config eslint.cc.config.js -f json src test e2e`: exit 1, because every function above 0 is reported (1520 functions across `src`, `test` and `e2e`). Highest values:
 
 | Value | Function | Against 15 |
 | --- | --- | --- |
@@ -63,7 +63,7 @@ Read and `grep` over `src/` of console and the other clones: `grep -rnE "functio
 - The write outcome classification and the refusal texts exist twice (checks and tokens), with different texts for the same api status: finding 6.
 - The People-row append and the team-commit failure catch are written three and four times: finding 7.
 - Three local readers of `err.code` with three fallbacks; one copies a private helper of pulse-kit: finding 11.
-- Across repositories: the incident duration text differs from pulse-kit `formatDuration` that pulse-status uses for the same incident (finding 12); the admin token placeholder rules are copied from pulse-api (finding 14).
+- Across repositories: the admin token placeholder rules are copied from pulse-api (finding 14). The incident-duration difference from pulse-kit is required by the approved spec, `.factory/work/569/plan.md:312-317`; audit-review removed finding 12 because that output does not establish a defect.
 - The loopback host list exists twice in console (`src/settings.ts:44` `LOOPBACK_HOSTS`, `src/request-guard.ts:5` `LOOPBACK_HOST`) and once more in pulse-notify (`src/channels/loopback.ts:2`). The two console lists agree. Note.
 - Checked and not duplicated: `escapeHtml`, `isRecord`, `readSecretFile` (admin token), settings readers, logger, ops routes and `runService` come from pulse-kit; `shellQuote` exists only in console.
 
@@ -113,7 +113,7 @@ Against pulse-console `AGENTS.md`, `docs/code-conventions.md` and the layout of 
 
 ### 8. Docs against code: `checked`
 
-Read `README.md` and every page of `docs/`, then checked the claims with the code and the local server. Contradictions: finding 5 (README endpoint table, `docs/index.md:3`, `docs/development.md:25`), finding 9 (the randomness claim of `docs/development.md:16`), finding 13 (the "never ships" claim of `docs/development.md:60`) and finding 14 (the example-token error of `docs/configuration.md:91`, which cannot be printed). The claims behind finding 5 and 9 in detail:
+Read `README.md` and every page of `docs/`, then checked the claims with the code and the local server. Contradictions: finding 5 (README endpoint table, `docs/index.md:3`, `docs/development.md:25`), finding 9 (the randomness claim of `docs/development.md:16`) and finding 14 (the example-token error of `docs/configuration.md:91`, which cannot be printed). The claims behind finding 5 and 9 in detail:
 
 - `docs/index.md:3`: "Today it serves first-run setup with a local owner account, password sign-in with sessions, sign-out and the ops routes. Two-factor sign-in follows in #563." The code serves `/sign-in/factor`, TOTP and recovery codes (`src/sign-in-factor.ts`, `src/totp.ts`; README table rows `GET /sign-in/factor`, `POST /account/authenticator`) and the Checks, Incidents, Maintenance, Tokens, Probes, Status page, Notifications and Team screens. Part of finding 5.
 - `docs/development.md:25`: "`src/navigation.ts` holds the nine-entry registry". `bun -e 'import * as n from "./src/navigation.ts"; ...'` in the copy: `NAVIGATION 11 overview,checks,incidents,maintenance,tokens,probes,status-page,notifications,team,activity,system`. Part of finding 5.
@@ -133,22 +133,68 @@ Ranked by how much a fix is worth. Every command ran on pulse-console `45b2d48` 
 
 - Location: `src/token-routes.ts:126`, `128` (`selfBanner`), `155` (`listBanner`); `paragraph(text, ' role="alert"')` at `src/token-routes.ts:94`, `src/probe-routes.ts:76`, `src/probe-pages.ts:108`, `182`, `206`, `src/token-pages.ts:160`, `201`. Helpers that already cover them: `callout` and `alertCallout` (`src/states.ts:31`, `59`). Rule: AGENTS.md:66.
 - What happens: the banners for "no admin token", "`/self` read failed" and "the last active admin token expires at ..." render `<section class="state state-error|state-warning" role="alert">`. `src/styles.ts` has no rule for `.state`, `.state-error` or `.state-warning` (`grep -nE "\.state(-error|-warning)?[ ,{:.]|\.state-" src/styles.ts`: only `.state-tiles` and `.state-tile`, lines 170-173), so they show as plain text without the callout box and icon (`.callout-warning`, `src/styles.ts:150`). The "saved, not logged" and refusal notices of these two screens are bare `<p role="alert">`, while the same notices on Checks, Incidents, Maintenance, Status page and Notifications are callouts. Without an admin token `/tokens` and `/probes` show the same sentence twice, once in each form, both `role="alert"`, so a screen reader announces it twice.
-- Command: a scratch test `src/zz-audit-callouts.test.ts` in the copy, removed afterwards. Test 1 starts `startTeamConsole({ apiUrl, adminToken })` (`test/team-console.ts`) against `startFakeApi()` with `/admin/tokens/self` = `selfToken({ expiresAt: START - 1 })` and `GET /admin/tokens` = `[that self token, adminToken({ expiresAt: START + 86_400_000 })]` (the fixture of `src/server.tokens.test.ts:177`), then `getPage(c, "/tokens", c.cookies.admin)` and `expectCalloutsOnly(res.body)`. Test 2 does the same without `adminToken`. `timeout 300 bun test src/zz-audit-callouts.test.ts`: exit 1.
+- Command (audit-review): write the following reproduction to `review-callouts.test.ts` in the installed temporary copy, then run `timeout 300 bun test ./review-callouts.test.ts`: exit 1. All three failures are the callout assertion at `test/rendered-audit.ts:10`; the status, duplicate-text and no-admin-request assertions pass. The services close in `finally`.
 
-```text
-status 200 alert tags: ["<section class=\"state state-warning\" role=\"alert\">"]
-error: expect(received).toMatch(expected)
-Expected substring or pattern: /^<section class="callout callout-(?:info|success|warning|error|neutral)"/
-Received: "<section class=\"state state-warning\" role=\"alert\">"
-(fail) last admin expiry banner on /tokens
-status 200 alert tags: ["<section class=\"state state-error\" role=\"alert\">","<p role=\"alert\">"]
-Received: "<section class=\"state state-error\" role=\"alert\">"
-(fail) no admin token banner on /tokens
- 0 pass
- 2 fail
+```ts
+import { expect, test } from "bun:test";
+import { jsonReply, startFakeApi } from "./test/fake-api.ts";
+import { expectCalloutsOnly } from "./test/rendered-audit.ts";
+import { getPage, START } from "./test/signed-in-console.ts";
+import { startTeamConsole } from "./test/team-console.ts";
+import { adminToken, selfToken } from "./test/token-fixtures.ts";
+
+test("last admin expiry banner on /tokens", async () => {
+  const api = startFakeApi();
+  const expired = selfToken({ expiresAt: START - 1 });
+  api.reply("/admin/tokens/self", jsonReply(expired));
+  api.replyTo("GET", "/admin/tokens", jsonReply({
+    tokens: [expired, adminToken({ expiresAt: START + 86_400_000 })],
+  }));
+  const c = await startTeamConsole({ apiUrl: api.url, adminToken: "tokens-admin-token-sentinel-0123456789" });
+  try {
+    const res = await getPage(c, "/tokens", c.cookies.admin);
+    expect(res.status).toBe(200);
+    console.log("/tokens expiry alert tags:", JSON.stringify(res.body.match(/<[^>]+role="alert"[^>]*>/g)));
+    expectCalloutsOnly(res.body);
+  } finally {
+    await c.close();
+    api.stop();
+  }
+});
+
+for (const path of ["/tokens", "/probes"]) {
+  test(`no admin token banner on ${path}`, async () => {
+    const api = startFakeApi();
+    const c = await startTeamConsole({ apiUrl: api.url });
+    try {
+      const res = await getPage(c, path, c.cookies.admin);
+      expect(res.status).toBe(200);
+      const text = "The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.";
+      const copies = res.body.split(text).length - 1;
+      console.log(path, "no-token text copies:", copies, "alert tags:", JSON.stringify(res.body.match(/<[^>]+role="alert"[^>]*>/g)));
+      expect(copies).toBe(2);
+      expect(api.seen.filter(s => s.path.startsWith("/admin/"))).toEqual([]);
+      expectCalloutsOnly(res.body);
+    } finally {
+      await c.close();
+      api.stop();
+    }
+  });
+}
 ```
 
-  A second scratch run (same helpers, no admin token, `GET /tokens` and `GET /probes`, exit 1 only from the coverage gate of a single-file run, `4 pass`, `0 fail`) printed for both paths: banner `<section class="state state-error" role="alert"><p>The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.` and in `main` `<p role="alert">The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.</p>`.
+```text
+/tokens expiry alert tags: ["<section class=\"state state-warning\" role=\"alert\">"]
+/tokens no-token text copies: 2 alert tags: ["<section class=\"state state-error\" role=\"alert\">","<p role=\"alert\">"]
+/probes no-token text copies: 2 alert tags: ["<section class=\"state state-error\" role=\"alert\">","<p role=\"alert\">"]
+Expected substring or pattern: /^<section class="callout callout-(?:info|success|warning|error|neutral)"/
+Received: "<section class=\"state state-warning\" role=\"alert\">" or "<section class=\"state state-error\" role=\"alert\">"
+0 pass
+3 fail
+10 expect() calls
+```
+
+  CSS check: `grep -nE "\\.state(-error|-warning)?[ ,{:.]|\\.state-" src/styles.ts`: exit 0; only `.state-tiles` and `.state-tile` at lines 170-173, no rule for these banners.
 
 ### quality-console-2026-11-09-2 (P3): Only 3 of 31 `src/server.*.test.ts` files run `expectCalloutsOnly`, although AGENTS.md requires it of every one that renders a page
 
@@ -202,7 +248,7 @@ src/status-page-routes.ts:243:  return rows.length === 0 ? "" : `<h2>Your input<
 
 - Location: `README.md:91-148` (table); `docs/index.md:3`; `docs/development.md:25`. Code: `src/server.ts:1160-1169` registers `probeRoutes`, `statusPageRoutes`, `notificationRoutes`.
 - Claim: AGENTS.md:99 "`README.md` owns ... its HTTP endpoints". The table lists every other screen's routes, but not `/probes`, `/probes/new`, `/probes/rotate`, `/probes/revoke`, `/status-page`, `/notifications`, `/notifications/new`, `/notifications/edit`, `/notifications/delete`, `/notifications/failed`, `/notifications/resend`. They are described only in prose (`README.md:16`, `docs/tokens.md:124-127`, `docs/configuration.md:154-158`), without the status codes the table gives for every other route. `docs/index.md:3` says the console serves setup, password sign-in, sign-out and the ops routes and that "Two-factor sign-in follows in #563"; `docs/development.md:25` says "the nine-entry registry", the registry has 11 entries.
-- Command: from the copy, `for p in /probes /probes/new /probes/rotate /probes/revoke /status-page /notifications /notifications/new /notifications/edit /notifications/delete /notifications/failed /notifications/resend; do printf "%s table=%s\n" "$p" "$(grep -cE "^\| .*\`[A-Z/]*[ ]?${p}[\`?\[ ,]" README.md)"; done` and `bun -e 'import * as n from "./src/navigation.ts"; for (const [k,v] of Object.entries(n)) if (Array.isArray(v)) console.log(k, v.length, v.map(e=>e.id).join(","));'`: exit 0 both.
+- Command (audit-review): `bun -e 'import { readFileSync } from "node:fs"; import { NAVIGATION } from "./src/navigation.ts"; const rows = readFileSync("README.md", "utf8").split("\n").filter(l => l.startsWith("|")); for (const p of ["/probes","/probes/new","/probes/rotate","/probes/revoke","/status-page","/notifications","/notifications/new","/notifications/edit","/notifications/delete","/notifications/failed","/notifications/resend"]) console.log(p + " table=" + rows.filter(l=>l.includes(p)).length); console.log("NAVIGATION", NAVIGATION.length, NAVIGATION.map(e=>e.id).join(","));'`: exit 0.
 
 ```text
 /probes table=0
@@ -264,7 +310,7 @@ diff exit 1
 ### quality-console-2026-11-09-8 (P3): Four exports have no production user; one is a refusal text nothing renders
 
 - Location: `src/token-routes.ts:61` `LAST_ADMIN_REFUSED_TEXT` (no user at all; the refusal uses `LAST_ADMIN_TEXT`, `src/token-routes.ts:418`); `src/states.ts:159` `readOnlyState` ("The 503 body when pulse-api reported its checks file as read-only"; only `src/states.test.ts:162` and `test/fixture-routes.ts:360` call it; a real `503` from pulse-api answers `pulse-api could not save the change (503)` from `src/check-write.ts:172`); `src/probe-snippet.ts:198` `composeStopCommand` (only `src/probe-snippet.test.ts:197`); `src/check-filters.ts:95` `checkFiltersQuery` (only `src/check-filters.test.ts:122`).
-- Command: `bun scripts/exports.ts <copy>` (exit 0), then `grep -rn "composeStopCommand\|readOnlyState\|checkFiltersQuery\|LAST_ADMIN_REFUSED" --include=*.ts src test e2e | grep -v "^src/\(probe-snippet\|states\|check-filters\)\.ts"`: exit 0.
+- Command (audit-review): `grep -rn 'composeStopCommand\|readOnlyState\|checkFiltersQuery\|LAST_ADMIN_REFUSED' --include='*.ts' src test e2e | grep -v '^src/\(probe-snippet\|states\|check-filters\)\.ts'`: exit 0. This directly confirms the four names without the removed exploratory export-scan script.
 
 ```text
 src/check-filters.test.ts:4:  checkFiltersQuery,
@@ -284,7 +330,7 @@ test/fixture-routes.ts:360:      page(503, "Edit", `${readOnlyState()}${editForm
 
 - Location: `src/notification-routes.ts:1` (`import { randomBytes } from "node:crypto"`), `src/notification-routes.ts:67-70` (`newRequestId`), used at `405`. Rules: AGENTS.md:56 (side effects as dependencies; only `main.ts` wires the real ones); `docs/development.md:16` (`main.ts` "is the only module that touches ... `crypto` randomness"). Every other random value takes `deps.randomBytes` or a `randomBytes` parameter (`src/setup-code.ts:42`, `src/form-tokens.ts:94`, `src/http-context.ts:132`, `src/account-routes.ts:206`, `src/account-links.ts:34`, `src/recovery-codes.ts:10`, `src/secret-box.ts:20`).
 - Effect: a test cannot fix the id; `src/server.notifications.test.ts:535` can only match `/^[A-Za-z0-9_-]{24}$/`.
-- Command: `grep -nE "process\.env|Bun\.password|getRandomValues|randomBytes\(|process\.stdout|readFileSync|from \"node:fs\"|from \"node:crypto\"" src/*.ts` (non-test, without the harness): exit 0; the only module-level randomness outside `main.ts` and `owner-reset.ts`:
+- Command (audit-review): `grep -HnE 'from "node:crypto"|randomBytes\(' src/notification-routes.ts`: exit 0. This route draws randomness directly:
 
 ```text
 src/notification-routes.ts:1:import { randomBytes } from "node:crypto";
@@ -314,21 +360,26 @@ src/notification-routes.ts:69:  return randomBytes(18).toString("base64url");
 {"name":"StartupError","message":"PULSE_CONSOLE_DB=/nonexistent-dir/console.db: cannot open (EACCES)","setting":"PULSE_CONSOLE_DB","hasCause":false}
 ```
 
-### quality-console-2026-11-09-12 (P3): Duplication: the console formats incident durations itself and shows other values than pulse-status for the same incident
+### quality-console-2026-11-09-13 (P3): A shared test harness lives in `src/`: it ships in the image and counts toward the coverage gate
 
-- Location: `durationText`, `src/incident-list.ts:13-24` (minutes rounded half up, `"1 h 30 min"`), against pulse-kit `formatDuration` (`src/format-duration.ts:31`, whole minutes floored, `"1h 29m"`), which pulse-status uses for the incident duration (`src/render.ts:575`). AGENTS.md: "Use `@lorenzh/pulse-kit` ... before writing infrastructure code ... Propose an addition to pulse-kit instead of a local helper." The rounding is a spec decision ("section 6: minutes rounded half up", comment at line 12); the units and rounding still differ between the two views of one incident.
-- Command: in the copy, `bun -e 'import { durationText } from "./src/incident-list.ts"; import { formatDuration } from "@lorenzh/pulse-kit/format-duration"; for (const ms of [30_000, 89.5*60_000, 1439.6*60_000]) console.log(ms, JSON.stringify(durationText(ms)), JSON.stringify(formatDuration(ms)));'`: exit 0.
+- Location: `src/two-factor-harness.ts:1-6` imports `bun:test`; `Dockerfile:12` copies all of `src`; `bunfig.toml:4` excludes test-named files and `test/` from coverage but not this harness. `docs/development.md:60` says shared test helpers live in `test/`. Seven test files import the harness. This is a placement deviation; the separate claim that `test/` never ships is true. The harness is not reached by the service entry points, and its loopback lint suppression is test code, not a production lint defect.
+- Commands (audit-review): `timeout 600 bun run check` (exit 0), `sed -n '1,6p' src/two-factor-harness.ts`, `grep -n 'COPY src' Dockerfile`, `grep -l two-factor-harness src/*.test.ts`, and `cat bunfig.toml` (exit 0 each). Excerpts:
 
 ```text
-30000 "1 min" "<1m"
-5370000 "1 h 30 min" "1h 29m"
-86376000 "1 d" "23h 59m"
+src/two-factor-harness.ts | 97.56 % Funcs | 100.00 % Lines
+1993 pass, 0 fail, 13005 expect() calls, 90 files.
+/* eslint-disable sonarjs/no-clear-text-protocols -- loopback test servers */
+import { expect } from "bun:test";
+12:COPY src ./src
+src/owner-reset.test.ts
+src/server.account-token.test.ts
+src/server.factor.test.ts
+src/server.recovery.test.ts
+src/server.security.test.ts
+src/server.sessions.test.ts
+src/server.upgrade.test.ts
+coveragePathIgnorePatterns = ["**/*.test.ts", "test/**", "**/test/**", "dist/**"]
 ```
-
-### quality-console-2026-11-09-13 (P3): A test harness lives in `src/`: it ships in the image, counts toward the coverage gate and holds the only production lint directive
-
-- Location: `src/two-factor-harness.ts:1-5` (`/* eslint-disable sonarjs/no-clear-text-protocols -- loopback test servers */`, `import { expect } from "bun:test"`); `Dockerfile` `COPY src ./src`; `bunfig.toml` ignores only `**/*.test.ts` and `test/**` for coverage. Claim: `docs/development.md:60` "Helpers shared by several test files ... live in `test/`. The image copies only `src`, so `test/` never ships".
-- Command: `bun scripts/reach.ts <copy> src/main.ts src/owner-reset.ts e2e/run.ts` (exit 0, `unreached: 4`, among them `src/two-factor-harness.ts`), the coverage table of `bun run test` (row `src/two-factor-harness.ts | 97.56 | 100.00`) and the `--no-inline-config` run of item 1 (`src/two-factor-harness.ts:109 sonarjs/no-clear-text-protocols`, the only non-test hit). Imported by 7 test files (`grep -l two-factor-harness src/*.test.ts | wc -l`: `7`).
 
 ### quality-console-2026-11-09-14 (P3): Duplication: the admin token example-token rule is copied from pulse-api and can never fire
 
@@ -350,10 +401,31 @@ console/src/admin-token.ts:10:  "example-token-0123456789abcdef",
 ### Other notes
 
 - Biome: 7 `useTemplate` infos (`src/probe-pages.ts`, `src/probe-snippet.ts`), the `useDomNodeTextContent` warning at `e2e/run.ts:1667`, and the deprecated `recommended` field in the shared `biome.json:41` (item 1).
-- 230 of 844 exports are named by no other file; 20 functions and classes are exported only for a test (item 4).
+- 234 of 844 exports are named by no other file; 20 functions and classes are exported only for a test (item 4).
 - `src/admin-token.ts:28-29` repeats the length check of `tokenProblem` (item 4).
 - Real clock in two tests (item 5); 5 test imports of expected texts (item 5); untested team race refusals (item 5).
 - `request failed` logs only the error name (item 6); plain `Error` at `src/account-store.ts:227` (item 6).
 - Loopback host list in two console modules and pulse-notify (item 3).
 - `AGENTS.md:92` lists 23 of the 31 server test files (item 7); `docs/development.md:16` names `main.ts` as the only module with file system access while `src/server.ts:1214` reads the fonts (item 8).
 - Boolean parameters `withConfig`, `withLocations` (item 7).
+
+## Audit review (2026-11-09)
+
+- Started at 16:41:06 UTC. Every target clone HEAD matches the table above. The meta checkout is `f58ee076e40cdb8ce7f02abb9e12ca9a875fb2f1`, the audit-report commit directly after the examined meta baseline; `git diff 6a09e6e HEAD -- AGENTS.md docs/code-conventions.md` exits 0 with no output. No product revision moved.
+- Structure: `jq -e . audits/quality/console.json` and a JSON/Markdown comparison exit 0. All retained ids, severities, candidate flags, required fields and eight `checked` checklist items match. No P1 or P2 finding requires reproduction. The remaining P3 findings concern code quality, test gaps, documentation or minor presentation; their evidence does not establish a higher-severity functional failure. Five issue candidates remain; style-only notes remain outside the candidate list.
+- In a new temporary copy (`cp -a`, since `rsync` is unavailable), `TMPDIR=/tmp BUN_INSTALL_CACHE_DIR=<copy>/.review-cache bun install --frozen-lockfile` exits 0. `timeout 600 bun run check` exits 0: the same one warning and seven infos, passing workflow lint and typecheck, 1993 pass, 0 fail, 13005 assertions, 90 files, 100.62 s. Coverage is **97.17% lines and 97.99% functions**; the earlier issue comment had called the function number line coverage. The two `tsc --noEmit --noUnusedLocals --noUnusedParameters` commands (root and `-p e2e`) each exit 0 with no output. The installed shared ESLint, Biome and base TypeScript configs match the config clone (`diff -q`, exit 0 each).
+- The installed shared ESLint API, with inline config disabled and only the complexity threshold overridden to 0, reports 1520 functions. The API driver exits 0 and prints a maximum of 15 at `src/server.security.test.ts:499`; the highest production functions remain `checkOutcome` and `handleApp`, both 14 against 15. The only other diagnostic in a non-test-named `src` file is the harness's loopback protocol suppression at line 109. The first attempt to consume the CLI's large JSON was truncated; the direct API check replaced it.
+- Spot checks substantiate every retained finding: grep/diff confirm the callout-audit counts, repeated outcome markup, kept-input byte copy, write mapping and logging copies, four unused exports, direct randomness and harness placement. The byte copy's `diff` exits 0; the near-copy logging `diff` exits 1 with the three reported differences. Coverage confirms the uncovered read/refusal branches. The README/navigation command exits 0 with all 11 missing table paths and 11 navigation entries. The database command exits 0 with `hasCause:false`; the example-token command exits 0 with lengths 28 and 30, both rejected by the 32-character minimum. Finding 1's supplied test exits 1 at the three expected callout assertions, with the no-token text appearing twice on both pages.
+- Removed `quality-console-2026-11-09-12`: `.factory/work/569/plan.md:312-317` explicitly requires half-up rounding and the console's duration wording. The command below reproduces the difference (exit 0), but establishes intended behavior rather than a defect. No finding was regraded. Corrected finding 13's scope and the 230/234 export-count typo; replaced deleted-script references in retained finding commands with direct checks.
+
+```sh
+bun -e 'import { durationText } from "./src/incident-list.ts"; import { formatDuration } from "@lorenzh/pulse-kit/format-duration"; for (const ms of [30_000, 89.5*60_000, 1439.6*60_000]) console.log(ms, JSON.stringify(durationText(ms)), JSON.stringify(formatDuration(ms)));'
+```
+
+```text
+30000 "1 min" "<1m"
+5370000 "1 h 30 min" "1h 29m"
+86376000 "1 d" "23h 59m"
+```
+
+Limitations: P3 checks are spot checks, not an independent repeat of every exploratory scan. The browser suite and image build were not rerun; source, Dockerfile and coverage checks suffice for the retained claims. Runtime checks used only the temporary copy and localhost fakes; their services closed and the copy was removed. No security payloads, unfinished checks or audit gates remain.

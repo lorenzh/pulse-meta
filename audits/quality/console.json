@@ -31,12 +31,12 @@
     {
       "item": "Complexity",
       "status": "checked",
-      "evidence": "Shared budget sonarjs/cognitive-complexity 15 (pulse-config eslint.config.js). pulse-eslint --no-inline-config with only that rule at threshold 0 (copy only) -f json src test e2e: exit 1 (every function above 0 reported; 1520 functions, 978 outside test files). Highest: 15 test body src/server.security.test.ts:499 (at budget, test); 14 checkOutcome src/check-outcome.ts:24; 14 handleApp src/server.ts:1111; 13 handleProtected src/server.ts:1013; 12 exportedView src/check-export.ts:43 and outcomeOf src/token-write.ts:87. None over 15; no complexity suppression."
+      "evidence": "Shared budget sonarjs/cognitive-complexity 15 (pulse-config eslint.config.js). pulse-eslint --no-inline-config with only that rule at threshold 0 (copy only) -f json src test e2e: exit 1 (every function above 0 reported; 1520 functions across src, test and e2e). Highest: 15 test body src/server.security.test.ts:499 (at budget, test); 14 checkOutcome src/check-outcome.ts:24; 14 handleApp src/server.ts:1111; 13 handleProtected src/server.ts:1013; 12 exportedView src/check-export.ts:43 and outcomeOf src/token-write.ts:87. None over 15; no complexity suppression."
     },
     {
       "item": "Duplicated logic",
       "status": "checked",
-      "evidence": "grep over */src of all clones for shared helper names, markup grep of route modules, diff of similar blocks. Findings 1 (hand-written alerts on Tokens and Probes instead of states.ts callouts), 3 (saved-not-logged page built in six handlers), 4 (Your input block four times; maintenance-pages.ts:238-244 equals incident-pages.ts:500-506, diff exit 0), 6 (write outcome and refusal mapping twice, different texts for the same 500), 7 (isLogged three times, team-commit catch four times), 11 (three err.code readers; secret-key.ts copies kit's private errorCode), 12 (incident duration differs from kit formatDuration used by pulse-status), 14 (admin token example list copied from pulse-api). Loopback host list in settings.ts:44, request-guard.ts:5 and pulse-notify loopback.ts:2: note."
+      "evidence": "grep over */src of all clones for shared helper names, markup grep of route modules, diff of similar blocks. Findings 1 (hand-written alerts on Tokens and Probes instead of states.ts callouts), 3 (saved-not-logged page built in six handlers), 4 (Your input block four times; maintenance-pages.ts:238-244 equals incident-pages.ts:500-506, diff exit 0), 6 (write outcome and refusal mapping twice, different texts for the same 500), 7 (isLogged three times, team-commit catch four times), 11 (three err.code readers; secret-key.ts copies kit's private errorCode), 14 (admin token example list copied from pulse-api). Loopback host list in settings.ts:44, request-guard.ts:5 and pulse-notify loopback.ts:2: note. Duration-format differences follow the approved spec, .factory/work/569/plan.md:312-317; removed finding 12."
     },
     {
       "item": "Dead code",
@@ -61,7 +61,7 @@
     {
       "item": "Docs against code",
       "status": "checked",
-      "evidence": "Read README.md and docs/*.md. Contradictions: README endpoint table lacks 11 Probes, Status page and Notifications routes, docs/index.md:3 says two-factor sign-in still follows, docs/development.md:25 says nine navigation entries (11 by import) (finding 5); docs/development.md:16 main.ts as the only module with crypto randomness (finding 9); docs/development.md:60 'test/ never ships' while a test harness in src/ ships (finding 13); docs/configuration.md:91 documents an example-token error that cannot be printed (finding 14). Checked and correct on a local bun src/main.ts: six start error texts with exit 2, 303 to /setup before setup, 405 with allow on 7 paths, 404, security headers on 9 routes, cache-control of pages and fonts, CSP constant, token and check refusal texts."
+      "evidence": "Read README.md and docs/*.md. Contradictions: README endpoint table lacks 11 Probes, Status page and Notifications routes, docs/index.md:3 says two-factor sign-in still follows, docs/development.md:25 says nine navigation entries (11 by import) (finding 5); docs/development.md:16 main.ts as the only module with crypto randomness (finding 9); docs/configuration.md:91 documents an example-token error that cannot be printed (finding 14). Checked and correct on a local bun src/main.ts: six start error texts with exit 2, 303 to /setup before setup, 405 with allow on 7 paths, 404, security headers on 9 routes, cache-control of pages and fonts, CSP constant, token and check refusal texts. The test/ exclusion claim is true; finding 13 concerns the shared-harness placement rule at docs/development.md:60."
     }
   ],
   "findings": [
@@ -72,9 +72,10 @@
       "severity": "P3",
       "candidate": true,
       "title": "Duplication: the Tokens and Probes screens write their own alerts instead of the states.ts callouts; the banners have no style and fail the callout audit",
-      "command": "Scratch test src/zz-audit-callouts.test.ts in the installed copy (removed afterwards): startTeamConsole (test/team-console.ts) against startFakeApi with an expired self token and one admin token that expires at START + 86_400_000, getPage(c, '/tokens', c.cookies.admin), then expectCalloutsOnly(res.body); second test the same without adminToken. timeout 300 bun test src/zz-audit-callouts.test.ts. Plus grep -nE \"\\.state(-error|-warning)?[ ,{:.]|\\.state-\" src/styles.ts.",
+      "command": "timeout 300 bun test ./review-callouts.test.ts",
+      "reproduction": "import { expect, test } from \"bun:test\";\nimport { jsonReply, startFakeApi } from \"./test/fake-api.ts\";\nimport { expectCalloutsOnly } from \"./test/rendered-audit.ts\";\nimport { getPage, START } from \"./test/signed-in-console.ts\";\nimport { startTeamConsole } from \"./test/team-console.ts\";\nimport { adminToken, selfToken } from \"./test/token-fixtures.ts\";\n\ntest(\"last admin expiry banner on /tokens\", async () => {\n  const api = startFakeApi();\n  const expired = selfToken({ expiresAt: START - 1 });\n  api.reply(\"/admin/tokens/self\", jsonReply(expired));\n  api.replyTo(\"GET\", \"/admin/tokens\", jsonReply({\n    tokens: [expired, adminToken({ expiresAt: START + 86_400_000 })],\n  }));\n  const c = await startTeamConsole({ apiUrl: api.url, adminToken: \"tokens-admin-token-sentinel-0123456789\" });\n  try {\n    const res = await getPage(c, \"/tokens\", c.cookies.admin);\n    expect(res.status).toBe(200);\n    console.log(\"/tokens expiry alert tags:\", JSON.stringify(res.body.match(/<[^>]+role=\"alert\"[^>]*>/g)));\n    expectCalloutsOnly(res.body);\n  } finally {\n    await c.close();\n    api.stop();\n  }\n});\n\nfor (const path of [\"/tokens\", \"/probes\"]) {\n  test(`no admin token banner on ${path}`, async () => {\n    const api = startFakeApi();\n    const c = await startTeamConsole({ apiUrl: api.url });\n    try {\n      const res = await getPage(c, path, c.cookies.admin);\n      expect(res.status).toBe(200);\n      const text = \"The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.\";\n      const copies = res.body.split(text).length - 1;\n      console.log(path, \"no-token text copies:\", copies, \"alert tags:\", JSON.stringify(res.body.match(/<[^>]+role=\"alert\"[^>]*>/g)));\n      expect(copies).toBe(2);\n      expect(api.seen.filter(s => s.path.startsWith(\"/admin/\"))).toEqual([]);\n      expectCalloutsOnly(res.body);\n    } finally {\n      await c.close();\n      api.stop();\n    }\n  });\n}",
       "exitCode": 1,
-      "excerpt": "status 200 alert tags: [\"<section class=\\\"state state-warning\\\" role=\\\"alert\\\">\"]\nExpected substring or pattern: /^<section class=\"callout callout-(?:info|success|warning|error|neutral)\"/\n(fail) last admin expiry banner on /tokens\nstatus 200 alert tags: [\"<section class=\\\"state state-error\\\" role=\\\"alert\\\">\",\"<p role=\\\"alert\\\">\"]\n(fail) no admin token banner on /tokens\n 0 pass\n 2 fail\n--- styles.ts: only .state-tiles and .state-tile (lines 170-173), no .state, .state-error or .state-warning rule. Also hand-written role=alert paragraphs at src/token-routes.ts:94, src/probe-routes.ts:76, src/probe-pages.ts:108,182,206, src/token-pages.ts:160,201; without a token /tokens and /probes show the no-token sentence twice.",
+      "excerpt": "/tokens expiry alert tags: [\"<section class=\\\"state state-warning\\\" role=\\\"alert\\\">\"]\n/tokens no-token text copies: 2 alert tags: [\"<section class=\\\"state state-error\\\" role=\\\"alert\\\">\",\"<p role=\\\"alert\\\">\"]\n/probes no-token text copies: 2 alert tags: [\"<section class=\\\"state state-error\\\" role=\\\"alert\\\">\",\"<p role=\\\"alert\\\">\"]\nExpected substring or pattern: /^<section class=\"callout callout-(?:info|success|warning|error|neutral)\"/\nReceived: \"<section class=\\\"state state-warning\\\" role=\\\"alert\\\">\" or \"<section class=\\\"state state-error\\\" role=\\\"alert\\\">\"\n0 pass, 3 fail, 10 expect() calls. All three tests fail inside expectCalloutsOnly at test/rendered-audit.ts:10.\nstyles.ts:170-173: only .state-tiles and .state-tile, no .state, .state-error or .state-warning rule.",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f" }
     },
     {
@@ -120,7 +121,7 @@
       "severity": "P3",
       "candidate": true,
       "title": "The README endpoint table lacks the Probes, Status page and Notifications routes, and docs/index.md and docs/development.md describe an older console",
-      "command": "for p in /probes /probes/new /probes/rotate /probes/revoke /status-page /notifications /notifications/new /notifications/edit /notifications/delete /notifications/failed /notifications/resend; do printf \"%s table=%s\\n\" \"$p\" \"$(grep -cE \"^\\| .*\\`[A-Z/]*[ ]?${p}[\\`?\\[ ,]\" README.md)\"; done; bun -e 'import * as n from \"./src/navigation.ts\"; for (const [k,v] of Object.entries(n)) if (Array.isArray(v)) console.log(k, v.length, v.map(e=>e.id).join(\",\"));'",
+      "command": "bun -e 'import { readFileSync } from \"node:fs\"; import { NAVIGATION } from \"./src/navigation.ts\"; const rows = readFileSync(\"README.md\", \"utf8\").split(\"\\n\").filter(l => l.startsWith(\"|\")); for (const p of [\"/probes\",\"/probes/new\",\"/probes/rotate\",\"/probes/revoke\",\"/status-page\",\"/notifications\",\"/notifications/new\",\"/notifications/edit\",\"/notifications/delete\",\"/notifications/failed\",\"/notifications/resend\"]) console.log(p + \" table=\" + rows.filter(l=>l.includes(p)).length); console.log(\"NAVIGATION\", NAVIGATION.length, NAVIGATION.map(e=>e.id).join(\",\"));'",
       "exitCode": 0,
       "excerpt": "/probes table=0\n/probes/new table=0\n/probes/rotate table=0\n/probes/revoke table=0\n/status-page table=0\n/notifications table=0\n/notifications/new table=0\n/notifications/edit table=0\n/notifications/delete table=0\n/notifications/failed table=0\n/notifications/resend table=0\nNAVIGATION 11 overview,checks,incidents,maintenance,tokens,probes,status-page,notifications,team,activity,system\n(docs/index.md:3: 'Two-factor sign-in follows in #563'; docs/development.md:25: 'the nine-entry registry')",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f" }
@@ -156,7 +157,7 @@
       "severity": "P3",
       "candidate": false,
       "title": "Four exports have no production user; one is a refusal text nothing renders",
-      "command": "bun scripts/exports.ts <copy>; grep -rn \"composeStopCommand\\|readOnlyState\\|checkFiltersQuery\\|LAST_ADMIN_REFUSED\" --include=*.ts src test e2e | grep -v \"^src/\\(probe-snippet\\|states\\|check-filters\\)\\.ts\"",
+      "command": "grep -rn 'composeStopCommand\\|readOnlyState\\|checkFiltersQuery\\|LAST_ADMIN_REFUSED' --include='*.ts' src test e2e | grep -v '^src/\\(probe-snippet\\|states\\|check-filters\\)\\.ts'",
       "exitCode": 0,
       "excerpt": "src/check-filters.test.ts:122:    expect(checkFiltersQuery(filters)).toBe(\"q=a+b&type=dns&state=down&source=file\");\nsrc/token-routes.ts:61:export const LAST_ADMIN_REFUSED_TEXT = \"This is the last active admin token. Nothing was changed.\";\nsrc/states.test.ts:162:  const html = readOnlyState();\nsrc/probe-snippet.test.ts:197:    expect(composeStopCommand(base)).toBe(\ntest/fixture-routes.ts:360:      page(503, \"Edit\", `${readOnlyState()}${editForm(request)}`),",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f" }
@@ -168,7 +169,7 @@
       "severity": "P3",
       "candidate": false,
       "title": "The resend request id comes from node:crypto in a route module, not from the injected randomBytes (also contradicts docs/development.md:16)",
-      "command": "grep -nE \"process\\.env|Bun\\.password|getRandomValues|randomBytes\\(|process\\.stdout|readFileSync|from \\\"node:fs\\\"|from \\\"node:crypto\\\"\" src/*.ts (non-test, without src/two-factor-harness.ts)",
+      "command": "grep -HnE 'from \"node:crypto\"|randomBytes\\(' src/notification-routes.ts",
       "exitCode": 0,
       "excerpt": "src/notification-routes.ts:1:import { randomBytes } from \"node:crypto\";\nsrc/notification-routes.ts:69:  return randomBytes(18).toString(\"base64url\");\n(every other random value uses deps.randomBytes or a randomBytes parameter: setup-code.ts:42, form-tokens.ts:94, http-context.ts:132, account-routes.ts:206, account-links.ts:34, recovery-codes.ts:10, secret-box.ts:20)",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f" }
@@ -198,27 +199,15 @@
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f", "kit": "ece6a8990350deed4e6b780adbdc4ee75b09a07b" }
     },
     {
-      "id": "quality-console-2026-11-09-12",
-      "repos": ["console", "kit", "status"],
-      "location": "src/incident-list.ts:13",
-      "severity": "P3",
-      "candidate": false,
-      "title": "Duplication: the console formats incident durations itself and shows other values than pulse-status for the same incident",
-      "command": "bun -e 'import { durationText } from \"./src/incident-list.ts\"; import { formatDuration } from \"@lorenzh/pulse-kit/format-duration\"; for (const ms of [30_000, 89.5*60_000, 1439.6*60_000]) console.log(ms, JSON.stringify(durationText(ms)), JSON.stringify(formatDuration(ms)));'",
-      "exitCode": 0,
-      "excerpt": "30000 \"1 min\" \"<1m\"\n5370000 \"1 h 30 min\" \"1h 29m\"\n86376000 \"1 d\" \"23h 59m\"\n(pulse-status src/render.ts:575 uses formatDuration for the incident duration)",
-      "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f", "kit": "ece6a8990350deed4e6b780adbdc4ee75b09a07b", "status": "f220fbc27a2d733e583aba63e5949062f29d9861" }
-    },
-    {
       "id": "quality-console-2026-11-09-13",
       "repos": ["console"],
       "location": "src/two-factor-harness.ts:1",
       "severity": "P3",
       "candidate": false,
-      "title": "A test harness lives in src/: it ships in the image, counts toward the coverage gate and holds the only production lint directive (contradicts docs/development.md:60)",
-      "command": "bun scripts/reach.ts <copy> src/main.ts src/owner-reset.ts e2e/run.ts; coverage table of bun run test; pulse-eslint --no-inline-config -f json src test e2e; sed -n 1,5p src/two-factor-harness.ts; grep -n 'COPY src' Dockerfile",
+      "title": "A shared test harness lives in src/: it ships in the image and counts toward the coverage gate",
+      "command": "timeout 600 bun run check; sed -n '1,6p' src/two-factor-harness.ts; grep -n 'COPY src' Dockerfile; grep -l two-factor-harness src/*.test.ts; cat bunfig.toml",
       "exitCode": 0,
-      "excerpt": "files: 100; reached: 96; unreached: 4\n  src/two-factor-harness.ts\n  ...\n src/two-factor-harness.ts  |   97.56 |  100.00 |\nsrc/two-factor-harness.ts:109 sonarjs/no-clear-text-protocols (only non-test hit)\n/* eslint-disable sonarjs/no-clear-text-protocols -- loopback test servers */\nimport { expect } from \"bun:test\";\nCOPY src ./src",
+      "excerpt": "All files | 97.99 % Funcs | 97.17 % Lines\nsrc/two-factor-harness.ts | 97.56 % Funcs | 100.00 % Lines\n1993 pass, 0 fail, 13005 expect() calls, 90 files.\n/* eslint-disable sonarjs/no-clear-text-protocols -- loopback test servers */\nimport { expect } from \"bun:test\";\nDockerfile:12:COPY src ./src\nSeven importing files: src/owner-reset.test.ts, src/server.account-token.test.ts, src/server.factor.test.ts, src/server.recovery.test.ts, src/server.security.test.ts, src/server.sessions.test.ts, src/server.upgrade.test.ts.\ncoveragePathIgnorePatterns = [\"**/*.test.ts\", \"test/**\", \"**/test/**\", \"dist/**\"]\nThis violates the shared-helper placement rule at docs/development.md:60. Its separate statement that test/ never ships remains true. This harness is not reached by the service entry points.",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f" }
     },
     {
@@ -233,5 +222,54 @@
       "excerpt": "api/src/tokens.ts:11:export const EXAMPLE_TOKENS: readonly string[] = [\nconsole/src/admin-token.ts:7:// Copied from pulse-api src/tokens.ts:11-14 (EXAMPLE_TOKENS); the console cannot import the api.\nconsole/src/admin-token.ts:8:const EXAMPLE_TOKENS: readonly string[] = [\n28 PULSE_CONSOLE_ADMIN_TOKEN must hold at least 32 characters\n30 PULSE_CONSOLE_ADMIN_TOKEN must hold at least 32 characters",
       "commits": { "console": "45b2d48260476510fa697f0c9cb560fbae26432f", "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6" }
     }
-  ]
+  ],
+  "review": {
+    "date": "2026-11-09",
+    "startedAt": "16:41:06 UTC",
+    "metaCheckout": "f58ee076e40cdb8ce7f02abb9e12ca9a875fb2f1",
+    "commitVerification": "Every target HEAD matches commits above. The meta checkout is the audit-report commit directly after 6a09e6e; git diff 6a09e6e HEAD -- AGENTS.md docs/code-conventions.md exits 0 with no output. No product revision moved.",
+    "checks": [
+      {
+        "command": "jq -e . audits/quality/console.json; structural JSON/Markdown comparison",
+        "exitCode": 0,
+        "excerpt": "Matching findings, ids, severities, candidate flags, required fields, and all 8 checked checklist items."
+      },
+      {
+        "command": "timeout 600 bun run check",
+        "exitCode": 0,
+        "excerpt": "Lint: 1 warning, 7 infos; pulse-workflows: ok (1 files, 11 uses). Typecheck passed. 1993 pass, 0 fail, 13005 expect() calls, 90 files, 100.62s. Coverage: 97.99% functions, 97.17% lines."
+      },
+      {
+        "command": "timeout 600 bun node_modules/typescript7/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters; same command with -p e2e",
+        "exitCode": 0,
+        "excerpt": "Both exit 0, no output."
+      },
+      {
+        "command": "ESLint API from installed pulse-config, allowInlineConfig:false, override sonarjs/cognitive-complexity to [error,0], lintFiles([src,test,e2e])",
+        "exitCode": 0,
+        "excerpt": "1520 complexity diagnostics; max 15 at src/server.security.test.ts:499, production max 14 at src/check-outcome.ts:24 and src/server.ts:1111. The only other non-test-named src diagnostic is sonarjs/no-clear-text-protocols at src/two-factor-harness.ts:109."
+      },
+      {
+        "command": "timeout 300 bun test ./review-callouts.test.ts",
+        "exitCode": 1,
+        "excerpt": "0 pass, 3 fail, all at test/rendered-audit.ts:10. Reproduced the expiry banner, both no-token banners, and duplicate no-token text on /tokens and /probes; see finding 1 reproduction."
+      },
+      {
+        "command": "grep/diff for findings 2-9 and 13; Bun commands for findings 5, 11 and 14; full test coverage for finding 10",
+        "exitCode": 0,
+        "excerpt": "Counts and retained claims confirmed. Identical kept-input block: diff 0; near-copy People logging: diff 1, as reported. openDatabase: hasCause:false. Example tokens: 28 and 30 characters, both rejected by the 32-character minimum."
+      }
+    ],
+    "removed": [
+      {
+        "id": "quality-console-2026-11-09-12",
+        "reason": "The output confirms a deliberate specification difference, not a defect: .factory/work/569/plan.md:312-317 requires half-up minutes and the console's wording; pulse-kit documents floored minutes and compact wording.",
+        "command": "bun -e 'import { durationText } from \"./src/incident-list.ts\"; import { formatDuration } from \"@lorenzh/pulse-kit/format-duration\"; for (const ms of [30_000, 89.5*60_000, 1439.6*60_000]) console.log(ms, JSON.stringify(durationText(ms)), JSON.stringify(formatDuration(ms)));'",
+        "exitCode": 0,
+        "excerpt": "30000 \"1 min\" \"<1m\"\n5370000 \"1 h 30 min\" \"1h 29m\"\n86376000 \"1 d\" \"23h 59m\""
+      }
+    ],
+    "regraded": [],
+    "limitations": "P3 checks are spot checks, not an independent repeat of every original exploratory scan. No browser suite or image build was needed for the retained source and coverage claims. No P1/P2 findings, security payloads, unfinished checks or audit gates remain. All runtime checks used a temporary copy and localhost fakes."
+  }
 }
