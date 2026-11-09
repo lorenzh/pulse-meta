@@ -16,7 +16,7 @@
     {
       "item": "Authentication before any other check; status codes and their order on admin routes",
       "status": "not applicable",
-      "evidence": "pulse-deploy serves no HTTP route of its own; the admin routes belong to pulse-api and pulse-console. Deploy-side reachability from `docker compose config --format json`: minimal api 127.0.0.1:3000; full console 127.0.0.1:8082, status *:8080; demo console, mailpit and status on 127.0.0.1; dev api and console on 127.0.0.1, status *:8080; the CLI-rendered minimal, demo and full match. Running full stack: api PortBindings {}, console 127.0.0.1:18082. The CLI project guard refused 4 bypass attempts with exit 1 before any destructive Compose call (same project name in a second directory, a volume renamed to another project's, an external volume, `export COMPOSE_PROJECT_NAME=` in .env); DOCKER_HOST in .env is ignored by Compose; the 6 volumes of the stack stayed intact."
+      "evidence": "The deploy CLI and helpers expose no admin HTTP routes; the demo HTTP target serves synthetic probe replies only. Admin routes belong to pulse-api and pulse-console. Deploy-side reachability from `docker compose config --format json`: minimal api 127.0.0.1:3000; full console 127.0.0.1:8082, status *:8080; demo console, mailpit and status on 127.0.0.1; dev api and console on 127.0.0.1, status *:8080; the CLI-rendered minimal, demo and full match. Running full stack: api PortBindings {}, console 127.0.0.1:18082. The CLI project guard refused 4 bypass attempts with exit 1 before any destructive Compose call (same project name in a second directory, a volume renamed to another project's, an external volume, `export COMPOSE_PROJECT_NAME=` in .env); DOCKER_HOST in .env is ignored by Compose; the 6 volumes of the stack stayed intact."
     },
     {
       "item": "Body and size limits on every method, also before any write",
@@ -36,7 +36,7 @@
     {
       "item": "SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers",
       "status": "checked",
-      "evidence": "The CLI sends no HTTP request itself; every Docker call is an argument array with stdin /dev/null (cli/docker.ts:53). The only in-container request is fetch(\"http://127.0.0.1:<port>/readyz\"), port from pulse.json accepted only as an integer 1 to 65535 (cli/docker.ts:186); service names match [a-z0-9][a-z0-9-]{0,62} and cannot become an exec flag. scripts/bump-images.sh: registry fixed to https://ghcr.io (line 11), never from the environment; curl without -L (no hit for ` -L` in bump-images.sh), so no redirect is followed and the pull token is not forwarded; tag and service checked (17 test cases passed). wait-ready.sh accepts a mailpit address only if it matches ^127\\.0\\.0\\.1:[0-9]+$ (line 84). COMPOSE_* is removed from the child environment and refused in .env; DOCKER_HOST in .env has no effect. No setup sets a trust-proxy or forwarded-header option (grep: no hit). Services reach the api at http://api:3000 on the Compose network (common/services.yaml:21, 30, 40, 49); redirect handling on that hop belongs to the service audits (security-status-2026-11-06-2)."
+      "evidence": "The CLI sends no HTTP request itself; every Docker call is an argument array with stdin /dev/null (cli/docker.ts:53). The in-container readiness fetch starts at http://127.0.0.1:<port>/readyz, port from pulse.json accepted only as an integer 1 to 65535 (cli/docker.ts:186); service names match [a-z0-9][a-z0-9-]{0,62} and cannot become an exec flag. The reviewer ran readyzScript in a loopback-only harness: cross-origin and HTTP-to-HTTPS-to-HTTP redirects both reached the final target and printed `200\\nok` (exit 0); Authorization, Cookie, Forwarded and X-Forwarded-For hits: 0. The helper uses fetch's default redirect behavior, not a per-hop allowlist. A redirect is controlled by the already-running service inside its container; the CLI supplies no request credentials and does not display the response body. scripts/bump-images.sh: registry fixed to https://ghcr.io (line 11), never from the environment; curl without -L (no hit for ` -L` in bump-images.sh), so no redirect is followed and the pull token is not forwarded; tag and service checked (17 test cases passed). wait-ready.sh accepts a mailpit address only if it matches ^127\\.0\\.0\\.1:[0-9]+$ (line 84). COMPOSE_* is removed from the child environment and refused in .env; DOCKER_HOST in .env has no effect. No setup sets a trust-proxy or forwarded-header option (grep: no hit). Services reach the api at http://api:3000 on the Compose network (common/services.yaml:21, 30, 40, 49); redirect handling on that hop belongs to the service audits (security-status-2026-11-06-2)."
     },
     {
       "item": "File writes atomic and path-safe",
@@ -98,7 +98,7 @@
       "location": "cli/docker.ts:104",
       "severity": "P3",
       "candidate": false,
-      "title": "maskUserInfo masks only up to the first /, ?, # or space and needs // after the scheme, so a malformed DOCKER_HOST is passed on",
+      "title": "maskUserInfo masks only up to the first /, ?, # or space and needs at least one / after the scheme, so a malformed DOCKER_HOST is passed on",
       "command": "DOCKER_HOST=<tcp URL whose unencoded password holds a \"/\"> pulse status --dir <install>; unit run of maskUserInfo over 14 line shapes",
       "exitCode": 3,
       "excerpt": "`pulse status: cannot reach the Docker daemon: Failed to initialize: unable to resolve docker endpoint: parse \"tcp://u:pa/<marker>@127.0.0.1:1\": invalid port \":pa\" after host` (marker shown); `Cannot connect to the Docker daemon at tcp://127.0.0.1:1/<marker>`. Unit run: 6 of 14 shapes keep the marker (raw /, #, ? or space in the password, `https:u:p@h`, `token=` text). A well-formed `tcp://u:<marker>@...` gives `(hidden)`.",
@@ -143,5 +143,75 @@
       "location": "full/compose.yaml:68",
       "text": "Status is published on all interfaces in full, dev and the CLI's full (*:8080; running stack HostIp \"\"). This is the intended public status page, listed in the port table. Console, api and mailpit are loopback only."
     }
-  ]
+  ],
+  "review": {
+    "date": "2026-11-09",
+    "startedAt": "2026-11-09T16:55:52Z",
+    "commits": {
+      "deploy": "d47d8b90146601f97dad7de3dcf625a14e4bf018",
+      "meta": "c744752c18eabea3f63c9d488e76b31bce390f95"
+    },
+    "summary": "All four P3 findings reproduced; none removed or regraded. Two issue candidates retained. No P1 or P2 findings and no remaining review gate.",
+    "checks": [
+      {
+        "command": "jq . audits/security/deploy.json; structural comparison with audits/security/deploy.md; git -C .repos/deploy rev-parse HEAD; git rev-parse HEAD; git diff 6a09e6e9a0e5724b232a34312075b67068007dcc -- AGENTS.md docs/approved-packages.md",
+        "exitCode": 0,
+        "excerpt": "Matching four finding ids and P3 severities; two candidates; eight checklist rows (seven checked, one not applicable), all required fields present. Deploy HEAD matches the audit. Meta HEAD adds only the audit report; the examined instructions and approved package list are unchanged."
+      },
+      {
+        "finding": "security-deploy-2026-11-09-1",
+        "command": "In the copy: rm .git/hooks/pre-commit && CI=true bun install --frozen-lockfile --force && test -f .git/hooks/pre-commit && bun pm untrusted; read release.yml:38-53",
+        "exitCode": 0,
+        "excerpt": "118 packages installed; root prepare ran `lefthook install || true`; pre-commit recreated under CI=true. Only pulse-config prepare appears in bun pm untrusted. The build job has contents: write and job-level GH_TOKEN, including install and compile steps."
+      },
+      {
+        "command": "bun run build && dist/pulse --version",
+        "exitCode": 0,
+        "excerpt": "Compiled dist/pulse; pulse 0.1.0 (Bun 1.4.0)."
+      },
+      {
+        "finding": "security-deploy-2026-11-09-2",
+        "command": "pulse init --yes --setup full --checks none --project review948deep <install>; replace notify.json with a channel nested 100,000 objects deep; pulse up --dir <install> with the repository Docker stub",
+        "exitCode": 1,
+        "excerpt": "RangeError: Maximum call stack size exceeded; 6,661 stderr bytes including bundled source and /$bunfs/root/pulse frames. Other install files unchanged. The Docker stub prevents container creation. The byte count differs from the audit's build, but exception class, exit code and source dump match."
+      },
+      {
+        "finding": "security-deploy-2026-11-09-3",
+        "command": "pulse init --yes --setup full --checks none <install>; replace secrets/console-secret-key with a 5 GiB sparse file, mode 0600; pulse init --yes --setup full --checks none --force <install>, sample RSS every 0.1 s",
+        "exitCode": 1,
+        "excerpt": "peak_rss_kb=5278720; ENOMEM: not enough memory, read '<install>/secrets/console-secret-key'; bundled source and /$bunfs/root/pulse frames. Other install files unchanged."
+      },
+      {
+        "finding": "security-deploy-2026-11-09-4",
+        "command": "DOCKER_HOST=<malformed loopback tcp URL with a raw / in the password> pulse status --dir <install>; direct maskUserInfo checks with one slash and no slash after the scheme",
+        "exitCode": 3,
+        "excerpt": "pulse status: cannot reach the Docker daemon: Failed to initialize: unable to resolve docker endpoint: parse <URL containing marker>: invalid port. The marker remains visible. Direct check: tcp:/user:<marker>@host is masked, tcp:user:<marker>@host is not; both calls completed normally."
+      },
+      {
+        "command": "bun test cli",
+        "exitCode": 0,
+        "excerpt": "317 pass, 0 fail; 1760 expect() calls across 18 files."
+      },
+      {
+        "command": "bash scripts/check-setup.sh; bash e2e/redact.test.sh; bash scripts/bump-images.test.sh; bash scripts/init-secrets.test.sh; bash scripts/secrets-init.test.sh",
+        "exitCode": 0,
+        "excerpt": "Each command exited 0: all setup rules passed; redact 54 cases; bump-images 17; init-secrets 7; secrets-init 66."
+      },
+      {
+        "command": "bun <temporary review-readyz.ts>: run extracted readyzScript against loopback-only HTTP and trusted local HTTPS redirect servers",
+        "exitCode": 0,
+        "excerpt": "Cross-origin: 200\\nok; HTTP-to-HTTPS-to-HTTP: 200\\nok. Two final-target hits, zero Authorization/Cookie/Forwarded/X-Forwarded-For headers. All local servers stopped in finally."
+      }
+    ],
+    "changes": [
+      "Corrected finding 4: the scheme needs at least one slash, not necessarily two.",
+      "Clarified that the authentication item excludes admin routes, while deploy has a synthetic demo HTTP target.",
+      "Added the readiness helper's observed redirect behavior to the SSRF evidence."
+    ],
+    "limitations": [
+      "The original live-stack, 483-call fuzz and demo HTTP-body probes were reviewed from the audit evidence rather than repeated. All four findings were independently reproduced; no P1 or P2 reproduction is outstanding.",
+      "shellcheck remains unavailable. The initial default-temp install failed with EROFS; a retry with temporary TMPDIR and BUN_INSTALL_CACHE_DIR succeeded. rsync is unavailable, so the isolated copy used cp -a, as in the audit."
+    ],
+    "cleanup": "Temporary copy, probes and TLS fixtures removed after review. No review container or volume remains; two pre-existing Docker volumes were left untouched."
+  }
 }
