@@ -60,3 +60,4 @@ Lessons:
 
 ## Rules
 - Public repository: no secrets, tokens or private details in issues, specs or config.
+- Commit messages and PR bodies carry no AI attribution: no "Generated with" line, no session link, no Co-Authored-By or similar trailer. Factory agents get this rule from `.factory/prompts/preamble.md`.
