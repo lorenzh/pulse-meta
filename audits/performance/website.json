@@ -1,0 +1,157 @@
+{
+  "issue": 951,
+  "kind": "performance",
+  "scope": "website",
+  "date": "2026-11-10",
+  "commits": {
+    "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8",
+    "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "meta": "6a09e6e9a0e5724b232a34312075b67068007dcc"
+  },
+  "bench": {
+    "run": 42794619243,
+    "url": "https://github.com/lorenzh/pulse-api/actions/runs/42794619243",
+    "event": "schedule",
+    "createdAt": "2026-11-10T09:54:29Z",
+    "apiHead": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "conclusion": "failure",
+    "website": "The artifact bench-out (table.md, table.json, samples.json) has no website table and no website sample (grep -c website: 0, 0, 0). pulse-api bench/budgets.json has no website entry. The run's failures belong to api, probe, status and notify. No A/B with bench/run.ts was run."
+  },
+  "checklist": [
+    {
+      "item": "Queries. EXPLAIN QUERY PLAN for every query on the request path and at startup. Flag every full table scan (SCAN) and every temporary B-tree (USE TEMP B-TREE) over results.",
+      "status": "not applicable",
+      "evidence": "The website is a static site with no database and no request path of its own. grep -rn \"sqlite\\|SELECT \\|bun:sqlite\\|createServer\\|Bun.serve\\|listen(\" src scripts --include=*.ts --include=*.tsx | grep -v test finds only src/build/static-server.ts:2,48,61, the local file server of the checks."
+    },
+    {
+      "item": "Startup. A CPU profile of the startup (bun --cpu-prof), with the top functions by self time.",
+      "status": "checked",
+      "evidence": "The only process start is the build. bun cpu.ts: bun run build 1,054 ms CPU median of 5; bun scripts/build.ts 1,002 ms median of 10 (interleaved), 855 ms with NODE_ENV=production (byte-identical dist, diff -r exit 0). bun --cpu-prof --cpu-prof-interval=100 scripts/build.ts, 5 runs, exit 0: 3,779.1 ms sampled; top self time: marked setext-heading regex 713.2 ms (18.9 %), anonymous 180.5 ms (4.8 %), DateTimeFormat 102.0 ms (2.7 %), marked inline-text regex 100.7 ms (2.7 %), marked #e 88.9 ms (2.4 %), ReactElement react-jsx-runtime.development.js 80.8 ms (2.1 %). By file: native 49.1 %, marked.esm.js 17.3 %, react-dom-server-legacy.browser.development.js 14.3 %, react-jsx-runtime.development.js 3.5 %, esbuild main.js 2.0 %. Findings 2 and 4."
+    },
+    {
+      "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
+      "status": "checked",
+      "evidence": "No website bench exists and the pulse-api bench has no website metric. timeout 600 bun growth.ts <copy> 1 10 (exit 0, median of 5): docs Markdown 415 KiB -> 4,149 KiB; one marked.lexer per file 47.1 -> 439.1 ms (9.3x); one renderMarkdown per file 97.0 -> 928.6 ms (9.6x); buildDocPages 196.2 -> 1,857.3 ms (9.5x); renderSite 79.5 -> 185.5 ms (2.3x); HTML written 929 -> 5,688 KiB; largest page gzip 15,066 -> 116,483 B; pages over the 60,000 B HTML budget 0 -> 4. All linear; buildDocPages costs 2x one render at every size (finding 4). The docs sidebar holds all 39 links on each docs page (2,903 B raw; all nav blocks 852 B gzip of 6,228 B). The canvas network is capped at 14 + 40 nodes (src/lib/network.ts:96-97)."
+    },
+    {
+      "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
+      "status": "checked",
+      "evidence": "N = 5 minutes. Load: Home open and visible in headless Chrome 156 at 1280x800 with animations on (network canvas about 30 fps, live preview 1 Hz). timeout 600 bun memrun.ts <copy> / 5 30 no-preference, exit 0, 11 samples. Renderer PSS 159.3 -> 148.6 MiB (-6.7 %), all Chrome PSS 415.0 -> 401.5 MiB, JS heap 1.07 -> 1.44 MiB (0.98-1.64 sawtooth), DOM nodes 908 and listeners 12 constant: no leak. CPU 10.0 % of one core over 300 s (renderer 5.1 %, GPU 4.9 %); 0.3 % with reduced motion and 0.3 % on /docs/api/rest-api/ (60 s each); 10.1 % (Home) and 11.0 % (Hosted) when scrolled to the end (60 s each). Finding 1."
+    },
+    {
+      "item": "Tests. CPU time per test file; name the slowest files.",
+      "status": "checked",
+      "evidence": "bun run test: 195 pass, 0 fail, 30 files; CPU median 609 ms of 5 (605, 609, 618, 588, 609). Per file (bun test ./<file>, 3 runs): src/site.test.ts 289 ms, src/content/hosted.test.ts 200 ms, src/build/hover-scan.test.ts 199 ms, src/content/home.test.ts 198 ms, src/docs/page.test.ts 87 ms, src/build/static-server.test.ts 64 ms; the other 24 files 27-59 ms. The four slowest call loadSite() (esbuild of src/site.tsx, 70 ms CPU alone). Nine files exit 1 when run alone because of the 80 % coverage gate, with all tests passing. No test CPU budget exists for the website. Each run leaves 4 directories in .build/ (finding 5)."
+    },
+    {
+      "item": "pulse-website only. JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages (performance score, LCP, TBT, CLS).",
+      "status": "checked",
+      "evidence": "bun run check:budget, exit 0, budget ok: Home HTML 7,277 / CSS 6,334 / JS 12,647 B gzip; Hosted 4,379 / 6,334 / 12,736 B; worst page HTML 15,108 B (docs/contract), CSS 6,334 B, JS 12,736 B against 60,000 / 20,000 / 30,000 B; JetBrains Mono 2 of 2 font files. Lighthouse 13.6.0, performance only, 3 runs each, exit 0, medians: Home mobile (plain server) score 99, LCP 2,256 ms, TBT 0 ms, CLS 0; Home mobile (gzip) 100, LCP 1,809 ms, TBT 0, CLS 0; Home desktop 100, LCP 528 ms, TBT 0, CLS 0.053; Hosted mobile (plain) 100, LCP 1,387 ms, TBT 0, CLS 0.033; Hosted mobile (gzip) 100, LCP 755 ms, TBT 0, CLS 0.033; Hosted desktop 100, LCP 245 ms, TBT 0, CLS 0.014. Fonts blocked: Home LCP 1,209 ms, CLS 0 everywhere (finding 3). No Lighthouse budget exists in the website."
+    }
+  ],
+  "findings": [
+    {
+      "id": "performance-website-2026-11-10-1",
+      "repos": ["website"],
+      "location": "src/islands/network-canvas.ts:85-108",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The network canvas animation costs about 10 % of a CPU core for as long as Home or Hosted is visible, wherever the reader has scrolled to",
+      "command": "timeout 600 bun memrun.ts <copy> / 5 30 no-preference (headless Chrome 156, 1280x800; PSS and CPU of every Chrome process from /proc, CDP Performance.getMetrics); 60 s repeats: SCROLL=1 on / and /hosted/, motion reduce on /, and /docs/api/rest-api/",
+      "exitCode": 0,
+      "excerpt": "CPU over 300 s: renderer 5.1 %, gpu 4.9 %, all chrome 10.0 % of one core; page task time 3.1 %\nscrolled to y=5778 (Home): all chrome 10.1 %; scrolled to y=3546 (Hosted): all chrome 11.0 %\nHome, reduce: all chrome 0.3 %; /docs/api/rest-api/: all chrome 0.3 %",
+      "value": 10.0,
+      "unit": "% of one CPU core (all Chrome processes), Home open and visible",
+      "repetitions": "1 run of 300 s with 11 samples; 60 s repeats on Home and Hosted scrolled to the end (10.1 %, 11.0 %)",
+      "baseline": "0.3 % with reduced motion on the same page (60 s), 0.3 % on a docs page without the canvas (60 s)",
+      "budget": "none: the website has no runtime CPU budget, and pulse-api bench/budgets.json has no website entry",
+      "detail": "The canvas is position: fixed with inset: 0 (src/styles/components.css:397-404), so the IntersectionObserver (src/islands/network-canvas.ts:146-149) never reports it off screen. The loop runs at about 30 fps until the tab is hidden, and each frame redraws the whole static network (drawNetwork() at :106) before the pulses. The GPU share depends on the machine: headless Chrome renders with a software GPU here.",
+      "fixDirection": "Draw the static network once (a second canvas or a cached bitmap) and redraw only the pulses per frame; or stop the loop once the hero is out of view, or after some time.",
+      "commits": { "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8" }
+    },
+    {
+      "id": "performance-website-2026-11-10-2",
+      "repos": ["website"],
+      "location": "src/build/load-site.ts:17-25",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The build renders every page with the development builds of React; production React gives byte-identical output for 15 % less CPU",
+      "command": "bun cpu.ts <copy> 2 <label> -- bun scripts/build.ts, alternated 5 times with -- env NODE_ENV=production bun scripts/build.ts (10 runs per side); diff -r dist-dev dist-prod; bun --cpu-prof --cpu-prof-interval=100 scripts/build.ts (5 runs) summed with prof.ts",
+      "exitCode": 0,
+      "excerpt": "default: 971, 1004, 1031, 1037, 1042, 978, 1050, 1000, 994, 953 ms\nNODE_ENV=production: 807, 817, 845, 856, 857, 828, 859, 867, 894, 854 ms\ndiff_exit=0\nprofile by file: react-dom-server-legacy.browser.development.js 14.3 %, react-jsx-runtime.development.js 3.5 % (validateProperties$2, validateProperty, warnUnknownProperties)",
+      "value": 1002,
+      "unit": "ms CPU per build (bun scripts/build.ts, warm docs cache)",
+      "repetitions": "10 runs per side, interleaved",
+      "baseline": "855 ms with NODE_ENV=production (median of 10): -147 ms, -14.7 %, identical dist/",
+      "budget": "none: the website has no build CPU budget, and pulse-api bench/budgets.json has no website entry",
+      "detail": "load-site.ts compiles src/site.tsx with packages: \"external\" and no NODE_ENV, so react-dom/server and react/jsx-runtime resolve to their development builds. The islands already get define process.env.NODE_ENV = \"production\" (src/build/assets.ts:76).",
+      "fixDirection": "Set NODE_ENV=production for the server render of the build (in scripts/build.ts, or a build-only define in load-site.ts), so the tests can keep React's development checks.",
+      "commits": { "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8" }
+    },
+    {
+      "id": "performance-website-2026-11-10-3",
+      "repos": ["website"],
+      "location": "src/styles/fonts.css:23-32",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The web-font swap delays Home's LCP by about 0.6 s on simulated mobile and causes the only layout shifts of Home and Hosted; the fallback faces are not matched to the fonts",
+      "command": "lighthouse <origin>/ and <origin>/hosted/ --only-categories=performance --output=json --chrome-flags=\"--headless=new --no-sandbox\" (Lighthouse 13.6.0, Chrome 156), mobile behind gzip, 3 runs with fonts and 3 with --blocked-url-patterns='*.woff2'; also --preset=desktop and the repository's plain static server, 3 runs each",
+      "exitCode": 0,
+      "excerpt": "Home mobile LCP 1809, 1808, 1811 ms (fonts) vs 1235, 1205, 1209 ms (fonts blocked)\nLCP element: p.t-lead (fonts) vs h1.t-display (fonts blocked)\nHosted mobile CLS 0.033, 0.033, 0.033 (fonts) vs 0, 0, 0 (fonts blocked); Home desktop CLS 0.053, 0.053, 0.000\nlayout-shifts: span.t-accent (Hosted), div.hero-side (Home desktop), cause \"Web font loaded\"\nobserved: fonts end 76-78 ms, FCP 81-83 ms, LCP 123-133 ms",
+      "value": 1809,
+      "unit": "ms LCP, Home, Lighthouse mobile (simulated), gzip server; CLS 0.033 (Hosted mobile) and 0.053 (Home desktop)",
+      "repetitions": "3 runs per page and setting",
+      "baseline": "the same pages with the fonts blocked: Home LCP 1,209 ms, CLS 0 on both pages; on the uncompressed repository server Home LCP is 2,256 ms",
+      "budget": "none in budget.json; Core Web Vitals 'good' limits LCP 2.5 s and CLS 0.1, which all medians pass",
+      "detail": "The fallbacks are local(\"Arial\") and local(\"Courier New\") with size-adjust: 100% only, no ascent, descent or line-gap override; no font is preloaded (grep -rn preload src finds nothing). The runner has no Arial or Courier New (fc-list | grep -i -E \"arial|courier\" is empty), so the shift size depends on the reader's system fonts.",
+      "fixDirection": "Give the fallback faces metric overrides (ascent-override, descent-override, line-gap-override and a measured size-adjust) for the fonts they replace, and consider preloading the Space Grotesk file used by the hero text.",
+      "commits": { "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8" }
+    },
+    {
+      "id": "performance-website-2026-11-10-4",
+      "repos": ["website"],
+      "location": "src/docs/page.ts:38",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The build lexes every docs file four times, so buildDocPages costs twice one render and four times one lexer pass, at every data size",
+      "command": "timeout 600 bun growth.ts <copy> 1 10 (pinned docs from the build cache, joined 10x for the larger set; median of 5 after one warm-up); build profile as in checklist item 2",
+      "exitCode": 0,
+      "excerpt": "scale 1x: 39 sources, 415 KiB Markdown\n  marked.lexer once per source      47.1 ms\n  renderMarkdown once per source    97.0 ms\n  buildDocPages (as the build)      196.2 ms\nscale 10x: 39 sources, 4149 KiB Markdown\n  marked.lexer once per source      439.1 ms\n  renderMarkdown once per source    928.6 ms\n  buildDocPages (as the build)      1857.3 ms\nprofile: marked setext-heading regex 713.2 ms of 3779.1 ms (18.9 %), the top function by self time",
+      "value": 196.2,
+      "unit": "ms per build for buildDocPages at 1x (1,857.3 ms at 10x)",
+      "repetitions": "5 timed runs per size after 1 warm-up",
+      "baseline": "one renderMarkdown per file: 97.0 ms at 1x, 928.6 ms at 10x; one lexer pass: 47.1 ms and 439.1 ms",
+      "budget": "none: the website has no build CPU budget",
+      "detail": "src/docs/page.ts:38 runs a full renderMarkdown per file only to collect heading ids; :47 renders again; src/docs/markdown.ts:141-142 runs marked.parse(source) and then marked.lexer(source) again for the first paragraph. Cost grows linearly with the Markdown, at about twice the necessary cost.",
+      "fixDirection": "Lex each source once and reuse the tokens for the heading ids, the HTML and the first paragraph.",
+      "commits": { "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8" }
+    },
+    {
+      "id": "performance-website-2026-11-10-5",
+      "repos": ["website"],
+      "location": "src/build/load-site.ts:13-15",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Each bun run test leaves 4 compiled site copies (84 KiB each) in .build/ that no test removes, so the directory grows with every run",
+      "command": "rm -rf .build; for i in 1 2 3; do bun run test; ls .build | wc -l; du -sk .build; done",
+      "exitCode": 0,
+      "excerpt": "exit=0 after run 1: 4 dirs, 340 KiB\nexit=0 after run 2: 8 dirs, 676 KiB\nexit=0 after run 3: 12 dirs, 1012 KiB",
+      "value": 336,
+      "unit": "KiB of .build/ per bun run test (4 directories)",
+      "repetitions": "3 runs",
+      "baseline": "0 after bun run build, which clears .build/ (scripts/build.ts:47)",
+      "budget": "none",
+      "detail": "loadSite() makes mkdtemp(.build/site-) and never removes it; four test files call it (src/site.test.ts:47, src/content/home.test.ts:8, src/content/hosted.test.ts:7, src/build/hover-scan.test.ts:48). Developer disk only; it does not affect the site.",
+      "commits": { "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8" }
+    }
+  ],
+  "notes": [
+    "Fonts are 78.7 % of Home's transfer behind gzip (106,166 of 134,945 B). The italic JetBrains Mono (43,134 B) serves only the .t-accent words of the hero headings (src/styles/tokens.css:256-262). budget.json limits font files per family, not font bytes.",
+    "The repository's static server (src/build/static-server.ts) sends no compression and no cache headers. It serves only the checks, but Lighthouse with it overstates the transfer: Home 195,937 B plain against 134,945 B with gzip, mobile LCP 2,256 against 1,809 ms. No host is chosen yet (site.config.ts).",
+    "The docs sidebar repeats all 39 links on every docs page (2,903 B raw; all nav blocks 852 B gzip of a 6,228 B gzip page). This grows linearly with the page count and is far from the HTML budget.",
+    "formatUpdated (src/docs/page.ts:77-80) builds a new Intl.DateTimeFormat per docs page: 102.0 ms self time over 5 profiled builds, about 20 ms per build.",
+    "Run alone, nine test files exit 1 with all tests passing, because the 80 % coverage gate of bunfig.toml applies to each single-file run (src/site.test.ts: 2 pass, 0 fail, 76.86 % lines, exit 1; exit 0 with a copy of bunfig.toml without coverageThreshold); this changes the exit code of the one-file command in the AGENTS.md table.",
+    "The pulse-api nightly bench does not measure the website. Build, test or Lighthouse budgets for the website would have to be added to pulse-api bench/budgets.json or the website's budget.json; that is a decision for the owner.",
+    "Measurement limits: resourceUsage() may miss the CPU of the esbuild service process, which is not a waited child. Headless Chrome renders with a software GPU, so the GPU share in finding 1 depends on the machine."
+  ]
+}
