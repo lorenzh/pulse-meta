@@ -1,0 +1,61 @@
+{
+  "issue": 952,
+  "kind": "security",
+  "scope": "agent",
+  "date": "2026-11-10",
+  "commits": {
+    "agent": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b",
+    "meta": "6a09e6e9a0e5724b232a34312075b67068007dcc",
+    "config": "88996cb46fe723c4f7f395477e049029cd847c81"
+  },
+  "checklist": [
+    {
+      "item": "Secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) in errors, logs and responses.",
+      "status": "checked",
+      "evidence": "Errors, logs and responses: no code can emit them. Both commits hold only AGENTS.md, LICENSE and README.md (git ls-tree per commit); cargo build in a copy exits 101 with 'could not find `Cargo.toml`'. Repository content: git grep -n -I -i -E with patterns for GitHub tokens (ghp_, gho_, ghs_, github_pat_), Slack tokens, AWS keys (AKIA...), PEM blocks (-----BEGIN), api_key, secret, token, password, passwd, bearer and PULSE_...= assignments over every blob of both commits: no match, exit 1. The same patterns over refs/pull/1/head: no match, exit 1. grep -P for non-printable or non-ASCII characters over the three files: no match, exit 1."
+    },
+    {
+      "item": "Authentication before any other check; status codes and their order on admin routes.",
+      "status": "not applicable",
+      "evidence": "No code, so no server and no routes. The planned agent only pushes and opens no port on the host (lorenzh/pulse-meta#836, Constraints)."
+    },
+    {
+      "item": "Body and size limits on every method, also before any write.",
+      "status": "not applicable",
+      "evidence": "No code: no server that takes a body and no client that reads a response (cargo build exit 101, no Cargo.toml)."
+    },
+    {
+      "item": "Input validation at every trust boundary; validators never throw on any input type.",
+      "status": "not applicable",
+      "evidence": "No code: no trust boundary yet (no environment parsing, no /proc or statfs reads, no API response handling)."
+    },
+    {
+      "item": "No accessor or getter of untrusted input runs.",
+      "status": "not applicable",
+      "evidence": "No code. The planned agent is Rust, where parsed input is plain data; the JavaScript accessor risk does not arise."
+    },
+    {
+      "item": "SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers.",
+      "status": "not applicable",
+      "evidence": "No code: no HTTP client and no environment lookups yet. Checks for the planned push client are listed in note N4."
+    },
+    {
+      "item": "File writes atomic and path-safe.",
+      "status": "not applicable",
+      "evidence": "No code that writes files; the planned agent (#836) reads /proc and statfs and sends, and names no file it writes."
+    },
+    {
+      "item": "Dependencies, Docker base images and CI actions pinned and approved (docs/approved-packages.md).",
+      "status": "checked",
+      "evidence": "git log --all --name-only lists only AGENTS.md, LICENSE, README.md: no Cargo.toml, Cargo.lock, package.json, toolchain file, Dockerfile or .github/ in any commit. gh api repos/lorenzh/pulse-agent/actions/workflows --jq .total_count: 0. Releases: 0. Tags: 0. Nothing to pin and nothing unapproved. docs/approved-packages.md has no Rust section (grep -n -i 'rust|cargo|crate': no match, exit 1), consistent with the empty crate (note N1)."
+    }
+  ],
+  "findings": [],
+  "notes": [
+    "N1: docs/approved-packages.md has no Rust crate, toolchain pin or Rust CI action; #836 requires a Rust section before the agent adds a crate. The next audit should check Cargo.lock against it and a pinned toolchain.",
+    "N2: the pulse-config action policy check (bin/pulse-workflows.js via the lint script of a Bun package, actions-policy.json) does not cover a Rust repository without package.json; agent CI needs another way to enforce pinned actions and persist-credentials: false.",
+    "N3: gh api .../rulesets gives []; branch protection of main could not be read (HTTP 403, Resource not accessible by integration). No CI, so no required status check yet. Outside the checklist.",
+    "N4: checks for the next audit once #836 lands: check secret absent from logs, panics, Debug output and errors also on failed sends; push client refuses redirects (cross-origin, https to http); timeout and response body cap; API URL with user info or non-http(s) scheme refused; /proc, statfs and environment parsers never panic; pinned actions, toolchain and provenance for release builds; systemd unit runs unprivileged with sandbox options.",
+    "N5: refs/pull/1/head has the same tree as main (a838256..., git diff --quiet exit 0) and holds no secret."
+  ]
+}
