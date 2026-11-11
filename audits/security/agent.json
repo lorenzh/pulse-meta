@@ -1,0 +1,157 @@
+{
+  "issue": 952,
+  "kind": "security",
+  "scope": "agent",
+  "date": "2026-11-10",
+  "commits": {
+    "agent": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b",
+    "meta": "6a09e6e9a0e5724b232a34312075b67068007dcc",
+    "config": "88996cb46fe723c4f7f395477e049029cd847c81"
+  },
+  "checklist": [
+    {
+      "item": "Secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) in errors, logs and responses.",
+      "status": "checked",
+      "evidence": "Errors, logs and responses: no code can emit them. Both commits hold only AGENTS.md, LICENSE and README.md (git ls-tree per commit); cargo build in a copy exits 101 with 'could not find `Cargo.toml`'. Repository content: git grep -n -I -i -E with patterns for GitHub tokens (ghp_, gho_, ghs_, github_pat_), Slack tokens, AWS keys (AKIA...), PEM blocks (-----BEGIN), api_key, secret, token, password, passwd, bearer and PULSE_...= assignments over every blob of both commits: no match, exit 1. The same patterns over refs/pull/1/head: no match, exit 1. grep -P for non-printable or non-ASCII characters over the three files: no match, exit 1."
+    },
+    {
+      "item": "Authentication before any other check; status codes and their order on admin routes.",
+      "status": "not applicable",
+      "evidence": "No code, so no server and no routes. The planned agent only pushes and opens no port on the host (lorenzh/pulse-meta#836, Constraints)."
+    },
+    {
+      "item": "Body and size limits on every method, also before any write.",
+      "status": "not applicable",
+      "evidence": "No code: no server that takes a body and no client that reads a response (cargo build exit 101, no Cargo.toml)."
+    },
+    {
+      "item": "Input validation at every trust boundary; validators never throw on any input type.",
+      "status": "not applicable",
+      "evidence": "No code: no trust boundary yet (no environment parsing, no /proc or statfs reads, no API response handling)."
+    },
+    {
+      "item": "No accessor or getter of untrusted input runs.",
+      "status": "not applicable",
+      "evidence": "No code: no untrusted input is accessed or parsed."
+    },
+    {
+      "item": "SSRF: allowed targets, environment lookups, redirects (cross-origin, https to http), forwarded headers.",
+      "status": "not applicable",
+      "evidence": "No code: no HTTP client and no environment lookups yet. Checks for the planned push client are listed in note N4."
+    },
+    {
+      "item": "File writes atomic and path-safe.",
+      "status": "not applicable",
+      "evidence": "No code that writes files; the planned agent (#836) reads /proc and statfs and sends, and names no file it writes."
+    },
+    {
+      "item": "Dependencies, Docker base images and CI actions pinned and approved (docs/approved-packages.md).",
+      "status": "checked",
+      "evidence": "git log --all --name-only lists only AGENTS.md, LICENSE, README.md: no Cargo.toml, Cargo.lock, package.json, toolchain file, Dockerfile or .github/ in any commit. gh api repos/lorenzh/pulse-agent/actions/workflows --jq .total_count: 0. Releases: 0. Tags: 0. Nothing to pin and nothing unapproved. docs/approved-packages.md has no Rust section (rg -n -i 'rust|cargo|crate' docs/approved-packages.md: no match, exit 1), consistent with the empty crate (note N1)."
+    }
+  ],
+  "findings": [],
+  "notes": [
+    "N1: docs/approved-packages.md has no Rust crate, toolchain pin or Rust CI action; #836 requires a Rust section before the agent adds a crate. The next audit should check Cargo.lock against it and a pinned toolchain.",
+    "N2: the pulse-config action policy check (bin/pulse-workflows.js) is invoked through its Bun lint script and reads package.json. Pulse-agent has no package manifest or workflow invoking it. Rust CI must explicitly enforce the approved action pins and persist-credentials: false; the current Bun lint integration does not provide that enforcement in pulse-agent.",
+    "N3: gh api .../rulesets gives [] (no ruleset visible to this token); branch protection and required status checks of main could not be verified (command exit 1, HTTP 403, Resource not accessible by integration). Outside the checklist.",
+    "N4: checks for the next audit once #836 lands: check secret absent from logs, panics, Debug output and errors also on failed sends; push client refuses redirects (cross-origin, https to http); timeout and response body cap; API URL with user info or non-http(s) scheme refused; /proc, statfs and environment parsers never panic; pinned actions, toolchain and provenance for release builds; systemd unit runs unprivileged with sandbox options.",
+    "N5: refs/pull/1/head has the same tree as main (a838256..., git diff --quiet exit 0); no scanned secret pattern matched."
+  ],
+  "review": {
+    "date": "2026-11-10",
+    "startedAt": "2026-11-10T15:06:08Z",
+    "metaHead": "1bf8f1ef0a0a6c1ba4359696ee0210e812d3dd38",
+    "result": "complete",
+    "method": "Used rsync -a to copy the supplied shallow agent clone to mktemp -d; expanded history and fetched refs/pull/1/head as origin/pr1 only in that copy. Temporary path names in excerpts are normalized. Source clones unchanged.",
+    "checks": [
+      {
+        "test": "Inline Python JSON/Markdown consistency assertions",
+        "exitCode": 0,
+        "excerpt": "PASS: JSON parses; all 8 checklist items/statuses and 3 examined SHAs match Markdown; no findings or candidates"
+      },
+      {
+        "command": "git ls-remote https://github.com/lorenzh/pulse-agent.git HEAD refs/heads/main refs/pull/1/head",
+        "exitCode": 0,
+        "excerpt": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b HEAD\n8e48f5cb2aea56cdcd8792673222a5110dc0ee1b refs/heads/main\nf22861a6424ae75a13f74db7195c6445f0cf14fa refs/pull/1/head"
+      },
+      {
+        "command": "git rev-list main --count",
+        "exitCode": 0,
+        "excerpt": "2"
+      },
+      {
+        "command": "git log --all --name-only --format= | sort -u",
+        "exitCode": 0,
+        "excerpt": "AGENTS.md\nLICENSE\nREADME.md"
+      },
+      {
+        "command": "git grep -n -I -i -E -e '(gh[pousr]_[[:alnum:]_]+|github_pat_[[:alnum:]_]+|xox[baprs]-[[:alnum:]-]+|AKIA[[:alnum:]]{16}|-----BEGIN|api[_-]?key|secret|token|password|passwd|bearer|PULSE_[[:alnum:]_]*=)' $(git rev-list main) origin/pr1 --",
+        "exitCode": 1,
+        "excerpt": "(no output)"
+      },
+      {
+        "command": "grep -n -P '[^\\x09\\x0a\\x20-\\x7e]' AGENTS.md LICENSE README.md",
+        "exitCode": 1,
+        "excerpt": "(no output)"
+      },
+      {
+        "command": "find . -path ./.git -prune -o -type f \\( -name Cargo.toml -o -name Cargo.lock -o -iname 'Dockerfile*' -o -name '*.yml' -o -name '*.yaml' -o -name package.json -o -name 'rust-toolchain*' \\) -print",
+        "exitCode": 0,
+        "excerpt": "(no output)"
+      },
+      {
+        "command": "cargo build",
+        "exitCode": 101,
+        "excerpt": "error: could not find `Cargo.toml` in `/tmp/…/agent` or any parent directory"
+      },
+      {
+        "command": "git diff --quiet main origin/pr1",
+        "exitCode": 0,
+        "excerpt": "(no output)"
+      },
+      {
+        "command": "rg -n -i 'rust|cargo|crate' docs/approved-packages.md",
+        "exitCode": 1,
+        "excerpt": "(no output)"
+      },
+      {
+        "command": "gh api repos/lorenzh/pulse-agent/actions/workflows --jq .total_count",
+        "exitCode": 0,
+        "excerpt": "0"
+      },
+      {
+        "command": "gh api --paginate repos/lorenzh/pulse-agent/releases --jq length",
+        "exitCode": 0,
+        "excerpt": "0"
+      },
+      {
+        "command": "gh api --paginate repos/lorenzh/pulse-agent/tags --jq length",
+        "exitCode": 0,
+        "excerpt": "0"
+      },
+      {
+        "command": "gh api repos/lorenzh/pulse-agent/rulesets --jq .",
+        "exitCode": 0,
+        "excerpt": "[]"
+      },
+      {
+        "command": "gh api repos/lorenzh/pulse-agent/branches/main/protection",
+        "exitCode": 1,
+        "excerpt": "gh: Resource not accessible by integration (HTTP 403)"
+      },
+      {
+        "command": "git diff --quiet 6a09e6e9a0e5724b232a34312075b67068007dcc HEAD -- docs/approved-packages.md docs/architecture.md README.md .factory/config.yaml",
+        "exitCode": 0,
+        "excerpt": "(no output)"
+      }
+    ],
+    "removedFindings": [],
+    "regradedFindings": [],
+    "limitations": [
+      "The secret scan is pattern-based. No executable service or package exists to exercise runtime behavior or hostile inputs; planned code in #836 is excluded.",
+      "Branch protection and required status checks remain unreadable with this token (HTTP 403); this is outside the issue checklist."
+    ],
+    "cleanup": "Temporary copy removed; no service was started. Only the two report files were edited."
+  }
+}
