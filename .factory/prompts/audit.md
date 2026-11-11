@@ -152,6 +152,10 @@ these paths, from an earlier audit or an earlier run of this issue, this run rep
 may read the old report for context, but verify every finding again on the examined commits; never
 copy a finding or its evidence without your own check.
 
+Before you describe what a pinned GitHub Action does, read its source at the pinned ref. For
+example, `actions/checkout` writes the token to a file under `$RUNNER_TEMP` that `.git/config`
+includes; the token itself is not in `.git/config`.
+
 Then transition to `audit-review`. Your outcome message lists the report path, the number of
 findings per severity, the issue candidates by id and title, and every `blocked` item. It follows
 the disclosure rule above. If a checklist item needs a decision from a person, request a hold with
