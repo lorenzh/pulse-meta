@@ -152,9 +152,9 @@ these paths, from an earlier audit or an earlier run of this issue, this run rep
 may read the old report for context, but verify every finding again on the examined commits; never
 copy a finding or its evidence without your own check.
 
-Before you describe what a pinned GitHub Action does, read its source at the pinned ref. For
-example, `actions/checkout` writes the token to a file under `$RUNNER_TEMP` that `.git/config`
-includes; the token itself is not in `.git/config`.
+Before you describe what a pinned GitHub Action does, read its source at the pinned SHA, not its
+README or a newer release: behavior differs between major versions. For example, where
+`actions/checkout` stores the token depends on the version.
 
 Then transition to `audit-review`. Your outcome message lists the report path, the number of
 findings per severity, the issue candidates by id and title, and every `blocked` item. It follows
