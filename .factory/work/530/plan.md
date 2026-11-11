@@ -30,6 +30,10 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
   - **One rotate outcome table** for the first run and the resume (decision 8 "Rotate outcome"). Every rotate `POST` that does not end in a parsed `200` is followed by a readback of the token. The answer class (explicit rejection or ambiguous) and the readback decide the row together. An explicit rejection such as `409` never leads to `replacing` while `rotatedAt` is unchanged. A timeout with no change on the server leads to one more normal rotate, not to `replacing`.
   - **The bearer read order** is the same in decision 8, Acceptance 3 and the Counterexamples: the staging checks of reconcile step 3, then the link and mode checks of `secrets/admin-token`, then its read and content check, then the capability call `GET /admin/tokens/self` with it, then the confirmation `GET /admin/tokens/<X>`.
   - **The doubled-runs formula has a stated domain.** `floor(W / (I − e)) + 1` is a bound only for I ≥ 200 ms. Below that the spec gives a separate estimate from the run duration (the probe never overlaps runs of one check), and the docs and `cli/test/samples.sh` follow it (Performance impact item 2).
+- The fifth plan review (the latest issue comment "Factory ran spec/plan-review"). This version fixes its three defects:
+  - **Late landing of an ambiguous create** (decision 8 "Settle" and "Lost answer"). Token names are not unique in the api (fact 7), so a create that lands after the sweep makes a second token. Every create `POST` is now *settled* before the CLI sends another create or reads the token list for a sweep: the in-container api-call process has ended (it ends itself at most 11 s after its start, decision 4), which the CLI proves with a process scan in the api container. A sweep follows every ambiguous or lost create, and a final sweep in `switched` revokes every token named `replacementName` except `activeTokenId` before the journal can be removed. T4 gets delayed-mutation cases (Acceptance 3 "Delayed create").
+  - **The snapshot covers the stores that are really mounted** (decision 10 "Data mounts", decision 13 step 6). The snapshot set is no longer "top-level keys ending in `-data`". It is read from the effective mounts of the pulse services, and layouts the CLI cannot snapshot (a bind, a tmpfs or an anonymous volume, no writable volume at `/data`, a data path moved by an environment variable) refuse before anything stops. T5 gets fixtures for a bind at the api's `/data` and a volume key without the `-data` suffix.
+  - **Security impact matches decision 8.** A replacement follows exactly the two cases of "Lost answer": a readback that shows a changed `rotatedAt`, and an `ok` rotate answer whose secret the stage-error reconcile found in no staging file.
 - `.factory/work/530/issue-review.md`: open points 1–9 and the derived acceptance checks 1–9.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/530` answered `HTTP 404` in this run (2026-11-11). There are no findings, which is normal for a feature without children.
 - Clones read in this run (all `main`):
@@ -74,6 +78,15 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
    - The spawn seam has stdin `ignore`, and an abort sends SIGKILL to the client process (`cli/docker.ts` lines 52–83). Killing a `docker run` client does not stop its container. `parsePs` reads `Service`, `State`, `Health`, `ExitCode` and `Image`, no `ID` (`cli/ready.ts` lines 18–46).
    - The only lock is `.pulse-init.lock`, held by `pulse init` (`cli/write-install.ts` lines 28 and 345–400).
 6. **Pins today.** `common/services.yaml` pins all five pulse images to `0.1.0` (lines 8, 16, 25, 35 and 44). The deploy rule is that no other file holds a version or digest of a pinned image, also not a script, test or workflow (`AGENTS.md` "Rules", first bullet). `scripts/check-setup.sh` checks the shape of each pin (line 36).
+7. **How the api applies a create.**
+   - Token names are not unique: `api_tokens.name` is `TEXT NOT NULL` with no unique index (api `src/migrations.ts` lines 75–85). Two creates with the same name make two tokens.
+   - Creates are not serialized like rotates. A rotate meets the overlap rule (`409`, fact 1), a create meets no such rule.
+   - `create` reads the body, validates it and then calls `store.create` with no further `await` (api `src/token-routes.ts` lines 225–259). The body is read by kit `readBody`, which rejects when the connection closes before the body ends (kit `src/http.ts` lines 30–66). The api pins kit `c6d2cba` (api `package.json` line 32), and that file is byte-equal to the kit clone `ece6a89` (checked with `gh api … ?ref=c6d2cba…` and `diff -q` in this run). So a create whose client has gone was either read completely and is applied in the turn in which the api reads the end of its body, or it is never applied.
+8. **Where the services keep their data.**
+   - The images set the data paths: api `PULSE_DB=/data/pulse.db` (api `Dockerfile` line 9), notify `PULSE_NOTIFY_STATE=/data/notify-state.json` (notify `Dockerfile` line 9), console `PULSE_CONSOLE_DB=/data/console.db` (console `Dockerfile` line 9). Probe and status keep no data.
+   - The CLI renders `api-data:/data` (`cli/render-compose.ts` line 153), `notify-data:/data` (line 207) and `console-data:/data` (line 220). Every other mount of a pulse service is read-only: the `*-secrets` volumes at `/run/pulse` and the `./config/*` binds (lines 153, 175, 207, 220).
+   - `compose.override.yaml` may change mounts. Compose merges service volumes by target, so an override entry for `/data` replaces the rendered one while the top-level `api-data` stays declared.
+   - The guard requires every top-level volume to be named `<project>_<key>` and not external (`checkNames`, `cli/docker.ts` lines 326–345). It does not look at service mounts.
 
 ## Scope
 
@@ -109,6 +122,8 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 4. **Private transport to the api.** Every api call runs `docker compose <operation prefix> exec -T api bun -e <API_SCRIPT>`.
    - `API_SCRIPT` is a constant text. Its stdin carries one JSON line `{"method","path","bearer","body"}`.
    - The script calls `http://127.0.0.1:3000<path>` with a 10 s timeout and `redirect: "error"`. It prints the status code on line 1 and the body, capped at 1 MiB, after it.
+   - The script ends itself. Besides the fetch timeout it starts an `unref`'d timer that calls `process.exit(70)` 11 s after the script starts. So the process in the container ends within 11 s even when the client was killed (killing `docker compose exec` does not end it, fact 5).
+   - The first line of `API_SCRIPT` is the comment `// pulse-cli-api-call/1`, the marker that the settle scan of decision 8 looks for.
    - No bearer, secret or digest of a secret is ever in argv, the environment, `compose.yaml`, the journal, a diagnostic or normal output.
    - The spawn seam gets an `input` option that writes the text to stdin and closes it. stdin stays `ignore` when `input` is absent.
 5. **Capability detection.**
@@ -191,7 +206,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      - Only after the reconcile does the CLI read an owned host file as a bearer. That file then holds what the state says (decision 7 step 3). The one host file that the reconcile itself reads is `secrets/admin-token` in a `probe` journal (step 4), which no item owns.
    - **Stage errors (first run and resume).** An error anywhere in decision 7 step 3 (a thrown write, fsync, rename or directory fsync, or a journal write) is not a lost answer by itself. The CLI drops the copy of the answer's secret that it holds in memory and runs the reconcile for the journal at once, in the same process.
      - The reconcile finds a staging file for the answer's id: the `requested` or `replacing` row moves the item to `staged` and installs. The run then goes on at the refresh.
-     - The reconcile finds no staging file: no answer is stored. From `requested`, the lost-answer rule applies (`replacing`). From `replacing`, the created token is an orphan, and steps 2 and 3 of "Lost answer" run (at most once more in the run, as there).
+     - The reconcile finds no staging file: no answer is stored. From `requested`, the lost-answer rule applies (`replacing`). From `replacing`, the created token is unheld: "Lost answer" goes back to its step 2 (settle, then the sweep revokes it), within the limit of two create `POST`s per item and run.
      - The item is `staged` or later: the rows `staged` or `saved` apply.
      - The reconcile itself fails (for example the fsync of `secrets/` throws again): exit 1, journal kept. The rerun's reconcile decides from the same files.
      - Going from an error in step 3 straight to `replacing` is wrong (Counterexamples "Stage boundary"). The staging file may exist, and the table refuses `replacing` with a staging file of `tokenId`.
@@ -212,7 +227,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
        | more than one container other than `oldContainerId` | refuse with exit 1, list the ids, and point to `docs/cli.md#token-recovery` (remove the extra containers, run again) |
        - A `different` token in the new container stops and removes that container and runs the refresh once more. A second `different` exits 1 with the journal kept.
      - `handoff` (admin): run step 5 of admin again (the console recreate is idempotent).
-     - `switched`: go to `revoking` when `revokeTokenId` is set, else `done`.
+     - `switched`: run the final sweep of "Lost answer" step 5 when `replacementName` is set, then go to `revoking` when `revokeTokenId` is set, else `done`.
      - `revoking`: step 6 again.
    - **Rotate outcome (one table for the first run and the resume).** The item is in `requested` and the reconcile found no staging file for it. The CLI never decides from the transport error alone whether the api rotated.
      - **Answer classes** of a rotate `POST`:
@@ -239,15 +254,27 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      - The overlap refusal of decision 6 is skipped for a journal item. The table's `409` row is the only way an item in overlap ends the run.
      - A `POST` is sent at most twice per item and run.
    - **Lost answer.** It applies only in two cases. One is the row "→ `changed`" of "Rotate outcome", in the first run and on resume alike. The other is a stage error whose reconcile found no staging file for an `ok` answer ("Stage errors"): the api rotated and the secret is not stored. A staging error alone never triggers it, and neither does a transport error without a readback. A secret that is not in a staging file counts as lost, and a rotate `POST` is never repeated blindly.
-     1. Journal `replacing` with `revokeTokenId := tokenId` and `replacementName`: the old name cut to 90 characters, a space, `r` and 6 random hex characters. The journal holds the name before the create, so a lost create answer can be found again.
-     2. Look for orphans: tokens whose `name` equals `replacementName` and whose `revokedAt` is null. This step runs only in state `replacing` after the reconcile found no staging file. In that state no host file and no staging file holds a replacement's secret (decision 7 step 3), so every orphan is a replacement whose secret nobody holds. Revoke each of them, each through the revoke guard.
-     3. `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. The create answer is classed like a rotate answer: `ok` is a `201` whose body parses (`token.name` equals `replacementName`, the secret rule), `rejected` is a complete answer with a status from the `rejected` list, and anything else is `ambiguous`. On `ok` the item goes to step 4. A `rejected` create made no token: the CLI exits 1 with the status and keeps the journal in `replacing`, with no second create in this run. An `ambiguous` create, or an `ok` whose stage error's reconcile found no staging file for the created id, counts as lost: steps 2 and 3 run once more in the same run (the sweep by `replacementName` is the readback), and then the CLI exits 1 with the journal kept.
-     4. Stage and save as in decision 7 step 3 with the created id, then refresh and switch, then step 6 revokes `revokeTokenId`.
-     5. Print `the rotate answer was lost; replaced token <revokeTokenId> with <activeTokenId>`.
+     1. Journal `replacing` with `revokeTokenId := tokenId` and `replacementName`: the old name cut to 90 characters, a space, `r` and 6 random hex characters. The journal holds the name before the create, so a create that landed can be found again. The name stays the same for every create of the item.
+     2. **Settle, then sweep.** Settle as in "Settle" below. Then read `GET /admin/tokens`. Every token whose `name` equals `replacementName` and whose `revokedAt` is null is an orphan: this step runs only in state `replacing` after the reconcile found no staging file, and in that state no host file and no staging file holds a replacement's secret (decision 7 step 3). Revoke each orphan through the revoke guard. A revoke is confirmed by `200`, or by a readback `GET /admin/tokens/<id>` with `revokedAt` set. An orphan that is not confirmed revoked exits 1 with the journal kept in `replacing` and sends no create.
+     3. **Create.** `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. The answer is classed like a rotate answer: `ok` is a `201` whose body parses (`token.name` equals `replacementName`, the secret rule), `rejected` is a complete answer with a status from the `rejected` list, and anything else is `ambiguous`.
+        - `ok`: step 4. If a stage error's reconcile then finds no staging file for the created id, the created token is unheld: back to step 2, whose sweep revokes it.
+        - `rejected`: the api made no token (fact 1: it refuses before any change). Exit 1 with the status and the journal kept in `replacing`, no second create in this run. No earlier create of the item can be in flight, because step 2 settled before this create.
+        - `ambiguous`: back to step 2. Its settle waits until this create has landed or never will, and its sweep revokes the token if it landed.
+        - **Limit.** A create `POST` is sent at most twice per item and run. When step 3 is reached a third time, the CLI does not create. It has just run step 2, so it exits 1 with the journal kept in `replacing`, no create in flight and no unheld replacement active. The rerun starts at step 2.
+        - **Order rule.** No create `POST` is sent, and no token list is read for a sweep, before the previous create `POST` of the item is settled. This holds across runs: a rerun of `replacing` starts at step 2, so it settles a create that a killed run left in flight.
+     4. Stage and save as in decision 7 step 3 with the created id, then refresh and switch.
+     5. **Final sweep** (state `switched`, also on resume). Settle, then read `GET /admin/tokens` and revoke, through the revoke guard, every token whose `name` equals `replacementName`, whose `revokedAt` is null and whose id is not `activeTokenId`. It normally finds none. When it revokes, it prints `revoked <n> unheld replacement token(s)`. A failed settle or an unconfirmed revoke exits 1 with the journal kept in `switched`; the rerun runs this step again. Then step 6 of decision 7 revokes `revokeTokenId`, and the journal can only be removed after both.
+     6. Print `the rotate answer was lost; replaced token <revokeTokenId> with <activeTokenId>`.
      - Revoking the lost admin is not refused by the last-admin rule, because the replacement is active by then.
      - For `admin` in state `replacing` after the old secret's `previousValidUntil`, the CLI cannot authenticate. It exits 1 and names the recovery in the docs: another admin token, or a database backup.
+   - **Settle (creates only).** Rotates need no settle: the api applies at most one rotation per overlap and answers `409` to the rest (fact 1, "Rotate outcome"). Creates have no such rule and names are not unique (fact 7), so a create that lands after a sweep would leave a second token whose secret nobody holds.
+     1. `SETTLE_SCRIPT`, a third constant script in `cli/api-call.ts`, runs through `docker compose <prefix> exec -T api bun -e <SETTLE_SCRIPT>`. It reads `/proc/<pid>/cmdline` of every process in the api container except its own pid and prints how many contain the marker `pulse-cli-api-call/1` (decision 4). It builds the marker from two string parts at run time, so its own command line does not hold it. It needs no bearer.
+     2. The CLI runs it every 500 ms until it prints `0`, for at most 30 s. The lock (decision 3) excludes every other CLI command that runs `API_SCRIPT`, so every process it counts belongs to this rotation, in this run or a killed earlier one. `API_SCRIPT` ends itself within 11 s (decision 4), so 30 s is enough unless the api container is stuck.
+     3. **Settled** means the scan printed `0`. Every earlier create of the item has then either been applied or never will be (fact 7): its client is gone, and the api applied it in the turn in which it read the end of the body, before it reads a request on a connection that opens later, like the sweep's `GET /admin/tokens`.
+     4. Not settled within 30 s, or the exec fails: exit 1 with the journal kept, no sweep and no create. The rerun settles again.
+     5. The final sweep (step 5) is the backstop if the api ever breaks the order of item 3: a create that lands after a step-2 sweep but before `switched` is revoked there.
    - **Revoke guard.** Before every revoke (orphans in step 2, `revokeTokenId` in step 6), the CLI calls `GET /admin/tokens/self` with the bearer it is about to use. It refuses, exit 1 with the journal kept and `refusing to revoke the token that authenticates this call (<id>); see docs/cli.md#token-recovery`, when the answered id equals the target. It also never revokes `activeTokenId`. The api allows a token to revoke itself while another admin is active (Grant and Last-admin rules, api `docs/rest-api.md` lines 498–500), so only the CLI can prevent it.
-   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The in-process reconcile after a stage error is part of this section, and so are the readback and the second `POST` of "Rotate outcome". The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
+   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The in-process reconcile after a stage error is part of this section, and so are the readback and the second `POST` of "Rotate outcome", every settle and sweep of "Lost answer" (steps 2 and 5) and the second create. So a signal never ends a run between a create `POST` and its settle and sweep, except through the 30 s settle limit. The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
    - While the journal exists, a plain run without it is impossible: `pulse token rotate` always resumes it first, and `pulse upgrade --yes` refuses.
 9. **File checks for rotation.**
    - `secrets/` must be a directory, not a link, and no wider than 0700.
@@ -262,6 +289,14 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
       - the probe services differ in image;
       - the effective image of a service in `docker compose config` (with the override) differs from the one in `compose.yaml` (`compose.override.yaml sets the image of <svc>; remove it to use pulse upgrade`);
       - the setup is `dev` (`dev builds from source; update the clones and run pulse up`).
+    - **Data mounts.** The snapshot must hold every store that the pulse services write (fact 8). The CLI reads the effective model of the guard's resolution call (`docker compose config --format json`, `cli/docker.ts` lines 294–307, with the override). For every pulse.json service of kind `pulse` it looks at the service's `volumes` list, in the long form that Compose prints:
+      - Each entry must be either a `volume` entry whose `source` is a top-level volume key, or a `bind` entry with `read_only: true`. Anything else refuses: a writable `bind`, a `tmpfs`, a `volume` entry without `source` (anonymous), and any other type.
+      - A `volume` entry is *writable* when `read_only` is absent or false. The snapshot set is the sorted, de-duplicated list of the sources of all writable `volume` entries of all pulse services. The key name does not matter: no `-data` suffix is needed, and a declared volume that no pulse service mounts writable is not in the set.
+      - api, notify and console must each have exactly one writable `volume` entry whose `target` is exactly `/data`, the directory of their image's data path (fact 8). A missing or read-only `/data` volume refuses.
+      - The data path variable of the service (`PULSE_DB`, `PULSE_NOTIFY_STATE`, `PULSE_CONSOLE_DB`) must be absent from the effective `environment` or equal the image default literally (`/data/pulse.db`, `/data/notify-state.json`, `/data/console.db`). Any other value, also one with `${…}` (the resolution call does not interpolate), refuses.
+      - Each volume of the set is mounted by the snapshot helper under its name `<project>_<key>`. The guard has already checked that name (fact 8).
+      - Refusal texts: `<svc> keeps <target> in a <type> mount; pulse upgrade can snapshot only named volumes; see docs/cli.md#upgrade`, `<svc> has no writable volume at /data; see docs/cli.md#upgrade` and `<svc> sets <VAR> to another path; see docs/cli.md#upgrade`.
+      - The check runs in step 2 of decision 13, before provenance, so the preview refuses too. Nothing is pulled or stopped before it passes.
     - Versions are full stable SemVer `(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)`, the stable core of `config/.github/workflows/release.yml` lines 34–37. They are compared numerically per part.
     - Without `--to`, each image moves to the highest stable tag on ghcr.io that is greater than its current version. With none, it stays.
     - `--to X.Y.Z` (a leading `v` is accepted and removed; anything else, including prereleases and leading zeros, is a usage error, exit 2) wants exactly that tag for every installed pulse image:
@@ -297,15 +332,15 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
       So a stack that runs while `upgrade.json` is not terminal always matches the manual recovery of that state (below).
     - **Steps.**
       1. Preflight: lock, guard, no rotation journal, and no snapshot directory under `.pulse-upgrade/` whose `upgrade.json` is `snapshotting`, `applying`, `rolling-back`, `restored` or `rollback-failed` (a directory without a readable `upgrade.json` counts as `snapshotting`). A refusal names that directory and `docs/cli.md#upgrade-recovery`.
-      2. Selection and provenance, then a table of service, from version and 12-hex digest, to version and 12-hex digest, and `provenance verified`. Without `--yes`, print `run pulse upgrade --yes` (with the same `--to`) and exit 0 here. A preview writes no file and changes no container.
+      2. Selection, the data-mount check (decision 10 "Data mounts") and provenance, then a table of service, from version and 12-hex digest, to version and 12-hex digest, and `provenance verified`. Without `--yes`, print `run pulse upgrade --yes` (with the same `--to`) and exit 0 here. A preview writes no file and changes no container.
       3. `docker pull <ref>@<digest>` for every new image. A failure or an interrupt exits 1 or 130, and nothing is stopped.
-      4. Create `.pulse-upgrade/<UTC stamp>-<6 hex>/` (0700, `mkdir` that fails if it exists). Write `upgrade.json` `{format:1, from:{svc:ref}, to:{svc:ref}, composeSha256, state:"snapshotting"}`. Print the start time; the downtime starts at the next step.
+      4. Create `.pulse-upgrade/<UTC stamp>-<6 hex>/` (0700, `mkdir` that fails if it exists). Write `upgrade.json` `{format:1, from:{svc:ref}, to:{svc:ref}, composeSha256, snapshotVolumes:[<key>…], state:"snapshotting"}`. `snapshotVolumes` is the snapshot set of decision 10 "Data mounts". Print the start time; the downtime starts at the next step.
       5. `docker compose <prefix> stop`.
-      6. For each declared top-level volume whose key ends in `-data` (`api-data`, `notify-data`, `console-data`):
+      6. For each key of `snapshotVolumes`, in its order (for the rendered layout: `api-data`, `console-data`, `notify-data`):
          - Open `<key>.tar.part` (0600, `wx`) and give its fd to the spawn as stdout of `docker run --rm --name <project>-pulse-snapshot-<6 hex> --network none --user 0:0 --cap-drop ALL --cap-add DAC_OVERRIDE --security-opt no-new-privileges:true -v <project>_<key>:/from:ro <image of secrets-init from the resolved config> tar -C /from -cf - .`.
          - The helper must exit 0. Then fsync the file, compute its size and sha256, rename it to `<key>.tar`, and fsync the directory.
       7. Copy `compose.yaml` to `compose.yaml` in the snapshot (0600, fsync). Its sha256 must equal `composeSha256`.
-      8. **Snapshot-complete boundary.** Write `upgrade.json` with `state:"applying"` and `tars:{<key>:{bytes, sha256}}`. The boundary is crossed when the file on disk reads `applying` with these `tars`: after a durable write, or after a failed write whose read-back shows them (for example the rename landed and the directory fsync threw). Print `snapshot <bytes> bytes in <ms> ms`.
+      8. **Snapshot-complete boundary.** Write `upgrade.json` with `state:"applying"` and `tars:{<key>:{bytes, sha256}}`. The keys of `tars` must equal `snapshotVolumes`; reading a file where they differ is a validation failure. The boundary is crossed when the file on disk reads `applying` with these `tars`: after a durable write, or after a failed write whose read-back shows them (for example the rename landed and the directory fsync threw). Print `snapshot <bytes> bytes in <ms> ms`.
       9. Edit `compose.yaml`:
          - Replace each old image string with the new one. The count of replacements must equal the number of services that used it.
          - Parse the new text again and check that it equals the old model with only those `image` values changed.
@@ -355,7 +390,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
       - `restored`: the volumes and `compose.yaml` hold the old version. Do not restore again. Run `pulse up`.
       - `rollback-failed`: with `restored: true`, as `restored`, then find out why the old images are not ready. With `restored: false`, as `rolling-back` when every tar matches. Otherwise use a backup.
       - In every case, remove or move the directory before the next `pulse upgrade --yes`.
-    - Data volumes are never deleted outside the restore. The `*-secrets` volumes are not in the snapshot: `secrets-init` rewrites them from `secrets/` at each start.
+    - Data volumes are never deleted outside the restore. The `*-secrets` volumes are not in the snapshot set: the pulse services mount them read-only (fact 8), and `secrets-init` rewrites them from `secrets/` at each start.
     - **Rollback boundary, as stated in the docs.**
       - The stack is down from step 5 until ready, so there are no results during an upgrade.
       - A rollback loses every write after the snapshot.
@@ -394,7 +429,8 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 
 - `HELP` gets `token`, `upgrade` and `logs`. `pulse --help` lists them. `COMMANDS` includes `token`, `upgrade` and `logs`; `token` takes the sub-word `rotate`.
 - `docs/cli.md` gets one section per command (`## pulse token rotate`, `## pulse upgrade`, `## pulse logs`), `### Token recovery` and `### Upgrade recovery`. It replaces the manual rotation bullets under "Tokens", updates the pin text (`0.1.0` → the pinned release), gives the manual Compose equivalents for each command, and states the known limits of the Performance impact section.
-- `### Token recovery` explains the journal states, the staging files `secrets/.pulse-next.*` (they hold a secret; never delete one by hand while a journal exists, rerun the command instead), the refusals of the reconcile table and the revoke guard, the rows of "Rotate outcome" that drop an item or keep the journal, extra probe containers, and the admin case after the overlap.
+- `### Token recovery` explains the journal states, the staging files `secrets/.pulse-next.*` (they hold a secret; never delete one by hand while a journal exists, rerun the command instead), the refusals of the reconcile table and the revoke guard, the rows of "Rotate outcome" that drop an item or keep the journal, the settle and the two sweeps of a replacement (and how to list tokens named `replacementName` by hand), extra probe containers, and the admin case after the overlap.
+- `## pulse upgrade` names the supported data layout of decision 10 "Data mounts" (named volumes only, one writable volume at `/data` for api, notify and console, the default data paths) and how to move a bind-mounted store back into its volume before an upgrade.
 - `### Upgrade recovery` gives the steps per state of decision 13 "Hard kill and manual recovery" (including `restored` and the two kinds of `rollback-failed`), with the commands for the tar check and the restore.
 - The known limits name the doubled runs during a probe handoff with the bound for I ≥ 200 ms and the separate estimate for shorter intervals (Performance impact item 2).
 
@@ -402,6 +438,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 
 - **Compose `--scale` behavior.** The live test proves the start-new-then-stop-old handoff. That includes one container per probe service afterwards, and `pulse up` and `pulse status` working after the rotation. If Compose renumbers or recreates the container in a way that breaks this, the implementer requests a hold and does not fall back to stop-then-start, which breaks the gap rule (see Counterexamples).
 - **Extra samples.** During the handoff two probe containers post for the same location for the window W. For I ≥ 200 ms the doubled runs per check are at most `floor(W / (I − e)) + 1` (Performance impact item 2): 2 at 5000 ms and 7 at 1000 ms for W = 6000 ms. Below 200 ms that formula is not used. The estimate there is `floor(W / max(I, R)) + 1` with R the run time of the check, about 600 to 3000 at the 1 ms minimum for W = 6000 ms. Both are documented as a known limit.
+- **A create that lands after the final sweep.** The settle rests on the api applying a create whose client is gone before it serves a later connection (fact 7), and the final sweep catches a landing up to `switched`. A landing after that would need the api to hold a fully read body for the whole switch. If it happened, the token would be active, but its secret was printed only to a closed pipe, so nobody holds it. `docs/cli.md#token-recovery` says how to list and revoke tokens named like a replacement.
 - **Interrupted rotation outside the overlap.** If a person does not rerun an interrupted rotation within the 10-minute overlap, a still-running old probe gets 401 and logs errors until the rerun removes it. The new probe keeps posting. The docs say to rerun at once.
 - **0.1.0 → 0.1.1 upgrade needing manual steps.** If the live upgrade test shows a required config change, the implementer requests a hold. The upgrade must not grow config migrations.
 - **#692 bumping the pins at the same time.** Decision 2 covers it.
@@ -455,6 +492,7 @@ Each check names where its expected value comes from.
    - **Install release A.** `pulse init --setup demo --yes`. The test helper `cli/test/pin-release.sh <dir> <svc>=<version>@<digest> …` rewrites the five pulse image lines to release A. Then `pulse up`, results flowing, and the A migration fixture holds.
    - **Legacy refusal.** On A, `pulse token rotate probe` exits 1 with `has no token store` and every secret file's sha256 is unchanged.
    - **Preview.** `pulse upgrade --to <B>` exits 0 and lists every service A → B with B's registry digest (12 hex). The sha256 of `compose.yaml` and the container ids are unchanged, and `.pulse-upgrade/` does not exist.
+   - **Unsupported data layout.** The test writes a `compose.override.yaml` that mounts a fresh 0700 temp directory as a writable bind at `/data` of `api`. `pulse upgrade --to <B>` and `pulse upgrade --yes --to <B>` each exit 1 with `pulse upgrade can snapshot only named volumes` (literal from decision 10). The sha256 of `compose.yaml`, the container ids and `StartedAt` are unchanged, no image of B is present locally (`docker image inspect` fails for each B digest), and `.pulse-upgrade/` does not exist. The test then removes the override, which leaves the stack as before (no `pulse up` is needed, because the override was never applied).
    - **Interrupted snapshot.** With `cli/test/fail-ready-docker` first on PATH and `PULSE_TEST_HOLD_SNAPSHOT=1` (the shim sleeps 20 s inside each snapshot `tar -cf` run), `pulse upgrade --yes --to <B>` runs in the background. When the first `*.tar.part` exists, the test sends SIGINT. Then:
      - The run exits 130 and prints `upgrade aborted before the switch`.
      - `upgrade.json` is `aborted`, and the snapshot directory has no `*.tar.part` and no `*.tar`.
@@ -495,6 +533,27 @@ Each check names where its expected value comes from.
      - **Readback `unknown`.** Expected: exit 1, the journal kept in `requested`, no create.
      - **Create `rejected`** (`403`): exit 1, the journal kept in `replacing`, no second create.
      - The case of the second plan review is one of them: a replacement admin secret installed, the `saved` write failing. The rerun must journal `saved`, keep the replacement and revoke only `revokeTokenId`.
+   - **Delayed create (settle).** The fake api can hold a create: it keeps the request "in flight" and applies or drops it at a chosen later event. While a create is held, the fake `SETTLE_SCRIPT` answer is `1`, else `0`, unless a case breaks that on purpose. The fake clock drives the 500 ms polls and the 30 s limit. Each case runs for `admin` and `probe`, starts in `replacing` (after a `changed` readback), and uses R1, R2, R3 for the created ids. The expected values are literals:
+     - **The case of the fifth plan review.** Create 1 times out and is held. The fake applies R1 after the third settle poll. Expected event order: create 1 → settle polls `1`, `1`, `1`, `0` → `GET /admin/tokens` → revoke R1 → create 2 (`ok`, R2). At the end: R2 is the only active token with the item's scopes and location, the host file holds R2's secret, R1 and T are revoked, 2 create `POST`s, exit 0.
+     - **Held, then dropped.** The sweep finds no token named `replacementName`, create 2 makes R2. Exactly 1 token created, exit 0.
+     - **Settle limit.** Create 1 is held for longer than 30 s. Expected: exit 1, the journal in `replacing`, no `GET /admin/tokens` and no create 2 after the settle started. Then the fake applies R1, and a rerun settles, revokes R1, creates R2 and exits 0.
+     - **Hard kill with a create in flight.** The run is killed after create 1 was sent and held. The rerun's reconcile finds no staging file; its settle waits until the fake applies R1; the sweep revokes R1; create 2 makes R2; exit 0.
+     - **Two ambiguous creates.** Both are held and applied during their settles. Expected: R1 and R2 revoked, exit 1 with the journal in `replacing`, no active token named `replacementName`. A rerun makes R3 and exits 0.
+     - **Order broken on purpose.** The fake answers `0` while it still holds create 1, then applies R1 after create 2 returned `ok` (R2) and before the item reaches `switched`. Expected: the final sweep revokes R1 and prints `revoked 1 unheld replacement token(s)` before `revoking` T. At the end R2 is the only active token, exit 0. Without the final sweep R1 stays active, which this case must catch.
+     - **Final sweep on resume.** A run is killed in `switched` before the final sweep, with R1 active and R2 held by the host file. The rerun revokes R1, never R2, then T.
+     - Each case asserts:
+       - no create `POST` and no `GET /admin/tokens` of a sweep while the fake holds a create of the item (except in "Order broken on purpose");
+       - at every exit, and when the journal is removed: every active token named `replacementName` is the one whose secret the host file or a staging file holds. After an exit 1 in `replacing` none is active, except a create that the fake still holds after the settle limit;
+       - no revoke of `activeTokenId` or of the calling token, and at most 2 create `POST`s per item and run.
+   - **Data mounts.** Effective-model fixtures (literal JSON of `docker compose config --format json`) for decision 10 "Data mounts", each through preview and `--yes`. A refusal must come before any `docker pull`, `stop` or `gh` spawn, with `compose.yaml` byte-equal and no `.pulse-upgrade/`:
+     - the rendered layout: `snapshotVolumes` is `["api-data","console-data","notify-data"]`;
+     - an override `{"type":"bind","source":"/srv/pulse","target":"/data"}` on `api` while the top-level `api-data` stays declared: refuse with `pulse upgrade can snapshot only named volumes`. Snapshotting `api-data` here is wrong: the api's database is not in it;
+     - `api` with `{"type":"volume","source":"pulsedb","target":"/data"}` and a top-level `pulsedb`: no refusal, `snapshotVolumes` is `["console-data","notify-data","pulsedb"]`, a helper runs with `-v <project>_pulsedb:/from:ro`, `api-data` gets no helper, and a rollback restores `pulsedb`. A suffix rule that skips `pulsedb` is wrong;
+     - `api` `/data` as `{"type":"tmpfs","target":"/data"}`, or as a `volume` entry without `source`: refuse;
+     - `api-data` at `/data` with `read_only: true`: refuse with `has no writable volume at /data`;
+     - `api` with `PULSE_DB` `/tmp/pulse.db`, or `${DB}`: refuse with `sets PULSE_DB to another path`. `PULSE_DB` `/data/pulse.db`: no refusal;
+     - `status` with a writable bind `./x:/x`: refuse. `probe` with a writable volume `probe-cache:/cache`: `probe-cache` is in `snapshotVolumes`;
+     - an `upgrade.json` whose `tars` keys differ from `snapshotVolumes`: refused as invalid on read, no restore.
    - **Upgrade.** Fake docker stops the run during each of the three archive writes, during the `compose.yaml` copy, just before and just after the `applying` write, during the edit and during `waitReady`. Before the boundary: no restore helper spawn, `compose.yaml` byte-equal, no tar left, state `aborted`, `up -d` called. After it: the rollback order of Counterexamples "Rollback".
    - **Upgrade state writes.** The injected file seam of `cli/safe-write.ts` makes each part of each state write fail (temp write, temp fsync, rename, directory fsync) for `snapshotting`, `applying`, `aborted`, `rolling-back`, `restored` and `done`. Each case is checked against its row of decision 13 "State-write errors" and also run as a simulated hard kill at the same point. The expected values are literals:
      - **`applying` rename lands, directory fsync throws.** The read-back is `applying` with the `tars`. Expected: the rollback runs, every `*.tar` file still exists with its recorded sha256, no `*.tar` or `*.tar.part` delete call is made, `rolling-back` and then `restored` are written, `up -d` comes after `restored`, the final state is `rolled-back`, exit 1.
@@ -522,6 +581,7 @@ The commands do have runtime costs on an installation. They are not in `bench/bu
    - Size, from the probe budgets in api `bench/budgets.json` (lines 121–157): up to `peak_rss_mib` 83 MiB extra memory, `startup_cpu_ms` 377 ms extra CPU, and `startup_wall_ms` 1027 ms of start.
    - W has no bound from the probe alone. Expected: 4–8 s. Upper bound by construction: `--timeout` (readiness) + 10 s (equality check timeout) + 2 s + 10 s (`docker stop --time 10`). CI gates W ≤ 20000 ms (Acceptance 1).
    - Each api call and each in-container check adds one short `bun -e` process in the api, probe or console container. They run one at a time.
+   - The settle (decision 8) runs only on the replacement path: one `bun -e` scan of `/proc` in the api container every 500 ms, at most 60 scans (30 s) per settle. A rotation without a lost answer runs none.
    - Measured: the CLI prints `two probes ran for <W> ms` per location (decision 7 step 7). `rotate.sh` takes W independently from `docker events` and samples `docker stats --no-stream --format json` every second during the rotation. It reports the largest summed memory and CPU of the probe containers of one location, which the PR quotes against the single-probe baseline of the same run.
 2. **Extra check traffic during the handoff.**
    - Extra load per check: the old probe's runs that start inside W, each one extra request to the target and one extra `POST /results`. The old probe starts no run after SIGTERM (fact 3), and the new one no run before its start, so every doubled run lies in W.
@@ -568,15 +628,16 @@ These checklist items apply:
 - **Auth order and status codes.**
   - The capability and identity checks run before the first api write.
   - Each api status gets a defined outcome: 401, 403, 404, 409 and 429 are named, and anything else is `unexpected status`.
-  - A lost answer never leaves a usable token whose secret nobody holds: orphan replacements are found by their unique journal name and revoked, and the lost token is revoked after the switch.
-  - A held secret is never revoked: the orphan sweep runs only when no host or staging file can hold a replacement (decision 8 "Reconcile"), a stage error always goes through the reconcile before it can count as a lost answer (decision 8 "Stage errors"), and the revoke guard refuses a revoke of the calling token or of `activeTokenId`.
+  - A lost answer does not leave an active token whose secret nobody holds. Replacements carry the journal's random `replacementName` (the api does not make names unique, fact 7). Every create is settled before the next create or sweep, every ambiguous or lost create is followed by a sweep, and the final sweep in `switched` revokes every token of that name except `activeTokenId` before the journal can be removed. The lost token is revoked after the switch (decision 8 "Settle" and "Lost answer"). The remaining case is in Risks.
+  - A held secret is never revoked: the sweep of "Lost answer" step 2 runs only when no host or staging file can hold a replacement (decision 8 "Reconcile"), the final sweep (step 5) leaves out `activeTokenId`, the only replacement whose secret a file holds from `saved` on, a stage error always goes through the reconcile before it can count as a lost answer (decision 8 "Stage errors"), and the revoke guard refuses a revoke of the calling token or of `activeTokenId`.
   - Reconcile bearer: no owned host file is used as a bearer before the reconcile ends. In a probe journal the order is: the staging checks, the `lstat` checks of `secrets/admin-token`, its read and content check, the capability call with it, and only then the confirmation (decision 8 "Reconcile" step 4).
-  - A rotate that the api refused or that cannot be confirmed never leads to a replacement. Only a readback that shows a changed `rotatedAt` does (decision 8 "Rotate outcome").
+  - A replacement is created in exactly the two cases of decision 8 "Lost answer": (1) a readback that shows a changed `rotatedAt` after a `rejected`, `ambiguous` or `none` class ("Rotate outcome"), and (2) an `ok` rotate answer whose secret the stage-error reconcile found in no staging file ("Stage errors"). In both the api has rotated the token and the new secret is not stored. A rotate that the api refused with `rotatedAt` unchanged, or whose readback is `same`, `gone` or `unknown`, never leads to a replacement.
 - **Body and size limits.** Api answers are capped at 1 MiB in `API_SCRIPT`. Registry bodies are capped at 1 MiB, and registry pagination at 10 pages.
 - **Input validation.**
   - Token ids match `^tok_[0-9a-f]{24}$`. Container ids match `^[0-9a-f]{64}$`. Service names and versions are validated. The journal and `upgrade.json` are validated on read like external input.
   - Api and registry JSON goes through own-property readers (`own()` in `cli/docker.ts`), never trusted as typed.
   - Locations match `^[a-z0-9][a-z0-9-]{0,31}$`, as in `secrets-init.mjs`.
+  - The effective mounts of the pulse services are validated before an upgrade stops anything (decision 10 "Data mounts"). An override that moves data out of a named volume refuses, so a rollback never "restores" a volume that does not hold the data.
 - **SSRF and redirects.** The registry host is fixed to `https://ghcr.io`, with `redirect: "error"`. The api URL is fixed to `127.0.0.1:3000` inside the api container. No user input builds a URL or a path beyond the validated token id.
 - **Atomic, path-safe writes.**
   - Secret files, the journal, `compose.yaml`, `upgrade.json` and the snapshot files are written `wx` with temp names in their final directory, fsynced and renamed, with the directory fsynced.
@@ -662,6 +723,9 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - **`503` or a `200` with a body that does not parse**: class `ambiguous`, never `ok` or `rejected`. The readback decides.
   - **Readback `401`**: `unknown`. Exit 1 with the journal kept in `requested`, no second `POST` and no create.
   - Create `POST` times out, and the api holds a token named `replacementName`: the rerun revokes that token before it creates another one. Creating a second without the revoke is wrong (it leaves a usable token whose secret nobody holds).
+  - **Late landing (the case of the fifth plan review).** Create 1 times out, a sweep right away finds nothing, create 2 makes R2, then create 1 lands as R1. Both are active with the same name. With the settle the CLI does not sweep or send create 2 while create 1's process still runs in the api container, so R1 lands before the sweep and is revoked. Sweeping right after the timeout is wrong. Ending the run without the final sweep is wrong too: it is the backstop if R1 lands later anyway.
+  - A settle scan that counts its own process never prints `0` and always ends at the 30 s limit. That happens when the marker is a literal in `SETTLE_SCRIPT` and its own pid is not excluded, so the scan does both (decision 8 "Settle" item 1).
+  - The final sweep must not revoke `activeTokenId`, even though it carries `replacementName`.
   - A person's token with the same scopes and location but another name is not an orphan and must not be revoked.
   - State `switched` with `revokeTokenId` set: a rerun must revoke, not end. State `revoking` where the revoke answers 409 and `GET` shows `revokedAt` set: the item ends `done`.
 - **Stage boundary** (token ids `tok_` + 24 hex; T = `tokenId`, R = a replacement).
@@ -704,12 +768,16 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - `probe-eu` and `probe-us` with different refs refuse.
   - An override that sets `image:` for `api` refuses.
 - **Compose edit.** A `compose.yaml` where the old api ref also appears in a comment or another key gives a replacement count unequal to the service count, so it refuses without a write (and, after the boundary, rolls back).
+- **Data mounts** (decision 10; the fixtures are in Acceptance 3 "Data mounts").
+  - An override bind at the api's `/data` with `api-data` still declared must refuse. Snapshotting the declared `api-data` is wrong: after a failed upgrade the rollback would restore a volume the api never used, and api A would meet schema 9 in the bound directory.
+  - A writable volume `pulsedb` at the api's `/data` must be snapshotted. Choosing volumes by the `-data` suffix is wrong.
+  - `PULSE_DB=/tmp/pulse.db` must refuse, although the `/data` volume is there: the database is not in it.
 - **Provenance.**
   - A `gh` exit 1 refuses.
   - Missing `gh` (spawn ENOENT) exits 1 with the install hint, not 3.
   - The verified digest must be the pulled digest. Test: the fake registry answers a second `HEAD` with another digest. The CLI must not ask again, and the pulled ref equals the verified one.
 - **Snapshot boundary.**
-  - SIGINT while `notify-data.tar.part` is written (the second of three): `docker rm -f` of the helper, no `find … -delete` spawn, no `api-data.tar` or `*.part` left, `compose.yaml` byte-equal, `aborted`, exit 130. Restoring `api-data` from its finished tar here is wrong: the volumes were never changed.
+  - SIGINT while `console-data.tar.part` is written (the second of three, `snapshotVolumes` is sorted): `docker rm -f` of the helper, no `find … -delete` spawn, no `api-data.tar` or `*.part` left, `compose.yaml` byte-equal, `aborted`, exit 130. Restoring `api-data` from its finished tar here is wrong: the volumes were never changed.
   - The tar helper exits 1 for `console-data`: the same abort path, exit 1.
   - A crash between the last `rename` of a tar and the `applying` write leaves `snapshotting`; the next `upgrade --yes` refuses and names the directory.
   - SIGINT right after the `applying` write: a full rollback follows, even though `compose.yaml` is not edited yet.
@@ -744,6 +812,11 @@ No new name in contract or config. The new names are CLI commands, flags, files,
 - `grep -rn -- 'activeTokenId' contract/src config deploy`
 - `grep -rn -- '"staged"' contract/src config deploy` (the journal state). Without quotes, `staged` matches only the git-hook word `{staged_files}` in `config/lefthook.yml` lines 5 and 8, `config/lefthook-local.yml` line 5 and `config/AGENTS.md` line 22. Those are tooling texts, not names in a shape, so there is no collision.
 - `grep -rn -- 'refusing to revoke' contract/src config deploy`
+- `grep -rn -- 'pulse-cli-api-call' contract/src config deploy` (the api-call marker)
+- `grep -rn -- 'SETTLE_SCRIPT' contract/src config deploy`
+- `grep -rn -- 'snapshotVolumes' contract/src config deploy` (the `upgrade.json` key)
+- `grep -rn -- 'unheld replacement' contract/src config deploy`
+- `grep -rn -- 'only named volumes' contract/src config deploy`
 
 The new flags `--to`, `--follow`, `--location`, `--id` and `--yes` on these commands do not exist in `cli/args.ts` (lines 59–103 list every option). `--timeout` exists for `up` and keeps its meaning.
 
@@ -755,17 +828,17 @@ Files:
 - `cli/args.ts`, `cli/args.test.ts` (changed: `token`, `upgrade`, `logs`, HELP)
 - `cli/services.ts`, `cli/services.test.ts` (changed: export `PULSE_IMAGE`, which is a private `const` today at line 36, next to the exported `assertPin`; a test of the exported pattern with fixture parts built at run time, no pin literal)
 - `cli/main.ts`, `cli/main.test.ts` (changed: dispatch)
-- `cli/docker.ts`, `cli/docker.test.ts` (changed: spawn options `input`, `stdinFd`, `stdoutFd`; generic missing-binary error)
+- `cli/docker.ts`, `cli/docker.test.ts` (changed: spawn options `input`, `stdinFd`, `stdoutFd`; generic missing-binary error; `Project` carries the parsed effective model)
 - `cli/ready.ts`, `cli/ready.test.ts` (changed: `parsePs` reads `ID`; `readyz` for a service or a container id)
 - `cli/write-install.ts`, `cli/write-install.test.ts` (changed: use the extracted lock and atomic write)
 - `cli/lock.ts`, `cli/lock.test.ts` (new: the shared `.pulse-init.lock`, moved from `write-install.ts`)
 - `cli/safe-write.ts`, `cli/safe-write.test.ts` (new: atomic write with fsync of file and directory, link and mode checks, moved from `write-install.ts`)
-- `cli/api-call.ts`, `cli/api-call.test.ts` (new: `API_SCRIPT`, the equality script and the in-container api call)
+- `cli/api-call.ts`, `cli/api-call.test.ts` (new: `API_SCRIPT` with its marker and self-exit, the equality script, `SETTLE_SCRIPT` with the settle poll, and the in-container api call)
 - `cli/rotation-journal.ts`, `cli/rotation-journal.test.ts` (new: journal format, validation, states, staging file names, owned files, the reconcile with its validation order and table, stage errors, and the handoff resume table)
-- `cli/token-rotate.ts`, `cli/token-rotate.test.ts` (new: selection, rotation, the rotate outcome table with its readback, lost answer, switch, revoke; the rotation failure-injection matrix and the rotate-outcome cases)
+- `cli/token-rotate.ts`, `cli/token-rotate.test.ts` (new: selection, rotation, the rotate outcome table with its readback, lost answer with settle, sweeps and the final sweep, switch, revoke; the rotation failure-injection matrix, the rotate-outcome cases and the delayed-create cases)
 - `cli/registry.ts`, `cli/registry.test.ts` (new: ghcr.io tags and digests)
 - `cli/provenance.ts`, `cli/provenance.test.ts` (new: the `gh` preflight and verify)
-- `cli/snapshot.ts`, `cli/snapshot.test.ts` (new: `upgrade.json` states including `restored`, the state-write error table with its read-back, archive write with `.part` and sha256, abort cleanup after a durable `aborted`, verify and restore)
+- `cli/snapshot.ts`, `cli/snapshot.test.ts` (new: the data-mount check and the snapshot set `snapshotVolumes` from the effective model with its fixtures, `upgrade.json` states including `restored`, the state-write error table with its read-back, archive write with `.part` and sha256, abort cleanup after a durable `aborted`, verify and restore)
 - `cli/upgrade.ts`, `cli/upgrade.test.ts` (new: selection, preview, apply, boundary and rollback, the truthful-state-before-start rule; the upgrade failure-injection matrix and the state-write matrix)
 - `cli/logs.ts`, `cli/logs.test.ts` (new)
 - `cli/docs.test.ts` (changed: a section per command)
@@ -804,6 +877,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 ### Reuse (extract before the second use)
 
 - **Project guard.** `resolveProject` and `guarded` (`cli/docker.ts` lines 453–474, `cli/lifecycle.ts` lines 81–95) for every new command. Do not write a second guard.
+- **Effective model.** `checkConfig` (`cli/docker.ts` lines 347–375) already parses the resolution call. Return the parsed document in `Project`, so the image check and the data-mount check of decision 10 and the location lookup of decision 6 use it instead of a second `docker compose config` call. Read it with `isObj` and `own`, as `checkNames` does.
 - **Lock.** Move the lock (`cli/write-install.ts` lines 299–309 and 352–394) into `cli/lock.ts`, with its tests, and use it in `writeInstall`, rotation and upgrade.
 - **Atomic write.** Move `atomicWrite` and the link and mode refusals (`cli/write-install.ts` lines 164–187 and 279–297) into `cli/safe-write.ts`. Add fsync of the file and the directory. Then use it in init, the rotation (secret files, journal) and the upgrade (`compose.yaml`, `upgrade.json`, the tar rename).
 - **State files.** The rotation journal and `upgrade.json` share one helper for "validate on read, write state with fsync before the side effect" in `cli/safe-write.ts`. Do not write two.
@@ -814,7 +888,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - **Signals.** `processSignals` and the record-then-act pattern of `writeInstall` (`cli/write-install.ts` lines 50–71 and 366–399) for the critical sections of decisions 8 and 13.
 - **Tests.**
   - `cli/test/fake-docker.ts` is the only fake spawn. Its stop-at-step hook serves both failure-injection matrices.
-  - The file operations of `cli/safe-write.ts` (open, read, write, fsync of a file, fsync of a directory, rename, unlink) go through one injected file seam. The stage-boundary matrix uses it to fail or "hard kill" at each named point, and it writes every `lstat` and read of a token file into one event log that the fake api also writes its calls into, for the read-order assertion. The same seam fails each part of an `upgrade.json` state write for the state-write matrix. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule.
+  - The file operations of `cli/safe-write.ts` (open, read, write, fsync of a file, fsync of a directory, rename, unlink) go through one injected file seam. The stage-boundary matrix uses it to fail or "hard kill" at each named point, and it writes every `lstat` and read of a token file into one event log that the fake api also writes its calls into, for the read-order assertion. The same seam fails each part of an `upgrade.json` state write for the state-write matrix. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule. It also holds creates in flight and answers the settle scan from them (Acceptance 3 "Delayed create").
   - Registry and api answers in unit tests are literal fixtures.
   - Image refs in `cli/` tests use the fixture `example.invalid/fixture-svc:9.8.7` (`AGENTS.md` rule). A test that needs a pulse-shaped ref builds it at run time from parts, so no pin literal is in a file.
   - The gap and extra-sample statistics of `rotate.sh` and `upgrade.sh` live in one shell function file sourced by both, `cli/test/samples.sh`, with the self-test `cli/test/samples.test.sh` on the Counterexamples fixtures (phase offset, nearly in phase, one probe, edges, old probe never stopped, gap failure, and the domains of the two bounds).
@@ -846,10 +920,10 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
   - the gap and extra-sample table per location: largest difference in ms; E with its bound; W from Docker events next to the CLI's printed W; for the baseline, the rotation window, the window after T_d, and the interrupted-resume window;
   - the overlap deadline and the 401 checks;
   - the handoff ms per location and the memory and CPU of the two probes against the baseline;
-  - the release pair A and B printed by `upgrade.sh`, and the schema numbers on A, after the rollback and on B;
+  - the release pair A and B printed by `upgrade.sh`, the refusal of the unsupported data layout, and the schema numbers on A, after the rollback and on B;
   - the abort, rollback and success lines of the upgrade job, the snapshot bytes and ms, the downtime ms and the largest result gap across the upgrade;
   - the binary size before and after.
-- It names the known limits: extra samples during the handoff (the bound for I ≥ 200 ms and the estimate below it), the stack being down during an upgrade, post-snapshot writes lost on rollback, the snapshot disk space, and the manual recovery after a hard kill.
+- It names the known limits: extra samples during the handoff (the bound for I ≥ 200 ms and the estimate below it), a create that lands after the final sweep (Risks), the supported data layout of an upgrade, the stack being down during an upgrade, post-snapshot writes lost on rollback, the snapshot disk space, and the manual recovery after a hard kill.
 
 ## Breakdown notes
 
@@ -858,7 +932,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - Suggested tasks:
   1. The seams.
   2. `pulse logs` with its stack and error checks.
-  3. `pulse token rotate` with the journal, the staging files, the reconcile (validation order, the `secrets/admin-token` bearer of a probe journal, and the in-process run after a stage error) and resume tables, the rotate outcome table (first run and resume alike), the revoke guard, the rotation failure-injection matrix, the rotate-outcome cases and the stage-boundary matrix with the shared event log for the read order (Acceptance 3).
-  4. `pulse upgrade` with registry, provenance, snapshot boundary, the state-write error table with read-back and the `restored` state, rollback, the upgrade failure-injection matrix and the state-write matrix (Acceptance 3).
+  3. `pulse token rotate` with the journal, the staging files, the reconcile (validation order, the `secrets/admin-token` bearer of a probe journal, and the in-process run after a stage error) and resume tables, the rotate outcome table (first run and resume alike), the revoke guard, the settle with its sweeps and the final sweep, the rotation failure-injection matrix, the rotate-outcome cases, the delayed-create cases and the stage-boundary matrix with the shared event log for the read order (Acceptance 3).
+  4. `pulse upgrade` with registry, provenance, the data-mount check and its fixtures, snapshot boundary, the state-write error table with read-back and the `restored` state, rollback, the upgrade failure-injection matrix and the state-write matrix (Acceptance 3).
   5. The live scripts `rotate.sh`, `upgrade.sh`, `pin-release.sh`, the sample statistics (surplus E, the lemma bound and the doubled-runs bound with their domains, Docker-event W) with their fixture self-test, the shim, the two CI jobs, and the docs.
 - No task holds docs alone. Each command's docs section goes with its command task. The final task completes `README.md` and `AGENTS.md`.
