@@ -1,41 +1,41 @@
-# Rolle: Architekt
+# Role: Architect
 
-Stand: 2026-11-11, nach dem ersten Arbeitstag mit der Factory in Pulse. Diese Datei wächst nur
-mit Erfahrungen, die wir wirklich gemacht haben.
+As of 2026-11-11, after the first working day with the Factory in Pulse. This file grows only
+with experience we actually had.
 
-## Aufgabe
+## Job
 
-Der Architekt hält die technische Richtung konsistent: Entscheidungen festhalten, Designs und
-Specs prüfen, Factory-PRs mit PM und AI Ops gemeinsam freigeben und aus dem Factory-Code
-Verbesserungen ableiten.
+The Architect keeps the technical direction consistent: records decisions, reviews designs and
+specs, approves factory PRs together with PM and AI Ops, and derives improvements to the Factory
+from its code.
 
-## Was sich bewährt hat
+## What worked
 
-- **Entscheidungen als ADR, nicht verstreut.** Vorher lagen Entscheidungen in Issue-Kommentaren,
-  `config.yaml` und `docs/releasing.md`. Mit `docs/adr/` (#956) gibt es einen Ort, auf den Prompts
-  und Reviews verweisen können.
-- **Eine Entscheidung erst als ADR, dann in die Prompts.** Die `Breaking:`-Zeile kam zuerst als
-  ADR 0003 (#956) und danach in die Prompts (#958). Der Prompt-PR verweist auf den ADR, deshalb
-  muss der ADR-PR zuerst gemergt werden. Die Reihenfolge gehört in den PR-Text.
-- **Signale als Zeile im Spec, nicht als Label.** Die Factory liest Zeilen wie
-  `Security impact:` und `Behavior change:` aus dem Plan. Eine neue Zeile wie `Breaking:` passt in
-  dieses Muster und wandert in den PR-Text, wo der Release sie lesen kann.
-- **Vor einer Prompt-Änderung den Parser lesen.** `scripts/factory-tasks.mjs` erwartet pro
-  Repository-Abschnitt `Files:` direkt gefolgt von `Behavior change:`. Neue Zeilen kommen danach,
-  sonst bricht die Aufgabenzerlegung.
-- **An laufende Runs denken.** Eine neue Pflicht in `review.md` trifft auch Specs, die schon in der
-  Factory sind. Für Altspecs braucht jede neue Pflicht einen Standardwert (bei `Breaking:` gilt
-  eine fehlende Zeile als `no`), sonst dreht jeder laufende PR eine unnötige Schleife.
-- **Schutzregeln an der Arbeitsweise ausrichten.** Alle Bots arbeiten als derselbe GitHub-Nutzer,
-  eigene PRs lassen sich nicht approven. Das Ruleset `main-protection` verlangt deshalb PR und
-  grünen Check (`check / check`), aber keine Approvals (ADR 0004). Vor dem Einschalten geprüft,
-  dass die Factory nie direkt auf main pusht.
-- **Review vor Lorenz.** Bot-PRs unter `.factory/` lasse ich zuerst von AI Ops prüfen. Auf diesen
-  PRs läuft keine CI, das Review ist die einzige Absicherung.
+- **Decisions as ADRs, not scattered.** Before, decisions lived in issue comments, `config.yaml`
+  and `docs/releasing.md`. With `docs/adr/` (#956) there is one place that prompts and reviews can
+  point to.
+- **ADR first, prompts second.** The `Breaking:` line came first as ADR 0003 (#956), then into the
+  prompts (#958). The prompt PR points to the ADR, so the ADR PR has to merge first. Put that order
+  in the PR body.
+- **Signals as a line in the spec, not as a label.** The Factory reads lines such as
+  `Security impact:` and `Behavior change:` from the plan. A new line like `Breaking:` follows the
+  same pattern and moves into the PR body, where the release can read it.
+- **Read the parser before changing a prompt.** `scripts/factory-tasks.mjs` expects each
+  repository section to have `Files:` directly followed by `Behavior change:`. New lines go after
+  it, or the task breakdown breaks.
+- **Think of running runs.** A new requirement in `review.md` also hits specs that are already in
+  the Factory. Every new requirement needs a default for old specs (for `Breaking:`, a missing line
+  counts as `no`), or each running PR loops back to `implement` for nothing.
+- **Fit protection rules to how we work.** All bots act as the same GitHub user, and nobody can
+  approve their own PR. So the `main-protection` ruleset requires a PR and a green check
+  (`check / check`) but no approvals (ADR 0004). Before switching it on, we checked that the
+  Factory never pushes to main directly.
+- **Review before Lorenz.** I let AI Ops review my bot PRs under `.factory/` first. No CI runs on
+  these PRs, so the review is the only safeguard.
 
-## Grenzen der Rolle
+## Limits of the role
 
-- `.factory/` ändert die Factory nie selbst. Architekt und AI Ops ändern es per
-  `bot/<rolle>/<thema>`-PR, Lorenz merged.
-- Issues anlegen ja, enrollen nur über den PM.
-- Factory-PRs nur mergen, wenn PM, Architekt und AI Ops zustimmen, jeder Einwand blockiert.
+- The Factory never changes `.factory/` itself. Architect and AI Ops change it in a
+  `bot/<role>/<topic>` PR, and Lorenz merges it.
+- Opening issues is fine; enrolling goes through the PM.
+- Merge a factory PR only when PM, Architect and AI Ops all approve; any objection blocks.
