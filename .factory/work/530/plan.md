@@ -21,6 +21,10 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 - The second plan review (the later issue comment "Factory ran spec/plan-review"). This version fixes its two defects:
   - the replacement recovery boundary between the secret-file write and the journal write (decisions 7 and 8): secrets are now staged in a file named by their token id, the host file changes only by a rename after the journal says `staged`, and no revoke ever targets the token that authenticates the call;
   - the extra-sample statistic and its bound: the statistic is now the surplus over a minimum gap-keeping subset, the two-probe window W is measured from Docker events instead of being assumed, and the gates follow from a stated lemma (Counterexamples "Extra samples", Performance impact item 2).
+- The third plan review (the latest issue comment "Factory ran spec/plan-review"). This version fixes its three defects:
+  - a failure inside the stage step of a first run (for example the directory fsync after the staging rename) no longer jumps to the lost-answer path. Any error in step 3 of decision 7 runs the reconcile of decision 8 in the same process, from the journal on disk, before anything else. An item enters `replacing` only after a reconcile found no staging file for it (decision 8 "Stage errors").
+  - the reconcile now has a fixed validation order. It also names the one bearer it may read from a host file: `secrets/admin-token` in a `probe` journal. No item owns that file and the reconcile never changes it. It is read only after the staging check, the file checks of decision 9 and the capability check (decision 8 "Reconcile", step 4).
+  - the Files list of the deploy section now holds `cli/services.ts` and `cli/services.test.ts`. `PULSE_IMAGE` is private today (deploy `cli/services.ts` line 36, `const` without `export`), and Reuse exports it.
 - `.factory/work/530/issue-review.md`: open points 1–9 and the derived acceptance checks 1–9.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/530` answered `HTTP 404` in this run (2026-11-11). There are no findings, which is normal for a feature without children.
 - Clones read in this run (all `main`):
@@ -126,6 +130,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
       3. **Install.** Rename the staging file over the host file and fsync the directory.
       4. Journal `saved`.
       - So the journal state alone says what the host file holds: in `requested` and `replacing` it holds the pre-rotation secret of `tokenId`; from `saved` on it holds the secret of `activeTokenId`. In `staged`, the existence of the staging file says whether step 3 ran (a rename is atomic, and nothing else removes a staging file). Decision 8 "Reconcile" uses exactly this.
+      - **Errors in this step.** The CLI never decides from the error which write did or did not land. Any error from the first write of step 1 to the end of step 4 is handled as decision 8 "Stage errors" says: the in-process reconcile, from the files on disk. Example: the rename to the staging name succeeds and the directory fsync after it throws. The staging file exists, so the reconcile takes the `requested` row and the item goes to `staged`, not to `replacing`.
    4. **Refresh.** Journal `refreshing`, then `docker compose <prefix> run --rm --no-deps -T secrets-init` must exit 0. Then journal `refreshed`.
    5. **Switch.**
       - **Probe**, start-new-then-stop-old:
@@ -149,22 +154,36 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 8. **Journal and recovery.**
    - **File.** `secrets/.pulse-rotation.json` (0600, written atomically with fsync like the secret files) holds `{format:1, kind, items:[…]}`. Each item has `tokenId`, `location?`, `file`, `service?`, `name`, `scopes`, `expiresAt`, `rotatedAtBefore`, `oldContainerId?`, `newContainerId?`, `activeTokenId?`, `revokeTokenId?`, `replacementName?` and `state`. It never holds a secret. Token ids must match `^tok_[0-9a-f]{24}$`, container ids `^[0-9a-f]{64}$`, and `state` one of the states below; a journal that breaks a rule refuses with its path and the rule. The file is removed when every item is `done`.
    - **Staging files.** `secrets/.pulse-next.<file>.<id>` (decision 7 step 3) hold one secret each, never in the journal. The name must match `^\.pulse-next\.(admin-token|probe-token-[a-z0-9][a-z0-9-]{0,31})\.(tok_[0-9a-f]{24})$`. Items run one after another, so at most one staging file exists, and only for the item that is in `requested`, `replacing` or `staged`.
-   - **States**, in order: `requested` → (`replacing` →) `staged` → `saved` → `refreshing` → `refreshed` → `handoff` → `switched` → (`revoking` →) `done`. Every state is written and fsynced before the side effect that it names. A state never moves back; in particular an item never returns to `replacing` once it was `staged`.
-   - **Reconcile (first step of every resume, before any api write and before any bearer is read from a host file).** Its only api call is the read-only confirmation in the `replacing` row.
-     1. Delete every leftover safe-write temp file in `secrets/` whose name is `.<name>.tmp-<hex>` for a host file, a staging file or the journal. Its content counts as not stored.
-     2. List the staging files and act on the table. A staging file that the table does not allow refuses with exit 1, its path, and `docs/cli.md#token-recovery`; nothing is changed.
+   - **States**, in order: `requested` → (`replacing` →) `staged` → `saved` → `refreshing` → `refreshed` → `handoff` → `switched` → (`revoking` →) `done`. Every state is written and fsynced before the side effect that it names. A state never moves back; in particular an item never returns to `replacing` once it was `staged`. An item enters `replacing` only after a reconcile of that item found no staging file for it (from `requested` through the lost-answer rule; never straight from an error).
+   - **Owned files.** The host file of an item (its `file`) is owned by the journal. In an `admin` journal that is `secrets/admin-token`. In a `probe` journal it is each item's `secrets/probe-token-<loc>`, and `secrets/admin-token` is owned by no item: no step of a probe rotation writes, stages or renames it.
+   - **Reconcile.** It is the first step of every resume and of every stage error (below). It runs before any api write and before any owned host file is read as a bearer. Its only api calls are the read-only confirmations of the `replacing` row. It reads the journal from disk, never from memory, so the in-process run and a rerun take the same path. Validation order:
+     1. Read and validate the journal (decision 8 "File"). A bad journal refuses before anything else.
+     2. Delete every leftover safe-write temp file in `secrets/` whose name is `.<name>.tmp-<hex>` for a host file, a staging file or the journal. Its content counts as not stored. Then fsync `secrets/`. If that fsync fails, exit 1 with the journal as it is on disk; nothing else is done.
+     3. List the staging files. Match each one against the table below **without any api call**, by the journal state of its item, its `<file>` and its id only. Each staging file must pass the name rule and the file checks of decision 9. It must also belong to an item of the journal: in a `probe` journal an `admin-token` staging file, and in an `admin` journal a `probe-token-*` staging file, match no row. A staging file that matches no row refuses with exit 1, its path, and `docs/cli.md#token-recovery`; nothing is changed and no api call is made.
+     4. Only the `replacing` row with a staging file needs a confirmation from the api. The bearer depends on the kind:
+        - **admin.** The bearer is the staged secret itself, read from the staging file that passed step 3. A staging file is not a host file.
+        - **probe.** The bearer is `secrets/admin-token`. It is the one host file that the reconcile may read, because no item of a probe journal owns it (see "Owned files"), so no earlier or later reconcile action changes it. First it must pass the file checks of decision 9, then the capability check of decision 5 (`GET /admin/tokens/self` answers `200`, `admin` scope). Only then is the confirmation `GET /admin/tokens/<X>` sent.
+        - A confirmation that does not answer as the row says (another status, another id or name, `revokedAt` set) refuses with exit 1 and nothing changed.
+     5. Act on the matched rows, one item after another, in journal order.
 
         | Journal state of the item | Staging file | Meaning | Action |
         | --- | --- | --- | --- |
         | `requested` | `.<file>.<tokenId>` | the rotate answer was stored, the `staged` write was lost | journal `staged` with `activeTokenId := tokenId`, then install and journal `saved` |
-        | `replacing` | `.<file>.<X>`, X ≠ `tokenId`, and the api confirms X: for `admin`, `GET /admin/tokens/self` with the staged secret answers id X and name `replacementName` (this works also after the old secret's overlap); for `probe`, `GET /admin/tokens/<X>` with the admin secret shows name `replacementName` and `revokedAt` null | the create answer was stored, the `staged` write was lost | journal `staged` with `activeTokenId := X`, then install and journal `saved` |
+        | `replacing` | `.<file>.<X>`, X ≠ `tokenId`, and the api confirms X (step 4): for `admin`, `GET /admin/tokens/self` with the staged secret answers id X and name `replacementName` (this works also after the old secret's overlap); for `probe`, `GET /admin/tokens/<X>` with `secrets/admin-token` shows name `replacementName` and `revokedAt` null | the create answer was stored, the `staged` write was lost | journal `staged` with `activeTokenId := X`, then install and journal `saved` |
         | `requested`, `replacing` | none | no answer was stored | the rules below (`rotatedAt` check, lost answer) |
         | `staged` | `.<file>.<activeTokenId>` | the install did not run | install, journal `saved` |
         | `staged` | none | the install ran, the `saved` write was lost | journal `saved` |
         | `saved` or a later state | none | normal | nothing; resume by state |
         | any state | a staging file that matches no row above (another id, another file, a second staging file, or any staging file from `saved` on) | inconsistent | refuse |
 
-     - Only after the reconcile does the CLI read a bearer from a host file. The host file then holds what the state says (decision 7 step 3).
+     - "Install" in the table is the rename of decision 7 step 3.3 and the fsync of `secrets/`. Each journal write in the table is fsynced like every state. If any of them fails, the reconcile exits 1. It does not retry and does not move to another row. The journal on disk then names the row that the next reconcile takes.
+     - Only after the reconcile does the CLI read an owned host file as a bearer. That file then holds what the state says (decision 7 step 3). The one host file that the reconcile itself reads is `secrets/admin-token` in a `probe` journal (step 4), which no item owns.
+   - **Stage errors (first run and resume).** An error anywhere in decision 7 step 3 (a thrown write, fsync, rename or directory fsync, or a journal write) is not a lost answer by itself. The CLI drops the copy of the answer's secret that it holds in memory and runs the reconcile for the journal at once, in the same process.
+     - The reconcile finds a staging file for the answer's id: the `requested` or `replacing` row moves the item to `staged` and installs. The run then goes on at the refresh.
+     - The reconcile finds no staging file: no answer is stored. From `requested`, the lost-answer rule applies (`replacing`). From `replacing`, the created token is an orphan, and steps 2 and 3 of "Lost answer" run (at most once more in the run, as there).
+     - The item is `staged` or later: the rows `staged` or `saved` apply.
+     - The reconcile itself fails (for example the fsync of `secrets/` throws again): exit 1, journal kept. The rerun's reconcile decides from the same files.
+     - Going from an error in step 3 straight to `replacing` is wrong (Counterexamples "Stage boundary"). The staging file may exist, and the table refuses `replacing` with a staging file of `tokenId`.
    - **Resume.** A rerun with a journal skips the overlap refusal for the items it names, rereads every item from the api, and resumes each item by its state:
      - `requested`: read `GET /admin/tokens/<tokenId>`.
        - If `rotatedAt` still equals `rotatedAtBefore`, the `POST` had no effect. Rotate as normal.
@@ -186,20 +205,20 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      - `handoff` (admin): run step 5 of admin again (the console recreate is idempotent).
      - `switched`: go to `revoking` when `revokeTokenId` is set, else `done`.
      - `revoking`: step 6 again.
-   - **Lost answer.** It applies on resume (state `requested` with a changed `rotatedAt` and no staging file) and inside the first run when the rotate `POST` ends without a parsed `200` (timeout, broken pipe, no JSON) or the staging write fails. A secret that is not in a staging file counts as lost, and a rotate `POST` is never repeated blindly.
+   - **Lost answer.** It applies on resume (state `requested` with a changed `rotatedAt` and no staging file) and inside the first run when the rotate `POST` ends without a parsed `200` (timeout, broken pipe, no JSON), or when a stage error's reconcile found no staging file ("Stage errors"). A staging error alone never triggers it. A secret that is not in a staging file counts as lost, and a rotate `POST` is never repeated blindly.
      1. Journal `replacing` with `revokeTokenId := tokenId` and `replacementName`: the old name cut to 90 characters, a space, `r` and 6 random hex characters. The journal holds the name before the create, so a lost create answer can be found again.
      2. Look for orphans: tokens whose `name` equals `replacementName` and whose `revokedAt` is null. This step runs only in state `replacing` after the reconcile found no staging file. In that state no host file and no staging file holds a replacement's secret (decision 7 step 3), so every orphan is a replacement whose secret nobody holds. Revoke each of them, each through the revoke guard.
-     3. `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. If this answer is lost too, steps 2 and 3 run once more in the same run, and then the CLI exits 1 with the journal kept.
+     3. `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. The create answer is lost when it is not a parsed `201`, or when a stage error's reconcile found no staging file for the created id. If this answer is lost too, steps 2 and 3 run once more in the same run, and then the CLI exits 1 with the journal kept.
      4. Stage and save as in decision 7 step 3 with the created id, then refresh and switch, then step 6 revokes `revokeTokenId`.
      5. Print `the rotate answer was lost; replaced token <revokeTokenId> with <activeTokenId>`.
      - Revoking the lost admin is not refused by the last-admin rule, because the replacement is active by then.
      - For `admin` in state `replacing` after the old secret's `previousValidUntil`, the CLI cannot authenticate. It exits 1 and names the recovery in the docs: another admin token, or a database backup.
    - **Revoke guard.** Before every revoke (orphans in step 2, `revokeTokenId` in step 6), the CLI calls `GET /admin/tokens/self` with the bearer it is about to use. It refuses, exit 1 with the journal kept and `refusing to revoke the token that authenticates this call (<id>); see docs/cli.md#token-recovery`, when the answered id equals the target. It also never revokes `activeTokenId`. The api allows a token to revoke itself while another admin is active (Grant and Last-admin rules, api `docs/rest-api.md` lines 498–500), so only the CLI can prevent it.
-   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
+   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The in-process reconcile after a stage error is part of this section. The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
    - While the journal exists, a plain run without it is impossible: `pulse token rotate` always resumes it first, and `pulse upgrade --yes` refuses.
 9. **File checks for rotation.**
    - `secrets/` must be a directory, not a link, and no wider than 0700.
-   - Each target file, staging file and the journal must be a regular file, not a link, with no group or other bits. Each target file and staging file must hold a valid token (`tokenContentValid`, `cli/tokens.ts` lines 40–43).
+   - Each target file, staging file and the journal must be a regular file, not a link, with no group or other bits. So must `secrets/admin-token` whenever it is used as a bearer, also in a `probe` rotation and in the reconcile (decision 8 step 4). Each of these token files must hold a valid token (`tokenContentValid`, `cli/tokens.ts` lines 40–43).
    - `secrets-init` reads only the named files `/in/admin-token` and `/in/probe-token-<loc>` (`scripts/secrets-init.mjs` lines 179 and 186; it never lists the directory), so a staging file in the bound `secrets/` directory is never copied to a consumer.
    - The directory must be writable.
    - Refusals name the path and the rule only.
@@ -385,8 +404,14 @@ Each check names where its expected value comes from.
      - `pulse token rotate probe` now passes the capability check: it exits 0.
 3. **Unit tests** (`bun run test`, coverage threshold from `bunfig.toml`). They cover every rule in Counterexamples, with literal inputs and expected values. Two failure-injection matrices are required:
    - **Rotation.** A fake api and `cli/test/fake-docker.ts` stop the run (simulated SIGINT, and separately a thrown spawn error) at every journal state of decision 8 for one probe and one admin item, plus a lost rotate answer and a lost create answer. Each case then reruns to the end, and asserts: exactly one rotate `POST` per token, at most one active replacement, every orphan and the lost token revoked, exactly one container of the service, the host secret equal to the container secret, and no journal left.
-   - **Stage boundary.** For the rotate path and the replacement (create) path, each for `admin` and `probe`, a failing file seam (a thrown error, and separately a simulated hard kill that ends the run without cleanup) stops the run at each of these points: the staging temp write, the rename to the staging name, the `staged` journal write, the install rename, and the `saved` journal write. The rerun goes to the end. The fake api models the real auth rules: a revoked token's secrets answer `401`, a token may revoke itself, and the last-admin rule. Each case asserts:
+   - **Stage boundary.** For the rotate path and the replacement (create) path, each for `admin` and `probe`, a failing file seam hits each of these points: the staging temp write, the temp file fsync, the rename to the staging name, the directory fsync after that rename, the `staged` journal write, the install rename, the directory fsync after the install, and the `saved` journal write. Each point is hit in two ways:
+     - **A thrown error.** The same run must go on through the in-process reconcile (decision 8 "Stage errors"). It ends with exit 0, or with exit 1 and the journal kept when the reconcile's own fsync of `secrets/` is made to fail too. In that case a rerun goes to the end.
+     - **A simulated hard kill** that ends the run without cleanup. The rerun goes to the end.
+     - The fake api models the real auth rules: a revoked token's secrets answer `401`, a token may revoke itself, and the last-admin rule.
+     - Each case asserts:
      - no revoke call targets `activeTokenId` or the token that authenticates the call, and no api call answers `401`;
+     - the journal never shows `replacing` while a staging file of the item exists. The test checks this after each journal write. This covers the post-rename directory-fsync case of the third plan review: the run journals `staged` with `activeTokenId` = `tokenId`, never `replacing`, and sends no create;
+     - read order (the file seam records every read of a token file): before the reconcile ends, no owned host file (decision 8 "Owned files") is read. In a `probe` case, `secrets/admin-token` is read only after the staging check of reconcile step 3, and only after its file checks and the `/admin/tokens/self` capability call. In an `admin` case, the only token file read inside the reconcile is the staging file;
      - for the item, exactly one active token with the item's scopes and location remains: the one whose secret the host file holds (the fake api maps secrets to ids);
      - no staging file, no temp file and no journal is left;
      - exactly one rotate `POST` and at most one replacement whose secret was stored.
@@ -449,7 +474,8 @@ These checklist items apply:
   - The capability and identity checks run before the first api write.
   - Each api status gets a defined outcome: 401, 403, 404, 409 and 429 are named, and anything else is `unexpected status`.
   - A lost answer never leaves a usable token whose secret nobody holds: orphan replacements are found by their unique journal name and revoked, and the lost token is revoked after the switch.
-  - A held secret is never revoked: the orphan sweep runs only when no host or staging file can hold a replacement (decision 8 "Reconcile"), and the revoke guard refuses a revoke of the calling token or of `activeTokenId`.
+  - A held secret is never revoked: the orphan sweep runs only when no host or staging file can hold a replacement (decision 8 "Reconcile"), a stage error always goes through the reconcile before it can count as a lost answer (decision 8 "Stage errors"), and the revoke guard refuses a revoke of the calling token or of `activeTokenId`.
+  - Reconcile bearer: no owned host file is used as a bearer before the reconcile ends. In a probe journal, `secrets/admin-token` is used only after the staging check, its file checks and the capability check (decision 8 "Reconcile" step 4).
 - **Body and size limits.** Api answers are capped at 1 MiB in `API_SCRIPT`. Registry bodies are capped at 1 MiB, and registry pagination at 10 pages.
 - **Input validation.**
   - Token ids match `^tok_[0-9a-f]{24}$`. Container ids match `^[0-9a-f]{64}$`. Service names and versions are validated. The journal and `upgrade.json` are validated on read like external input.
@@ -542,6 +568,16 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - State `staged` with `activeTokenId` R and a staging file for another id: refuse with exit 1, no api write.
   - State `saved` and any staging file: refuse with exit 1.
   - A staging file named `.pulse-next.admin-token.tok_XYZ` or `.pulse-next.../x.tok_…`: refuse with exit 1 (name rule).
+  - **The first case of the third plan review.** Probe, first run, state `requested`. The rename to `.pulse-next.probe-token-eu.T` succeeds and the directory fsync after it throws. The in-process reconcile fsyncs `secrets/` (it succeeds), finds the staging file, journals `staged` with `activeTokenId` T and installs it. There is no create call and no revoke. Moving to `replacing` from the error is wrong: it creates a replacement while T's new secret is held, and the next reconcile refuses `replacing` with a staging file of T.
+  - The same, but the reconcile's own fsync of `secrets/` throws too: exit 1, the journal still `requested`, the staging file still there, no api write. The rerun takes the `requested` row.
+  - Probe, first run, state `replacing`. The create of R answers `201`, and the staging temp write throws. The in-process reconcile deletes the temp file and finds no staging file. R is an orphan: the sweep revokes it by `replacementName` through the revoke guard, and one more create follows. Keeping R active is wrong: nobody holds its secret.
+  - Admin, state `staged` with `activeTokenId` R. The install rename succeeds and the directory fsync after it throws. The reconcile finds no staging file and journals `saved`. Treating the error as a lost answer is wrong: the item is past `replacing` and never returns there.
+- **Reconcile bearer order** (the second case of the third plan review).
+  - Probe journal, item eu in `replacing`, `.pulse-next.probe-token-eu.R` exists. The reconcile reads `secrets/admin-token` only after the staging check, then checks it (regular file, 0600, valid token), then sends `GET /admin/tokens/self` (200, `admin` scope), then `GET /admin/tokens/R`. Reading `secrets/probe-token-eu` as a bearer here is wrong: an owned host file is read only after the reconcile.
+  - The same journal with `secrets/admin-token` as a symlink: refuse with exit 1 before any api call, journal and staging file unchanged.
+  - The same journal with `/admin/tokens/self` for the admin secret answering `401`: refuse with exit 1, no `GET /admin/tokens/R`, nothing changed.
+  - Probe journal with a staging file `.pulse-next.admin-token.tok_…`: refuse with exit 1 in step 3, before `secrets/admin-token` is read or any api call is made.
+  - Admin journal, item in `replacing`, `.pulse-next.admin-token.R` exists: the confirmation uses the staged secret, never `secrets/admin-token` (the owned host file).
 - **Revoke guard.** The fake api answers `GET /admin/tokens/self` with id R for the bearer, and the step would revoke R: no revoke call, exit 1, journal kept. A revoke of `activeTokenId` is refused the same way.
 - **Journal resume.** State `saved` must not `POST` again. A journal with `tokenId` `tok_XYZ` or `state` `bogus` refuses with exit 1 and no api call.
 - **409.** The api answers `409` on a token in overlap, and no journal names it. The CLI exits 1 with `still in its rotation overlap until`, and no file changes.
@@ -608,6 +644,7 @@ Files:
 
 - `common/services.yaml` (changed, only through `scripts/bump-images.sh`, decision 2)
 - `cli/args.ts`, `cli/args.test.ts` (changed: `token`, `upgrade`, `logs`, HELP)
+- `cli/services.ts`, `cli/services.test.ts` (changed: export `PULSE_IMAGE`, which is a private `const` today at line 36, next to the exported `assertPin`; a test of the exported pattern with fixture parts built at run time, no pin literal)
 - `cli/main.ts`, `cli/main.test.ts` (changed: dispatch)
 - `cli/docker.ts`, `cli/docker.test.ts` (changed: spawn options `input`, `stdinFd`, `stdoutFd`; generic missing-binary error)
 - `cli/ready.ts`, `cli/ready.test.ts` (changed: `parsePs` reads `ID`; `readyz` for a service or a container id)
@@ -615,7 +652,7 @@ Files:
 - `cli/lock.ts`, `cli/lock.test.ts` (new: the shared `.pulse-init.lock`, moved from `write-install.ts`)
 - `cli/safe-write.ts`, `cli/safe-write.test.ts` (new: atomic write with fsync of file and directory, link and mode checks, moved from `write-install.ts`)
 - `cli/api-call.ts`, `cli/api-call.test.ts` (new: `API_SCRIPT`, the equality script and the in-container api call)
-- `cli/rotation-journal.ts`, `cli/rotation-journal.test.ts` (new: journal format, validation, states, staging file names, the reconcile table and the handoff resume table)
+- `cli/rotation-journal.ts`, `cli/rotation-journal.test.ts` (new: journal format, validation, states, staging file names, owned files, the reconcile with its validation order and table, stage errors, and the handoff resume table)
 - `cli/token-rotate.ts`, `cli/token-rotate.test.ts` (new: selection, rotation, lost answer, switch, revoke; the rotation failure-injection matrix)
 - `cli/registry.ts`, `cli/registry.test.ts` (new: ghcr.io tags and digests)
 - `cli/provenance.ts`, `cli/provenance.test.ts` (new: the `gh` preflight and verify)
@@ -668,7 +705,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - **Signals.** `processSignals` and the record-then-act pattern of `writeInstall` (`cli/write-install.ts` lines 50–71 and 366–399) for the critical sections of decisions 8 and 13.
 - **Tests.**
   - `cli/test/fake-docker.ts` is the only fake spawn. Its stop-at-step hook serves both failure-injection matrices.
-  - The file operations of `cli/safe-write.ts` (open, write, fsync, rename, unlink) go through one injected file seam, so the stage-boundary matrix can fail or "hard kill" at each named write. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule.
+  - The file operations of `cli/safe-write.ts` (open, read, write, fsync of a file, fsync of a directory, rename, unlink) go through one injected file seam. The stage-boundary matrix uses it to fail or "hard kill" at each named point, and it records the order of token-file reads for the read-order assertion. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule.
   - Registry and api answers in unit tests are literal fixtures.
   - Image refs in `cli/` tests use the fixture `example.invalid/fixture-svc:9.8.7` (`AGENTS.md` rule). A test that needs a pulse-shaped ref builds it at run time from parts, so no pin literal is in a file.
   - The gap and extra-sample statistics of `rotate.sh` and `upgrade.sh` live in one shell function file sourced by both, `cli/test/samples.sh`, with the self-test `cli/test/samples.test.sh` on the Counterexamples fixtures (phase offset, nearly in phase, one probe, edges, old probe never stopped, gap failure).
@@ -712,7 +749,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - Suggested tasks:
   1. The seams.
   2. `pulse logs` with its stack and error checks.
-  3. `pulse token rotate` with the journal, the staging files, the reconcile and resume tables, the revoke guard, the rotation failure-injection matrix and the stage-boundary matrix (Acceptance 3).
+  3. `pulse token rotate` with the journal, the staging files, the reconcile (validation order, the `secrets/admin-token` bearer of a probe journal, and the in-process run after a stage error) and resume tables, the revoke guard, the rotation failure-injection matrix and the stage-boundary matrix (Acceptance 3).
   4. `pulse upgrade` with registry, provenance, snapshot boundary, rollback and the upgrade failure-injection matrix.
   5. The live scripts `rotate.sh`, `upgrade.sh`, `pin-release.sh`, the sample statistics (surplus E, the lemma bound, Docker-event W) with their fixture self-test, the shim, the two CI jobs, and the docs.
 - No task holds docs alone. Each command's docs section goes with its command task. The final task completes `README.md` and `AGENTS.md`.
