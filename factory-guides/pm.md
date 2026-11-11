@@ -60,7 +60,7 @@ are listed here; extend it after each new lesson. Last update: 2026-11-11.
 - Merge only after PM, Architect and AI Ops all approve (review or comment);
   any objection blocks. The PM checks the change against the issue and its
   `## Done when`.
-- PRs from our own bots are never self-merged; the owner merges them.
+- PRs from our own bots (`bot/<role>/<topic>`) follow the same three-approval rule; since 2026-11-11 the bots merge them themselves after agreement.
 
 ## Documentation
 
