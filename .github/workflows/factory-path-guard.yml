@@ -1,0 +1,61 @@
+name: Factory path guard
+
+# Rule of the owner: the Factory never changes the Factory. A pull request of the Factory account
+# (vars.FACTORY_GITHUB_ACTOR) fails when it changes anything under .factory/ except the work files
+# of its own issue, .factory/work/<issue>/** with <issue> from the branch factory/<issue>-<slug>.
+# A change to the Factory's own workflows (.github/workflows/factory-*.yml, runner-pick.yml) only
+# warns, for a closer review. The changed files come from the API; no code of the pull request
+# runs and nothing is checked out. Without branch protection the check signals, it does not block.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  guard:
+    if: github.event.pull_request.user.login == vars.FACTORY_GITHUB_ACTOR
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check the changed paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          R="$GITHUB_REPOSITORY"
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          issue=""
+          [[ "$HEAD_REF" =~ ^factory/([1-9][0-9]*)- ]] && issue="${BASH_REMATCH[1]}"
+          # A rename counts with its old and its new path.
+          files="$(gh api --paginate "repos/$R/pulls/$PR_NUMBER/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)')" \
+            || { echo "::error::Cannot read the changed files of #$PR_NUMBER." >&2; exit 1; }
+          files="$(sort -u <<< "$files")"
+          denied=() steering=()
+          while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            case "$f" in
+              .factory/*)
+                [[ -n "$issue" && "$f" == ".factory/work/$issue/"* ]] || denied+=("$f") ;;
+              .github/workflows/factory-*.yml | .github/workflows/runner-pick.yml)
+                steering+=("$f") ;;
+            esac
+          done <<< "$files"
+          { echo "## Factory path guard"; echo
+            echo "Branch \`$HEAD_REF\`, allowed under \`.factory/\`: ${issue:+\`.factory/work/$issue/**\`}${issue:-nothing (no issue number in the branch)}."; } >> "$summary"
+          if ((${#steering[@]})); then
+            for f in "${steering[@]}"; do echo "::warning file=$f::Factory-Steuerung geändert – beim Review besonders genau prüfen: $f"; done
+            { echo; echo "**Warnung: Factory-Steuerung geändert – beim Review besonders genau prüfen.**"; echo
+              printf -- '- `%s`\n' "${steering[@]}"; } >> "$summary"
+          fi
+          if ((${#denied[@]})); then
+            for f in "${denied[@]}"; do echo "::error file=$f::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: $f"; done
+            { echo; echo "**Fehlschlag: Änderungen unter \`.factory/\` außerhalb der Arbeitsdateien.**"; echo
+              printf -- '- `%s`\n' "${denied[@]}"; } >> "$summary"
+            exit 1
+          fi
+          echo "No change under .factory/ outside the work files." | tee -a "$summary"

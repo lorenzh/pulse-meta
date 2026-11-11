@@ -435,6 +435,57 @@ check "pr check: a template change by a person (not a Factory branch) is not loc
 mv "$base/report/check.mjs" "$tmp/check.mjs.bak"
 check "pr check: a base without check.mjs checks nothing" "::notice::The base commit has no report/check.mjs. Nothing to check." "$(prcheck $F)"
 mv "$tmp/check.mjs.bak" "$base/report/check.mjs"
+# --- factory-path-guard.yml ----------------------------------------------------------------------
+# A Factory pull request may change .factory/ only in the work files of its own issue; a change to
+# the Factory's workflows only warns. The changed files come from the API, renames with both paths.
+export FIXTURES="$tmp/guard"; mkdir -p "$FIXTURES"
+guardscript="$(step_script "$workflows/factory-path-guard.yml" guard)"
+guard() { # <head branch> <changed file json rows>... -> exit code, then every ::error/::warning line
+  local ref="$1" out rc=0; shift
+  printf '%s\n' "$@" | jq -s . > "$FIXTURES/$(key "repos/$R/pulls/9/files?per_page=100").0.json"
+  : > "$tmp/guard-summary"
+  # GitHub runs a bash step as bash -eo pipefail.
+  out="$(PATH="$tmp/bin:$PATH" GITHUB_REPOSITORY=$R GITHUB_STEP_SUMMARY="$tmp/guard-summary" PR_NUMBER=9 HEAD_REF="$ref" \
+    bash -eo pipefail -c "$guardscript" 2>&1)" || rc=$?
+  echo "$rc"; grep -E '^::(error|warning)' <<< "$out" || true
+}
+check "guard: runs on pull_request against main for the Factory account only, read-only, no checkout" \
+  "['pull_request'] ['main'] github.event.pull_request.user.login == vars.FACTORY_GITHUB_ACTOR {'contents': 'read', 'pull-requests': 'read'} 0" \
+  "$(python3 -c '
+import sys, yaml
+w = yaml.safe_load(open(sys.argv[1])); j = w["jobs"]["guard"]
+print(list(w[True]), w[True]["pull_request"]["branches"], j["if"], dict(sorted(j["permissions"].items())), sum("uses" in s for s in j["steps"]))
+' "$workflows/factory-path-guard.yml")"
+check "guard: a spec pull request that writes its own work files passes" "0" \
+  "$(guard factory/922-console-callout '{"filename":".factory/work/922/plan.md"}' '{"filename":".factory/work/922/tasks/console.json"}' '{"filename":"docs/x.md"}')"
+check "guard: an audit pull request without .factory/ passes" "0" \
+  "$(guard factory/951-performance-audit '{"filename":"audits/performance/website.md"}')"
+check "guard: the work files of another issue fail" "1
+::error file=.factory/work/921/plan.md::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/work/921/plan.md" \
+  "$(guard factory/922-console-callout '{"filename":".factory/work/921/plan.md"}')"
+check "guard: config, prompts and a prefix match of the issue number fail" "1
+::error file=.factory/config.yaml::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/config.yaml
+::error file=.factory/prompts/review.md::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/prompts/review.md
+::error file=.factory/work/9220/plan.md::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/work/9220/plan.md" \
+  "$(guard factory/922-console-callout '{"filename":".factory/prompts/review.md"}' '{"filename":".factory/config.yaml"}' '{"filename":".factory/work/9220/plan.md"}')"
+check "guard: a rename out of .factory/ counts with the old path" "1
+::error file=.factory/prompts/plan.md::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/prompts/plan.md" \
+  "$(guard factory/922-console-callout '{"filename":"docs/plan.md","previous_filename":".factory/prompts/plan.md"}')"
+check "guard: a branch without an issue number allows nothing under .factory/" "1
+::error file=.factory/work/922/plan.md::Factory pull requests must not change .factory/ outside .factory/work/<issue>/: .factory/work/922/plan.md" \
+  "$(guard factory/console-callout '{"filename":".factory/work/922/plan.md"}')"
+check "guard: Factory workflows and runner-pick.yml only warn, other workflows pass silently" "0
+::warning file=.github/workflows/factory-run.yml::Factory-Steuerung geändert – beim Review besonders genau prüfen: .github/workflows/factory-run.yml
+::warning file=.github/workflows/runner-pick.yml::Factory-Steuerung geändert – beim Review besonders genau prüfen: .github/workflows/runner-pick.yml" \
+  "$(guard factory/943-cd '{"filename":".github/workflows/factory-run.yml"}' '{"filename":".github/workflows/runner-pick.yml"}' '{"filename":".github/workflows/docker-probe.yml"}')"
+check "guard: an API error fails instead of passing with no files" "1
+::error::Cannot read the changed files of #9." \
+  "$(mv "$tmp/bin/gh" "$tmp/gh.ok"; printf '#!/usr/bin/env bash\necho "gh: Server Error (HTTP 500)" >&2; exit 1\n' > "$tmp/bin/gh"; chmod +x "$tmp/bin/gh"
+     guard factory/922-console-callout; mv "$tmp/gh.ok" "$tmp/bin/gh")"
+check "guard: the step summary names the warning and the failed files" "1 1 1" \
+  "$(guard factory/943-cd '{"filename":".github/workflows/factory-path-guard.yml"}' '{"filename":".factory/config.yaml"}' > /dev/null
+     { grep -c 'beim Review besonders genau' "$tmp/guard-summary"; grep -c '^- `.factory/config.yaml`$' "$tmp/guard-summary"; grep -c 'Fehlschlag' "$tmp/guard-summary"; } | paste -sd' ')"
+
 # The task loop: scripts/factory-tasks.mjs and the timeout restart of factory-run.yml.
 source "$here/task-loop.sh"
 # Shared findings: scripts/factory-findings.mjs, the prompt rules and the findings workflow steps.
