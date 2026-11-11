@@ -63,21 +63,21 @@ Rules:
 - **Next version of a repository**:
   - its latest tag is on the line: patch + 1;
   - the line is higher than its latest tag: `<line>.0`;
-  - the pull request has the label `breaking`: major + 1, minor 0, patch 0. This raises the line. Other repositories join it at their next merge.
+  - the pull request is marked `Breaking: yes` ([ADR 0003](adr/0003-breaking-marker.md)): major + 1, minor 0, patch 0. This raises the line. Other repositories join it at their next merge.
 - A feature and a fix both raise the patch. The minor changes only when a person pushes a tag `vX.Y.0` above the line.
 - First release of a repository without a tag: `v0.1.0`. The five services continue with `0.1.1`.
 - One version script lives in `pulse-config`. Every repository calls it.
 - The version comes from the tag only. `package.json` is not changed. Exception: deploy, where the built CLI version must equal the tag.
 - What each repository publishes: services as today (image); deploy as today (binaries); `contract`, `kit`, `config`, `website`: a tag and a GitHub release only. `agent` is skipped until it has CI. `meta` has no release.
 
-The label `breaking`:
+The `Breaking:` line ([ADR 0003](adr/0003-breaking-marker.md)):
 
 - Meaning: the pull request changes documented public behavior in an incompatible way (an API route, a contract shape, a config key, a CLI flag, an image interface).
-- Who sets it: the Factory `review` state sets it or asks for it, or a person sets it. It must be on the pull request before the merge. A label added after the merge has no effect.
+- Where: one line `Breaking: yes` or `Breaking: no` in the pull request body. The Factory plan states it per target, the build copies it, the review checks it against the diff. It must be in the body before the merge.
 
 Why not changesets: pulse publishes no npm package, and the version comes from the tag. A changeset file would add a second source of truth.
 
-Why not a Factory release workflow: a release is deterministic CD with no decision left. Factory only helps the review set the `breaking` label.
+Why not a Factory release workflow: a release is deterministic CD with no decision left. Factory only states and checks the `Breaking:` line.
 
 ## Procedures
 
@@ -138,7 +138,7 @@ PLANNED: every other repository gets `v0.2.0` at its next merge. The deploy work
 
 Example: the line is `0.3`. An `api` pull request removes a documented route.
 
-1. The review sees the incompatible change and sets the label `breaking` (or a person does).
+1. The plan says `Breaking: yes`, the pull request body carries the line, and the review confirms it against the diff.
 2. The pull request merges. The api release computes `v1.0.0` (major + 1). The line is now `1.0`.
 3. The api image gets `1.0.0`, `1.0` and `1`. The tag and GitHub release follow the publish.
 4. Each other repository releases `v1.0.0` at its next merge.
