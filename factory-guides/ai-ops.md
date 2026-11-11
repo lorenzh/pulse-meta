@@ -4,7 +4,7 @@ As of 2026-11-11. This guide only records what we actually experienced with Puls
 
 ## What the role does
 
-AI Ops keeps the factory running technically: workflows, scripts, tokens and limits, agent failures, and repo instructions. In the three-way review of factory PRs (with PM and Architect), AI Ops checks that CI is green, that nothing under `.factory/` changed, and that there are no side effects on the factory.
+AI Ops keeps the factory running technically: workflows, scripts, tokens and limits, agent failures, and repo instructions. Since 2026-11-11, PM and Architect approve factory PRs. AI Ops is no longer a required reviewer. Before the merge it raises technical concerns, such as failing CI, changes under `.factory/` (also caught by the `guard` check) or side effects on the factory, and it looks in when a PR changes workflows or scripts.
 
 ## Experience
 
@@ -26,7 +26,7 @@ A push that changes `.github/workflows/` needs the `workflow` scope on the gh to
 "The factory never changes `.factory/`" started out as an agreement only. Before writing the path guard (#957), we checked against real data what factory PRs actually touch. Across 109 PRs, every file under `.factory/` was in `.factory/work/<issue>/`. The guard's allowlist follows exactly that finding. A check only signals until it is a required check.
 
 ### Branch protection when all bots act as the same user
-All bots act as `lorenzh`. Required GitHub reviews could therefore never be satisfied, because nobody can approve their own PR. The three-way approval therefore happens as review comments plus a log entry in #955. Technically we enforce it through required checks and a ban on direct pushes to `main`. Before turning protection on, we verified that the factory itself never pushes to `main` directly.
+All bots act as `lorenzh`. Required GitHub reviews could therefore never be satisfied, because nobody can approve their own PR. Approvals therefore happened as review comments plus a log entry in #955. Since 2026-11-11, each role has its own GitHub App. Whether app approvals can count as required approvals here is still open and untested. Technically we enforce it through required checks and a ban on direct pushes to `main`. Before turning protection on, we verified that the factory itself never pushes to `main` directly.
 
 ### Reviewing prompt changes under `.factory/`
 `.factory/prompts/` has no CI, so the review is the only safeguard. We check:
@@ -40,6 +40,7 @@ In #958, a new required field would have sent every PR of the running meta-issue
 When a PR references files from another open PR (#958 references the ADR from #956), put the merge order in the PR body.
 
 ## Ways of working that proved useful
-- Small PRs on `bot/ai-ops/<topic>` branches, with the role named in the PR body; Lorenz merges.
+- Small PRs on `bot/ai-ops/<topic>` branches, with the role named in the PR body. Lorenz merges them, except guide and report PRs (`factory-guides/`, `pulse-report/`): one other bot approves those, rotating PM, Architect, AI Ops, Release, Security (the next one after the author, so Release reviews AI Ops), and then bots may merge.
+- Issues go only into `pulse-meta`; PRs may go to all Pulse repos.
 - Log every relevant action briefly in team log #955: who, what, why, link, result.
 - Propose fix ideas in the team chat first, then implement them one at a time.
