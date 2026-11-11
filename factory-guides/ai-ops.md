@@ -26,7 +26,7 @@ A push that changes `.github/workflows/` needs the `workflow` scope on the gh to
 "The factory never changes `.factory/`" started out as an agreement only. Before writing the path guard (#957), we checked against real data what factory PRs actually touch. Across 109 PRs, every file under `.factory/` was in `.factory/work/<issue>/`. The guard's allowlist follows exactly that finding. A check only signals until it is a required check.
 
 ### Branch protection when all bots act as the same user
-All bots act as `lorenzh`. Required GitHub reviews could therefore never be satisfied, because nobody can approve their own PR. Approvals therefore happened as review comments plus a log entry in #955. Since 2026-11-11, each role has its own GitHub App, but apps cannot be required reviewers either. Technically we enforce it through required checks and a ban on direct pushes to `main`. Before turning protection on, we verified that the factory itself never pushes to `main` directly.
+All bots act as `lorenzh`. Required GitHub reviews could therefore never be satisfied, because nobody can approve their own PR. Approvals therefore happened as review comments plus a log entry in #955. Since 2026-11-11, each role has its own GitHub App. Whether app approvals can count as required approvals here is still open and untested. Technically we enforce it through required checks and a ban on direct pushes to `main`. Before turning protection on, we verified that the factory itself never pushes to `main` directly.
 
 ### Reviewing prompt changes under `.factory/`
 `.factory/prompts/` has no CI, so the review is the only safeguard. We check:
