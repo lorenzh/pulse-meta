@@ -2,7 +2,7 @@
 
 How to use the factory effectively, learned on Pulse (the first real product
 built with it). Each role keeps its own file; only real experience goes in,
-extended in small `bot/<role>/...` PRs, merged after all three roles approve.
+extended in small `bot/<role>/...` PRs; guide PRs are merged by the bots once all three roles approve.
 
 ## Roles that have proven useful so far
 
