@@ -203,7 +203,12 @@ The pull request body carries the evidence: the checks run with their result lin
 output (or the exemption), the security checklist items with their test or command, and everything
 else the spec section asks for (leftover checklist, inventory of removed or changed tests). Keep the
 first line `Closes lorenzh/pulse-meta#{{issue.id}}`; without it the merge does not close this
-issue. Never paste tokens, environment values, or credentials.
+issue. Keep a line that is exactly `Breaking: yes` or `Breaking: no`, copied from the section's
+`Breaking:` line; the release reads it from the merged pull request. When the section has no such
+line (a spec written before it existed), write `Breaking: no` unless the diff makes
+documented public behavior changes in an incompatible way: an API route, a contract shape, a
+config key, a CLI flag, or an image interface that an existing consumer relies on; then write `Breaking: yes`
+and say why. Never paste tokens, environment values, or credentials.
 
 Find the pull request of `{{workspace.branch}}` in this repository. Get `<owner>/<repo>` from
 `git remote get-url origin`, then:

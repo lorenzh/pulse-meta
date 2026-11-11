@@ -42,7 +42,9 @@ missing, empty, or contradicts the described behavior:
 Check that every repository section starts with a `Files:` list and that the files exist in the
 clone or are marked as new. Check that the line after it is `Behavior change: yes` or
 `Behavior change: no` with a reason, and flag `no` for a section that asks for new or changed
-behavior. Check every tool fact that a section relies on (a tool or runtime version, which
+behavior. Check that the next line is `Breaking: yes` or `Breaking: no` with a reason, flag `no`
+for a section that removes, renames or narrows a documented route, contract shape, config key, CLI
+flag or image interface, and flag `yes` without a matching step in `## Rollout order`. Check every tool fact that a section relies on (a tool or runtime version, which
 linter, formatter, or type checker runs, the Biome include or ignore scope, a test runner flag, a
 CI step): it cites file and line in the target's `package.json`, `biome.json`, `bunfig.toml`, or CI
 workflow, and in config at the ref that the target pins when the target file `extends` or `uses`

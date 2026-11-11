@@ -79,6 +79,13 @@ alone. Every other task is `yes`, including a change of tooling or CI files. Wit
 implementer requests a hold instead of a review when it finds that the code already has the
 behavior.
 
+The next line is exactly `Breaking: yes` or `Breaking: no`, followed by a one-line reason
+(`docs/adr/0003-breaking-marker.md`). Write `yes` when this repository's change makes
+documented public behavior changes in an incompatible way: an API route, a contract shape, a
+config key, a CLI flag, or an image interface that an existing consumer relies on. A new optional field, a new route or a
+new flag is `no`. A `yes` raises the major version of the release line at the merge, so name in
+`## Rollout order` which consumers must move with it.
+
 Before a repository section relies on a tool fact, verify it in that repository's files and cite
 file and line in the section. Tool facts are: a tool or runtime version, which linter, formatter,
 or type checker runs, the Biome include or ignore scope, a test runner flag, and a CI step. The
