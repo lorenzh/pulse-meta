@@ -1,6 +1,6 @@
 # 0004. Protect `main` in every repository
 
-- Status: Accepted
+- Status: Superseded by 0005
 - Date: 2026-11-11
 - Decided by: Lorenz
 - Links: [Pulse Team Log #955](https://github.com/lorenzh/pulse-meta/issues/955), [#943](https://github.com/lorenzh/pulse-meta/issues/943)

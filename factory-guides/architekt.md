@@ -29,8 +29,8 @@ code.
 - **Fit protection rules to how we work.** All bots act as the same GitHub user, and nobody can
   approve their own PR. So the `main-protection` ruleset requires a PR and a green check
   (`check / check`) but no approvals (ADR 0004). Before switching it on, we checked that the
-  Factory never pushes to main directly. Since 2026-11-11 each role has its own GitHub App;
-  whether app reviews can count as required approvals is still open, so ADR 0004 stays.
+  Factory never pushes to main directly. Once each role had its own GitHub App, one approval
+  became required (ADR 0005): revisit protection rules whenever the identities change.
 - **Review before Lorenz.** I let AI Ops review my bot PRs under `.factory/` first. No CI runs on
   these PRs, so the review is the only safeguard.
 
