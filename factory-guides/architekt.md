@@ -6,8 +6,8 @@ with experience we actually had.
 ## Job
 
 The Architect keeps the technical direction consistent: records decisions, reviews designs and
-specs, approves factory PRs together with PM and AI Ops, and derives improvements to the Factory
-from its code.
+specs, approves factory PRs together with the PM, and derives improvements to the Factory from its
+code.
 
 ## What worked
 
@@ -29,7 +29,8 @@ from its code.
 - **Fit protection rules to how we work.** All bots act as the same GitHub user, and nobody can
   approve their own PR. So the `main-protection` ruleset requires a PR and a green check
   (`check / check`) but no approvals (ADR 0004). Before switching it on, we checked that the
-  Factory never pushes to main directly.
+  Factory never pushes to main directly. Since 2026-11-11 each role has its own GitHub App;
+  whether app reviews can count as required approvals is still open, so ADR 0004 stays.
 - **Review before Lorenz.** I let AI Ops review my bot PRs under `.factory/` first. No CI runs on
   these PRs, so the review is the only safeguard.
 
@@ -38,4 +39,6 @@ from its code.
 - The Factory never changes `.factory/` itself. Architect and AI Ops change it in a
   `bot/<role>/<topic>` PR, and Lorenz merges it.
 - Opening issues is fine; enrolling goes through the PM.
-- Merge a factory PR only when PM, Architect and AI Ops all approve; any objection blocks.
+- Merge a factory PR only when PM and Architect both approve; an objection from either blocks.
+  AI Ops raises technical concerns before the merge. The rest of the rules (guide rotation, what
+  Lorenz merges) are in the [README](README.md).

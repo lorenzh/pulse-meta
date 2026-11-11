@@ -57,10 +57,12 @@ are listed here; extend it after each new lesson. Last update: 2026-11-11.
 ## Reviewing and merging factory PRs
 
 - Factory PRs come from `app/lorenzh-factory` on `factory/<issue>-<slug>`.
-- Merge only after PM, Architect and AI Ops all approve (review or comment);
-  any objection blocks. The PM checks the change against the issue and its
+- Merge after two approvals, PM and Architect (review or comment); any
+  objection blocks. The PM checks the change against the issue and its
   `## Done when`.
-- PRs from our own bots (`bot/<role>/<topic>`) need the same three approvals. Bots merge them themselves only for `factory-guides/`; everything else (for example `.factory/` or `docs/adr/`) the owner merges.
+- Guide and report PRs need one approval from another bot, by rotation (see
+  [README](README.md)). All other bot PRs (in any repo) the owner
+  merges.
 
 ## Documentation
 
