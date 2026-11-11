@@ -14,4 +14,5 @@ Rules:
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-one-release-line.md) | One release line, release on every merge | Accepted |
 | [0003](0003-breaking-marker.md) | Mark breaking changes with a `Breaking:` line, not a label | Accepted |
-| [0004](0004-protect-main.md) | Protect `main` in every repository | Accepted |
+| [0004](0004-protect-main.md) | Protect `main` in every repository | Superseded by 0005 |
+| [0005](0005-require-one-approval.md) | Require one approval on `main` | Accepted |
