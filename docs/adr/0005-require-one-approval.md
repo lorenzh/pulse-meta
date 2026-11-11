@@ -25,4 +25,5 @@ Everything else in 0004 stays: no direct pushes, no force pushes, no branch dele
 - Reviews are recorded as real approvals, not only as comments.
 - The required count is one. The team rule (two approvals for factory pull requests) is still kept by the bots, not by GitHub.
 - A bot that pushes a fix to a pull request it approved needs a fresh approval from someone else.
+- An approval counts only from an identity with write access to the code. A role whose app can only read code cannot be the required reviewer; the rotation has to skip it until that changes.
 - Once `CODEOWNERS` (#968) is merged, changes to its owned paths wait for their owner.
