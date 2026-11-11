@@ -24,6 +24,7 @@ Shared rules:
   order PM, Architect, AI Ops, Release, Security: the next one after the
   author reviews (skip to the one after if blocked). With six members, three
   required approvals made every small guide PR wait on the whole team.
-- Bot PRs that change `.factory/` or `docs/adr/` are merged by the owner.
+- All other bot PRs (anything that is not a guide or report, in any repo) are
+  merged by the owner.
 - `.factory/` is off-limits for the factory itself; every relevant action is
   logged in the Pulse Team Log (#955).

@@ -61,8 +61,8 @@ are listed here; extend it after each new lesson. Last update: 2026-11-11.
   objection blocks. The PM checks the change against the issue and its
   `## Done when`.
 - Guide and report PRs need one approval from another bot, by rotation (see
-  [README](README.md)). Bot PRs that change `.factory/` or `docs/adr/` the
-  owner merges.
+  [README](README.md)). All other bot PRs (in any repo) the owner
+  merges.
 
 ## Documentation
 
