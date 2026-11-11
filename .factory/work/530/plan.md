@@ -25,6 +25,11 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
   - a failure inside the stage step of a first run (for example the directory fsync after the staging rename) no longer jumps to the lost-answer path. Any error in step 3 of decision 7 runs the reconcile of decision 8 in the same process, from the journal on disk, before anything else. An item enters `replacing` only after a reconcile found no staging file for it (decision 8 "Stage errors").
   - the reconcile now has a fixed validation order. It also names the one bearer it may read from a host file: `secrets/admin-token` in a `probe` journal. No item owns that file and the reconcile never changes it. It is read only after the staging check, the file checks of decision 9 and the capability check (decision 8 "Reconcile", step 4).
   - the Files list of the deploy section now holds `cli/services.ts` and `cli/services.test.ts`. `PULSE_IMAGE` is private today (deploy `cli/services.ts` line 36, `const` without `export`), and Reuse exports it.
+- The fourth plan review (the latest issue comment "Factory ran spec/plan-review"). This version fixes its four defects:
+  - **State-file write errors at the snapshot boundary** (decision 13 "State-write errors"). An error while `upgrade.json` is written is never read as "the write landed" or "it did not". The CLI reads the file back from disk and follows the state that is there. If the `applying` rename landed and only the directory fsync failed, the state on disk is `applying` and the rollback runs. Archives are deleted only after `aborted` is durable, and the abort runs only when the file on disk still reads `snapshotting`. So `applying` never points to deleted archives. The rollback gets a durable state `restored` before it starts containers. The manual recovery is decided by facts on disk.
+  - **One rotate outcome table** for the first run and the resume (decision 8 "Rotate outcome"). Every rotate `POST` that does not end in a parsed `200` is followed by a readback of the token. The answer class (explicit rejection or ambiguous) and the readback decide the row together. An explicit rejection such as `409` never leads to `replacing` while `rotatedAt` is unchanged. A timeout with no change on the server leads to one more normal rotate, not to `replacing`.
+  - **The bearer read order** is the same in decision 8, Acceptance 3 and the Counterexamples: the staging checks of reconcile step 3, then the link and mode checks of `secrets/admin-token`, then its read and content check, then the capability call `GET /admin/tokens/self` with it, then the confirmation `GET /admin/tokens/<X>`.
+  - **The doubled-runs formula has a stated domain.** `floor(W / (I − e)) + 1` is a bound only for I ≥ 200 ms. Below that the spec gives a separate estimate from the run duration (the probe never overlaps runs of one check), and the docs and `cli/test/samples.sh` follow it (Performance impact item 2).
 - `.factory/work/530/issue-review.md`: open points 1–9 and the derived acceptance checks 1–9.
 - Shared findings: `gh api repos/lorenzh/pulse-meta/git/ref/heads/factory/findings/530` answered `HTTP 404` in this run (2026-11-11). There are no findings, which is normal for a feature without children.
 - Clones read in this run (all `main`):
@@ -123,7 +128,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
    - Every refusal happens before the first api write. Rotation keeps the id, scopes, location and expiry. It never revokes and recreates the token, except for the lost answer of decision 8.
 7. **Order of one rotation item.** For one token, with consumer service C (admin: `console` when present, else none; probe: the location's probe service). Each step writes its journal state (decision 8) before its first side effect, so a rerun knows where it stopped.
    1. **Preflight of the whole command.** Lock, guard, file checks (decision 9), capability, the token and candidate selection for every item, and every consumer service running and ready with exactly one container. For a probe item, the id of that one container (`docker compose ps --all --no-trunc --format json`, field `ID`) is recorded as `oldContainerId`. Only then does the first api write go out.
-   2. **Rotate.** Journal `requested` (token id and its `rotatedAt` as read in the preflight), then `POST /admin/tokens/<id>/rotate`.
+   2. **Rotate.** Journal `requested` (token id and its `rotatedAt` as read in the preflight), then `POST /admin/tokens/<id>/rotate`. Its outcome goes through the table of decision 8 "Rotate outcome", which is the same for the first run and the resume. Only the row `ok` continues straight to step 3.
    3. **Stage and save.** The host file changes only through a rename, and only after the journal names the token whose secret it gets:
       1. **Stage.** Write the received `secret` and a newline to the staging file `secrets/.pulse-next.<file>.<id>`. `<file>` is the host file name (`admin-token` or `probe-token-<loc>`) and `<id>` is the id of the token that the answer belongs to: `tokenId` after a rotate, the created id after a create. The write is the safe write (temp name `.<name>.tmp-<hex>` `wx` 0600 in `secrets/`, the `atomicWrite` pattern of `cli/write-install.ts` lines 279–296, then fsync, rename to the staging name, fsync of the directory).
       2. Journal `staged` with `activeTokenId := <id>`.
@@ -162,7 +167,13 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      3. List the staging files. Match each one against the table below **without any api call**, by the journal state of its item, its `<file>` and its id only. Each staging file must pass the name rule and the file checks of decision 9. It must also belong to an item of the journal: in a `probe` journal an `admin-token` staging file, and in an `admin` journal a `probe-token-*` staging file, match no row. A staging file that matches no row refuses with exit 1, its path, and `docs/cli.md#token-recovery`; nothing is changed and no api call is made.
      4. Only the `replacing` row with a staging file needs a confirmation from the api. The bearer depends on the kind:
         - **admin.** The bearer is the staged secret itself, read from the staging file that passed step 3. A staging file is not a host file.
-        - **probe.** The bearer is `secrets/admin-token`. It is the one host file that the reconcile may read, because no item of a probe journal owns it (see "Owned files"), so no earlier or later reconcile action changes it. First it must pass the file checks of decision 9, then the capability check of decision 5 (`GET /admin/tokens/self` answers `200`, `admin` scope). Only then is the confirmation `GET /admin/tokens/<X>` sent.
+        - **probe.** The bearer is `secrets/admin-token`. It is the one host file that the reconcile may read, because no item of a probe journal owns it (see "Owned files"), so no earlier or later reconcile action changes it. The order is fixed, and a failed step refuses before the next one:
+          1. the staging checks of step 3 have passed (no api call so far);
+          2. `lstat` of `secrets/admin-token`: a regular file, not a link, no group or other bits (decision 9);
+          3. the read of `secrets/admin-token`, then `tokenContentValid` on its content;
+          4. the capability call of decision 5 with that content as bearer: `GET /admin/tokens/self` answers `200` with the `admin` scope;
+          5. the confirmation `GET /admin/tokens/<X>` with the same bearer.
+          The file must be read before the capability call, because that call needs its content.
         - A confirmation that does not answer as the row says (another status, another id or name, `revokedAt` set) refuses with exit 1 and nothing changed.
      5. Act on the matched rows, one item after another, in journal order.
 
@@ -185,9 +196,7 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      - The reconcile itself fails (for example the fsync of `secrets/` throws again): exit 1, journal kept. The rerun's reconcile decides from the same files.
      - Going from an error in step 3 straight to `replacing` is wrong (Counterexamples "Stage boundary"). The staging file may exist, and the table refuses `replacing` with a staging file of `tokenId`.
    - **Resume.** A rerun with a journal skips the overlap refusal for the items it names, rereads every item from the api, and resumes each item by its state:
-     - `requested`: read `GET /admin/tokens/<tokenId>`.
-       - If `rotatedAt` still equals `rotatedAtBefore`, the `POST` had no effect. Rotate as normal.
-       - If it changed, the answer was lost. Go to `replacing`.
+     - `requested`: the row "no answer known" of "Rotate outcome" below. It reads back the token and decides from that.
      - `replacing`: see "Lost answer" below.
      - `staged`: handled completely by the reconcile; the item continues as `saved`.
      - `saved`, `refreshing`: run the refresh again (it is idempotent), then switch.
@@ -205,16 +214,40 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
      - `handoff` (admin): run step 5 of admin again (the console recreate is idempotent).
      - `switched`: go to `revoking` when `revokeTokenId` is set, else `done`.
      - `revoking`: step 6 again.
-   - **Lost answer.** It applies on resume (state `requested` with a changed `rotatedAt` and no staging file) and inside the first run when the rotate `POST` ends without a parsed `200` (timeout, broken pipe, no JSON), or when a stage error's reconcile found no staging file ("Stage errors"). A staging error alone never triggers it. A secret that is not in a staging file counts as lost, and a rotate `POST` is never repeated blindly.
+   - **Rotate outcome (one table for the first run and the resume).** The item is in `requested` and the reconcile found no staging file for it. The CLI never decides from the transport error alone whether the api rotated.
+     - **Answer classes** of a rotate `POST`:
+       - `ok`: `API_SCRIPT` printed status `200` and the body parses: `token.id` equals `tokenId`, `secret` matches `^pulse_[A-Za-z0-9_-]{43}$`, and `previousValidUntil` is a number later than the request start.
+       - `rejected`: `API_SCRIPT` printed a complete answer with status `400`, `401`, `403`, `404`, `405`, `409`, `413` or `429` and a JSON body. These are the api's refusals. The api checks auth, the grant rule and the token state before it changes anything, and the rotate itself is one database transaction (api `docs/rest-api.md` lines 498–520, `src/token-store.ts` lines 266–294).
+       - `ambiguous`: anything else. That includes a timeout, a broken pipe, a non-zero exit of `docker compose exec` without a status line, a `5xx`, any other status, and a `200` whose body does not parse.
+       - `none`: no answer is known. This is the resume of a `requested` item, where the previous run may or may not have sent the `POST`.
+     - **Readback.** For every class except `ok`, the CLI reads `GET /admin/tokens/<tokenId>`. For `admin` the bearer is the host file `secrets/admin-token`. The reconcile has ended, and in `requested` that file holds the pre-rotation secret, which still works during the overlap of a rotation that landed. For `probe` the bearer is `secrets/admin-token` after its file checks (decision 9). The readback is one of:
+       - `same`: `200`, `rotatedAt` equals `rotatedAtBefore`, `revokedAt` null, and `expiresAt` null or in the future;
+       - `changed`: `200` and `rotatedAt` differs from `rotatedAtBefore`;
+       - `gone`: `200` with `revokedAt` set or `expiresAt` past and `rotatedAt` unchanged, or `404`;
+       - `unknown`: anything else, including a timeout.
+     - **Table.**
+
+       | Class | Readback | Meaning | Action |
+       | --- | --- | --- | --- |
+       | `ok` | not read | rotated, secret held | stage and save (decision 7 step 3) |
+       | `rejected` | `same` or `gone` | the api refused and changed nothing | drop the item and every later item that is still `requested` from the journal (remove the journal when no item is left that is not `done`). Exit 1 with the status and a fixed text per status: `409` uses the api's reason from the readback (`in its rotation overlap until <ISO>`, `revoked`, `expired`). The host file is unchanged. |
+       | `ambiguous` or `none` | `same` | the rotate did not happen | one more `POST` in this run (the first one after a `none`), whose outcome goes through this table again. A second `ambiguous` + `same` in the same run exits 1 with the journal kept in `requested`. |
+       | `ambiguous` or `none` | `gone` | the token was revoked or expired by someone else | as `rejected` + `gone`: drop, exit 1, the docs say to create a probe or admin token by hand |
+       | `rejected`, `ambiguous` or `none` | `changed` | the api rotated and the answer is not held, or another client rotated it | the lost answer below (`replacing`) |
+       | any | `unknown` | not known | exit 1, journal kept in `requested`; the rerun reads back again |
+     - A `rejected` + `changed` row happens when an earlier `POST` of this item landed late and a later one met the overlap (`409`). The api serializes rotations through the overlap rule, so at most one rotation of the token is applied, and the lost-answer path recovers it.
+     - The overlap refusal of decision 6 is skipped for a journal item. The table's `409` row is the only way an item in overlap ends the run.
+     - A `POST` is sent at most twice per item and run.
+   - **Lost answer.** It applies only in two cases. One is the row "→ `changed`" of "Rotate outcome", in the first run and on resume alike. The other is a stage error whose reconcile found no staging file for an `ok` answer ("Stage errors"): the api rotated and the secret is not stored. A staging error alone never triggers it, and neither does a transport error without a readback. A secret that is not in a staging file counts as lost, and a rotate `POST` is never repeated blindly.
      1. Journal `replacing` with `revokeTokenId := tokenId` and `replacementName`: the old name cut to 90 characters, a space, `r` and 6 random hex characters. The journal holds the name before the create, so a lost create answer can be found again.
      2. Look for orphans: tokens whose `name` equals `replacementName` and whose `revokedAt` is null. This step runs only in state `replacing` after the reconcile found no staging file. In that state no host file and no staging file holds a replacement's secret (decision 7 step 3), so every orphan is a replacement whose secret nobody holds. Revoke each of them, each through the revoke guard.
-     3. `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. The create answer is lost when it is not a parsed `201`, or when a stage error's reconcile found no staging file for the created id. If this answer is lost too, steps 2 and 3 run once more in the same run, and then the CLI exits 1 with the journal kept.
+     3. `POST /admin/tokens` with `{name: replacementName, scopes, location?, expiresAt?}` of the lost token. For `admin` the bearer is the host file, which in `replacing` still holds the pre-rotation secret of `tokenId` (valid until the lost rotate's `previousValidUntil`). For `probe` it is the admin secret. The create answer is classed like a rotate answer: `ok` is a `201` whose body parses (`token.name` equals `replacementName`, the secret rule), `rejected` is a complete answer with a status from the `rejected` list, and anything else is `ambiguous`. On `ok` the item goes to step 4. A `rejected` create made no token: the CLI exits 1 with the status and keeps the journal in `replacing`, with no second create in this run. An `ambiguous` create, or an `ok` whose stage error's reconcile found no staging file for the created id, counts as lost: steps 2 and 3 run once more in the same run (the sweep by `replacementName` is the readback), and then the CLI exits 1 with the journal kept.
      4. Stage and save as in decision 7 step 3 with the created id, then refresh and switch, then step 6 revokes `revokeTokenId`.
      5. Print `the rotate answer was lost; replaced token <revokeTokenId> with <activeTokenId>`.
      - Revoking the lost admin is not refused by the last-admin rule, because the replacement is active by then.
      - For `admin` in state `replacing` after the old secret's `previousValidUntil`, the CLI cannot authenticate. It exits 1 and names the recovery in the docs: another admin token, or a database backup.
    - **Revoke guard.** Before every revoke (orphans in step 2, `revokeTokenId` in step 6), the CLI calls `GET /admin/tokens/self` with the bearer it is about to use. It refuses, exit 1 with the journal kept and `refusing to revoke the token that authenticates this call (<id>); see docs/cli.md#token-recovery`, when the answered id equals the target. It also never revokes `activeTokenId`. The api allows a token to revoke itself while another admin is active (Grant and Last-admin rules, api `docs/rest-api.md` lines 498–500), so only the CLI can prevent it.
-   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The in-process reconcile after a stage error is part of this section. The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
+   - **Interrupt.** SIGINT and SIGTERM are recorded and acted on only at the next step boundary. From writing `requested`, `replacing` or `revoking` until the api answer is handled, staged, installed and the next state after it (`saved`, or the next state after a revoke) is written, the signal waits. The in-process reconcile after a stage error is part of this section, and so are the readback and the second `POST` of "Rotate outcome". The CLI then exits 130 with `interrupted; run pulse token rotate <kind> again to finish`. The journal stays. A hard kill inside this section is covered by the reconcile.
    - While the journal exists, a plain run without it is impossible: `pulse token rotate` always resumes it first, and `pulse upgrade --yes` refuses.
 9. **File checks for rotation.**
    - `secrets/` must be a directory, not a link, and no wider than 0700.
@@ -250,9 +283,20 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
     - A failure prints the image, the version and the first stderr line (through `firstLine`, which masks user info), and exits 1.
     - There is no flag, env variable or setting that skips the check. The preview (without `--yes`) runs it too.
 13. **Upgrade apply (`--yes`), the snapshot boundary and the rollback.**
-    - **States** of `upgrade.json`: `snapshotting` → `applying` → `done`; or `snapshotting` → `aborted`; or `applying` → `rolling-back` → `rolled-back` | `rollback-failed`. Each state is written atomically with fsync of the file and the directory, before the step it names.
+    - **States** of `upgrade.json`:
+      - `snapshotting` → `applying` → `done`;
+      - `snapshotting` → `aborted`;
+      - `applying` → `rolling-back` → `restored` → `rolled-back` | `rollback-failed`;
+      - `rolling-back` → `rollback-failed`.
+      - Each state is written atomically (temp file `wx`, fsync, rename, fsync of the directory) before the step it names. `rollback-failed` carries `restored: true|false`: `true` when it follows `restored`.
+    - **Durable state.** A state write is *durable* when all four parts of the write returned without error. A write that throws in any part is resolved by "State-write errors" below and never counts as durable.
+    - **Truthful state before start.** The CLI runs `docker compose up -d` only after one of these:
+      - the `aborted` write of the abort path, durable or not. The abort path is entered only while the file on disk reads `snapshotting`, so the file then reads `snapshotting` or `aborted`, and the CLI has changed neither `compose.yaml` nor a volume;
+      - a durable `applying` (the switch, step 10). A read-back `applying` after a failed write is not enough for the switch: it leads to the rollback;
+      - a durable `restored` (the rollback).
+      So a stack that runs while `upgrade.json` is not terminal always matches the manual recovery of that state (below).
     - **Steps.**
-      1. Preflight: lock, guard, no rotation journal, and no snapshot directory under `.pulse-upgrade/` whose `upgrade.json` is `snapshotting`, `applying`, `rolling-back` or `rollback-failed` (a directory without a readable `upgrade.json` counts as `snapshotting`). A refusal names that directory and `docs/cli.md#upgrade-recovery`.
+      1. Preflight: lock, guard, no rotation journal, and no snapshot directory under `.pulse-upgrade/` whose `upgrade.json` is `snapshotting`, `applying`, `rolling-back`, `restored` or `rollback-failed` (a directory without a readable `upgrade.json` counts as `snapshotting`). A refusal names that directory and `docs/cli.md#upgrade-recovery`.
       2. Selection and provenance, then a table of service, from version and 12-hex digest, to version and 12-hex digest, and `provenance verified`. Without `--yes`, print `run pulse upgrade --yes` (with the same `--to`) and exit 0 here. A preview writes no file and changes no container.
       3. `docker pull <ref>@<digest>` for every new image. A failure or an interrupt exits 1 or 130, and nothing is stopped.
       4. Create `.pulse-upgrade/<UTC stamp>-<6 hex>/` (0700, `mkdir` that fails if it exists). Write `upgrade.json` `{format:1, from:{svc:ref}, to:{svc:ref}, composeSha256, state:"snapshotting"}`. Print the start time; the downtime starts at the next step.
@@ -261,31 +305,56 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
          - Open `<key>.tar.part` (0600, `wx`) and give its fd to the spawn as stdout of `docker run --rm --name <project>-pulse-snapshot-<6 hex> --network none --user 0:0 --cap-drop ALL --cap-add DAC_OVERRIDE --security-opt no-new-privileges:true -v <project>_<key>:/from:ro <image of secrets-init from the resolved config> tar -C /from -cf - .`.
          - The helper must exit 0. Then fsync the file, compute its size and sha256, rename it to `<key>.tar`, and fsync the directory.
       7. Copy `compose.yaml` to `compose.yaml` in the snapshot (0600, fsync). Its sha256 must equal `composeSha256`.
-      8. **Snapshot-complete boundary.** Write `upgrade.json` with `state:"applying"` and `tars:{<key>:{bytes, sha256}}`. The snapshot is complete only after this rename and the directory fsync. Print `snapshot <bytes> bytes in <ms> ms`.
+      8. **Snapshot-complete boundary.** Write `upgrade.json` with `state:"applying"` and `tars:{<key>:{bytes, sha256}}`. The boundary is crossed when the file on disk reads `applying` with these `tars`: after a durable write, or after a failed write whose read-back shows them (for example the rename landed and the directory fsync threw). Print `snapshot <bytes> bytes in <ms> ms`.
       9. Edit `compose.yaml`:
          - Replace each old image string with the new one. The count of replacements must equal the number of services that used it.
          - Parse the new text again and check that it equals the old model with only those `image` values changed.
          - Write atomically with the old mode.
       10. `docker compose <prefix> up -d`, then `waitReady` with `--timeout` (default 300 s, 1–3600).
       11. On success: `upgrade.json` `done`, print `upgraded; the stack was down for <ms> ms; snapshot kept in <dir>`. The snapshot is the only way back to the older version. Exit 0.
-    - **Abort before the boundary** (a failure or an interrupt in steps 4–8 before the `applying` rename):
+    - **Abort before the boundary** (a failure or an interrupt in steps 4–8 while the file on disk reads `snapshotting`):
       1. A running helper is ended with `docker rm -f <helper name>` and waited for. Killing only the `docker run` client is not enough (fact 5).
-      2. Every `*.tar.part` and `*.tar` file in the snapshot directory is deleted.
-      3. `compose.yaml` was not edited. Its sha256 must still equal `composeSha256`; if not, it is restored from the snapshot copy when that copy is complete, else the run goes to `rollback-failed`.
-      4. `upgrade.json` becomes `aborted`. No volume is touched: no restore helper runs.
+      2. `compose.yaml` was not edited. Its sha256 must still equal `composeSha256`. If not (only a person or another program can have changed it, as the lock excludes the CLI), the run stops: no start, no deletion, the state stays `snapshotting`, exit 1 with the recovery link.
+      3. Write `upgrade.json` `aborted`. No volume is touched: no restore helper runs.
+      4. Only after a durable `aborted`: delete every `*.tar.part` and `*.tar` file in the snapshot directory and fsync it. If the `aborted` write fails, every archive stays, and the message adds `snapshot directory kept: <dir>`. A failed delete is printed with the file names and does not stop the abort.
       5. `docker compose <prefix> up -d`, then `waitReady`. Print `upgrade aborted before the switch: <reason>; the previous images were started again`. Exit 1, or 130 after an interrupt.
-    - **Rollback after the boundary** (a failed edit, a failed `up`, a failed one-shot, a timeout or an interrupt from step 9 on):
-      1. `upgrade.json` `rolling-back`, then `docker compose <prefix> stop`.
-      2. Verify every tar against `tars` (size and sha256) and the snapshot `compose.yaml` against `composeSha256` before any volume is changed. A mismatch restores nothing and goes to `rollback-failed`.
-      3. For each tar: `docker run --rm -i --name <project>-pulse-restore-<6 hex> --network none --user 0:0 --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --security-opt no-new-privileges:true -v <project>_<key>:/to <same image> sh -c 'find /to -mindepth 1 -delete && tar -C /to -xpf -'`, with the tar fd as stdin. It must exit 0.
+      - So archives are deleted only while the file on disk reads `aborted`, and the abort path is entered only while it reads `snapshotting`. An `applying` file never points to deleted archives.
+    - **State-write errors.** An error in any part of a state write (temp write, temp fsync, rename, directory fsync) does not by itself say whether the new state landed. The CLI reads `upgrade.json` back from disk, validates it, and acts on what it reads:
+
+      | Write that failed | Read back | Action |
+      | --- | --- | --- |
+      | `snapshotting` (step 4) | anything | nothing is stopped yet. Remove the files the run created in the new directory and the directory, then exit 1. If that removal fails too, the next run refuses for the directory (counts as `snapshotting`). |
+      | `applying` (step 8) | `snapshotting` as written in step 4 | the rename did not land: abort before the boundary |
+      | `applying` | `applying` with the `tars` just computed | the rename landed, for example the directory fsync threw: the boundary is crossed, so roll back. The volumes and `compose.yaml` are still unchanged here, so the restore writes the same data. The archives stay, because the file on disk says the snapshot is complete. |
+      | `aborted` | anything | step 4 of the abort: keep every archive, start the old images, exit 1 |
+      | `rolling-back` | anything | `docker compose <prefix> stop` (new images may be running after a failed readiness; a stop changes no file and no volume), then no restore and no start. Exit 1 with `upgrade stopped: the state file could not be written; the stack is stopped; see docs/cli.md#upgrade-recovery`. |
+      | `restored` | anything | the same stop. The volumes and `compose.yaml` are restored but no container is started. |
+      | `done`, `rolled-back`, `rollback-failed` | anything | the stack is in its final shape. Print the result line, then `the state file could not be written; see docs/cli.md#upgrade-recovery`, exit 1. |
+      | `applying` | unreadable, invalid, or another content | stop: no deletion, no restore and no start, exit 1 with the recovery link |
+
+      - The read-back is a plain read after the error. It is not repeated, and the write is not retried.
+      - Signals that arrive while a state write is resolved are recorded and acted on after the row's action, as in the rollback.
+    - **Rollback after the boundary** (a failed edit, a failed `up`, a failed one-shot, a timeout, an interrupt from step 9 on, or the `applying` row of "State-write errors"):
+      1. `upgrade.json` `rolling-back` (durable), then `docker compose <prefix> stop`.
+      2. Verify every tar against `tars` (size and sha256) and the snapshot `compose.yaml` against `composeSha256` before any volume is changed. A mismatch restores nothing and goes to `rollback-failed` with `restored: false`. The stack stays stopped.
+      3. For each tar: `docker run --rm -i --name <project>-pulse-restore-<6 hex> --network none --user 0:0 --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --security-opt no-new-privileges:true -v <project>_<key>:/to <same image> sh -c 'find /to -mindepth 1 -delete && tar -C /to -xpf -'`, with the tar fd as stdin. It must exit 0. A failure goes to `rollback-failed` with `restored: false`, and the stack stays stopped.
       4. Restore `compose.yaml` atomically from the snapshot copy.
-      5. `up -d`, then `waitReady` with the same timeout.
+      5. `upgrade.json` `restored` (durable). From here the volumes and `compose.yaml` hold the old version.
+      6. `up -d`, then `waitReady` with the same timeout.
       - If the rollback is ready: state `rolled-back`, print `upgrade failed: <reason>; rolled back to the previous images and data; ready`, exit 1 (130 when an interrupt started it).
-      - Otherwise: state `rollback-failed`, print `upgrade failed and the rollback failed: <reason>; snapshot in <dir>; see docs/cli.md#upgrade-recovery`, exit 1 (130 when an interrupt started it).
+      - Otherwise: state `rollback-failed` with `restored: true`, print `upgrade failed and the rollback failed: <reason>; snapshot in <dir>; see docs/cli.md#upgrade-recovery`, exit 1 (130 when an interrupt started it).
       - Signals during the rollback are recorded, not acted on. The rollback is bounded by its timeouts.
-    - **Hard kill.** A run killed without a chance to act leaves `snapshotting`, `applying` or `rolling-back`. The next `upgrade --yes` refuses (step 1). `docs/cli.md#upgrade-recovery` gives the manual steps per state:
-      - `snapshotting`: `compose.yaml` and the data volumes are unchanged. Remove the directory and run `pulse up`.
-      - `applying`, `rolling-back`: the snapshot is complete. The docs give the restore commands of the rollback for each tar and for `compose.yaml`, then `pulse up`.
+    - **Hard kill and manual recovery.** A run killed without a chance to act, or stopped by a state-write error, can leave any non-terminal state. The next `upgrade --yes` refuses (step 1). `docs/cli.md#upgrade-recovery` gives the steps per state. Each step follows from facts on disk, and the "Truthful state before start" rule makes them hold:
+      - no readable `upgrade.json`, or `snapshotting`: the CLI changed neither `compose.yaml` nor a volume. Remove the directory and run `pulse up`.
+      - `aborted`: nothing to recover. The directory may be removed. It can still hold archives when the `aborted` write failed.
+      - `applying`:
+        - `compose.yaml` byte-equal to the snapshot copy: the new images never started. The edit is the only change and it is atomic, and a rollback writes a durable `rolling-back` before it restores anything. Do not restore. Remove or move the directory and run `pulse up`.
+        - `compose.yaml` holds the `to` refs and `pulse status` exits 0: the upgrade worked and only `done` was not written. Remove or move the directory.
+        - Otherwise: `pulse down`. Check every tar against `tars` with `sha256sum`. Restore each tar and `compose.yaml` with the commands of the rollback, then run `pulse up`.
+      - `rolling-back`: the volumes may be partly restored. Do not start the stack first. Run `pulse down`, check the tars, restore every tar and `compose.yaml`, then run `pulse up`.
+      - `restored`: the volumes and `compose.yaml` hold the old version. Do not restore again. Run `pulse up`.
+      - `rollback-failed`: with `restored: true`, as `restored`, then find out why the old images are not ready. With `restored: false`, as `rolling-back` when every tar matches. Otherwise use a backup.
+      - In every case, remove or move the directory before the next `pulse upgrade --yes`.
     - Data volumes are never deleted outside the restore. The `*-secrets` volumes are not in the snapshot: `secrets-init` rewrites them from `secrets/` at each start.
     - **Rollback boundary, as stated in the docs.**
       - The stack is down from step 5 until ready, so there are no results during an upgrade.
@@ -325,12 +394,14 @@ The commands get docs, unit tests with failure injection, and live CI jobs.
 
 - `HELP` gets `token`, `upgrade` and `logs`. `pulse --help` lists them. `COMMANDS` includes `token`, `upgrade` and `logs`; `token` takes the sub-word `rotate`.
 - `docs/cli.md` gets one section per command (`## pulse token rotate`, `## pulse upgrade`, `## pulse logs`), `### Token recovery` and `### Upgrade recovery`. It replaces the manual rotation bullets under "Tokens", updates the pin text (`0.1.0` → the pinned release), gives the manual Compose equivalents for each command, and states the known limits of the Performance impact section.
-- `### Token recovery` explains the journal states, the staging files `secrets/.pulse-next.*` (they hold a secret; never delete one by hand while a journal exists, rerun the command instead), the refusals of the reconcile table and the revoke guard, extra probe containers, and the admin case after the overlap.
+- `### Token recovery` explains the journal states, the staging files `secrets/.pulse-next.*` (they hold a secret; never delete one by hand while a journal exists, rerun the command instead), the refusals of the reconcile table and the revoke guard, the rows of "Rotate outcome" that drop an item or keep the journal, extra probe containers, and the admin case after the overlap.
+- `### Upgrade recovery` gives the steps per state of decision 13 "Hard kill and manual recovery" (including `restored` and the two kinds of `rollback-failed`), with the commands for the tar check and the restore.
+- The known limits name the doubled runs during a probe handoff with the bound for I ≥ 200 ms and the separate estimate for shorter intervals (Performance impact item 2).
 
 ## Risks
 
 - **Compose `--scale` behavior.** The live test proves the start-new-then-stop-old handoff. That includes one container per probe service afterwards, and `pulse up` and `pulse status` working after the rotation. If Compose renumbers or recreates the container in a way that breaks this, the implementer requests a hold and does not fall back to stop-then-start, which breaks the gap rule (see Counterexamples).
-- **Extra samples.** During the handoff two probe containers post for the same location for the window W. The doubled runs per check are at most `floor(W / (I − e)) + 1` (Performance impact item 2): 2 at 5000 ms and 7 at 1000 ms for W = 6000 ms, and about W at the 1 ms minimum. It is documented as a known limit with the formula.
+- **Extra samples.** During the handoff two probe containers post for the same location for the window W. For I ≥ 200 ms the doubled runs per check are at most `floor(W / (I − e)) + 1` (Performance impact item 2): 2 at 5000 ms and 7 at 1000 ms for W = 6000 ms. Below 200 ms that formula is not used. The estimate there is `floor(W / max(I, R)) + 1` with R the run time of the check, about 600 to 3000 at the 1 ms minimum for W = 6000 ms. Both are documented as a known limit.
 - **Interrupted rotation outside the overlap.** If a person does not rerun an interrupted rotation within the 10-minute overlap, a still-running old probe gets 401 and logs errors until the rerun removes it. The new probe keeps posting. The docs say to rerun at once.
 - **0.1.0 → 0.1.1 upgrade needing manual steps.** If the live upgrade test shows a required config change, the implementer requests a hold. The upgrade must not grow config migrations.
 - **#692 bumping the pins at the same time.** Decision 2 covers it.
@@ -353,7 +424,7 @@ Each check names where its expected value comes from.
      - The containers of api, status, notify, console, mailpit, demo-targets and demo-tls keep their ids and `StartedAt`.
      - `docker compose ps --all` shows exactly 1 container (literal) per probe service, and `secrets/.pulse-rotation.json` does not exist.
      - Per probe service, the events show exactly 1 `start` of a new container and exactly 1 `die` of the old one (literals), and 0 < W ≤ 20000 ms. The literal 20000 is the sum of generous limits for the steps in W (start and readiness 8 s against the probe's `startup_wall_ms` budget of 1027 ms, equality check 2 s, the fixed 2000 ms wait, stop 8 s); a CLI that keeps two probes up longer, for example until the overlap ends, fails it.
-     - Per location over [T0 − 30000, T1 + 30000] ms: the gap rule holds, and E ≤ 2·floor(W / 4900) + 3. The constants are literals: 4900 is I − e with I = 5000 and e = 100 (Counterexamples "Extra samples", lemma bound 2). With W = 6000 the bound is 5.
+     - Per location over [T0 − 30000, T1 + 30000] ms: the gap rule holds, and E ≤ 2·floor(W / 4900) + 3. The constants are literals: 4900 is I − e with I = 5000 and e = 100 (Counterexamples "Extra samples", lemma bound 2). With W = 6000 the bound is 5. I = 5000 is inside the lemma's domain (I > 700) and inside the doubled-runs domain (I ≥ 200). The precondition check above fails the job when the demo check has another interval, so a bound is never applied outside its domain.
      - Per location over [T_d, T1 + 30000] ms: E = 0 (literal). Only the new probe can post after T_d, and one probe always gives 0 (lemma part 1), so a second probe that keeps posting after the handoff fails this check. The window holds at least 5 samples (literal), or the check fails.
      - The PR quotes, per location, W from the events, the CLI's `two probes ran for <ms> ms`, and E.
    - **Overlap.** A second `pulse token rotate probe` before the deadline exits 1 with `still in its rotation overlap` and changes no secret file (sha256 before and after).
@@ -403,7 +474,7 @@ Each check names where its expected value comes from.
      - `always-healthy` still has a result older than the first upgrade start.
      - `pulse token rotate probe` now passes the capability check: it exits 0.
 3. **Unit tests** (`bun run test`, coverage threshold from `bunfig.toml`). They cover every rule in Counterexamples, with literal inputs and expected values. Two failure-injection matrices are required:
-   - **Rotation.** A fake api and `cli/test/fake-docker.ts` stop the run (simulated SIGINT, and separately a thrown spawn error) at every journal state of decision 8 for one probe and one admin item, plus a lost rotate answer and a lost create answer. Each case then reruns to the end, and asserts: exactly one rotate `POST` per token, at most one active replacement, every orphan and the lost token revoked, exactly one container of the service, the host secret equal to the container secret, and no journal left.
+   - **Rotation.** A fake api and `cli/test/fake-docker.ts` stop the run (simulated SIGINT, and separately a thrown spawn error) at every journal state of decision 8 for one probe and one admin item, plus a lost rotate answer and a lost create answer. Each case then reruns to the end, and asserts: exactly one rotate that the fake api applied per token, at most two rotate `POST`s per item and run, at most one active replacement, every orphan and the lost token revoked, exactly one container of the service, the host secret equal to the container secret, and no journal left.
    - **Stage boundary.** For the rotate path and the replacement (create) path, each for `admin` and `probe`, a failing file seam hits each of these points: the staging temp write, the temp file fsync, the rename to the staging name, the directory fsync after that rename, the `staged` journal write, the install rename, the directory fsync after the install, and the `saved` journal write. Each point is hit in two ways:
      - **A thrown error.** The same run must go on through the in-process reconcile (decision 8 "Stage errors"). It ends with exit 0, or with exit 1 and the journal kept when the reconcile's own fsync of `secrets/` is made to fail too. In that case a rerun goes to the end.
      - **A simulated hard kill** that ends the run without cleanup. The rerun goes to the end.
@@ -411,12 +482,28 @@ Each check names where its expected value comes from.
      - Each case asserts:
      - no revoke call targets `activeTokenId` or the token that authenticates the call, and no api call answers `401`;
      - the journal never shows `replacing` while a staging file of the item exists. The test checks this after each journal write. This covers the post-rename directory-fsync case of the third plan review: the run journals `staged` with `activeTokenId` = `tokenId`, never `replacing`, and sends no create;
-     - read order (the file seam records every read of a token file): before the reconcile ends, no owned host file (decision 8 "Owned files") is read. In a `probe` case, `secrets/admin-token` is read only after the staging check of reconcile step 3, and only after its file checks and the `/admin/tokens/self` capability call. In an `admin` case, the only token file read inside the reconcile is the staging file;
+     - read order: the file seam and the fake api write one shared event log (every `lstat` and read of a token file, every api call). Before the reconcile ends, no owned host file (decision 8 "Owned files") is read. In a `probe` case with a `replacing` row the log shows exactly this order: the staging checks of reconcile step 3, the `lstat` of `secrets/admin-token`, its read, `GET /admin/tokens/self` with its content, then `GET /admin/tokens/<X>`. No api call comes before that read. In an `admin` case, the only token file read inside the reconcile is the staging file;
      - for the item, exactly one active token with the item's scopes and location remains: the one whose secret the host file holds (the fake api maps secrets to ids);
      - no staging file, no temp file and no journal is left;
-     - exactly one rotate `POST` and at most one replacement whose secret was stored.
+     - exactly one rotate that the fake api applied, and at most one replacement whose secret was stored.
+   - **Rotate outcome.** Every row of the table in decision 8 "Rotate outcome", for `admin` and `probe`, in the first run (class `ok`, `rejected`, `ambiguous`) and on resume (class `none`). The fake api decides the class and the readback independently. Required cases, with literal expectations:
+     - **Timeout, no change on the server.** The first `POST` times out and the fake api applies nothing. The readback shows `rotatedAt` = `rotatedAtBefore`. Expected: exactly 2 `POST`s, 1 applied rotate, the journal never `replacing`, no `POST /admin/tokens`, exit 0.
+     - **Timeout, applied on the server.** The fake api applies the rotate and drops the answer. Expected: 1 `POST`, the journal goes `requested` → `replacing`, 1 create, the old token revoked after the switch, exit 0.
+     - **Explicit `409`, nothing changed.** The fake api answers `409` `token is revoked` and the readback shows `revokedAt` set and `rotatedAt` unchanged. Expected: exit 1 naming `revoked`, no second `POST`, no create, no revoke, the host file byte-equal, the item dropped (no journal left when it was the only item).
+     - **Explicit `409` after a late landing.** The fake api applies the first, timed-out `POST` after the readback shows `same`. The second `POST` then gets `409` `a rotation is still in its overlap`, and its readback shows `changed`. Expected: `replacing`, 1 create, exactly 1 applied rotate, exit 0.
+     - **`ambiguous` twice with `same`.** Expected: exit 1, the journal kept in `requested`. A rerun ends with exit 0.
+     - **Readback `unknown`.** Expected: exit 1, the journal kept in `requested`, no create.
+     - **Create `rejected`** (`403`): exit 1, the journal kept in `replacing`, no second create.
      - The case of the second plan review is one of them: a replacement admin secret installed, the `saved` write failing. The rerun must journal `saved`, keep the replacement and revoke only `revokeTokenId`.
    - **Upgrade.** Fake docker stops the run during each of the three archive writes, during the `compose.yaml` copy, just before and just after the `applying` write, during the edit and during `waitReady`. Before the boundary: no restore helper spawn, `compose.yaml` byte-equal, no tar left, state `aborted`, `up -d` called. After it: the rollback order of Counterexamples "Rollback".
+   - **Upgrade state writes.** The injected file seam of `cli/safe-write.ts` makes each part of each state write fail (temp write, temp fsync, rename, directory fsync) for `snapshotting`, `applying`, `aborted`, `rolling-back`, `restored` and `done`. Each case is checked against its row of decision 13 "State-write errors" and also run as a simulated hard kill at the same point. The expected values are literals:
+     - **`applying` rename lands, directory fsync throws.** The read-back is `applying` with the `tars`. Expected: the rollback runs, every `*.tar` file still exists with its recorded sha256, no `*.tar` or `*.tar.part` delete call is made, `rolling-back` and then `restored` are written, `up -d` comes after `restored`, the final state is `rolled-back`, exit 1.
+     - **`applying` rename throws** (the file still reads `snapshotting`). Expected: the abort path, the deletes come only after `aborted`, no restore helper, `up -d` once, exit 1.
+     - **`applying` temp write and temp fsync throw.** Expected as for the rename case.
+     - **`aborted` write throws.** Expected: no delete call, every archive kept, `up -d` once, exit 1, `snapshot directory kept`.
+     - **`rolling-back` or `restored` write throws.** Expected: no `up -d` after the throw, exit 1, the stack stopped. For `rolling-back`, a `stop` call follows the throw and no restore helper is spawned. This is checked once with the throw from a failed `waitReady` of the new images.
+     - **`done` write throws.** Expected: the stack keeps running, exit 1 with `the state file could not be written`.
+     - **Invariant, checked after every write and every delete in the whole matrix:** whenever the file on disk reads `applying`, `rolling-back` or `restored`, every archive named in `tars` exists with its recorded size.
 4. **`cli-stack`** (demo, full, minimal) adds the logs checks:
    - `pulse logs secrets-init` is byte-equal to `docker compose <prefix> logs secrets-init`. A completed one-shot has fixed logs.
    - `pulse logs --follow api`, sent SIGINT after 3 s, exits 130, and `pgrep -f 'compose.*logs'` finds no process.
@@ -438,13 +525,21 @@ The commands do have runtime costs on an installation. They are not in `bench/bu
    - Measured: the CLI prints `two probes ran for <W> ms` per location (decision 7 step 7). `rotate.sh` takes W independently from `docker events` and samples `docker stats --no-stream --format json` every second during the rotation. It reports the largest summed memory and CPU of the probe containers of one location, which the PR quotes against the single-probe baseline of the same run.
 2. **Extra check traffic during the handoff.**
    - Extra load per check: the old probe's runs that start inside W, each one extra request to the target and one extra `POST /results`. The old probe starts no run after SIGTERM (fact 3), and the new one no run before its start, so every doubled run lies in W.
-   - Bound: two runs of one probe and one check start at least I − e apart (fact 3: the next run is scheduled one interval after the previous start; e = 100 ms covers timer and clock earliness). So the old probe starts at most `floor(W / (I − e)) + 1` runs in W. With W = 6000 ms:
+   - How the probe spaces runs: one check never overlaps itself. The next run is scheduled only after the previous run and its `onResult` have finished, with the delay `max(0, I − elapsed)` on the monotonic clock (probe `src/scheduler.ts` lines 46–72 at `92f55df`). So two starts of one check are `max(I, R_k)` apart, where R_k is the run time of the earlier run, from its start to the end of its `onResult`. Result timestamps are wall-clock times (fact 3), and e = 100 ms covers timer and clock earliness between them.
+   - **Bound, valid domain I ≥ 200 ms.** Two runs of one probe and one check start at least I − e apart, so the old probe starts at most `floor(W / (I − e)) + 1` runs in W. The domain makes I − e ≥ I / 2 > 0, so the bound is at most `2W / I + 1`. With W = 6000 ms:
      - I = 5000 ms: at most 2;
      - I = 1000 ms: at most 7;
-     - I = 1 ms (the contract minimum, fact 3): about W, so thousands. The docs state the formula and this limit.
+     - I = 200 ms: at most 61.
+   - **Below 200 ms the bound is not used.** At I = 100 it divides by zero and below that it is negative. The contract allows I from 1 ms (fact 3).
+   - **Estimate for I < 200 ms.** It is not a bound and nothing gates it. The old probe starts about `floor(W / max(I, R)) + 1` runs in W, where R is the shortest run time of that check during W (the request to the target plus `onResult`). At I = 1 ms, R decides: for a local target with R between 2 and 10 ms and W = 6000 ms, that is about 600 to 3000 doubled runs.
+     - R is measured, not assumed: the result field `latencyMs` is a lower bound for R. So `floor(W / max(I, min latencyMs)) + 1` is an upper estimate from the api's own data.
+   - The docs state the domain, the bound and the estimate as a known limit, and advise against a probe rotation on checks with I < 200 ms during busy times.
    - The first spec's "at most one extra sample" and the second spec's "W ≤ 2000 ms plus signal latency" were both wrong: W also holds the readiness and the equality check.
    - The sample statistic E that the tests use (Counterexamples "Extra samples") is a different quantity: the surplus of samples over a minimum gap-keeping subset. Its lemma gives E = 0 for one probe and E ≤ 2·floor(W / (I − e)) + 3 for a handoff.
-   - Measured in `rotate.sh` per location: W from Docker events, E in the baseline (must be 0), over the rotation window (must be within the lemma bound) and after the handoff (must be 0).
+   - Measured in `rotate.sh` per location: W from Docker events, E in the baseline (must be 0), over the rotation window (must be within the lemma bound) and after the handoff (must be 0). It also reports K, the samples in [T_s, T_d), next to the doubled-runs bound. Both formulas live in `cli/test/samples.sh` with their domains:
+     - `doubled_runs_bound I W` prints `floor(W / (I − 100)) + 1` for I ≥ 200. Below 200 it exits 2 with `no bound below 200 ms`, so it can never divide by zero or print a negative count.
+     - `extra_samples_bound I W` prints `2·floor(W / (I − 100)) + 3` only when the lemma condition A + 2e < I holds, that is I > 700. Otherwise it exits 2.
+     - The CI check interval of 5000 ms (a literal in Acceptance 1) is inside both domains. `samples.test.sh` checks both domains with literals (Counterexamples "Extra samples").
 3. **Upgrade downtime and copy I/O.**
    - Downtime D runs from `stop` to ready: stop (≤ 10 s grace per service, in parallel), snapshot, edit, `up -d` and readiness. The pull runs before the stop and is not part of D.
    - The snapshot reads every data volume once and writes the same bytes as tar files. A rollback reads them again and rewrites the volumes. The kept snapshot uses one extra copy of the data volumes on disk.
@@ -475,7 +570,8 @@ These checklist items apply:
   - Each api status gets a defined outcome: 401, 403, 404, 409 and 429 are named, and anything else is `unexpected status`.
   - A lost answer never leaves a usable token whose secret nobody holds: orphan replacements are found by their unique journal name and revoked, and the lost token is revoked after the switch.
   - A held secret is never revoked: the orphan sweep runs only when no host or staging file can hold a replacement (decision 8 "Reconcile"), a stage error always goes through the reconcile before it can count as a lost answer (decision 8 "Stage errors"), and the revoke guard refuses a revoke of the calling token or of `activeTokenId`.
-  - Reconcile bearer: no owned host file is used as a bearer before the reconcile ends. In a probe journal, `secrets/admin-token` is used only after the staging check, its file checks and the capability check (decision 8 "Reconcile" step 4).
+  - Reconcile bearer: no owned host file is used as a bearer before the reconcile ends. In a probe journal the order is: the staging checks, the `lstat` checks of `secrets/admin-token`, its read and content check, the capability call with it, and only then the confirmation (decision 8 "Reconcile" step 4).
+  - A rotate that the api refused or that cannot be confirmed never leads to a replacement. Only a readback that shows a changed `rotatedAt` does (decision 8 "Rotate outcome").
 - **Body and size limits.** Api answers are capped at 1 MiB in `API_SCRIPT`. Registry bodies are capped at 1 MiB, and registry pagination at 10 pages.
 - **Input validation.**
   - Token ids match `^tok_[0-9a-f]{24}$`. Container ids match `^[0-9a-f]{64}$`. Service names and versions are validated. The journal and `upgrade.json` are validated on read like external input.
@@ -533,6 +629,10 @@ Each rule comes with a case that it must reject or that a wrong implementation g
     - **Edges are not samples.** One probe `[0, 5004, 10009]` in the window [−400, 10009] gives E = 0. A chain that starts at the edge −400 would reach 5004 directly (5404 ≤ 5500), leave out 0 and give 1. That is wrong.
     - **Old probe never stopped.** Old `[0, 5000, 10000, 15000, 20000]`, new `[2500, 7500, 12500, 17500]`. Greedy keeps 0, 5000, 10000, 15000, 20000, so E = 4. Any window after the planned T_d with two posting probes gives E > 0 and fails the check "E = 0 after T_d".
     - **Gap failure first.** `[0, 5004, 10009, 15600]` fails the gap rule (5591), and E is not computed.
+  - **Domains of the two bounds** (literals for `samples.test.sh`; `doubled_runs_bound I W` and `extra_samples_bound I W`, Performance impact item 2):
+    - `doubled_runs_bound 5000 6000` prints 2, `1000 6000` prints 7, `200 6000` prints 61.
+    - `doubled_runs_bound 199 6000`, `100 6000` and `1 6000` exit 2 with `no bound below 200 ms`. A function that evaluates the formula there is wrong: at I = 100 it divides by zero, at I = 1 it gives `floor(6000 / −99) + 1` = −60.
+    - `extra_samples_bound 5000 6000` prints 5 and `extra_samples_bound 4900 4900` prints 5 (floor(4900 / 4800) = 1). `extra_samples_bound 701 6000` prints 2·floor(6000 / 601) + 3 = 2·9 + 3 = 21. `extra_samples_bound 700 6000` exits 2: the lemma needs A + 2e < I.
 - **Selection.**
   - Two active `["probe"]` tokens for `eu` must refuse without `--id`.
   - A token with scopes `["probe","read"]` is no candidate.
@@ -556,7 +656,11 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - New container reports `different` twice: exit 1, the journal kept, the old container still running.
 - **Lost answer.**
   - Rotate `POST` times out and `rotatedAt` changed: the CLI must journal `replacing`, create a replacement with the journal's `replacementName`, switch, then revoke the old id. A blind second `POST` rotate is wrong.
-  - Rotate `POST` times out and `rotatedAt` did not change: one normal rotate follows.
+  - **First run**, the rotate `POST` times out, and the readback shows `rotatedAt` unchanged: one more normal rotate follows in the same run, and the journal never shows `replacing`. Going to `replacing` straight from the timeout is wrong. It would create a second token of the same location and revoke a token whose rotation never happened. The resume of `requested` takes the same row.
+  - **Explicit `409`** (`token is revoked`, readback `revokedAt` set, `rotatedAt` unchanged): exit 1, the item is dropped, there is no create and no revoke, and the host file is byte-equal. Treating every non-`200` as a lost answer is wrong: it would create a replacement for a token that a person revoked on purpose.
+  - **`409` with `rotatedAt` changed** (a late landing of this run's first `POST`): the lost answer, `replacing`. Reading `409` alone as "nothing changed" is wrong here, because the rotation happened and its secret is not held.
+  - **`503` or a `200` with a body that does not parse**: class `ambiguous`, never `ok` or `rejected`. The readback decides.
+  - **Readback `401`**: `unknown`. Exit 1 with the journal kept in `requested`, no second `POST` and no create.
   - Create `POST` times out, and the api holds a token named `replacementName`: the rerun revokes that token before it creates another one. Creating a second without the revoke is wrong (it leaves a usable token whose secret nobody holds).
   - A person's token with the same scopes and location but another name is not an orphan and must not be revoked.
   - State `switched` with `revokeTokenId` set: a rerun must revoke, not end. State `revoking` where the revoke answers 409 and `GET` shows `revokedAt` set: the item ends `done`.
@@ -573,7 +677,7 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - Probe, first run, state `replacing`. The create of R answers `201`, and the staging temp write throws. The in-process reconcile deletes the temp file and finds no staging file. R is an orphan: the sweep revokes it by `replacementName` through the revoke guard, and one more create follows. Keeping R active is wrong: nobody holds its secret.
   - Admin, state `staged` with `activeTokenId` R. The install rename succeeds and the directory fsync after it throws. The reconcile finds no staging file and journals `saved`. Treating the error as a lost answer is wrong: the item is past `replacing` and never returns there.
 - **Reconcile bearer order** (the second case of the third plan review).
-  - Probe journal, item eu in `replacing`, `.pulse-next.probe-token-eu.R` exists. The reconcile reads `secrets/admin-token` only after the staging check, then checks it (regular file, 0600, valid token), then sends `GET /admin/tokens/self` (200, `admin` scope), then `GET /admin/tokens/R`. Reading `secrets/probe-token-eu` as a bearer here is wrong: an owned host file is read only after the reconcile.
+  - Probe journal, item eu in `replacing`, `.pulse-next.probe-token-eu.R` exists. The event log must read, in this order: the staging checks, the `lstat` of `secrets/admin-token` (regular file, not a link, 0600), the read of `secrets/admin-token` and `tokenContentValid`, `GET /admin/tokens/self` with that content (200, `admin` scope), then `GET /admin/tokens/R`. Expecting the capability call before the read is wrong: the call has no bearer without the read. An api call before the `lstat` is also wrong. Reading `secrets/probe-token-eu` as a bearer here is wrong: an owned host file is read only after the reconcile.
   - The same journal with `secrets/admin-token` as a symlink: refuse with exit 1 before any api call, journal and staging file unchanged.
   - The same journal with `/admin/tokens/self` for the admin secret answering `401`: refuse with exit 1, no `GET /admin/tokens/R`, nothing changed.
   - Probe journal with a staging file `.pulse-next.admin-token.tok_…`: refuse with exit 1 in step 3, before `secrets/admin-token` is read or any api call is made.
@@ -609,9 +713,14 @@ Each rule comes with a case that it must reject or that a wrong implementation g
   - The tar helper exits 1 for `console-data`: the same abort path, exit 1.
   - A crash between the last `rename` of a tar and the `applying` write leaves `snapshotting`; the next `upgrade --yes` refuses and names the directory.
   - SIGINT right after the `applying` write: a full rollback follows, even though `compose.yaml` is not edited yet.
+  - **The case of the fourth plan review.** The `applying` rename succeeds and the directory fsync throws. The read-back shows `applying` with the `tars`, so the rollback runs and every archive stays. Taking the abort path is wrong: it deletes the archives while `upgrade.json` may say `applying`. A power loss then leaves `applying` pointing to deleted archives, and the manual recovery for `applying` restores from them.
+  - The `applying` rename throws and the file still reads `snapshotting`: abort. Rolling back here is wrong: the file on disk has no `tars`, so no archive can be verified before a restore.
+  - Abort with a failing `aborted` write: the archives must stay. Deleting them first and writing `aborted` second is wrong. That was the order of the third spec.
+  - `restored` write fails: no `up -d`. Starting the old images while the file says `rolling-back` is wrong: the manual recovery for `rolling-back` restores again and loses the writes made since the start.
+  - `done` write fails after a ready upgrade: exit 1 with the stack running. Rolling back is wrong: the upgrade worked.
 - **Rollback.**
   - On failure after the boundary, the order must be stop → verify every tar → restore every tar → restore `compose.yaml` → `up -d`. Starting old images before the volume restore is wrong: api A exits 2 on schema 9.
-  - A tar whose sha256 differs from `upgrade.json`: no restore helper runs for any volume, state `rollback-failed`.
+  - A tar whose sha256 differs from `upgrade.json`: no restore helper runs for any volume, state `rollback-failed` with `restored: false`, and no `up -d`.
   - A `rollback-failed` snapshot makes the next `upgrade --yes` refuse.
 - **Logs.**
   - `pulse logs --follow` must not get a kill bound. A fake clock that advances 1 hour must not kill it.
@@ -653,18 +762,18 @@ Files:
 - `cli/safe-write.ts`, `cli/safe-write.test.ts` (new: atomic write with fsync of file and directory, link and mode checks, moved from `write-install.ts`)
 - `cli/api-call.ts`, `cli/api-call.test.ts` (new: `API_SCRIPT`, the equality script and the in-container api call)
 - `cli/rotation-journal.ts`, `cli/rotation-journal.test.ts` (new: journal format, validation, states, staging file names, owned files, the reconcile with its validation order and table, stage errors, and the handoff resume table)
-- `cli/token-rotate.ts`, `cli/token-rotate.test.ts` (new: selection, rotation, lost answer, switch, revoke; the rotation failure-injection matrix)
+- `cli/token-rotate.ts`, `cli/token-rotate.test.ts` (new: selection, rotation, the rotate outcome table with its readback, lost answer, switch, revoke; the rotation failure-injection matrix and the rotate-outcome cases)
 - `cli/registry.ts`, `cli/registry.test.ts` (new: ghcr.io tags and digests)
 - `cli/provenance.ts`, `cli/provenance.test.ts` (new: the `gh` preflight and verify)
-- `cli/snapshot.ts`, `cli/snapshot.test.ts` (new: `upgrade.json` states, archive write with `.part` and sha256, abort cleanup, verify and restore)
-- `cli/upgrade.ts`, `cli/upgrade.test.ts` (new: selection, preview, apply, boundary and rollback; the upgrade failure-injection matrix)
+- `cli/snapshot.ts`, `cli/snapshot.test.ts` (new: `upgrade.json` states including `restored`, the state-write error table with its read-back, archive write with `.part` and sha256, abort cleanup after a durable `aborted`, verify and restore)
+- `cli/upgrade.ts`, `cli/upgrade.test.ts` (new: selection, preview, apply, boundary and rollback, the truthful-state-before-start rule; the upgrade failure-injection matrix and the state-write matrix)
 - `cli/logs.ts`, `cli/logs.test.ts` (new)
 - `cli/docs.test.ts` (changed: a section per command)
 - `cli/test/fake-docker.ts` (changed: record `input`, fds and signals; container ids and states; a hook that stops the run at a named step)
 - `cli/test/rotate.sh` (new: `cli-rotate` body)
 - `cli/test/upgrade.sh` (new: `cli-upgrade` body)
 - `cli/test/pin-release.sh` (new: rewrites an install's pulse image lines, test only)
-- `cli/test/samples.sh`, `cli/test/samples.test.sh` (new: the gap rule, the surplus statistic E with its greedy chain, the lemma bound, and the Docker-event parsing for T_s, T_d and W, shared by `rotate.sh` and `upgrade.sh`; the self-test runs every fixture of Counterexamples "Gap rule" and "Extra samples" as literals)
+- `cli/test/samples.sh`, `cli/test/samples.test.sh` (new: the gap rule, the surplus statistic E with its greedy chain, the lemma bound `extra_samples_bound` and the doubled-runs bound `doubled_runs_bound`, each with its domain check, and the Docker-event parsing for T_s, T_d and W, shared by `rotate.sh` and `upgrade.sh`; the self-test runs every fixture of Counterexamples "Gap rule" and "Extra samples" as literals)
 - `cli/test/fail-ready-docker/docker` (new: test-only pass-through shim, decision D2-A; `PULSE_TEST_FAIL_READY_*` and `PULSE_TEST_HOLD_SNAPSHOT`)
 - `cli/test/stack.sh`, `cli/test/errors.sh` (changed: logs and refusal paths)
 - `.github/workflows/ci.yml` (changed: jobs `cli-rotate` and `cli-upgrade`)
@@ -705,10 +814,10 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - **Signals.** `processSignals` and the record-then-act pattern of `writeInstall` (`cli/write-install.ts` lines 50–71 and 366–399) for the critical sections of decisions 8 and 13.
 - **Tests.**
   - `cli/test/fake-docker.ts` is the only fake spawn. Its stop-at-step hook serves both failure-injection matrices.
-  - The file operations of `cli/safe-write.ts` (open, read, write, fsync of a file, fsync of a directory, rename, unlink) go through one injected file seam. The stage-boundary matrix uses it to fail or "hard kill" at each named point, and it records the order of token-file reads for the read-order assertion. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule.
+  - The file operations of `cli/safe-write.ts` (open, read, write, fsync of a file, fsync of a directory, rename, unlink) go through one injected file seam. The stage-boundary matrix uses it to fail or "hard kill" at each named point, and it writes every `lstat` and read of a token file into one event log that the fake api also writes its calls into, for the read-order assertion. The same seam fails each part of an `upgrade.json` state write for the state-write matrix. The fake api of the rotation tests is one test helper that maps secrets to token ids and enforces `401` for revoked secrets, self-revocation and the last-admin rule.
   - Registry and api answers in unit tests are literal fixtures.
   - Image refs in `cli/` tests use the fixture `example.invalid/fixture-svc:9.8.7` (`AGENTS.md` rule). A test that needs a pulse-shaped ref builds it at run time from parts, so no pin literal is in a file.
-  - The gap and extra-sample statistics of `rotate.sh` and `upgrade.sh` live in one shell function file sourced by both, `cli/test/samples.sh`, with the self-test `cli/test/samples.test.sh` on the Counterexamples fixtures (phase offset, nearly in phase, one probe, edges, old probe never stopped, gap failure).
+  - The gap and extra-sample statistics of `rotate.sh` and `upgrade.sh` live in one shell function file sourced by both, `cli/test/samples.sh`, with the self-test `cli/test/samples.test.sh` on the Counterexamples fixtures (phase offset, nearly in phase, one probe, edges, old probe never stopped, gap failure, and the domains of the two bounds).
 - **The `gh` call** is an argument array through the spawn seam (`gh` is a separate binary; `DockerMissing` handling becomes a generic "binary missing" with the binary name, which keeps exit 3 only for Docker).
 
 ### Checks
@@ -740,7 +849,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
   - the release pair A and B printed by `upgrade.sh`, and the schema numbers on A, after the rollback and on B;
   - the abort, rollback and success lines of the upgrade job, the snapshot bytes and ms, the downtime ms and the largest result gap across the upgrade;
   - the binary size before and after.
-- It names the known limits: extra samples during the handoff (the formula), the stack being down during an upgrade, post-snapshot writes lost on rollback, the snapshot disk space, and the manual recovery after a hard kill.
+- It names the known limits: extra samples during the handoff (the bound for I ≥ 200 ms and the estimate below it), the stack being down during an upgrade, post-snapshot writes lost on rollback, the snapshot disk space, and the manual recovery after a hard kill.
 
 ## Breakdown notes
 
@@ -749,7 +858,7 @@ The commands and flags are new; `init`, `up`, `down`, `status`, their flags, `pu
 - Suggested tasks:
   1. The seams.
   2. `pulse logs` with its stack and error checks.
-  3. `pulse token rotate` with the journal, the staging files, the reconcile (validation order, the `secrets/admin-token` bearer of a probe journal, and the in-process run after a stage error) and resume tables, the revoke guard, the rotation failure-injection matrix and the stage-boundary matrix (Acceptance 3).
-  4. `pulse upgrade` with registry, provenance, snapshot boundary, rollback and the upgrade failure-injection matrix.
-  5. The live scripts `rotate.sh`, `upgrade.sh`, `pin-release.sh`, the sample statistics (surplus E, the lemma bound, Docker-event W) with their fixture self-test, the shim, the two CI jobs, and the docs.
+  3. `pulse token rotate` with the journal, the staging files, the reconcile (validation order, the `secrets/admin-token` bearer of a probe journal, and the in-process run after a stage error) and resume tables, the rotate outcome table (first run and resume alike), the revoke guard, the rotation failure-injection matrix, the rotate-outcome cases and the stage-boundary matrix with the shared event log for the read order (Acceptance 3).
+  4. `pulse upgrade` with registry, provenance, snapshot boundary, the state-write error table with read-back and the `restored` state, rollback, the upgrade failure-injection matrix and the state-write matrix (Acceptance 3).
+  5. The live scripts `rotate.sh`, `upgrade.sh`, `pin-release.sh`, the sample statistics (surplus E, the lemma bound and the doubled-runs bound with their domains, Docker-event W) with their fixture self-test, the shim, the two CI jobs, and the docs.
 - No task holds docs alone. Each command's docs section goes with its command task. The final task completes `README.md` and `AGENTS.md`.
