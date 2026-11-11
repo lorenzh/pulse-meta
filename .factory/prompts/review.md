@@ -72,7 +72,10 @@ If the spec or the section is missing, request a hold with status `needs-input`.
    test, or an independent source that the spec names. It must not be read from, or regenerated
    from, the file or code that the check checks.
 7. Read the pull request body (`gh api repos/<owner>/<repo>/pulls/<n> --jq .body`) and compare it
-   with the acceptance evidence that the spec section asks for.
+   with the acceptance evidence that the spec section asks for. Check that it has a line that is
+   exactly `Breaking: yes` or `Breaking: no`, that it matches the section's `Breaking:` line, and
+   that the diff agrees: a diff that removes, renames or narrows a documented route, contract
+   shape, config key, CLI flag or image interface is `yes`.
 8. Go through the security checklist for every item the change touches:
    - secrets and server texts (tokens, header values, SMTP or upstream replies, file contents) never
      reach errors, logs, or responses;
@@ -107,6 +110,7 @@ Transition to `implement` when any of these holds. Each one alone is enough:
   `git diff --exit-code -- dist` after a build, or served bytes against the file in `public/`);
 - acceptance evidence that the spec asks for is missing from the pull request body, or a check that
   the spec names was not run (including the compose end-to-end test);
+- the pull request body has no `Breaking:` line, or the line contradicts the section or the diff;
 - a security checklist item that the change touches has no test or command that proves it.
 
 When the diff changes no source file for a section that requires a behavior change, no person
