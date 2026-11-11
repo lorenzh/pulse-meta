@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Declare incident on a phone · pulse Console</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top" style="padding-left: 4px;">
+<a class="la-iconbtn" href="Incidents.dc.html" aria-label="Back to incidents"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></a>
+<span style="font-weight: 600;">Declare incident</span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 18px;">
+<div class="la-field"><label class="la-field__label" for="mc-t">Title</label><input class="la-input" id="mc-t" value="Card payments are slower than usual"></div>
+<div class="la-field">
+<span class="la-field__label" id="mc-i">Impact</span>
+<div class="la-seg cs-seg-full" role="group" aria-labelledby="mc-i">
+<button type="button" class="la-seg__item" aria-pressed="{{i0}}" onClick="{{im0}}">None</button>
+<button type="button" class="la-seg__item" aria-pressed="{{i1}}" onClick="{{im1}}">Minor</button>
+<button type="button" class="la-seg__item" aria-pressed="{{i2}}" onClick="{{im2}}">Major</button>
+</div>
+</div>
+<div class="la-field">
+<label class="la-field__label" for="mc-s">Status</label>
+<span class="la-select"><select id="mc-s"><option>Investigating</option><option>Identified</option><option>Monitoring</option><option>Resolved</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+</div>
+<fieldset style="border: 0; margin: 0; padding: 0;">
+<legend class="la-field__label" style="padding: 0; margin-bottom: 2px;">Affected components</legend>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox" checked=""><span class="la-check__text"><b>Payments</b><span>Degraded performance</span></span></label>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox" checked=""><span class="la-check__text"><b>Dashboard</b><span>Degraded performance</span></span></label>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox"><span class="la-check__text"><b>API</b><span>Partial outage · incident #142</span></span></label>
+<button type="button" class="field-list__add" style="margin-top: 4px;">Show 4 more components</button>
+</fieldset>
+<div class="la-field"><label class="la-field__label" for="mc-m">Message</label><textarea class="la-input la-textarea" id="mc-m" rows="4" style="padding: 10px 14px; min-height: 120px;">Our payment provider reports slow card authorisations in Europe. Payments still go through but can take up to 30 seconds.</textarea></div>
+<label class="la-check" style="padding: 0;"><input type="checkbox" checked=""><span class="la-check__text"><b>Notify subscribers and channels</b></span></label>
+</form>
+<div style="display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--rule);">
+<button type="button" class="la-btn la-btn--secondary" style="flex: 1;">Save draft</button>
+<button type="button" class="la-btn la-btn--primary" style="flex: 2;">Publish incident</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, imp: 1 }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const imp = this.state.imp;
+    const p = (n) => (imp === n ? 'true' : 'false');
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      i0: p(0), i1: p(1), i2: p(2),
+      im0: () => this.setState({ imp: 0 }), im1: () => this.setState({ imp: 1 }), im2: () => this.setState({ imp: 2 }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

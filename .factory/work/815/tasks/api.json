@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "target": "api",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Api adopts patched validators after its readers and defines writer-first rollback",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/server.notify-channels.test.ts"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: api, R7, all Precondition checks, all Tests and Completion evidence; Rollout order step 3 and mixed checks M1/M4, Releases/deploy/rollback and Rows stored before the patch; Security impact, Performance impact and Acceptance evidence 5-8. Includes the revised writer-first rollback sequence and both database/ledger verification checks.",
+      "acceptance": [
+        {
+          "command": "gh api 'repos/lorenzh/pulse-console/contents/package.json?ref=main' --jq .content | base64 -d",
+          "expected": "Before any edit, read console main's contract pin as CONSOLE_PIN. PATCH_SHA is the full merged contract-child patch SHA; api depends on contract, console and notify, and merges last."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-notify/contents/package.json?ref=main' --jq .content | base64 -d",
+          "expected": "Before any edit, read notify main's contract pin as NOTIFY_PIN."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/${PATCH_SHA}...${CONSOLE_PIN}\" --jq .status && gh api \"repos/lorenzh/pulse-contract/compare/${PATCH_SHA}...${NOTIFY_PIN}\" --jq .status",
+          "expected": "Both statuses are identical or ahead. Record literal full reader pins and statuses in the PR. Otherwise request a needs-input hold naming the missing reader; never edit api before both readers contain the patch."
+        },
+        {
+          "command": "gh api 'repos/lorenzh/pulse-api/contents/package.json?ref=main' --jq .content | base64 -d",
+          "expected": "Read api main's actual contract pin as API_PIN before any edit."
+        },
+        {
+          "command": "gh api \"repos/lorenzh/pulse-contract/compare/${PATCH_SHA}...${API_PIN}\" --jq .status",
+          "expected": "Main does not already contain the patch (normally behind); identical or ahead means request a hold because the change is already present. Any divergent history needs resolution before editing; do not overwrite intervening features."
+        },
+        {
+          "command": "bun test src/server.notify-channels.test.ts",
+          "expected": "Using the existing real server on port 0 with authenticated, otherwise valid fixtures: on old 2.4.0, the three reject cases and M4 fail by literal assertion (old statuses 201 for pulse_console, 201 for trailing, 204 for overlong report, 422 for padded-address create). Record M1: old padded-address POST is 422 with 'channel.from: must hold an email address'. The 100-emoji accept control passes on both pins. On the patch all tests pass, 0 fail, irrespective of focused-run coverage exit: POST pulse_console returns 422 with 'channel.smtp.clientName: must be a host name' and storage/revision/audit unchanged; trailing from returns 422; PUT /service/notify/report with refs[0]='😀'.repeat(101) returns 422 and repeat(100) returns 204. M4 POST of the literal padded-address email returns 201 and both GET /admin/notify/channels and GET /service/notify/channels preserve from 'Ops < ops@example.test >'."
+        },
+        {
+          "command": "rg -n 'pulse-contract' package.json bun.lock",
+          "expected": "Both files pin the same full 40-character SHA of the merged pulse-contract main commit containing R1-R6, independently identified from the contract child's merged PR; preserve intervening merged features."
+        },
+        {
+          "command": "bun install --frozen-lockfile && bun run check",
+          "expected": "exit 0; frozen install, lint, typecheck and the full test suite pass with the repository's existing coverage threshold; no tooling, coverage or budget gate is weakened."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun run test",
+          "expected": "Run five times per side, alternating origin/main and candidate with their installed pins, and report each side's median of user + system CPU seconds in the PR; wall time is not CPU. Expected about +0.1-0.3 s test CPU. Report an increase above 0.5 s as a finding."
+        },
+        {
+          "command": "bun -e 'const t=process.cpuUsage(); await import(\"@lorenzh/pulse-contract\"); const c=process.cpuUsage(t); Bun.gc(true); console.log((c.user+c.system)/1000, process.memoryUsage().rss/1048576)'",
+          "expected": "After installing each side's pin, take 15 alternating fresh-process samples per side (origin/main and candidate); report median import CPU ms and RSS MiB in the PR. Account for eager subscription module imports from 2.5.0; report an increase above 10 ms or 2 MiB as a finding. Expected about +1.4 ms CPU and +0.1 MiB; account for 2.5.0's eager subscription schemas."
+        },
+        {
+          "command": "bun bench/run.ts --a <api main SHA> --b <api branch SHA> --others-ref main --rounds 3",
+          "expected": "With literal resolved SHAs substituted, run full A/B when Docker/Compose is available and report numbers without budget regressions; otherwise disclose the concrete Docker limitation and use the nightly main bench as gating check after merge. Expected directions/sizes for all relevant keys follow Performance impact: startup CPU +1-2 ms, RSS about +0.1 MiB, image about +0.01 MB, no measurable load/p95/rps/cold/end-of-day change; test CPU measured separately."
+        },
+        {
+          "command": "git diff --check && gh pr view --json body,statusCheckRollup",
+          "expected": "Whitespace and required CI check pass. PR records reader-pin preconditions, M1/M4 and reject/control baseline/final evidence, full patch SHA, security checklist and all CPU/RSS/bench measurements. No api source behavior is reimplemented; tests/pin only. Activate patched console and notify before this writer, coordinate the first deploy's api/console/notify images to contain the patch, audit/correct newly refused dev rows through supported routes before activation, and carry the complete writer-first rollback sequence in the next check."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "PR carries the exact 'Releases, deploy and rollback' rule: api leaves the patch first on every running instance, even for a console-only or notify-only rollback. Its old pin rejects newly accepted addresses such as 'Ops < ops@example.test >' on POST/PUT with 422 (M1), while patched readers still read existing rows. Keep writes of that set stopped throughout cleanup and reader rollback, until both readers run the patch again; if api cannot leave the patch, retain patched console/notify. Only after api is reverted everywhere, normalize every padded from/to entry through PUT /admin/notify/channels/<id> using the current revision in If-Match; delete shadowed rows through DELETE instead (PUT answers 409). Never edit database/ledger rows by hand. Require contract c5ce6685ce8b563a243823bca451032291b81adb's validateAdminNotifyChannelsView on GET /admin/notify/channels to give ok:true. Require service.report.appliedRevision equal to revision and service.report.rejected equal to []; a matching revision alone cannot prove cleanup because rejected ids retain their earlier ledger rows. Then stop notify, read SELECT id, definition FROM remote_channels from PULSE_NOTIFY_STATE, and require the same old contract's validateNotifyChannelDefinition to give ok:true on every parsed definition. Only after both database and stopped-ledger checks pass may console and notify roll back, in either order. If either cannot be proved, keep patched readers. Api returns to the patch only after both readers run it again. This is rollout/rollback guidance in the PR, not an instruction to roll back a live service during implementation."
+        }
+      ]
+    }
+  ]
+}

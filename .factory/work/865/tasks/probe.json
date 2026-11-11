@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "The fixed contract pin lets probe skip a malformed check and load its sibling",
+      "files": [
+        "package.json",
+        "bun.lock",
+        "src/client.reserved-header.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe — merge prerequisite, Behavior, Tests R1-R4, Documentation, Completion checks 1-7 and PR text; Required behavior 5, Counterexamples, Performance impact, Security impact, rollout step 2 and Acceptance evidence (feature). Wait for contract's merged fix on main, then change only the contract pin/resolution, add exported-loader loopback regressions and update the three listed documentation files. Production probe sources stay byte-identical; validateCheck already precedes header resolution and the existing per-record skip path is sufficient.",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD",
+          "expected": "Before any edit, record the full implementation-base SHA as BASE for all comparisons and baseline runs; the inspected planning reference is 9490141ef9e92044808c70bb8200db3d497d1060, not a substitute for the actual base. Repeat baseline checks in an untouched disposable BASE checkout with its own install and old contract pin. If R1 already passes at BASE, request the section's hold rather than claim a new regression."
+        },
+        {
+          "command": "bun --version",
+          "expected": "1.4.0."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "Exit 0 at BASE with the original contract pin, and at final HEAD with the merged fixed contract pin; no incidental metadata changes."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Run on untouched recorded BASE and final HEAD: exit 0 both times; lint, typecheck and full suite pass, line coverage >= 0.8 with unchanged bunfig.toml. Never substitute a planning-run result for an actual baseline run."
+        },
+        {
+          "command": "bun test src/client.test.ts src/client.http-options.test.ts src/client.probed-types.test.ts src/main.test.ts",
+          "expected": "At BASE and HEAD: 0 failing tests, with all four control files byte-identical. Heartbeat filtering, invalid-item skips, wire warnings, ordinary literal/env headers, feed authentication/fallback, other probed types and process behavior are preserved. Focused coverage may fail its threshold; judge the run by test results, not exit status."
+        },
+        {
+          "command": "bun test src/client.reserved-header.test.ts",
+          "expected": "Write the new suite and run with BASE production code and its old pin first. R1-R4 fail for the specified rejection/failure-to-skip reasons, never setup/import/type errors. Then bump only the contract pin/resolution and rerun: R1-R4 pass, 0 fail. Report results by the exact test titles from the spec at BASE and HEAD. Use real exported loadChecks, node:http on 127.0.0.1 port 0, test-built raw JSON, wire header 1, token set and cleanup in after; no external network or payload in prose. R1 returns exactly [\"ok\"] with one exact checks[0] reserved-name skip. R2 covers null, number, boolean, array, empty object, invalid env, sentinel literal and valid env reference in both orders, always exactly [\"ok\"] and one index-correct skip. R3 proves /probe/checks 404 fallback to /checks, and R4 makes two loads with one logger and exactly one skip line total. No log contains RESERVED-HEADER-SENTINEL-865 or any header value. Focused coverage exit status is not a criterion."
+        },
+        {
+          "command": "gh api repos/lorenzh/pulse-contract/commits/main --jq .sha",
+          "expected": "After the contract child has merged, record the independently reported full main SHA as C. Confirm that commit includes this fix: src/validate.ts imports and calls the shared guard before HTTP schema validation and src/validate-core.ts contains the reserved-name rejection. Never use a branch, local link or unmerged commit."
+        },
+        {
+          "command": "bun install",
+          "expected": "After replacing only the contract SHA in package.json with full C, regenerate bun.lock once; only its two contract lines change. No kit/config/tool pin, script, setting or dependency is added or changed."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- package.json bun.lock && git diff --numstat \"$BASE\" HEAD -- bun.lock",
+          "expected": "After committing, package.json changes exactly one line from contract #7ce23aaf3fa3e038f65ecfed755188b83bde143f to #C. bun.lock changes exactly the contract dependency line and package entry; numstat is 2 additions, 2 deletions, bun.lock. Compare actual pin/resolution to C independently obtained from GitHub, not to an expected SHA extracted from package.json. All other metadata content is unchanged."
+        },
+        {
+          "command": "bun install --frozen-lockfile && rg -n 'is not an allowed header name' node_modules/@lorenzh/pulse-contract/dist/validate-core.js",
+          "expected": "Exit 0 with a match in installed committed dist; installed contract resolution equals full merged main SHA C. Rerun the focused and full checks against this actual installed package."
+        },
+        {
+          "command": "rg -n '__proto__|skipping invalid check' README.md docs/configuration.md docs/troubleshooting.md",
+          "expected": "README adds the invalid-check skip/sibling behavior near the header-secret paragraph and links troubleshooting. Configuration's headers bullet forbids the reserved name and gives the existing fixed path diagnostic, with siblings still loaded. Troubleshooting adds the diagnostic as a second example, explains older probes could fail the entire load and upgrading fixes it, and retains existing dedup/overflow/recovery prose unchanged. All three docs change with this behavior change."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/configuration.md docs/troubleshooting.md",
+          "expected": "Only the Documentation changes specified in the section; no new malformed payload, JSON fixture or reproduction command. Public text stays at location, class, impact and fix direction."
+        },
+        {
+          "command": "PULSE_API_URL=\"$LOCAL_FEED_URL\" PULSE_PROBE_TOKEN=\"$LOCAL_TEST_TOKEN\" PULSE_HEALTH_PORT=\"$LOCAL_HEALTH_PORT\" bun run start",
+          "expected": "With a disposable loopback fake API serving the R1 feed at /probe/checks and x-pulse-contract: 1, run the real probe for about 5 s. Capture 'skipping invalid check bad: checks[0].headers.__proto__: is not an allowed header name' and 'running 1 check(s) against <url> from location default'; exactly the valid sibling runs. Stop with SIGTERM, report process exit and remove the fake API. Use only a local test token and free health port. Keep fixture construction out of the PR/handoff text; include only the safe high-level command and two log lines. This is the feature's Done when check."
+        },
+        {
+          "command": "for run in 1 2 3; do /usr/bin/time -f '%U %S' bun run test; done",
+          "expected": "Run at untouched BASE and final HEAD separately, all full suites pass; report median user+system CPU from three actual runs per revision, HEAD < 2.3 s. Other performance metrics retain the expected impacts in Performance impact: one own-property lookup per HTTP check, package growth only from the pin bump, no new service setting or code."
+        },
+        {
+          "command": "diff <(git diff --name-only \"$BASE\" HEAD | LC_ALL=C sort) <(printf '%s\\n' README.md bun.lock docs/configuration.md docs/troubleshooting.md package.json src/client.reserved-header.test.ts | LC_ALL=C sort)",
+          "expected": "G1 after the last commit: exit 0; committed diff matches exactly these six allowed files, with production source excluded."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "G2 after the last commit: empty output, checked and reported independently of commit and working-tree scope."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "G3 after the last commit: empty output, checked and reported independently of index and commit scope."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "G4 after the last commit and all checks: empty output, including untracked files."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- src/client.ts src/check.ts src/main.ts src/settings.ts src/header-hosts.ts src/reloader.ts src/client.test.ts src/client.http-options.test.ts src/client.probed-types.test.ts src/main.test.ts bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github/workflows/ci.yml Dockerfile AGENTS.md CLAUDE.md docs/operation.md docs/index.md docs/install.md docs/development.md",
+          "expected": "G5 after the last commit: exit 0; all explicit protected production sources, baseline tests, configuration, tooling, CI, Dockerfile, instructions and unrelated docs remain byte-identical to BASE."
+        },
+        {
+          "command": "node --input-type=module -e 'import assert from \"node:assert/strict\";\nimport { execFileSync } from \"node:child_process\";\nimport { mkdtempSync, writeFileSync, rmSync } from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { join } from \"node:path\";\nconst dir = mkdtempSync(join(tmpdir(), \"scope-865-\"));\nconst git = (...args) => execFileSync(\"git\", args, { cwd: dir, encoding: \"utf8\", stdio: [\"ignore\", \"pipe\", \"pipe\"] });\nconst write = (name, value) => writeFileSync(join(dir, name), value);\ntry {\n  git(\"init\", \"-q\");\n  git(\"config\", \"user.name\", \"Scope fixture\");\n  git(\"config\", \"user.email\", \"scope@example.invalid\");\n  git(\"config\", \"commit.gpgsign\", \"false\");\n  write(\"allowed.txt\", \"base\\n\");\n  write(\"protected.txt\", \"base\\n\");\n  git(\"add\", \".\");\n  git(\"commit\", \"-qm\", \"base\");\n  const base = git(\"rev-parse\", \"HEAD\").trim();\n  write(\"allowed.txt\", \"allowed change\\n\");\n  git(\"add\", \"allowed.txt\");\n  git(\"commit\", \"-qm\", \"allowed\");\n  const allowed = git(\"rev-parse\", \"HEAD\").trim();\n  const reset = () => { git(\"reset\", \"--hard\", allowed); git(\"clean\", \"-fd\"); };\n  const protectedChange = () => write(\"protected.txt\", \"protected change\\n\");\n  const commitProtected = () => { protectedChange(); git(\"add\", \"protected.txt\"); git(\"commit\", \"-qm\", \"protected\"); };\n  const restore = () => {\n    git(\"restore\", \"--worktree\", \"--source=\" + base, \"--\", \"protected.txt\");\n    assert.equal(git(\"diff\", base, \"--\", \"protected.txt\"), \"\");\n  };\n  const row = (name, expected) => {\n    let protectedPass = true;\n    try { git(\"diff\", \"--exit-code\", base, \"HEAD\", \"--\", \"protected.txt\"); } catch { protectedPass = false; }\n    const actual = [\n      git(\"diff\", \"--name-only\", base, \"HEAD\").trim() === \"allowed.txt\",\n      git(\"diff\", \"--name-only\", \"--cached\") === \"\",\n      git(\"diff\", \"--name-only\") === \"\",\n      git(\"status\", \"--porcelain\") === \"\",\n      protectedPass\n    ].map(value => value ? \"P\" : \"F\").join(\" \");\n    console.log(name + \" \" + actual);\n    assert.equal(actual, expected);\n  };\n  row(\"S1\", \"P P P P P\");\n  commitProtected(); row(\"S2\", \"F P P P F\");\n  reset(); protectedChange(); row(\"S3\", \"P P F F P\");\n  reset(); protectedChange(); git(\"add\", \"protected.txt\"); row(\"S4\", \"P F P F P\");\n  restore(); row(\"S5\", \"P F F F P\");\n  reset(); commitProtected(); restore(); row(\"S6\", \"F P F F F\");\n  reset(); write(\"extra.txt\", \"untracked\\n\"); row(\"S7\", \"P P P F P\");\n  reset(); row(\"S8\", \"P P P P P\");\n} finally { rmSync(dir, { recursive: true, force: true }); }'",
+          "expected": "Exit 0. Disposable repository is removed. Columns G1 G2 G3 G4 G5: S1=P P P P P; S2=F P P P F; S3=P P F F P; S4=P F P F P; S5=P F F F P; S6=F P F F F; S7=P P P F P; S8=P P P P P, exactly the eight-state table in contract Completion check 8. S5 and S6 additionally prove git diff BASE -- protected.txt is empty after restoring only the working tree, while index/commit checks still detect the protected change. Report each state, including clean allowed-only and untracked controls."
+        },
+        {
+          "command": "git diff --check \"$BASE\" HEAD",
+          "expected": "Exit 0. Handoff/PR evidence names #865, actual BASE and independently verified contract merge SHA C; lists R1-R4 at BASE and HEAD, all control results, G1-G5 separately, eight fixture states, two startup log lines and process exit, and CPU medians. Complete applicable Security impact checklist: per-item validation before resolveHeaders, exact fixed errors/logs with no sentinel or header values, preserved admin/API guards and full-SHA dependency scope. Other security items remain unchanged. State rollout/known limit: an un-upgraded probe retains the old failure mode, while wire version 1 remains compatible. No payload or reproduction command in public prose."
+        }
+      ]
+    }
+  ]
+}

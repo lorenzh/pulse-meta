@@ -128,8 +128,8 @@ export FIXTURES="$tmp/audit"; mkdir -p "$FIXTURES"
 echo '{"number":77,"html_url":"https://example.test/new-issue"}' > "$FIXTURES/created.json"
 echo '{"default_branch":"main"}' > "$FIXTURES/$(key "repos/$R").json"
 for label in security performance; do echo "{\"name\":\"$label\"}" > "$FIXTURES/$(key "repos/$R/labels/$label").json"; done
-# Every audit/<repo> label exists except audit/deploy, which the first run creates.
-for t in contract probe api status notify config kit website console; do echo "{\"name\":\"audit/$t\"}" > "$FIXTURES/$(key "repos/$R/labels/audit%2F$t").json"; done
+# Every audit/<repo> label exists except audit/agent, which the first run creates.
+for t in contract probe api status notify config kit website console deploy; do echo "{\"name\":\"audit/$t\"}" > "$FIXTURES/$(key "repos/$R/labels/audit%2F$t").json"; done
 open_issues security,audit/probe '[{"number":50,"title":"Security audit: pulse-probe (2026-10-26)"}]'
 open_issues security,audit/api '[{"number":51,"title":"Probe leaks a header","pull_request":null}]'
 open_issues performance,audit/api '[{"number":52,"title":"Performance audit: pulse-api (2026-10-07)"}]'
@@ -137,28 +137,28 @@ open_issues performance,audit/api '[{"number":52,"title":"Performance audit: pul
 open_issues security,target/status '[{"number":53,"title":"Security audit: pulse-status (2026-10-20)"}]'
 DAILY='17 6 * * *' TUEFRI='17 6 * * 2,5' THU='17 6 * * 4' MON='17 6 * * 1'
 
-# Security, daily: 2026-11-02 is day 20759 since 1970-01-01; 20759 % 10 = 9 -> deploy.
-# 2026-11-03 is day 20760; 20760 % 10 = 0 -> contract.
-check "security: the daily schedule rotates by day, creating a missing audit/<repo> label" "Created the label audit/deploy.
+# Security, daily: 2026-11-10 is day 20767 since 1970-01-01; 20767 % 11 = 10 -> agent.
+# 2026-11-11 is day 20768; 20768 % 11 = 0 -> contract.
+check "security: the daily schedule rotates by day, creating a missing audit/<repo> label" "Created the label audit/agent.
 Opened https://example.test/new-issue
-Started the audit run of #77." "$(audit "" "" "$DAILY" 2026-11-02)"
+Started the audit run of #77." "$(audit "" "" "$DAILY" 2026-11-10)"
 check "security: title, factory/audit/audit and audit/<repo> labels, no target/<repo>, then the dispatch" "WRITE repos/$R/labels
-  name=audit/deploy
+  name=audit/agent
   color=c5def5
-  description=Audit of lorenzh/pulse-deploy, run on the meta target
+  description=Audit of lorenzh/pulse-agent, run on the meta target
 WRITE repos/$R/issues
-  title=Security audit: pulse-deploy (2026-11-02)
+  title=Security audit: pulse-agent (2026-11-10)
   body
   labels[]=security
   labels[]=factory/audit/audit
-  labels[]=audit/deploy
+  labels[]=audit/agent
 DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
-check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-deploy](https://github.com/lorenzh/pulse-deploy). Opened by \`factory-audit.yml\`, which starts the \`audit\` workflow at once (label \`factory/audit/audit\`). To stop it, cancel its \`Factory run\` workflow run and remove the \`factory/audit/\` label." "$(head -1 "$FIXTURES/last-body.md")"
+check "security: the issue text names the repository" "Periodic security audit of \`main\` in [pulse-agent](https://github.com/lorenzh/pulse-agent). Opened by \`factory-audit.yml\`, which starts the \`audit\` workflow at once (label \`factory/audit/audit\`). To stop it, cancel its \`Factory run\` workflow run and remove the \`factory/audit/\` label." "$(head -1 "$FIXTURES/last-body.md")"
 check "security: no placeholder is left" "0" "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true)"
-audit "" "" "$DAILY" 2026-11-03 > /dev/null
-check "security: the next day takes the next repository" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
-audit security rotation "" 2026-11-03 > /dev/null
-check "security: dispatch rotation picks the same target" "  title=Security audit: pulse-contract (2026-11-03)" "$(grep title= "$FIXTURES/writes.log")"
+audit "" "" "$DAILY" 2026-11-11 > /dev/null
+check "security: the next day takes the next repository" "  title=Security audit: pulse-contract (2026-11-11)" "$(grep title= "$FIXTURES/writes.log")"
+audit security rotation "" 2026-11-11 > /dev/null
+check "security: dispatch rotation picks the same target" "  title=Security audit: pulse-contract (2026-11-11)" "$(grep title= "$FIXTURES/writes.log")"
 check "security: an open audit issue blocks a second one" "#50 is still open for probe. No new issue." "$(audit security probe "" 2026-11-02)"
 check "security: another security issue does not block" "Opened https://example.test/new-issue
 Started the audit run of #77." "$(audit security api "" 2026-11-02)"
@@ -197,7 +197,7 @@ check "performance: config is not a performance target" "::error::Unknown target
 check "performance: deploy is not a performance target" "::error::Unknown target: deploy" "$(audit performance deploy "" 2026-11-03 || true)"
 
 # Quality, Monday: slot = week, week = (day + 3) / 7, over the security list.
-# Mon 2026-11-02: week 2966 % 10 = 6 -> kit. Mon 2026-11-09: 2967 % 10 = 7 -> website.
+# Mon 2026-11-02: week 2966 % 11 = 7 -> website. Mon 2026-11-09: 2967 % 11 = 8 -> console.
 check "quality: the Monday schedule creates the label and the issue" "Created the label quality.
 Opened https://example.test/new-issue
 Started the audit run of #77." "$(audit "" "" "$MON" 2026-11-02)"
@@ -206,18 +206,18 @@ check "quality: label with description, title and labels, then the dispatch" "WR
   color=0e8a16
   description=Code quality: lint, complexity, duplication, dead code, tests, error handling
 WRITE repos/$R/issues
-  title=Quality audit: pulse-kit (2026-11-02)
+  title=Quality audit: pulse-website (2026-11-02)
   body
   labels[]=quality
   labels[]=factory/audit/audit
-  labels[]=audit/kit
+  labels[]=audit/website
 DISPATCH workflow run factory-run.yml --repo $R --ref main -f issue=77 -f admission=label" "$(writes)"
 check "quality: the issue text names the repository and the report" "0 1" \
-  "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true) $(grep -c 'audits/quality/kit\.md' "$FIXTURES/last-body.md" || true)"
+  "$(grep -c '{repo}' "$FIXTURES/last-body.md" || true) $(grep -c 'audits/quality/website\.md' "$FIXTURES/last-body.md" || true)"
 audit "" "" "$MON" 2026-11-09 > /dev/null
-check "quality: the next Monday takes the next repository" "  title=Quality audit: pulse-website (2026-11-09)" "$(grep title= "$FIXTURES/writes.log")"
+check "quality: the next Monday takes the next repository" "  title=Quality audit: pulse-console (2026-11-09)" "$(grep title= "$FIXTURES/writes.log")"
 audit quality rotation "" 2026-11-05 > /dev/null
-check "quality: dispatch rotation picks the week's target" "  title=Quality audit: pulse-kit (2026-11-05)" "$(grep title= "$FIXTURES/writes.log")"
+check "quality: dispatch rotation picks the week's target" "  title=Quality audit: pulse-website (2026-11-05)" "$(grep title= "$FIXTURES/writes.log")"
 audit quality config "" 2026-11-02 > /dev/null
 check "quality: config is a quality target" "  title=Quality audit: pulse-config (2026-11-02)" "$(grep title= "$FIXTURES/writes.log")"
 open_issues quality,audit/api '[{"number":54,"title":"Quality audit: pulse-api (2026-10-26)"}]'

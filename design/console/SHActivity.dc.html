@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">Activity</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a><a class="la-iconbtn la-iconbtn--sm" href="SHSignIn.dc.html" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></a><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Activity</h1>
+<p class="page-sub" title="Who changed what on this instance. Admins and the owner only. Entries are never deleted, and passwords, codes, tokens, header values and bodies are never logged.">Who changed what on this instance. Admins and the owner only. Entries are never deleted, and passwords, codes, tokens, header values and bodies are never logged.</p>
+</div>
+</div>
+
+<div class="la-tabs" role="tablist" aria-label="Activity views">
+<button type="button" class="la-tabs__tab" role="tab" id="t-people" aria-controls="p-people" aria-selected="{{selPeople}}" tabindex="{{tiPeople}}" onClick="{{showPeople}}">People <span class="la-tabs__count">· console log</span></button>
+<button type="button" class="la-tabs__tab" role="tab" id="t-tokens" aria-controls="p-tokens" aria-selected="{{selTokens}}" tabindex="{{tiTokens}}" onClick="{{showTokens}}">API tokens <span class="la-tabs__count">· pulse-api audit</span></button>
+</div>
+
+<sc-if value="{{isPeople}}" hint-placeholder-val="{{true}}">
+<div class="stack-24" id="p-people" role="tabpanel" aria-labelledby="t-people">
+<div class="row-12" role="search" aria-label="Filter people activity" style="gap: 12px 16px;">
+<label class="search" style="margin-left: 0; flex: 1 1 260px; max-width: 360px;"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Filter by target</span><input type="search" placeholder="Target, for example a check or a person"></label>
+<label class="sel-lab">User <span class="la-select"><select><option>Everyone</option><option>Mara Lindqvist</option><option>Jonas Feld</option><option>Priya Raman</option><option>Tomás Ibarra</option><option>Noah Brandt</option><option>Elif Aydın</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Action <span class="la-select"><select><option>All actions</option><option>Checks</option><option>Incidents</option><option>Maintenance</option><option>Tokens</option><option>Account events</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Period <span class="la-select"><select><option>Last 24 hours</option><option selected="">Last 7 days</option><option>Last 30 days</option><option>All time</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<span class="lbl" style="margin-left: auto;" role="status">{{peopleCount}}</span>
+</div>
+<section class="la-panel cs-bleed" aria-label="People activity">
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Time (UTC)</th><th scope="col">User</th><th scope="col">Action</th><th scope="col">Target</th></tr></thead>
+<tbody>
+<sc-for list="{{people}}" as="r" hint-placeholder-count="14">
+<tr>
+<td class="m" style="white-space: nowrap;">{{r.time}}</td>
+<td><span class="row-12" style="flex-wrap: nowrap;"><span class="la-avatar la-avatar--sm" aria-hidden="true">{{r.ini}}</span><span class="who"><b>{{r.user}}</b><span>{{r.role}}</span></span></span></td>
+<td><span class="la-badge {{r.tone}}">{{r.action}}</span></td>
+<td>{{r.target}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Console changes reach pulse-api with the token pulse-console; this log records the person behind each one.</span></div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{isTokens}}" hint-placeholder-val="{{false}}">
+<div class="stack-24" id="p-tokens" role="tabpanel" aria-labelledby="t-tokens">
+<div class="row-12" role="search" aria-label="Filter API token activity" style="gap: 12px 16px;">
+<label class="sel-lab">Token <span class="la-select"><select><option>All tokens</option><option>pulse-console</option><option>deploy-ci</option><option>status-sync</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Action <span class="la-select"><select><option>All actions</option><option>check.*</option><option>incident.*</option><option>token.*</option><option>config.*</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<label class="sel-lab">Period <span class="la-select"><select><option>Last 24 hours</option><option selected="">Last 7 days</option><option>Last 30 days</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></label>
+<button type="button" class="la-btn la-btn--secondary" style="margin-left: auto;">Export</button>
+</div>
+<section class="la-panel" aria-label="API token activity">
+<div class="la-panel__head"><h2 class="eb">Read-only · from GET /admin/audit</h2></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Time (UTC)</th><th scope="col">Token</th><th scope="col">Action</th><th scope="col">Target</th></tr></thead>
+<tbody>
+<sc-for list="{{tokens}}" as="r" hint-placeholder-count="9">
+<tr>
+<td class="m" style="white-space: nowrap;">{{r.time}}</td>
+<td class="mono" style="font-size: 13px;">{{r.token}}</td>
+<td><span class="la-badge">{{r.action}}</span></td>
+<td>{{r.target}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">pulse-api records the token, not the person. Changes made in the console show pulse-console; see the People tab for who made them.</span></div>
+</section>
+</div>
+</sc-if>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"tab":{"editor":"enum","options":["people","api tokens"],"default":"people"},"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, tab: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const tab = this.state.tab ?? this.props.tab ?? 'people';
+    const isPeople = tab === 'people';
+    const U = {
+      ML: ['Mara Lindqvist', 'Owner'], JF: ['Jonas Feld', 'Admin'], PR: ['Priya Raman', 'Member'],
+      NB: ['Noah Brandt', 'Admin'], LO: ['Lena Okafor', 'Member'], TI: ['Tomás Ibarra', 'Member']
+    };
+    const acct = ['sign-in', 'sign-in.failed', 'invite.create', 'invite.accept', 'member.role-change', 'password-reset.create', '2fa.reset', 'owner.transfer', 'owner.recover'];
+    const row = (time, ini, action, target) => ({
+      time, ini, user: U[ini][0], role: U[ini][1], action, target,
+      tone: acct.indexOf(action) >= 0 ? 'la-badge--info' : ''
+    });
+    const people = [
+      row('2026-10-30 14:25:40', 'JF', 'manual-incident.update', '#143 Card payments are slower than usual'),
+      row('2026-10-30 14:10:12', 'PR', 'manual-incident.create', '#143 Card payments are slower than usual'),
+      row('2026-10-30 13:58:02', 'JF', 'maintenance.create', 'mw-0012 · 10 checks · Nov 2, 22:00 UTC'),
+      row('2026-10-30 12:40:19', 'ML', 'token.revoke', 'status-sync-old'),
+      row('2026-10-30 11:02:55', 'NB', 'check.create', 'Payments callback'),
+      row('2026-10-30 10:47:31', 'ML', 'member.role-change', 'Noah Brandt · member to admin'),
+      row('2026-10-30 10:12:08', 'TI', 'sign-in.failed', 'tomas@quillbird.example · wrong password'),
+      row('2026-10-30 09:30:44', 'LO', 'invite.accept', 'lena.okafor@quillbird.example · member'),
+      row('2026-10-30 09:30:44', 'LO', 'sign-in', 'lena.okafor@quillbird.example'),
+      row('2026-10-29 16:12:00', 'JF', 'invite.create', 'lena.okafor@quillbird.example · member'),
+      row('2026-10-29 15:55:13', 'ML', 'password-reset.create', 'Tomás Ibarra'),
+      row('2026-10-29 15:40:02', 'JF', '2fa.reset', 'Priya Raman'),
+      row('2026-10-27 08:05:30', 'ML', 'owner.recover', 'Mara Lindqvist · reset link from the container command'),
+      row('2026-10-26 18:20:11', 'JF', 'owner.transfer', 'Jonas Feld to Mara Lindqvist')
+    ];
+    const tk = (time, token, action, target) => ({ time, token, action, target });
+    const tokens = [
+      tk('2026-10-30 14:25:40', 'pulse-console', 'incident.update', '#143'),
+      tk('2026-10-30 14:10:12', 'pulse-console', 'incident.create', '#143'),
+      tk('2026-10-30 13:58:02', 'pulse-console', 'maintenance.create', 'mw-0012'),
+      tk('2026-10-30 12:40:19', 'pulse-console', 'token.revoke', 'status-sync-old'),
+      tk('2026-10-30 11:02:55', 'pulse-console', 'check.create', 'payments-callback'),
+      tk('2026-10-30 07:14:09', 'deploy-ci', 'check.update', 'api-health'),
+      tk('2026-10-29 07:13:51', 'deploy-ci', 'check.update', 'api-health'),
+      tk('2026-10-28 22:00:03', 'status-sync', 'token.rotate', 'status-sync'),
+      tk('2026-10-27 09:41:27', 'pulse-console', 'token.create', 'status-sync')
+    ];
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isPeople, isTokens: !isPeople,
+      selPeople: isPeople ? 'true' : 'false', selTokens: isPeople ? 'false' : 'true',
+      tiPeople: isPeople ? '0' : '-1', tiTokens: isPeople ? '-1' : '0',
+      showPeople: () => this.setState({ tab: 'people' }),
+      showTokens: () => this.setState({ tab: 'api tokens' }),
+      people, tokens,
+      peopleCount: people.length + ' entries in the last 7 days'
+    };
+  }
+}
+</script>
+</body>
+</html>

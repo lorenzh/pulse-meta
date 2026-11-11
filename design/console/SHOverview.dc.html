@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="m9 16 2 2 4-4"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li aria-current="page">Overview</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><a class="pill-st" href="https://status.quillbird.example" target="_blank" rel="noopener"><span class="la-status la-status--down"><span class="la-status__mark"></span></span>status.quillbird.example</a><span class="cs-tools"><a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a>
+<form method="post" action="SHSignIn.dc.html" style="margin: 0;"><button type="submit" class="la-iconbtn la-iconbtn--sm" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></button></form>
+<button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Overview</h1>
+<p class="page-sub" title="38 checks from 3 own probe locations · updated 2026-10-30 14:32:08 UTC"><span class="mono">38</span> checks from <span class="mono">3</span> own probe locations · updated <span class="mono">2026-10-30 14:32:08 UTC</span></p>
+</div>
+<div class="row">
+<a class="la-btn la-btn--secondary" href="SHIncidentComposer.dc.html">Declare incident</a>
+<a class="la-btn la-btn--primary" href="SHCheckEdit.dc.html">Add check</a>
+</div>
+</div>
+
+<section class="la-panel" aria-labelledby="ih-h">
+<div class="la-panel__head"><h2 class="eb" id="ih-h">Instance health</h2><span class="la-badge la-badge--info">v1.5.1 available</span><a class="cs-pha" href="SHSystem.dc.html">System</a></div>
+<ul role="list" style="margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+<sc-for list="{{health}}" as="h" hint-placeholder-count="6">
+<li style="padding: 14px 18px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px;">
+<span class="la-status la-status--dense {{h.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{h.state}}</span></span>
+<span style="font-weight: 600;">{{h.name}}</span>
+<span class="lbl">{{h.version}}</span>
+<span class="lbl">{{h.seen}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<div class="la-callout la-callout--error" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">Partial outage · API, Website</p><p class="la-callout__text">Invoice export is down from <span class="mono">2 of 3</span> locations (office, fsn-1) since <span class="mono">14:02 UTC</span>. Incident <span class="mono">#142</span> is open. Website: the web container on app-01 is down since <span class="mono">14:09 UTC</span>, incident <span class="mono">#145</span>.</p></div>
+<a class="la-btn la-btn--secondary la-btn--sm" href="SHIncidentDetail.dc.html" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 16px;">View incident</a>
+</div>
+
+<div class="g4">
+<section class="la-panel kpi" aria-labelledby="k1"><h2 class="eb" id="k1">Overall</h2><span class="kpi-v" style="font-size: 26px;">Partial outage</span><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">2 components affected of 7</span></span></section>
+<section class="la-panel kpi" aria-labelledby="k2"><h2 class="eb" id="k2">Checks up</h2><span class="kpi-v">33<small>of 38</small></span><span class="kpi-m">2 down · 1 degraded · 1 failing at one location · 1 in maintenance</span></section>
+<section class="la-panel kpi" aria-labelledby="k3"><h2 class="eb" id="k3">Open incidents</h2><span class="kpi-v">4</span><span class="kpi-m">next maintenance <a href="SHMaintenance.dc.html">2026-11-02 22:00</a></span></section>
+<section class="la-panel kpi" aria-labelledby="k4"><h2 class="eb" id="k4">Availability · 30 days</h2><span class="kpi-v">99.94<small>%</small></span><span class="kpi-m">public components</span></section>
+</div>
+
+<div class="g-main">
+<section class="la-panel" aria-labelledby="comp-t">
+<div class="la-panel__head"><h2 class="eb" id="comp-t">Components · last 90 days</h2></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<sc-for list="{{components}}" as="c" hint-placeholder-count="7">
+<li style="display: grid; grid-template-columns: 180px minmax(0, 1fr) 76px; align-items: center; gap: 20px; padding: 12px 20px; border-bottom: 1px solid var(--rule);">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;"><span style="font-weight: 500;">{{c.name}}</span><span class="la-status la-status--dense {{c.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{c.state}}</span></span></div>
+<div class="ub ub-sm" aria-hidden="true"><sc-for list="{{c.days}}" as="d" hint-placeholder-count="90"><span class="{{d}}"></span></sc-for></div>
+<span class="mono" style="font-size: 13px; text-align: right;">{{c.uptime}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+<div class="stack-24">
+<section class="la-panel" aria-labelledby="na-t">
+<div class="la-panel__head"><h2 class="eb" id="na-t">Needs attention</h2><a class="cs-pha" href="SHChecks.dc.html">All checks</a></div>
+<ul role="list" style="margin: 0; padding: 6px 20px 12px;">
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Down · 2 of 3 locations agree</span></span><a href="SHCheckDetail.dc.html" style="display: block; font-size: var(--fs-small);">Invoice export API</a><span class="lbl">since 14:02 UTC · incident #142</span></li>
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Down · container web exited (137)</span></span><a href="SHContainerCheckDetail.dc.html" style="display: block; font-size: var(--fs-small);">web on app-01</a><span class="lbl">since 14:09 UTC · incident #145</span></li>
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Degraded · swap 97% > 90%</span></span><a href="SHHostCheckDetail.dc.html" style="display: block; font-size: var(--fs-small);">app-01</a><span class="lbl">since 14:08 UTC · incident #144</span></li>
+<li style="padding: 8px 0; border-bottom: 1px solid var(--rule);"><span class="la-status la-status--degraded la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Failing at 1 of 3 locations</span></span><a href="SHChecks.dc.html" style="display: block; font-size: var(--fs-small);">Docs site</a><span class="lbl">iad-1 only · 503 · down when 2 locations agree</span></li>
+<li style="padding: 8px 0;"><span class="la-status la-status--maintenance la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">In maintenance</span></span><a href="SHMaintenance.dc.html" style="display: block; font-size: var(--fs-small);">SMTP relay upgrade</a><span class="lbl">until 15:00 UTC · 1 check</span></li>
+</ul>
+</section>
+</div>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  bars(bad, warn) { const out = []; for (let i = 0; i < 90; i++) out.push(bad.indexOf(i) >= 0 ? 'e' : (warn.indexOf(i) >= 0 ? 'w' : '')); return out; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const ok = 'la-status--up';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      health: [
+        { name: 'pulse-api', state: 'Reachable', tone: ok, version: 'v1.5.0 · wire version 1', seen: 'answered 1 s ago' },
+        { name: 'pulse-console', state: 'Healthy', tone: ok, version: 'v1.5.0', seen: 'this server' },
+        { name: 'checks.json', state: 'Valid', tone: ok, version: '31 checks from file', seen: 'applied 14:01' },
+        { name: 'office', state: 'Reporting', tone: ok, version: 'probe location', seen: 'last result 2 s ago' },
+        { name: 'fsn-1', state: 'Reporting', tone: ok, version: 'probe location', seen: 'last result 1 s ago' },
+        { name: 'iad-1', state: 'Reporting', tone: ok, version: 'probe location', seen: 'last result 3 s ago' }
+      ],
+      components: [
+        { name: 'Website', state: 'Partial outage', tone: 'la-status--down', uptime: '99.86%', days: this.bars([89], [41]) },
+        { name: 'Dashboard', state: 'Operational', tone: ok, uptime: '99.95%', days: this.bars([], [12, 63]) },
+        { name: 'API', state: 'Partial outage', tone: 'la-status--down', uptime: '99.81%', days: this.bars([89], [27, 28, 70]) },
+        { name: 'Payments', state: 'Operational', tone: ok, uptime: '100.00%', days: this.bars([], []) },
+        { name: 'Email delivery', state: 'Maintenance', tone: 'la-status--maintenance', uptime: '99.97%', days: this.bars([], [55, 89]) },
+        { name: 'Background jobs', state: 'Operational', tone: ok, uptime: '99.92%', days: this.bars([33], [88]) },
+        { name: 'Docs', state: 'Operational', tone: ok, uptime: '99.99%', days: this.bars([], [89]) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

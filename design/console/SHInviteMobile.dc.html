@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accept invite on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span></span>
+<span class="lbl" style="margin-left: auto;">{{stepLabel}}</span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 16px;">
+
+<sc-if value="{{isAccount}}" hint-placeholder-val="{{true}}">
+<div class="stack-8"><h1 class="mb-title">Join Quillbird monitoring</h1><p class="lbl" style="margin: 0;">Mara Lindqvist invited you as admin.</p></div>
+<div class="la-field"><label class="la-field__label" for="im-e">Email</label><input class="la-input" id="im-e" type="email" value="sam.ortega@quillbird.example" readonly=""></div>
+<div class="la-field"><label class="la-field__label" for="im-r">Role</label><input class="la-input" id="im-r" value="Admin" readonly=""></div>
+<div class="la-field"><label class="la-field__label" for="im-n">Your name</label><input class="la-input" id="im-n" value="Sam Ortega" autocomplete="name"></div>
+<div class="la-field"><label class="la-field__label" for="im-p">Password</label><input class="la-input" id="im-p" type="password" value="lantern-orchard-71" autocomplete="new-password" aria-describedby="im-p-d"><p class="la-field__help" id="im-p-d">At least 12 characters.</p></div>
+<div class="la-field"><label class="la-field__label" for="im-p2">Repeat password</label><input class="la-input" id="im-p2" type="password" value="lantern-orchard-71" autocomplete="new-password"></div>
+<p class="lbl" style="margin: 0;">Admins must use two-factor. The next step sets up your authenticator app. This link works once and expires on <span class="mono">2026-11-09</span>.</p>
+</sc-if>
+
+<sc-if value="{{isTotp}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">Set up two-factor</h1><p class="lbl" style="margin: 0;">Required for admins. This step cannot be skipped.</p></div>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">On this phone, add the key to your authenticator app by hand or paste the link into it. Then type the 6-digit code it shows.</p>
+<div class="la-field"><span class="la-field__label" id="im-k">Setup key</span><div class="secret" aria-labelledby="im-k"><code>EXAM PLEE XAMP LEEX AMPL E234</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><span class="la-field__label" id="im-u">otpauth link</span><div class="secret" aria-labelledby="im-u"><code style="font-size: 12px;">otpauth://totp/Quillbird%20monitoring:sam.ortega%40quillbird.example?secret=EXAMPLEEXAMPLEEXAMPLE567&amp;issuer=Quillbird%20monitoring</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><label class="la-field__label" for="im-c">6-digit code</label><input class="la-input mono" id="im-c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="307 551" style="font-size: 20px; letter-spacing: 0.2em;"></div>
+</sc-if>
+
+<sc-if value="{{isCodes}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">Save your recovery codes</h1><p class="lbl" style="margin: 0;">Shown once. Each code works once.</p></div>
+<div class="la-callout la-callout--warning"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Store them in your password manager</p><p class="la-callout__text">pulse keeps only a hash and cannot show these codes again.</p></div></div>
+<ul role="list" class="mono" style="margin: 0; padding: 14px; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; background: var(--field); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 14px;">
+<sc-for list="{{codes}}" as="c" hint-placeholder-count="10"><li>{{c}}</li></sc-for>
+</ul>
+<button type="button" class="la-btn la-btn--secondary la-btn--sm" style="align-self: flex-start;">Copy codes</button>
+<label class="la-check"><input type="checkbox" checked="{{saved}}" onChange="{{toggleSaved}}"><span class="la-check__text"><b>I saved these codes</b><span>You need one if you lose this phone.</span></span></label>
+</sc-if>
+
+</form>
+<div style="padding: 12px 16px 16px; border-top: 1px solid var(--rule);">
+<sc-if value="{{codesSaved}}" hint-placeholder-val="{{false}}"><a class="la-btn la-btn--primary" href="SHOverviewMobile.dc.html" style="width: 100%;">Open the console</a></sc-if>
+<sc-if value="{{codesOpen}}" hint-placeholder-val="{{false}}"><button type="button" class="la-btn la-btn--primary" disabled="" style="width: 100%;">Open the console</button></sc-if>
+<sc-if value="{{notCodes}}" hint-placeholder-val="{{true}}"><button type="button" class="la-btn la-btn--primary" onClick="{{next}}" style="width: 100%;">{{nextLabel}}</button></sc-if>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"step":{"editor":"enum","options":["account","twofactor","codes"],"default":"account"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, step: null, saved: false }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const steps = ['account', 'twofactor', 'codes'];
+    const step = this.state.step ?? this.props.step ?? 'account';
+    const i = Math.max(0, steps.indexOf(step));
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isAccount: i === 0, isTotp: i === 1, isCodes: i === 2, notCodes: i !== 2,
+      stepLabel: 'Step ' + (i + 1) + ' of 3',
+      nextLabel: i === 0 ? 'Create account' : 'Turn on two-factor',
+      next: () => this.setState({ step: steps[Math.min(2, i + 1)] }),
+      codes: ['EXMP-LE00-01', 'EXMP-LE00-06', 'EXMP-LE00-05', 'EXMP-LE00-10', 'EXMP-LE00-02', 'EXMP-LE00-07', 'EXMP-LE00-09', 'EXMP-LE00-04', 'EXMP-LE00-08', 'EXMP-LE00-03'],
+      saved: this.state.saved,
+      codesSaved: i === 2 && this.state.saved, codesOpen: i === 2 && !this.state.saved,
+      toggleSaved: () => this.setState({ saved: !this.state.saved }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "target": "console",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Every scoped alert uses src/states.ts callouts and all seven route suites enforce test/rendered-audit.ts",
+      "files": [
+        "src/token-routes.ts",
+        "src/token-pages.ts",
+        "src/probe-routes.ts",
+        "src/probe-pages.ts",
+        "src/server.tokens.test.ts",
+        "src/server.probes.test.ts",
+        "src/server.incidents.test.ts",
+        "src/server.incidents-write.test.ts",
+        "src/server.maintenance.test.ts",
+        "src/server.notifications.test.ts",
+        "src/server.status-page.test.ts",
+        "README.md",
+        "docs/configuration.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: console — all Files, Behavior, Tests, Docs, Scope checks and Completion evidence; ## Required behavior 1-6; render-site table T1-T9/P1-P7; ## Acceptance evidence 1-11; ## Performance impact; ## Security impact; ## Counterexamples. One cohesive task: keep tests and the repair together so the task finishes green. First record immutable console BASE before edits; initialize E to the absolute path of an empty TOML file and EVIDENCE to a disposable directory outside the checkout, creating files with file tools. Record Bun/dependencies and retain evidence outside the target. Repeat baseline controls on BASE before edits; if BASE differs from 45b2d48260476510fa697f0c9cb560fbae26432f, redo the plan's baseline, render-site search and discovery, report differences before edits, and hold for review if another production path is needed. Reuse expectCalloutsOnly directly on every HTML page body in the seven suites, including GET/POST, errors, status-only assertions, forms and raw fetches (especially incidents-write's 413 cases); exclude empty redirects, JSON and metrics. Preserve existing assertions and helpers. Extend existing token/probe suites using startTeamConsole/startFakeApi, token-fixtures, formTokenOf/getPage/postForm/replyOf: add no-admin-token, expired create/add-location and change forms, People-log failures on revoked and secret pages, and escaping scenarios; use unknown form_token with valid CSRF and DROP TABLE people_events, as the plan specifies. Assert each reached repaired site's message, kind and role; adjust probe groupOf to retain the complete credential table across nested callout sections and keep its existing assertions. Commit only the seven test files first; collect reproducible red against unchanged BASE production and green controls for the other five suites, then repair without weakening those tests. Reuse existing callout/alertCallout from src/states.ts and paragraph from src/html.ts, following the table's exact kinds: refusals/errors use alertCallout; expiry, not-logged, expired-change and group warnings use warning callout; revoked notices use success callout with role status; formExpiredNotice uses alertCallout. Remove both local alert functions; preserve undefined behavior, escaping, texts, roles, statuses, redirects, permissions, form tokens, API calls, People rows and secret handling. Add only the specified paragraph to README.md after the 'Each person has one console role' paragraph (base line 16), and to docs/configuration.md after 'The Tokens and Probes tables keep their column headers' (base line 139); the latter also preserves roles and links tokens.md. Recheck the complete Docs inventory with exact changed lines and unchanged proving lines, protecting every other doc. No new production/test helper, test file, dependency, global audit, CSS, config, CI or design export change. For scope acceptance, create one checker and fixture driver with file tools under EVIDENCE, never in the target. Checker runs each Scope checks 1-7 independently, using the exact 13-path list below and PROTECTED as every tracked path at BASE minus those 13 (not only named examples); fixture driver runs that identical checker with fixture-specific allowed/protected paths. Derive PROTECTED as a shell array or pass paths directly as subprocess arguments, not a lossy whitespace string. At final handoff all 13 paths must appear in BASE..HEAD and the index/worktree/status must be empty. The temporary test-only commit is an internal red checkpoint, not a separate accepted task. No Docker bench (#834).",
+      "acceptance": [
+        {
+          "command": "git rev-parse HEAD && bun --version && bun install --frozen-lockfile",
+          "expected": "Before first edit, record console BASE and dependency/tool versions. Inspection base is 45b2d48260476510fa697f0c9cb560fbae26432f; Bun 1.4.0; install exits 0 with unchanged lockfile. Apply the spec's base-drift procedure if the implementation base differs. Create empty E outside checkout with file tools; use only bun --config=\"$E\" test for focused commands, never bun test --config."
+        },
+        {
+          "command": "bun --config=\"$E\" test src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts",
+          "expected": "On pristine BASE before edits, run three times: each exit 0, 309 pass, 0 fail, 7 files; no coverage table. Retain exit codes and pass counts. These are baseline controls, not regression tests."
+        },
+        {
+          "command": "for suite in src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts; do bun --config=\"$E\" test \"$suite\" || exit $?; done",
+          "expected": "On pristine BASE before edits, repeat this sequence as three rounds over all seven files (21 runs): every command exits 0, 0 fail; per-file pass counts in order 52, 40, 32, 77, 46, 27, 35 in every round. Record each suite, round, exit code and pass count separately. No coverage table. This repeats the revised plan's B2 evidence: all 21 per-file controls already passed on 45b2d48260476510fa697f0c9cb560fbae26432f. All claimed passing controls must be reliable; do not substitute a known-flaky file."
+        },
+        {
+          "command": "bun run check",
+          "expected": "On pristine BASE before edits, three runs each exit 0, 1993 pass, 0 fail across 90 files. Lint, typecheck and full-suite coverage gate all pass with the unchanged bunfig.toml 80% line threshold. No exact coverage percentage is an expectation."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD && git diff \"$BASE\" HEAD -- src/token-routes.ts src/token-pages.ts src/probe-routes.ts src/probe-pages.ts",
+          "expected": "At the test-only commit before repair: exactly the seven listed src/server.*.test.ts paths are changed; second diff is empty, proving BASE production remains unchanged. No test/config/helper bypass; retain this commit SHA for red replay."
+        },
+        {
+          "command": "bun --config=\"$E\" test src/server.tokens.test.ts",
+          "expected": "After committing test additions and before production edits, three runs each exit 1 with failures specifically at expectCalloutsOnly/rendered-audit.ts:10 or new kind/wrapper assertions for legacy markup. Each run reproduces no-admin-token, expiry and all three self failures (404/invalid/wire); received legacy tags are state state-error or state state-warning sections. Also demonstrate failing tests for token refusal, revoked success, not-logged on revoke and secret pages, expired change and expired create sites. The minimal prototype's 48 pass/5 fail is historical evidence, not the expected count after all additions. Report actual counts and offending tags; coverage, timeouts, dependency failures or unrelated assertions do not qualify."
+        },
+        {
+          "command": "bun --config=\"$E\" test src/server.probes.test.ts",
+          "expected": "Against unchanged BASE production with the committed test changes, three runs each exit 1 for the same audit or new wrapper/kind assertions, with legacy alert/status paragraphs or shared self-banner state sections. Demonstrate refusal, not-logged on revoke and secret pages, expired change/add-location, revoked success and group warning. Retain offending tags and actual counts; no unrelated failures. The exact same tests must pass after repair."
+        },
+        {
+          "command": "for suite in src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts; do bun --config=\"$E\" test \"$suite\" || exit $?; done",
+          "expected": "With test-only changes and BASE production, repeat three times: every command exit 0, 0 fail; respective counts 32, 77, 46, 27, 35 (these files gain audit calls only). Identify these five as audit coverage controls, not regression tests."
+        },
+        {
+          "command": "bun --config=\"$E\" test src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts",
+          "expected": "After repair, three runs each exit 0, 0 fail, 7 files; 309 plus the individually listed newly added test cases pass. Record the number and names of added tests. All previously red tests pass unchanged, with message/wrapper/kind/role assertions retained for table T1-T9/P1-P7 and existing groupOf assertions green."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Completed change exits 0: lint, typecheck (including e2e) and full suite pass; 1993 plus the independently enumerated added tests pass, 0 fail, with unchanged 80% line coverage threshold. Every task ends green. Do not weaken checks or hooks; no exact coverage percentage expected."
+        },
+        {
+          "command": "rg -n 'state-(error|warning)|role=\"(alert|status)\"' src/token-routes.ts src/token-pages.ts src/probe-routes.ts src/probe-pages.ts; rg -n 'function alert' src/token-routes.ts src/probe-routes.ts",
+          "expected": "Both searches print nothing (rg exit 1 means no matches). Read the four modules' diff: every T1-T9/P1-P7 render site uses existing shared callout/alertCallout with escaped paragraph bodies and prescribed kind/role; no new local callout wrapper, text, behavioral or undefined-condition change."
+        },
+        {
+          "command": "rg -n 'expectCalloutsOnly|\\.body|\\.text\\(|getPage|postForm|replyOf|fetch\\(' src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts",
+          "expected": "Each suite contains an audit import and real calls (at least two expectCalloutsOnly occurrences). Read every HTML page-response path in all seven suites, including pages only status-checked, file-local GET/POST helpers, form-token reads, and incidents-write's raw body discard: every rendered page is audited; redirects with empty body, JSON and metrics are the only exclusions. Shared helpers and the existing Checks suites stay unchanged; an occurrence count alone is insufficient."
+        },
+        {
+          "command": "bun --config=\"$E\" test src/server.tokens.test.ts src/server.probes.test.ts",
+          "expected": "Exit 0, 0 fail; 92 plus individually enumerated added token/probe tests pass. Explicit escaping regression GET /tokens?revoked=<id> uses metadata name '<b>x</b> & co': success/status callout contains literal 'Revoked &lt;b&gt;x&lt;/b&gt; &amp; co (<id>).' with the fixture's concrete id and no '<b>x</b>'. Security review/tests cover hostile token names/probe locations containing '<script>', '\"><img src=x>' and '&amp;' in revoked notices and the probe group heading/warning context; output stays escaped. Hostile self-read status/body produces only classified fixed reasons. Existing secret non-disclosure and role/status assertions remain green; no secret enters a callout/log/metrics, no auth-order or form behavior change."
+        },
+        {
+          "command": "rg -n -i 'alert|callout|banner|notice|audit|expired|revoked|no active token' README.md docs/*.md && git diff \"$BASE\" HEAD -- README.md docs/configuration.md",
+          "expected": "Recheck the repository section's documentation inventory for every touched claim/text: each hit is changed (exact added lines) or unchanged and still true (proving line). Exactly README.md and docs/configuration.md change, each with one paragraph at the specified anchors; configuration paragraph also states roles remain and links tokens.md. Other docs, AGENTS.md and CLAUDE.md stay byte-identical to BASE and are protected. Leave unrelated historical preset wording untouched."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/configuration.md | grep '^-[^-]'",
+          "expected": "Prints nothing (grep exit 1 means no matches): existing documentation lines, route statuses and text descriptions are unchanged; only the two scoped paragraphs are added."
+        },
+        {
+          "command": "bun \"$MANUAL_DIR/fake-api.ts\"",
+          "expected": "Manual acceptance 9 preparation: create MANUAL_DIR with mkdtemp outside the target and write every helper with file tools there. fake-api.ts starts on 127.0.0.1 port 0, prints FAKE_API_URL and answers GET /admin/config with the literal revision sha256- followed by 64 a characters and empty checks/components/maintenance arrays, and GET /admin/tokens/self with the literal selfToken row specified in test/token-fixtures.ts:33-41; both answers carry content-type application/json and x-pulse-contract 1; all other paths return 404. Write secret.key with 64 lowercase hex fixture characters and mode 600, distinct from the fixture admin token. Write totp.ts using only node:crypto to compute independent RFC 6238 SHA-1 six-digit 30-second codes from base32, never src/totp.ts. Reserve a free loopback port P via port 0, closing that reservation before console startup. Keep the fake API running for phase 1 and retain its process handle. Setup with no admin token or an unreachable API cannot succeed and is not this preparation."
+        },
+        {
+          "command": "env -u PULSE_CONSOLE_ADMIN_TOKEN_FILE PULSE_API_URL=\"$FAKE_API_URL\" PULSE_CONSOLE_ADMIN_TOKEN=fixture-admin-token-922-manual-check-0000 PULSE_CONSOLE_DB=\"$MANUAL_DIR/console.db\" PULSE_CONSOLE_SECRET_KEY_FILE=\"$MANUAL_DIR/secret.key\" PULSE_CONSOLE_PORT=\"$P\" bun start",
+          "expected": "Manual acceptance 9 phase 1: with the fake API reachable and this fixture token (at least 32 characters), complete setup and authenticator enrolment. Use one curl cookie jar retained under MANUAL_DIR and Origin http://127.0.0.1:<P> on every POST; carry the csrf and form_token from each current form. Read the setup code from the log; GET /setup and POST /setup with code/csrf/form_token returns 303; GET /setup/owner and POST /setup/owner with csrf/form_token, api_url=FAKE_API_URL, fixture email/name, a 12+ character password twice and action=complete returns 303. GET /account/authenticator, POST action=new returns 303; GET again and read id=totp-secret; POST action=confirm with the independently computed totp.ts code returns 200. GET / returns 200. Preserve the database, secret key, port and cookie jar. Stop the console with SIGTERM and then stop the fake API before phase 2. Record actual commands, exits and statuses without real secrets."
+        },
+        {
+          "command": "env -u PULSE_CONSOLE_ADMIN_TOKEN -u PULSE_CONSOLE_ADMIN_TOKEN_FILE PULSE_CONSOLE_DB=\"$MANUAL_DIR/console.db\" PULSE_CONSOLE_SECRET_KEY_FILE=\"$MANUAL_DIR/secret.key\" PULSE_CONSOLE_PORT=\"$P\" PULSE_API_URL=http://127.0.0.1:9 bun start",
+          "expected": "Manual acceptance 9 phase 2: restart using the prepared database, key and port with neither token variable set, the fake API stopped and nothing listening at its saved URL. Expect the warning that PULSE_API_URL differs from the saved API URL and the saved URL is used. With the same cookie jar, GET /tokens and /probes each returns 200. Each body contains 'The console has no pulse-api token. Set PULSE_CONSOLE_ADMIN_TOKEN_FILE and restart the console.' exactly twice; state state- count is 0; role=alert count equals the count of '<section class=\"callout callout-error\" role=\"alert\">' and is at least 1, with an svg icon inside every such section; style= count is 0. Fixture admin token, password and setup code appear in no page, and the admin token appears in neither phase's log. Confirm shared styles/icons and unchanged controls, record actual launch/setup/request commands, statuses and counts, stop the console and delete all disposable helpers after retaining sanitized evidence outside the target. No fixture or evidence file enters the target."
+        },
+        {
+          "command": "for iteration in 1 2 3; do (cd \"$BASE_COPY\" && /usr/bin/time -f 'base user=%U sys=%S' bun --config=\"$E\" test src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts) || exit $?; /usr/bin/time -f 'branch user=%U sys=%S' bun --config=\"$E\" test src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts || exit $?; done",
+          "expected": "Use pristine BASE_COPY outside target, same Bun and node_modules as branch, no concurrent task test load. Six interleaved runs in base/branch/base/branch/base/branch order all exit 0; base 309 pass, branch 309 plus enumerated added tests, all 0 fail. Report each user+sys and mean(branch)-mean(base) seconds to two decimals. Timing delta is information only; do not gate on estimated +0.1 to +0.6 seconds, compare wall time or run Docker bench (#834)."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | sort",
+          "expected": "After final commit, exact sorted list of all 13 task files: README.md, docs/configuration.md, src/probe-pages.ts, src/probe-routes.ts, src/server.incidents-write.test.ts, src/server.incidents.test.ts, src/server.maintenance.test.ts, src/server.notifications.test.ts, src/server.probes.test.ts, src/server.status-page.test.ts, src/server.tokens.test.ts, src/token-pages.ts, src/token-routes.ts. Compare to this literal independent allowed list, never infer allowed paths from the diff."
+        },
+        {
+          "command": "git diff --name-only --cached && git diff --name-only && git status --porcelain && git diff --exit-code \"$BASE\" HEAD -- \"${PROTECTED[@]}\"",
+          "expected": "After final commit, separately record cached diff empty, worktree diff empty, porcelain empty and protected committed diff exit 0. Derive full PROTECTED from git ls-tree -r --name-only \"$BASE\" minus the exact 13 allowed paths. Includes all other docs, shared states/html/styles/icons/confirm/server, all test helpers, package.json/bun.lock/bunfig.toml/biome.json/tsconfig.json, all .github paths, AGENTS.md and CLAUDE.md. No untracked fixture or evidence files."
+        },
+        {
+          "command": "python3 \"$EVIDENCE/check-scope.py\" --repo . --base \"$BASE\" --allowed src/token-routes.ts src/token-pages.ts src/probe-routes.ts src/probe-pages.ts src/server.tokens.test.ts src/server.probes.test.ts src/server.incidents.test.ts src/server.incidents-write.test.ts src/server.maintenance.test.ts src/server.notifications.test.ts src/server.status-page.test.ts README.md docs/configuration.md && python3 \"$EVIDENCE/scope-fixtures.py\" --checker \"$EVIDENCE/check-scope.py\"",
+          "expected": "Create these external evidence tools with file tools to implement Repository: console / Scope checks 1-8, then run the identical checker on target and disposable git-init fixtures. Real target and clean allowed fixture commit pass. Fixture protected-only worktree change fails checks 3/4; staged protected change fails 2; committed protected change fails 1/5; untracked file fails 4. Stage protected change then restore only worktree bytes to BASE: still fail 2; commit protected change then restore only worktree bytes to BASE: still fail 1/5. Independently evaluate every check so dirty worktree cannot mask committed violations. Record each HEAD/index/worktree result; fixture driver exits 0 only when all seven cases give the specified verdicts. Finish target clean; no fixture or evidence file enters its diff."
+        },
+        {
+          "command": "git diff --unified=0 \"$BASE\" HEAD && git status --porcelain",
+          "expected": "Read every added line, including inline comments; PR body lists every added comment, or 'none' only after full read. No new test files. Completion evidence contains issue reference, immutable BASE and test-only commit SHA, baseline/red/green/full-check commands/exits/counts and added test names, legacy tags, docs inventory, security checklist, scope outputs and all fixture verdicts, six-run CPU table/delta, manual commands/result, and known limits: duplicated expired-text constant, existing local post helpers, other server suites without audit. Explain no extra runtime request/query/startup work or wire changes. No AI attribution or secrets; status empty."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">Settings</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a><a class="la-iconbtn la-iconbtn--sm" href="SHSignIn.dc.html" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></a><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content" style="--cs-max: 1000px">
+<div class="page-head">
+<div>
+<h1 class="page-title">Settings</h1>
+<p class="page-sub" title="Instance-wide settings of the console, stored in the console database. Only the owner changes them. A value set in the console's environment wins and shows here read-only.">Instance-wide settings of the console, stored in the console database. Only the owner changes them. A value set in the console's environment wins and shows here read-only.</p>
+</div>
+<button type="button" class="la-btn la-btn--primary">Save settings</button>
+</div>
+
+<section class="la-panel" aria-labelledby="g-h">
+<div class="la-panel__head"><h2 class="eb" id="g-h">Instance</h2></div>
+<div class="la-panel__body stack" style="gap: 18px;">
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="s-n">Instance name</label><p class="la-field__help" id="s-n-d">Shown on the sign-in, invite and reset pages.</p><input class="la-input" id="s-n" value="Quillbird monitoring" aria-describedby="s-n-d"></div>
+<div class="la-field"><span class="la-field__label" id="s-u">Console address</span><p class="la-field__help" id="s-u-d">Used in invite and reset links. Set by PULSE_CONSOLE_PUBLIC_URL, read-only here.</p><div class="secret" aria-labelledby="s-u" aria-describedby="s-u-d"><code>https://pulse.quillbird.example</code><span class="la-badge">environment</span></div></div>
+</div>
+<div class="la-field"><label class="la-field__label" for="s-sp">Public status page URL</label><p class="la-field__help" id="s-sp-d">Where pulse-status is served. Linked from the sign-in page. The status page itself is configured in pulse-status.</p><input class="la-input mono" id="s-sp" value="https://status.quillbird.example" aria-describedby="s-sp-d"></div>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="a-h">
+<div class="la-panel__head"><h2 class="eb" id="a-h">Two-factor</h2><span class="la-badge">owner only</span></div>
+<div class="la-panel__body stack" style="gap: 6px;">
+<label class="la-check"><input type="checkbox"><span class="la-check__text"><b>Require two-factor for everyone</b><span>Off by default. The owner and admins always need it. When on, members and viewers set up an authenticator app at their next sign-in. Today 4 of 6 members use it.</span></span></label>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="t-h" style="border-color: var(--error);">
+<div class="la-panel__head"><h2 class="eb" id="t-h">Transfer ownership</h2><span class="la-badge">owner only</span></div>
+<form class="la-panel__body stack" onSubmit="{{noop}}" style="gap: 16px;">
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">This instance has exactly one owner. The new owner must be an admin. After the transfer you become an admin and can no longer change settings or other admins.</p>
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="t-to">New owner</label><span class="la-select"><select id="t-to"><option selected="">Jonas Feld · admin</option><option>Noah Brandt · admin</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></div>
+<div class="la-field"><label class="la-field__label" for="t-c">Type <span class="mono">Jonas Feld</span> to confirm</label><input class="la-input" id="t-c" value="" autocomplete="off" aria-describedby="t-c-d"><p class="la-field__help" id="t-c-d">The name of the new owner, exactly as shown.</p></div>
+</div>
+<div class="row"><button type="submit" class="la-btn la-btn--primary" style="background: var(--error); border-color: var(--error); color: var(--on-strong);">Transfer ownership to Jonas Feld</button><span class="lbl">The change is in the Activity log.</span></div>
+</form>
+</section>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -38,6 +38,7 @@ jobs:
             pulse-website
             pulse-console
             pulse-deploy
+            pulse-agent
 
       - name: Start a factory run
         env:

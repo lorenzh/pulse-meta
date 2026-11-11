@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "target": "probe",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Result posts refuse redirects and eager decoding, and API log messages stay bounded",
+      "files": [
+        "src/client.ts",
+        "src/client.api-redirect.test.ts",
+        "src/client.result-redirect.test.ts",
+        "src/client.result-encoding.test.ts",
+        "src/client.result-memory.test.ts",
+        "test/client-result-memory-child.ts",
+        "src/client.long-id.test.ts",
+        "README.md",
+        "docs/configuration.md",
+        "docs/troubleshooting.md",
+        "docs/operation.md",
+        "docs/development.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: probe, all Behavior, Docs, Tests and Completion evidence; Decisions 1-7; Required behavior R1-R9; Counterexamples and Statistics; Scope verification; Performance impact; Security impact; Disclosure rule; Rollout order; Contract fields; Acceptance evidence (whole feature). One final task: the small production change is confined to src/client.ts; its transport, buffer, memory, log and documentation checks validate that change together. Keep the separate post fetch; send manual redirects, decompress: false through a local unexported init type, and accept-encoding: identity. Preserve URL, method, body, authentication, timeout and caller signal. Check wire version on every answer before classifying: all 300-399 retry; 204 accepts absent/empty/trimmed case-insensitive identity coding and otherwise retries; every other status keeps its current outcome and diagnostic regardless of coding. A redirect adds no diagnostic; the existing wire-mismatch line is the explicit exception. Classify before best-effort body cancellation without awaiting cancellation; never read or decode the post body. Update the PostOutcome comment. Bound all client.ts check-ID log interpolations with the existing quote helper, and logInvalid's validation text with capReason. Keep full IDs in validation, checks, result bodies, headerDenial and skip deduplication. Keep the inherited read-redirect and JSON protections as controls, with no contract downgrade, pin change or rewrite of the read path. Update every required doc, including the literal startup/reload JSON diagnostic in README's API transport paragraph. Apply the spec's narrow real-time exception only to memory sampling and child supervision; inject all retry/reload/fetchChecks timing. No new dependency, exported name, setting, outcome or wire shape. If the base already has the stated post/log fixes, or satisfying the section needs a protected change, request a needs-input hold.",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD)",
+          "expected": "Before the first edit, record this full implementation-base SHA in task evidence and retain it for every BASE comparison. Verify the remaining post transport and log-bound fixes are absent; inherited read redirects and fixed JSON diagnostics are already present."
+        },
+        {
+          "command": "bash \"$SCRATCH/scope-fixture.sh\"",
+          "expected": "Create the disposable script and Git fixture outside the repository, using one allowed file and one protected file. Before relying on the five scope checks, record each check separately for all seven states in plan.md Scope verification: clean control, all five pass and check 1 empty; allowed committed, check 1 allowed singleton and checks 2-5 pass; protected unstaged, checks 3 and 4 detect while 1,2,5 pass; protected staged, checks 2 and 4 detect while 1,3,5 pass; protected staged then worktree restored to BASE, git diff BASE empty but checks 2,3,4 detect; protected committed with clean index/worktree, check 1 lists protected path, check 5 exits 1 and 2-4 pass; protected committed then worktree restored to BASE, git diff BASE empty but checks 1,3,4,5 detect and 2 passes. Verify exact-path rejection against the task's independently listed allowed/protected paths. Remove the fixture and script. Never prove this by editing a protected file in the actual target."
+        },
+        {
+          "command": "bun install --frozen-lockfile",
+          "expected": "Exit 0 under Bun 1.4.0; no dependency or lockfile change. Keep contract pin 96f33aaa85188c0794dedca89035f9c5500f85ee and config pin 04108fa0c67d9a79c0f6d1ade4dd78df3ad8a4a7. The child helper is covered by lint and typecheck, excluded from test coverage and collection, and excluded from the image without changing tooling or Docker files."
+        },
+        {
+          "command": "bun test src/client.result-redirect.test.ts",
+          "expected": "0 failed tests on the branch; only the focused run's global coverage gate may cause a nonzero exit. All regression titles in Repository: probe Tests are covered: same-origin 307; cross-origin 301,302,303,307,308; HTTPS-to-HTTP with certificate verification retained; 300 and 302 without Location; and real-buffer delivery after a redirect. Every 3xx returns retry and every redirect target receives 0 requests; matching or absent wire header produces 0 lines. The wire-mismatch diagnostic is the explicit exception: exactly 1 existing mismatch line, no extra redirect line, retry outcome on the branch. The real buffer retains 2 results, uses injected sleep/now with first backoff 1000 ms, delivers them in order after direct 204, and records 0 rejected drops and 0 target requests. Preserve verification with a runtime test CA, no global TLS bypass or committed key material."
+        },
+        {
+          "command": "bun test src/client.result-encoding.test.ts",
+          "expected": "0 failed tests on the branch; only global coverage may cause a nonzero exit. Regressions prove the request coding equals literal identity and a non-identity or combined coding on 204 returns retry. Controls prove absent, empty and trimmed case-insensitive identity coding on 204 is accepted; encoded 503/429 retry; encoded 401 is rejected with the existing token diagnostic; encoded 404 is unknown-check; encoded 200 is rejected with the existing HTTP diagnostic. A stalled 503 resolves retry before the server releases its body; no body reader or decoder is used, cancellation is best-effort and not awaited. Direct 204 retains POST /results, application/json, authentication, full Result JSON and accepted outcome. Preserve ordinary thrown-error, timeout, abort, 403 and wire behavior."
+        },
+        {
+          "command": "bun test src/client.result-memory.test.ts",
+          "expected": "0 failed tests on the branch; only global coverage may cause a nonzero exit. Use one child importing the real postResult for M0-M3 in order: M0 small identity 204 accepted; M1 large encoded 200 rejected; M2 large encoded 503 with wire mismatch retry and exactly 1 mismatch line; M3 large encoded 307 retry and parent-observed redirect target count 0. Each case's peak RSS growth and the whole-child growth are at most 64 MiB, rounded down using 2^20 bytes per MiB. After Bun.gc(true), sample baseline before each call and RSS at least every 5 ms through 1000 ms after return; whole-child growth is the maximum sample over all cases minus the first baseline, with no averaging. Parent input generation user+system CPU is at most 0.1 s. Real time is permitted only for RSS measurement and child supervision: 30 s kill timer and explicit 60 s test timeouts, cleared on exit. No real retry, reload, fetchChecks delay or reliance on the real 10 s post timeout. Report outcomes, growth and marker/mismatch booleans only; never print inputs, bodies, received header values or credentials."
+        },
+        {
+          "command": "bun test src/client.long-id.test.ts",
+          "expected": "0 failed tests on the branch; only global coverage may cause a nonzero exit. Regression titles cover invalid-record ID, validation text, header skip/denial and both result-drop paths (401 and 400). Displayed ID is the first 80 UTF-16 units plus ellipsis; skipped-record validation text is at most 1000 units, exactly 1000 ending with ellipsis when truncated; every invalid-check line is at most 1200 characters. Expected text and bounds are literals from the spec, not imported limits or implementation-derived expectations. Full IDs remain in returned checks, validation, posted checkId and unchanged headerDenial. Control: 2 distinct long IDs sharing 80 leading units produce 2 lines, followed by 0 lines on a repeat load with the same logger."
+        },
+        {
+          "command": "bun test src/client.api-redirect.test.ts",
+          "expected": "0 failed tests on BASE and branch, apart from the focused global coverage gate. Keep both existing tests unchanged: authenticated check read is not redirected; invalid JSON from the api logs the fixed text at startup. Add controls for tokenless /checks 308 (target count 0; fetching checks failed: HTTP 308; prefix), authenticated 404 then fallback /checks 307 (paths exactly /probe/checks then /checks, target count 0, no further fallback), and malformed JSON through the real loadChecks inside startReloader. Inject reload timer/now and startup sleep. Malformed reload yields exactly 1 line: reloading checks failed: invalid JSON: response body is not valid JSON; keeping the current checks. It calls apply 0 times, retains current checks, and applies the later valid list exactly once. Startup carries invalid JSON: response body is not valid JSON and retries. No captured line contains the body marker, token or received header marker. These are inherited protections, not new fixes."
+        },
+        {
+          "command": "bun test src/client.result-redirect.test.ts src/client.result-encoding.test.ts src/client.result-memory.test.ts src/client.long-id.test.ts src/client.api-redirect.test.ts",
+          "expected": "Run the same new tests against BASE's production code in a scratch worktree outside the target, copying only the new/extended tests and memory child helper; never downgrade contract or alter BASE production to manufacture failures. Record red/green by every spec test title and reason. Required BASE failures: same/cross/downgrade redirects contact target; no-Location 3xx rejects/logs instead of retry; real-buffer redirect is followed or dropped; identity request differs; encoded/combined 204 accepts; long-ID and validation-text cases print full data. M0 passes. M1, M2 and whole-child each MUST fail because growth exceeds 64 MiB; M2's retry and mismatch line already pass and do not discriminate. M3 MUST fail because the target receives a request. Enlarge memory input within the 0.1 s input-CPU budget if necessary; if these exact memory failures cannot be established, hold with needs-input, never relabel or relax the budget. Every control actually passes on BASE: direct/identity delivery, ordinary encoded status outcomes, stalled body, inherited read/JSON protections, full-ID fidelity and deduplication. For the redirect wire-mismatch case, the diagnostic-once assertion is the BASE control; retry is the changed outcome covered by redirect regressions. All new tests pass on the branch. Remove scratch worktree and fixtures afterwards."
+        },
+        {
+          "command": "bun test src/client.test.ts src/buffer.test.ts src/reloader.test.ts src/check.redirect.test.ts",
+          "expected": "0 failed tests on BASE and branch; only focused global coverage may cause a nonzero exit. Existing suites remain unchanged, including direct requests, authentication, timeout/body cap/wire validation, 404-only read fallback, post status classification, buffer semantics, reload retention, monitored-target redirect rules, and skip-cache saturation at 10000 remembered IDs, one overflow line, recovery, missing versus empty IDs and distinct lone surrogates. No pre-existing failed control is reported as passing."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- src/client.ts",
+          "expected": "Review against Decisions 3,4,6 and Repository: probe Behavior. The only production changes are manual redirects, identity request coding, decompress: false via a local unexported type, status/header classification before non-awaited caught cancellation, the PostOutcome doc, and bounded check-ID/validation log interpolations. Every 300-399 is retry; only encoded 204 changes accepted to retry. 401/403, 404, 429/5xx and non-204 2xx outcomes remain status-based, regardless of coding. Wire mismatch remains diagnostic-only on every answer and is the sole permitted line on a redirect. No body is read or decoded. Full identities and headerDenial stay unchanged. No changes to readableId, skipKey, skipLogger, toError, requestChecks, loadChecks or fetchChecks beyond the specified log interpolations. All short existing diagnostic texts stay compatible."
+        },
+        {
+          "command": "bun run check",
+          "expected": "Exit 0 under Bun 1.4.0: Biome, ESLint (cognitive complexity at most 15 per function), workflow lint, strict TypeScript and full tests pass with at least 80% line coverage. No gate, dependency pin, shared tool configuration or CI rule is weakened. All required test files and test/client-result-memory-child.ts are checked under the unchanged pinned tooling."
+        },
+        {
+          "command": "bun run start",
+          "expected": "Perform the AGENTS.md service-start smoke check against a local fake API, with PULSE_API_URL, a local test token and PULSE_LOCATION=smoke. Observe API unreachable or busy: buffering results for a redirecting result endpoint and 0 redirect-target requests; after direct 204 delivery observe buffer empty again with delivered results and 0 dropped. Stop service and peers and delete temporary files. Public evidence reports only command shape and safe observed outcomes, never the token, response construction or a reproduction recipe."
+        },
+        {
+          "command": "TIMEFORMAT='%U %S'; time bun run test",
+          "expected": "Run three times on unchanged implementation BASE and three on branch, on one machine. Record all user+system CPU sums, each median and branch-minus-BASE median delta; never use means. Required delta is at most +0.2 s or the conditional fallback benchmark passes. The probe.test_cpu_s budget is 2.3 s with 10% regression policy and 0.2 s floor from the spec's independently cited api bench sources. Historical 1.53 s is not this run's baseline. The memory cases share one child; input generation is at most 0.1 s. Other probe metrics and other services' metrics remain unaffected for the reasons in Performance impact."
+        },
+        {
+          "command": "bun bench/run.ts --a \"$API_MAIN\" --b \"$API_MAIN\" --others-ref main --b-ref \"probe=$TARGET_REF\" --rounds 1",
+          "expected": "Run only if primary test CPU delta exceeds +0.2 s, from an installed scratch pulse-api checkout outside the target, with Docker Compose. Independently record current api main SHA as API_MAIN for both sides and the pushed probe candidate SHA as TARGET_REF. Report probe rows under the spec's cited budgets/regression policy. A probe.test_cpu_s FAIL requires reducing test cost, never raising a budget/floor/threshold; if it still fails, hold with needs-input. Delete the scratch checkout. At primary delta at most +0.2 s this fallback is explicitly not required."
+        },
+        {
+          "command": "git show \"$BASE\":README.md | grep -cF 'invalid JSON: response body is not valid JSON'",
+          "expected": "Exactly 0 on BASE (grep exits 1 for zero matches). This establishes that the README documentation acceptance is discriminating; inherited runtime JSON protection remains a passing control."
+        },
+        {
+          "command": "for literal in 'invalid JSON: response body is not valid JSON' startup reload redirect 204 PULSE_API_URL; do awk -v RS= '/follow no redirect/' README.md | grep -cF \"$literal\"; done",
+          "expected": "On HEAD, each of the six counts is at least 1. Review that all literals are in the single API transport paragraph under Quick start, including the exact diagnostic in backticks. It explicitly says startup retries and reload keeps the current checks; neither parser details nor body text is logged. Naming the diagnostic only in docs or saying only a fixed text fails. Expected literals are specified here, not read from README to create expectations."
+        },
+        {
+          "command": "for literal in 'every encoded' 'all encoded'; do awk -v RS= '/follow no redirect/' README.md | grep -cF \"$literal\"; done",
+          "expected": "Both counts are exactly 0 (grep exits 1 for no matches). The paragraph says redirects and encoded 204 responses are buffered/retried, other encoded answers keep their status outcome and post bodies are never decoded. It does not claim every encoded answer retries."
+        },
+        {
+          "command": "for path in docs/troubleshooting.md docs/configuration.md; do git show \"$BASE\":\"$path\" | grep -cF 'invalid JSON: response body is not valid JSON'; grep -cF 'invalid JSON: response body is not valid JSON' \"$path\"; done",
+          "expected": "For each document: BASE count exactly 0, HEAD count at least 1. Both name the same fixed startup and reload diagnostic. BASE no-match grep exits 1, which is expected rather than a test failure."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- README.md docs/configuration.md docs/troubleshooting.md docs/operation.md docs/development.md",
+          "expected": "Every listed file changes. Read README and the three operator docs for agreement: API reads/posts follow no redirect; PULSE_API_URL is final; 3xx and encoded 204 are buffered/retried; other encoded answers retain status outcomes; post bodies are never decoded; displayed client IDs are cut at 80 units plus ellipsis and validation text at 1000. The exact invalid JSON: response body is not valid JSON applies to JSON parsing failures only, identically at startup and reload, without parser/body details; timeout, network, over-5-MiB, wire and encoding errors retain their own reasons. Troubleshooting adds the startup cause, reload reason and shortening behavior, and removes 3xx from final drops. Operation's retry, rejected and error metric descriptions match new classifications. Development documents test/ as an unshipped, uncollected memory-child helper, the openssl requirement for result-redirect tests, and the narrow real-time exception for RSS sampling/child supervision; retry/reload/fetchChecks timing remains injected. Monitored checks keep their redirect rules. No payload, response-generation parameter or reproduction command in docs."
+        },
+        {
+          "command": "Review candidate security checklist, counterexamples and PR completion evidence against plan.md",
+          "expected": "Security impact: yes. Exercise redirect containment (0 target requests), eager-decoding memory bound, secret-free diagnostics, fail-closed 204 coding and unchanged auth/status/timeout/body-limit/wire behavior. Cover every named Counterexample, including no-Location redirects, combined coding, ordinary encoded failures, wire mismatch, stalled cancellation, full-ID fidelity and deduplication. PR names #863, locations, classes, impacts and fix directions only; response-memory is P2-class, not P3-only. Distinguish inherited passing controls from new regressions. Report full BASE, per-title red/green and failure class, per-case/whole-child memory growth, input CPU, six CPU samples/medians, full checks, smoke results, literal README/doc counts and five separate scope outputs with the seven-state fixture proof. Never publish inputs, construction recipes, response-generation parameters, received header values, bodies, credentials or reproduction commands. Preserve rollout and duplicate-result delivery semantics; no change to shared repositories, pins, wire, outcomes, settings or exports."
+        },
+        {
+          "command": "git diff \"$BASE\" HEAD -- package.json bun.lock",
+          "expected": "Empty output: dependency pins and lockfile are unchanged."
+        },
+        {
+          "command": "git diff --name-only \"$BASE\" HEAD | sort",
+          "expected": "After the last commit, exactly these 12 required paths, one per line in this sorted order: README.md; docs/configuration.md; docs/development.md; docs/operation.md; docs/troubleshooting.md; src/client.api-redirect.test.ts; src/client.long-id.test.ts; src/client.result-encoding.test.ts; src/client.result-memory.test.ts; src/client.result-redirect.test.ts; src/client.ts; test/client-result-memory-child.ts. No optional or additional path. Inspect every allowed diff for unrelated edits."
+        },
+        {
+          "command": "git diff --name-only --cached",
+          "expected": "After the last commit, empty output: index independently checked against HEAD."
+        },
+        {
+          "command": "git diff --name-only",
+          "expected": "After the last commit, empty output: working tree independently checked against index."
+        },
+        {
+          "command": "git status --porcelain",
+          "expected": "After the last commit, empty output, including untracked files. Scratch evidence and temporary fixture/checkouts are outside the target and removed."
+        },
+        {
+          "command": "git diff --exit-code \"$BASE\" HEAD -- AGENTS.md CLAUDE.md package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml Dockerfile .dockerignore .github scripts src/buffer.ts src/reloader.ts src/main.ts src/check.ts src/check-domain.ts src/reason.ts src/scheduler.ts src/client.test.ts src/buffer.test.ts src/reloader.test.ts src/check.redirect.test.ts src/client.http-options.test.ts src/client.reserved-header.test.ts src/client.probed-types.test.ts src/tls.test.ts docs/index.md docs/install.md LICENSE",
+          "expected": "After the last commit, exit 0 and empty output for every protected path. Use recorded BASE-to-HEAD, never a BASE-to-working-tree substitute; restored-worktree states must remain detectable by the independent checks."
+        },
+        {
+          "command": "git diff --check \"$BASE\" HEAD",
+          "expected": "Exit 0; no whitespace errors in the final committed change."
+        }
+      ]
+    }
+  ]
+}

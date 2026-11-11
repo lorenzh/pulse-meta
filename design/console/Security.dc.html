@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account security · pulse Console</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="Main.dc.html" aria-label="pulse console home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">console</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="Main.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="Checks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="Incidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">1 open</span></a>
+<a class="la-side__link" href="StatusPage.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>Status page</a>
+<a class="la-side__link" href="Notifications.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Notifications</a>
+<p class="la-side__group">Organisation</p>
+<a class="la-side__link" href="Team.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="ApiKeys.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>API keys</a>
+<a class="la-side__link" href="AgentAccess.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path></svg>Agent access</a>
+<a class="la-side__link" href="AiAssist.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6M10 22h4"></path></svg>AI assistance</a>
+<a class="la-side__link" href="Billing.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"></rect><path d="M2 10h20"></path></svg>Billing</a>
+<a class="la-side__link" href="Security.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Account security</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><button type="button" class="la-trigger cs-ws" aria-haspopup="menu" aria-expanded="false"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird</b><span>Team plan · eu</span></span><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg><span class="la-sr">Switch organisation</span></button><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="Main.dc.html">Mara Lindqvist</a></li><li aria-hidden="true">/</li><li aria-current="page">Account security</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content" style="--cs-max: 1120px">
+<div class="page-head">
+<div>
+<h1 class="page-title">Account security</h1>
+<p class="page-sub" title="How you sign in to pulse as mara@quillbird.example. These settings are yours, not the organisation’s.">How you sign in to pulse as <span class="mono">mara@quillbird.example</span>. These settings are yours, not the organisation’s.</p>
+</div>
+</div>
+
+<section class="la-panel" aria-labelledby="tfa-h">
+<div class="la-panel__head"><h2 class="eb" id="tfa-h">Two-factor authentication</h2>
+<sc-if value="{{isOn}}" hint-placeholder-val="{{false}}"><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">On since 2026-10-30</span></span></sc-if>
+<sc-if value="{{isSetup}}" hint-placeholder-val="{{true}}"><span class="la-badge la-badge--error">required for owners</span></sc-if>
+</div>
+<sc-if value="{{isSetup}}" hint-placeholder-val="{{true}}">
+<div class="la-panel__body stack" style="gap: 20px;">
+<div class="la-callout la-callout--warning"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4M12 17h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Finish setup to keep managing billing</p><p class="la-callout__text">Owners need an authenticator app. Until then, Billing and deleting the organisation are locked.</p></div></div>
+<ol class="steps" aria-label="Setup steps"><li class="done"><span class="n">1</span>Scan</li><li aria-current="step"><span class="n">2</span>Confirm code</li><li><span class="n">3</span>Save recovery codes</li></ol>
+<div style="display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start;">
+<div role="img" aria-label="QR code for your authenticator app" style="width: 200px; height: 200px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--field); display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px;"><span class="lbl">[QR CODE]<br>otpauth://totp/pulse:mara</span></div>
+<div class="stack" style="gap: 16px;">
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Scan the code with an authenticator app, or enter the key by hand. Then type the 6-digit code it shows.</p>
+<div class="la-field"><span class="la-field__label" id="k-l">Setup key</span><div class="secret" aria-labelledby="k-l" style="max-width: 420px;"><code>EXAM PLEE XAMP LEEX AMPL E234</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field" style="max-width: 260px;"><label class="la-field__label" for="otp">6-digit code</label><input class="la-input mono" id="otp" inputmode="numeric" autocomplete="one-time-code" value="482 913" style="font-size: 20px; letter-spacing: 0.2em;" aria-describedby="otp-s"><p class="cs-fstatus cs-fstatus--ok" id="otp-s"><svg class="cs-fstatus__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Code matches</p></div>
+<div class="row"><button type="button" class="la-btn la-btn--primary" onClick="{{turnOn}}">Turn on two-factor</button><span class="lbl">Next: 10 one-time recovery codes</span></div>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
+<div class="la-panel__body stack" style="gap: 14px;">
+<div class="spread"><span><b style="font-weight: 500;">Authenticator app</b><span class="lbl" style="display: block;">added 2026-10-30 · last used 14:30</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm">Replace app</button></div>
+<div class="spread"><span><b style="font-weight: 500;">Recovery codes</b><span class="lbl" style="display: block;">10 of 10 left · created 2026-10-30</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm">Create new codes</button></div>
+<p class="lbl" style="margin: 0;">Owners cannot turn two-factor off. Hand over ownership first.</p>
+</div>
+</sc-if>
+</section>
+
+<div class="g2">
+<section class="la-panel" aria-labelledby="pk-h">
+<div class="la-panel__head"><h2 class="eb" id="pk-h">Passkeys · 3</h2><button type="button" class="la-btn la-btn--secondary la-btn--sm">Add passkey</button></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<li class="spread" style="padding: 12px 20px; border-bottom: 1px solid var(--rule);"><span class="row-12"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"></path></svg><span class="who"><b>Work laptop</b><span>synced passkey · used today 08:12</span></span></span><button type="button" class="la-iconbtn icon-btn--danger" aria-label="Remove passkey Work laptop"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg></button></li>
+<li class="spread" style="padding: 12px 20px; border-bottom: 1px solid var(--rule);"><span class="row-12"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"></rect><path d="M12 18h.01"></path></svg><span class="who"><b>Phone</b><span>synced passkey · used 2026-10-28</span></span></span><button type="button" class="la-iconbtn icon-btn--danger" aria-label="Remove passkey Phone"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg></button></li>
+<li class="spread" style="padding: 12px 20px;"><span class="row-12"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg><span class="who"><b>Security key</b><span>hardware key · used 2026-09-30</span></span></span><button type="button" class="la-iconbtn icon-btn--danger" aria-label="Remove passkey Security key"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg></button></li>
+</ul>
+</section>
+
+<section class="la-panel" aria-labelledby="si-h">
+<div class="la-panel__head"><h2 class="eb" id="si-h">Sign-in methods</h2></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<li class="spread" style="padding: 12px 20px; border-bottom: 1px solid var(--rule);"><span class="who"><b>Password</b><span>changed 2026-06-02</span></span><button type="button" class="la-btn la-btn--secondary la-btn--sm">Change password</button></li>
+<li class="spread" style="padding: 12px 20px; border-bottom: 1px solid var(--rule);"><span class="who"><b>GitHub</b><span>connected as mlindqvist-qb</span></span><button type="button" class="la-btn la-btn--ghost la-btn--sm">Disconnect</button></li>
+<li class="spread" style="padding: 12px 20px;"><span class="who"><b>Single sign-on</b><span>SAML and OIDC come later on Business</span></span><span class="la-badge">not available</span></li>
+</ul>
+</section>
+</div>
+
+<section class="la-panel" aria-labelledby="se-h">
+<div class="la-panel__head"><h2 class="eb" id="se-h">Sessions · 4</h2><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Sign out all other sessions</button></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Device</th><th scope="col">Signed in with</th><th scope="col">Location</th><th scope="col">Last active</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="tt"><b>Firefox on Linux</b><span class="sub">this session</span></td><td class="m">passkey + app code</td><td class="m">Germany · 203.0.113.24</td><td class="m">now</td><td style="text-align: right;"><span class="lbl">current</span></td></tr>
+<tr><td class="tt"><b>Safari on iPhone</b></td><td class="m">passkey</td><td class="m">Germany · 198.51.100.61</td><td class="m">2026-10-28 21:04</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Sign out</button></td></tr>
+<tr><td class="tt"><b>Chrome on macOS</b></td><td class="m">GitHub</td><td class="m">Netherlands · 192.0.2.17</td><td class="m">2026-10-24 10:40</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Sign out</button></td></tr>
+<tr><td class="tt"><b>pulse CLI</b><span class="sub">device login</span></td><td class="m">email + password</td><td class="m">Germany · 203.0.113.24</td><td class="m">2026-10-20 16:55</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm">Sign out</button></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Sessions end after 30 days without activity. A new sign-in from an unknown device sends you an email.</span></div>
+</section>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird · Team plan · eu</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"twoFactor":{"editor":"enum","options":["setup","on"],"default":"setup"},"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, tfa: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const tfa = this.state.tfa ?? this.props.twoFactor ?? 'setup';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isSetup: tfa === 'setup', isOn: tfa === 'on',
+      turnOn: () => this.setState({ tfa: 'on' })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -101,6 +101,14 @@ the file or code under test in the same run makes a check that can never fail. C
 artifacts that are produced independently is allowed (for example `git diff --exit-code -- dist`
 after a build, or served bytes against the file in `public/`).
 
+## Reuse
+
+Read the code conventions in `{{project.root}}/docs/code-conventions.md` and each target's `AGENTS.md`.
+Each repository section names the shared modules (helpers, components, validators, test helpers)
+that the change must use or extend, with their paths. When the change needs markup, a query, a
+check or logic that already exists in one place, the section says to extract it into a shared
+module, with its test, before the second use.
+
 Create the artifact directory if needed. Write the spec to
 `{{variables.work_directory}}/{{issue.id}}/plan.md`.
 

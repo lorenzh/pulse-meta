@@ -29,6 +29,7 @@ body{margin:0}
 .pl ::selection{background:var(--tint)}
 .pl .skip:focus{left:16px!important;z-index:10}
 .pl .m-panel a{color:var(--text);text-decoration:none}
+.pl .ph{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;background:var(--tint);color:var(--accent-text);font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;line-height:1.5;vertical-align:middle;white-space:nowrap}
 @media (max-width:719px){.pl .hdr-row{flex-wrap:nowrap!important}.pl .hdr-nav,.pl .hdr-gh{display:none!important}.pl .menu-btn{display:inline-flex!important}.pl .m-panel[data-open="true"]{display:flex!important}.pl .flow-arrow{transform:rotate(90deg)}.pl .flow-gap{min-width:100%!important;flex-direction:row!important;gap:12px!important}}
 @media (prefers-reduced-motion:reduce){.pl *{transition:none!important}.pl .card-link:hover{transform:none}}
 .pl{--section-space:clamp(64px,8vw,128px)}
@@ -306,7 +307,7 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Latency and SLOs</h3>
-<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Response-time percentiles per HTTP check and availability objectives with an error budget.</p>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Response-time percentiles per HTTP check and availability objectives with an error budget. The status page can show a 90-day p50/p95 chart and the budget left.</p>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
@@ -318,13 +319,25 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Notifications</h3>
-<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Slack, Microsoft Teams, email and HMAC-signed webhooks, with reminders while an incident stays open.</p>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Slack, Microsoft Teams, email, webhooks (optionally HMAC-signed) and a file, with reminders while an incident stays open.</p>
 </div>
 
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
 <h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Metrics and health</h3>
-<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Every service exposes <code style="font-family: var(--mono); font-size: 0.9em; background: var(--surface); padding: 1px 6px; border-radius: 6px;">/metrics</code> for Prometheus and a health endpoint for your orchestrator.</p>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Every service exposes <code style="font-family: var(--mono); font-size: 0.9em; background: var(--surface); padding: 1px 6px; border-radius: 6px;">/metrics</code> for Prometheus and health endpoints for your orchestrator.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">CDN-ready caching</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Status answers, the feed and badges carry an ETag and answer 304 to a repeat, so a CDN or proxy in front can take the load.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 24px; border: 1px solid var(--line-strong); border-radius: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14a9 3 0 0 0 18 0V5"></path><path d="M3 12a9 3 0 0 0 18 0"></path></svg>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Hot backups</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">One SQLite file in WAL mode. The backup command copies it while the API keeps writing.</p>
 </div>
 
 </div>
@@ -336,7 +349,7 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 <div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
 <p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">How it works</p>
 <h2 id="how-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Four small services, one shared contract</h2>
-<p style="margin: 0; color: var(--lead);">Probes run the checks and post results. The API decides the state of every check and keeps the incidents. The status page and the notifier only read from it.</p>
+<p style="margin: 0; color: var(--lead);">Probes run the checks and post results. The API decides the state of every check and keeps the incidents. The status page and the notifier only read from it. An optional fifth service, the console, will manage the API through its admin API.</p>
 </div>
 
 <div class="stg" style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px;">
@@ -369,7 +382,175 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 </div>
 </div>
 </div>
-<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">All four share <span style="font-family: var(--mono);">pulse-contract</span>: the wire types, runtime validators and a version header, so a mismatched deploy fails loudly instead of quietly.</p>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding: 20px; border: 1px dashed var(--line-strong); border-radius: 12px;">
+<div style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 8px;">
+<span style="font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Optional<span class="ph">in progress</span></span>
+<span style="font-family: var(--mono); font-size: 17px; font-weight: 600;">pulse-console</span>
+</div>
+<span style="flex: 2 1 420px; min-width: 0; font-size: var(--fs-small); color: var(--lead);">A web console for your own instance. It talks only to the pulse-api admin API and keeps the admin token on its own server, never in the browser.</span>
+</div>
+<p style="margin: 0; font-size: var(--fs-small); color: var(--muted);">The four core services share <span style="font-family: var(--mono);">pulse-contract</span>: the wire types, runtime validators and a version header, so a mismatched deploy fails loudly instead of quietly.</p>
+</div>
+</section>
+
+<section class="fs" id="next" aria-labelledby="next-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 56px;">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
+<p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Coming next</p>
+<h2 id="next-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">Self-hosting without the busywork</h2>
+<p style="margin: 0; color: var(--lead);">Two pieces are on their way: a web console for your own instance and a setup that starts in one command. Both are open source, like the rest of pulse.</p>
+</div>
+<div class="stg" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: clamp(16px, 3vw, 32px);">
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 28px; border: 1px solid var(--tint-line); border-radius: 16px; background: var(--tint);">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+<span class="ph" style="background: var(--bg);">In progress</span>
+</div>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">A console for your own instance</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">Manage checks, incidents, tokens, notification channels and the status page in a web UI instead of JSON files.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small);">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--accent-text);"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>The pulse-api admin token stays on the console’s server, never in the browser.</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--accent-text);"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>An invite-only team with roles, for your one organisation.</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--accent-text);"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"></path></svg>Open source under MIT, an optional fifth container next to the stack.</li>
+</ul>
+<p style="margin: 0; font-size: var(--fs-label); color: var(--muted);">Today pulse-console is a scaffold with one page and health routes. Login and the management screens come next.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 28px; border: 1px solid var(--line-strong); border-radius: 16px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent-text);"><path d="m4 17 6-6-6-6M12 19h8"></path></svg>
+<span class="ph">Coming soon</span>
+</div>
+<h3 style="margin: 0; font-size: var(--fs-h3); line-height: 1.3; font-weight: 500; letter-spacing: -0.01em;">Up in one command</h3>
+<p style="margin: 0; font-size: var(--fs-small); line-height: 1.6; color: var(--lead);">The <span style="font-family: var(--mono); font-size: 0.9em;">pulse</span> CLI wizard writes your settings with random tokens and starts a ready Compose setup.</p>
+<div role="img" aria-label="Terminal: pulse init, pulse up, pulse status" style="background: var(--code); color: var(--code-text); border-radius: 12px; padding: 14px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.7; overflow-x: auto;">
+<div aria-hidden="true" style="white-space: pre;"><span style="color: #c29bd3;">$ </span>pulse init</div>
+<div aria-hidden="true" style="white-space: pre;"><span style="color: #c29bd3;">$ </span>pulse up</div>
+<div aria-hidden="true" style="white-space: pre;"><span style="color: #c29bd3;">$ </span>pulse status</div>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-small);">
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Compose setups for every need: minimal, full, demo and dev.</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Released images, pinned by digest, instead of builds from main.</li>
+<li style="display: flex; gap: 10px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto; margin-top: 4px; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>One binary for Linux (x64, arm64) and macOS (arm64).</li>
+</ul>
+<p style="margin: 0; font-size: var(--fs-label); color: var(--muted);">It will live in pulse-deploy. Until then, start with the Compose file in pulse-api.</p>
+</div>
+
+</div>
+<p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px; border: 1px dashed var(--accent); border-radius: 12px; font-size: var(--fs-small); color: var(--text);"><span class="ph" style="margin-left: 0;">Planned</span><span style="flex: 1 1 320px; min-width: 0;"><strong>Bring your own agent.</strong> An optional MCP endpoint in the console lets your AI agent read status, checks and incidents and draft changes you confirm. Off by default.</span></p>
+</div>
+</section>
+
+<section class="fs" id="demo" aria-labelledby="demo-title">
+<div style="max-width: 1120px; margin: 0 auto; padding: var(--section-space) clamp(20px, 5vw, 40px); display: flex; flex-direction: column; gap: 56px;">
+<div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
+<p style="margin: 0; font-family: var(--mono); font-size: var(--fs-tag); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">See it in action</p>
+<h2 id="demo-title" style="margin: 0; font-size: var(--fs-h2); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance;">From the first command to the page your users read</h2>
+<p style="margin: 0; color: var(--lead);">Previews drawn from the design, not screenshots: the public status page, the console that is in progress and the setup that comes with pulse-deploy.</p>
+</div>
+<div class="stg" style="display: flex; flex-wrap: wrap; gap: clamp(16px, 3vw, 32px); align-items: stretch;">
+
+<figure style="flex: 1.25 1 480px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 12px;">
+<div role="img" aria-label="Preview of a public status page: Acme status with one degraded component, an identified incident with two updates and 90-day uptime bars per component" style="flex: 1 1 auto; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--bg); overflow: hidden;">
+<div aria-hidden="true">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface);">
+<span style="width: 10px; height: 10px; border-radius: 999px; background: var(--line-strong);"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: var(--line-strong);"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: var(--line-strong);"></span>
+<span style="flex: 1 1 auto; margin-left: 8px; padding: 3px 12px; border-radius: 999px; background: var(--bg); font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">status.acme.example</span>
+</div>
+<div style="padding: 20px 22px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="font-weight: 700; font-size: 18px; letter-spacing: -0.01em;">Acme status</span>
+<span style="display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--warning-tint); color: var(--warning); font-size: var(--fs-small); font-weight: 500;"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--warning);"></span>Partial degradation</span>
+</div>
+<div style="padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px;"><span style="font-weight: 600;">Checkout API is slow</span><span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--warning);">Identified</span></div>
+<div style="display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 4px 10px; font-size: var(--fs-small); color: var(--lead);">
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">14:21</span><span>A slow database query is the cause. A fix is rolling out.</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">14:02</span><span>Checkout responses are slower than usual. We are investigating.</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column;">
+<sc-for list="{{spComps}}" as="c" hint-placeholder-count="4">
+<div style="padding: 10px 0; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 6px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="flex: 1 1 auto; font-weight: 500; font-size: var(--fs-ui);">{{c.name}}</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">{{c.uptime}}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: {{c.color}};"><span style="width: 8px; height: 8px; border-radius: 999px; background: {{c.color}};"></span>{{c.state}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(90, minmax(0, 1fr)); gap: 1px;"><sc-for list="{{c.days}}" as="d" hint-placeholder-count="90"><span style="height: 18px; border-radius: 1px; background: {{d.bg}}; opacity: {{d.op}};"></span></sc-for></div>
+</div>
+</sc-for>
+<div style="display: flex; justify-content: space-between; padding-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted);"><span>90 days ago</span><span>today</span></div>
+</div>
+</div>
+</div>
+</div>
+<figcaption style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: var(--fs-small); color: var(--muted);"><span class="ph" style="margin-left: 0;">Preview</span>The public status page, with an incident and 90 days of uptime per component.</figcaption>
+</figure>
+
+<figure style="flex: 1 1 400px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 12px;">
+<div class="demo-term" role="img" aria-label="Terminal demo: pulse init picks the full setup and writes random tokens, pulse up starts five containers, pulse status shows the status page on port 8080 and the console on port 8082" style="flex: 1 1 auto; background: var(--code); color: var(--code-text); border-radius: 16px; overflow: hidden; font-family: var(--mono); font-size: 13px; line-height: 1.75;">
+<div aria-hidden="true" style="display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #3e3049;">
+<span style="width: 10px; height: 10px; border-radius: 999px; background: #54406a;"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: #54406a;"></span>
+<span style="width: 10px; height: 10px; border-radius: 999px; background: #54406a;"></span>
+<span style="margin-left: 8px; font-size: 12px; color: #a89b95;">~/pulse</span>
+</div>
+<div aria-hidden="true" style="padding: 18px 20px 22px; min-height: 300px; overflow-x: auto;">
+<sc-for list="{{demoLines}}" as="l" hint-placeholder-count="13"><div style="white-space: pre; min-height: 1.75em; color: {{l.color}};"><span style="color: #c29bd3;">{{l.prompt}}</span>{{l.text}}<span style="display: inline-block; width: 0.55em; height: 1.05em; background: #c29bd3; vertical-align: -0.15em; opacity: {{l.cur}};"></span></div></sc-for>
+</div>
+</div>
+<figcaption style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: var(--fs-small); color: var(--muted);"><span class="ph" style="margin-left: 0;">Coming with pulse-deploy</span>The planned setup wizard. Output shortened.</figcaption>
+</figure>
+
+<figure style="flex: 1 1 100%; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 12px;">
+<div role="img" aria-label="Preview of the pulse console: the checks list with five checks, their type, interval, state and latency" style="border: 1px solid var(--line-strong); border-radius: 16px; background: var(--bg); overflow: hidden;">
+<div aria-hidden="true" style="display: flex; flex-wrap: wrap; min-width: 0;">
+<div style="flex: 0 1 200px; min-width: 0; padding: 18px 14px; background: var(--surface); border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small);">
+<div style="display: flex; align-items: baseline; gap: 6px; padding: 0 8px 14px;"><span style="font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: -0.02em;">pulse</span><span style="display: inline-block; width: 0.55em; height: 1em; background: var(--accent); margin-left: -4px; align-self: center;"></span><span style="font-family: var(--mono); font-size: 12px; color: var(--muted);">console</span></div>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead);">Overview</span>
+<span style="padding: 7px 8px; border-radius: 6px; background: var(--tint); color: var(--text); font-weight: 500; display: flex; justify-content: space-between;">Checks<span style="font-family: var(--mono); font-size: 12px; color: var(--muted);">5</span></span>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead); display: flex; justify-content: space-between;">Incidents<span style="font-family: var(--mono); font-size: 12px; color: var(--warning);">1 open</span></span>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead);">Status page</span>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead);">Notifications</span>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead);">Tokens</span>
+<span style="padding: 7px 8px; border-radius: 6px; color: var(--lead);">Team</span>
+</div>
+<div style="flex: 1 1 520px; min-width: 0; padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+<div style="display: flex; flex-direction: column; gap: 2px;"><span style="font-family: var(--mono); font-size: 12px; color: var(--muted);">Acme / Checks</span><span style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em;">Checks</span></div>
+<div style="display: flex; gap: 8px;"><span style="display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: var(--fs-small); font-weight: 500;">Import checks.json</span><span style="display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--strong); color: var(--on-strong); font-size: var(--fs-small); font-weight: 500;">Add check</span></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12px;">
+<span style="padding: 3px 10px; border-radius: 999px; background: var(--strong); color: var(--on-strong);">All 5</span>
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);">Up 3</span>
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);">Degraded 1</span>
+<span style="padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong);">Maintenance 1</span>
+</div>
+<div style="overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px;">
+<div style="min-width: 560px; font-size: var(--fs-small);">
+<div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.2fr; gap: 12px; padding: 10px 16px; background: var(--surface); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);"><span>Check</span><span>Type</span><span>Every</span><span>State</span><span>p95 · last</span></div>
+<sc-for list="{{conRows}}" as="r" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 2fr 1fr 0.8fr 1.2fr 1.2fr; gap: 12px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--rule);">
+<span style="font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{r.name}}</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);">{{r.type}}</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label);">{{r.every}}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: var(--fs-label); color: {{r.color}};"><span style="width: 8px; height: 8px; border-radius: 999px; background: {{r.color}};"></span>{{r.state}}</span>
+<span style="font-family: var(--mono); font-size: var(--fs-label); color: var(--lead);">{{r.last}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+</div>
+<figcaption style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: var(--fs-small); color: var(--muted);"><span class="ph" style="margin-left: 0;">Preview · console in progress</span>Checks managed in the browser instead of a JSON file. Design preview; the screens are not built yet.</figcaption>
+</figure>
+
+</div>
 </div>
 </section>
 
@@ -457,13 +638,26 @@ GitHub<span style="position: absolute; width: 1px; height: 1px; overflow: hidden
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"animations":{"editor":"enum","options":["scroll","replay"],"default":"scroll"},"$preview":{"width":1440,"height":5100}}'>
+<script type="text/x-dc" data-dc-script data-props='{"defaultTheme":{"editor":"enum","options":["light","dark"],"default":"light"},"animations":{"editor":"enum","options":["scroll","replay"],"default":"scroll"},"$preview":{"width":1440,"height":8000}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
     const bars = Array.from({ length: 30 }, (_, i) => (i === 12 ? 'w' : 'u'));
     // live: status preview state; the first render is the fixed state shown with reduced motion
-    this.state = { theme: null, menuOpen: false, deg: true, degN: 0, inc: 'open', bars, barN: 0, ago: 3 };
+    // terminal demo of the planned pulse CLI; the full transcript is the static (reduced-motion) state
+    this.demo = [
+      { cmd: true, text: 'pulse init' },
+      { text: '? Setup  full   (minimal, full, demo, dev)', color: '#c9bfc4' },
+      { text: '  wrote .env and secrets/  random tokens, mode 0600' },
+      { text: '  images pinned by digest  @sha256:9f3c…' },
+      { cmd: true, text: 'pulse up' },
+      { text: '  api healthy · probe, status, notify, console started' },
+      { cmd: true, text: 'pulse status' },
+      { text: '  api       healthy   1 probe location reporting' },
+      { text: '  status    http://localhost:8080', color: '#9da7d4' },
+      { text: '  console   http://127.0.0.1:8082', color: '#9da7d4' }
+    ];
+    this.state = { theme: null, menuOpen: false, deg: true, degN: 0, inc: 'open', bars, barN: 0, ago: 3, demoN: this.demo.length, demoT: 0 };
     this.setRoot = (el) => {
       const changed = el && el !== this.root;
       this.root = el;
@@ -651,8 +845,32 @@ class Component extends DCLogic {
     if (this.liveIo) this.liveIo.disconnect();
     clearInterval(this.timer);
     clearInterval(this.liveTimer);
+    clearInterval(this.demoTimer);
+    if (this.demoIo) this.demoIo.disconnect();
     this.io = null;
     this.liveIo = null;
+    this.demoIo = null;
+  }
+  startDemo(root) {
+    const box = root.querySelector('.demo-term');
+    if (!box) return;
+    // types the commands, prints the output, holds the final screen, then starts again; paused while hidden or off screen
+    let seen = false, wait = 0;
+    this.demoIo = new IntersectionObserver((entries) => { seen = entries[entries.length - 1].isIntersecting; });
+    this.demoIo.observe(box);
+    this.setState({ demoN: 0, demoT: 0 });
+    this.demoTimer = setInterval(() => {
+      if (document.hidden || !seen) return;
+      if (wait > 0) { wait -= 1; return; }
+      const { demoN, demoT } = this.state;
+      const L = this.demo;
+      if (demoN >= L.length) { this.setState({ demoN: 0, demoT: 0 }); wait = 6; return; }
+      const line = L[demoN];
+      if (line.cmd && demoT < line.text.length) { this.setState({ demoT: demoT + 1 }); return; }
+      this.setState({ demoN: demoN + 1, demoT: 0 });
+      const next = L[demoN + 1];
+      wait = demoN + 1 >= L.length ? 70 : (line.cmd ? 8 : (next && next.cmd ? 12 : 4));
+    }, 70);
   }
   startLive(root) {
     const box = root.querySelector('.status');
@@ -691,6 +909,7 @@ class Component extends DCLogic {
     });
     root.setAttribute('data-motion', '');
     this.startLive(root);
+    this.startDemo(root);
     // 100 ms between siblings that appear together
     const stagger = (els, base) => {
       const seen = new Map();
@@ -730,7 +949,31 @@ class Component extends DCLogic {
     const ab = degN === 0 ? '' : (degN % 2 ? 'a' : 'b');
     const ring = ab ? 'ring ring-' + ab : 'ring';
     const flash = ab ? 'flash-' + ab : '';
+    const { demoN, demoT } = this.state;
+    const demoLines = this.demo.slice(0, demoN).map((l) => ({ prompt: l.cmd ? '$ ' : '', text: l.text, color: l.color || (l.cmd ? 'var(--code-text)' : '#a89b95'), cur: '0' }));
+    if (demoN < this.demo.length && this.demo[demoN].cmd) demoLines.push({ prompt: '$ ', text: this.demo[demoN].text.slice(0, demoT), color: 'var(--code-text)', cur: '1' });
+    else demoLines.push({ prompt: '$ ', text: '', color: 'var(--code-text)', cur: demoN >= this.demo.length ? '1' : '0' });
+    const days = (warn, down, maint) => Array.from({ length: 90 }, (_, i) => {
+      const bg = down.indexOf(i) >= 0 ? 'var(--error)' : warn.indexOf(i) >= 0 ? 'var(--warning)' : maint.indexOf(i) >= 0 ? 'var(--info)' : 'var(--success)';
+      return { bg, op: bg === 'var(--success)' ? '0.8' : '1' };
+    });
+    const spComps = [
+      { name: 'Website', uptime: '99.98%', state: 'Up', color: 'var(--success)', days: days([41], [], []) },
+      { name: 'Checkout API', uptime: '99.87%', state: 'Degraded', color: 'var(--warning)', days: days([27, 89], [63], []) },
+      { name: 'Nightly backup', uptime: '100%', state: 'Up', color: 'var(--success)', days: days([], [], []) },
+      { name: 'Search', uptime: '99.95%', state: 'Maintenance', color: 'var(--info)', days: days([12], [], [89]) }
+    ];
+    const conRows = [
+      { name: 'Website', type: 'http', every: '30 s', state: 'Up', color: 'var(--success)', last: '182 ms' },
+      { name: 'Checkout API', type: 'http', every: '10 s', state: 'Degraded', color: 'var(--warning)', last: '740 ms' },
+      { name: 'acme.example certificate', type: 'tls', every: '1 h', state: 'Up', color: 'var(--success)', last: '61 days left' },
+      { name: 'Nightly backup', type: 'heartbeat', every: '24 h', state: 'Up', color: 'var(--success)', last: 'ping 03:14' },
+      { name: 'Search', type: 'http', every: '1 min', state: 'Maintenance', color: 'var(--info)', last: 'until 16:00' }
+    ];
     return {
+      demoLines,
+      spComps,
+      conRows,
       setRoot: this.setRoot,
       degRing: deg ? ring : 'ring',
       upRing: deg ? 'ring' : ring,

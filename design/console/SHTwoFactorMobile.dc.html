@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two-factor step on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span></span>
+<span class="lbl" style="margin-left: auto;">Step 2 of 2</span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 16px;">
+<div class="stack-8"><h1 class="mb-title">Two-factor check</h1><p class="lbl" style="margin: 0;">jonas@quillbird.example · Quillbird monitoring</p></div>
+<sc-if value="{{isCode}}" hint-placeholder-val="{{true}}">
+<div class="la-field"><label class="la-field__label" for="tm-c">6-digit code</label><p class="la-field__help" id="tm-c-d">From your authenticator app. Each code works once.</p><input class="la-input mono" id="tm-c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="482 913" aria-describedby="tm-c-d" style="font-size: 20px; letter-spacing: 0.2em;"></div>
+<button type="button" class="la-btn la-btn--ghost" onClick="{{useRecovery}}" style="width: 100%;">Use a recovery code instead</button>
+</sc-if>
+<sc-if value="{{isRecovery}}" hint-placeholder-val="{{false}}">
+<div class="la-field"><label class="la-field__label" for="tm-r">Recovery code</label><p class="la-field__help" id="tm-r-d">One of the ten codes you saved. A used code stops working.</p><input class="la-input mono" id="tm-r" autocomplete="off" value="EXMP-LE00-01" aria-describedby="tm-r-d"></div>
+<button type="button" class="la-btn la-btn--ghost" onClick="{{useCode}}" style="width: 100%;">Use the authenticator app instead</button>
+</sc-if>
+<sc-if value="{{isLocked}}" hint-placeholder-val="{{false}}">
+<div class="la-callout la-callout--error" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg><div class="la-callout__body"><p class="la-callout__title">Sign-in locked for 15 minutes</p><p class="la-callout__text">5 wrong codes in 15 minutes. This account cannot sign in from this address until <span class="mono">14:47</span>.</p></div></div>
+<p class="lbl" style="margin: 0;">Not you? Tell an admin. Every failed sign-in is in the Activity log.</p>
+</sc-if>
+<div class="stack-8" style="border-top: 1px solid var(--rule); padding-top: 16px;">
+<p class="lbl" style="margin: 0;">After 5 wrong codes in 15 minutes, sign-in is locked for 15 minutes.</p>
+<p class="lbl" style="margin: 0;">Lost your app and your recovery codes? Ask an admin to reset your two-factor.</p>
+</div>
+</form>
+<div style="padding: 12px 16px 16px; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 8px;">
+<sc-if value="{{canVerify}}" hint-placeholder-val="{{true}}"><a class="la-btn la-btn--primary" href="SHOverviewMobile.dc.html" style="width: 100%;">Verify</a></sc-if>
+<sc-if value="{{isLocked}}" hint-placeholder-val="{{false}}"><button type="button" class="la-btn la-btn--primary" disabled="" style="width: 100%;">Verify</button></sc-if>
+<a class="la-btn la-btn--ghost" href="SHSignInMobile.dc.html" style="width: 100%;">Back to sign in</a>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"state":{"editor":"enum","options":["code","recovery","locked"],"default":"code"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, mode: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const mode = this.state.mode ?? this.props.state ?? 'code';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isCode: mode === 'code', isRecovery: mode === 'recovery', isLocked: mode === 'locked',
+      canVerify: mode !== 'locked',
+      useRecovery: () => this.setState({ mode: 'recovery' }),
+      useCode: () => this.setState({ mode: 'code' }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

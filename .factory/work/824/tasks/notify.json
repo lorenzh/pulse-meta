@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "target": "notify",
+  "tasks": [
+    {
+      "id": "T1",
+      "kind": "final",
+      "title": "Service report starts keep their heartbeat cadence without overlap and shut down cleanly",
+      "files": [
+        "src/index.ts",
+        "test/report-heartbeat.test.ts",
+        "docs/channels.md",
+        "README.md"
+      ],
+      "behaviorChange": true,
+      "spec": "## Repository: notify, Implementation 1-4, Test cases 1-7, and all Checks and completion evidence; Required behavior D1-D4 and Bound statement; Counterexamples 1-8; Performance impact, Security impact and Rollout order. Includes the manager's four-file scope, README update and checks against the recorded implementation base, and the earlier review's two-missed-tick coalescing case and delayed-report CPU measurement.",
+      "acceptance": [
+        {
+          "command": "BASE=$(git rev-parse HEAD) && git status --short",
+          "expected": "Before any edit, on up-to-date notify main, record the full 40-character BASE SHA in completion evidence and retain it for every scope check and measurement. Status is clean. The spec inspected 5a44c5a3de1764faa04b6cd3762f2c2be4c58430; use newer main if it moved. Do not reset BASE to the implementation HEAD after committing. Write the new regression test before changing production code. Keep measurement scripts, fake API and evidence files outside the repository."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Red run with only the new test added to BASE: case 2 fails by assertion with actual report starts [0, 60000, 124000] through 180000, against the independent literal [0, 60000, 120000, 180000]. Case 3 exposes maximum concurrency 2; case 4 sees starts [0, 60000] through 240000 and fails its literal expectation. Record the command and output before the fix; fixture errors or a coverage-only failure are not reproductions. The focused run has coverage enabled, so its exit status alone is not evidence of test failure."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Green run: all seven specified scenarios pass, 0 fail, including both 503 and TypeError failure variants. Drive exported main with injected now, channelSchedule and serviceFetch, a test service token, a private mkdtemp state directory cleaned in finally, no-op notifier, and disabled unrelated heartbeatSchedule/commandSchedule. Advance the virtual clock event by event and drain asynchronous work before each next event; no real clock, sleep, global/module mock or new export decides expected times. Report starts are fetch PUT calls to /service/notify/report; record parsed bodies and maximum unsettled report-fetch concurrency. Focused coverage may fail its threshold; the full suite owns that gate."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Cases 1-3 assert literal starts in the inclusive [0, 180000] window. Case 1: poll 300000, latency 0, starts [0, 60000, 120000, 180000], largest gap 60000. Case 2: poll 300000, latency 4000, same starts, largest gap at most 60000 and maximum concurrency 1. Case 3: poll 53000, latency 4000, starts [0, 57000, 61000, 114000, 120000, 171000, 180000], maximum concurrency 1, largest gap at most 60000. This proves a colliding heartbeat waits for the active poll report while later heartbeat ticks retain their cadence; the next poll is still scheduled after its cycle's report ends. Expectations are literals from the spec, never derived from the implementation or a duplicate scheduling algorithm."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Case 4: poll 300000, startup report answers immediately, report starting at 60000 held until 185000 across both 120000 and 180000 ticks, later reports answer immediately. Through 240000 inclusive assert exactly [0, 60000, 185000, 240000], maximum concurrency 1 and third report body at:185000. Do not assert the 60000 gap bound on this deliberately unbounded request. Reject a catch-up queue's [0, 60000, 185000, 185000, 240000], skipping's [0, 60000, 240000] and a stale at:120000 body. All waiting requests share at most one follow-up built when it actually starts; poll callers await the report they started or joined."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Case 5: poll 300000, latency 0, report at 60000 fails with 503, and separately with TypeError. Through 180000 inclusive assert [0, 60000, 120000, 180000], warning text 'service report failed', and no unhandledRejection. Failed reports release the shared slot without rejecting to their callers; pending follow-up work and subsequent heartbeat ticks can still run."
+        },
+        {
+          "command": "bun test test/report-heartbeat.test.ts",
+          "expected": "Case 6: poll 300000, latency 0, stop at 30000 and await; advancing to 600000 leaves starts exactly [0], cancels the 60000 heartbeat and sets no channel-loop timer after stop. Case 7: hold report starting at 60000, tick at 120000 queues one shared follow-up, stop at 130000 stays unresolved after draining, release at 140000 resolves stop; through 600000 starts remain exactly [0, 60000], maximum concurrency 1, the 180000 heartbeat is cancelled, and no timer or report starts after stop. A dropped follow-up resolves without sending; running poll/report work ends before ledger close and lock release."
+        },
+        {
+          "command": "git diff \"${BASE:?record the implementation base before editing}\" -- src/index.ts README.md docs/channels.md",
+          "expected": "Review confirms D1-D4: each running heartbeat tick arms the next 60000 ms timer before requesting a report, never on report completion; heartbeat and poll reports use one slot and at most one shared follow-up; shutdown cancels the newest timers, drops waiting work and awaits in-flight work. Report body construction and sendService remain unchanged. Both README.md and docs/channels.md explicitly say token-mode report starts are at most 60000 ms apart, measured start to start; neither a slow report within the 5000 ms timeout nor a long PULSE_NOTIFY_CHANNELS_POLL_MS stretches that interval. Explain one report at a time and coalesced waiting reports. Do not promise this bound for a report held longer than 60000 ms or event-loop delays. Preserve the 60000 constant, poll anchoring, tokenless behavior, resend loop, endpoints, ledger format and existing failure logging; no setting, dependency, schema or test-only export is added."
+        },
+        {
+          "command": "bun run check",
+          "expected": "exit 0; Biome, ESLint (SonarJS cognitive complexity at most 15 per function), workflow lint, TypeScript and the full test suite pass with the unchanged 80% line-coverage threshold. Existing tests are unchanged and pass, including test/channel-loop.review.test.ts, test/service-report.test.ts, test/index.test.ts and all ledger tests. No endpoint/response change or compose fixture is specified; the real-service smoke exercise is the paired delayed-report measurement below."
+        },
+        {
+          "command": "/usr/bin/time -f '%U %S' bun test",
+          "expected": "Run on the recorded base and on the branch with identical settings and installed dependencies. Record the full-suite timings and user plus system CPU seconds for both in the PR. The seven fake-clock scenarios are expected to add well under 0.5 s test CPU; record the result without changing coverage, tooling or budgets. Runtime CPU is measured separately with delayed reports below."
+        },
+        {
+          "command": "git worktree add /tmp/notify-base \"${BASE:?record the implementation base before editing}\"",
+          "expected": "Create the base measurement worktree at the recorded BASE and install from its unchanged lockfile with bun install --frozen-lockfile. Prepare a local fake API on 127.0.0.1 outside the repository that answers every route notify calls and delays every PUT /service/notify/report answer by 4000 ms. It records report request starts and channel polls. Use identical API behavior, settings and fresh temporary state for the base and branch runs. Remove the worktree and temporary fixtures afterwards."
+        },
+        {
+          "command": "PULSE_API_URL=\"${FAKE_API_URL:?local fake API URL}\" PULSE_NOTIFY_API_TOKEN=heartbeat-test PULSE_NOTIFY_CHANNELS_POLL_MS=300000 PULSE_NOTIFY_STATE=\"${MEASUREMENT_STATE:?fresh temporary state path}\" bun run start",
+          "expected": "Run the exact command for 600 s in /tmp/notify-base and for 600 s in the branch, against the delayed fake API. This is the required real-service smoke and performance exercise. Per side record SHA, resolved command, report count, each request start time, each adjacent gap, which reports followed a channel poll, and process CPU: utime + stime from /proc/<service-pid>/stat sampled before exit, converted from clock ticks to ms. Expect base heartbeat-only gaps about 64 s; every branch adjacent start gap must be at most 61 s (literal wall-clock tolerance). Identify poll reports when interpreting counts. Record CPU difference without a gating threshold. Account for heartbeat-only request-rate increases of 6.7% at 4000 ms latency (56.25 to 60/hour, +3.75/hour) and 8.3% at 5000 ms (about +4.6/hour); do not claim a measured runtime CPU cost from test CPU or a low-latency bench."
+        },
+        {
+          "command": "git diff --exit-code \"${BASE:?record the implementation base before editing}\" -- src/api.ts src/service-report.ts src/ledger.ts src/config.ts AGENTS.md package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github/ && git diff --cached --exit-code \"$BASE\" -- src/api.ts src/service-report.ts src/ledger.ts src/config.ts AGENTS.md package.json bun.lock bunfig.toml biome.json tsconfig.json eslint.config.js lefthook.yml .github/",
+          "expected": "exit 0 for both comparisons against the recorded pre-edit BASE, after the last implementation commit and again before handoff. Protected files have no working-tree, staged or committed changes relative to that base; a forbidden edit remains detectable after committing it. A clean status or a diff against HEAD alone is not acceptable scope evidence."
+        },
+        {
+          "command": "{ git diff --name-only \"${BASE:?record the implementation base before editing}\"; git diff --cached --name-only \"$BASE\"; git diff --name-only \"$BASE\" HEAD; } | sort -u",
+          "expected": "After the last implementation commit and again before handoff, output is exactly four lines in this order: README.md; docs/channels.md; src/index.ts; test/report-heartbeat.test.ts. This union includes working-tree, staged and committed differences against the recorded BASE. No other changed file is allowed, including existing tests."
+        },
+        {
+          "command": "git ls-files --others --exclude-standard && git diff --check \"${BASE:?record the implementation base before editing}\"",
+          "expected": "exit 0 and no output after the last implementation commit and again before handoff. The new test is committed; fake API, measurement scripts and artifacts stay outside notify. No untracked additions or whitespace errors remain."
+        },
+        {
+          "command": "gh pr view --json body",
+          "expected": "PR body contains Closes lorenzh/pulse-meta#<actual child number>, the recorded pre-edit base SHA, red and green commands/output, bun run check result, base-relative scope outputs taken after commits, test CPU comparison, and the two 600 s smoke/performance runs with their measurement table and exact commands. Record the limit: a request held past 60000 ms delays one report; the existing production timeout is 5000 ms, and event-loop delay is outside the guarantee. Security review confirms Security impact: no: no auth/admin, parser/validator, file-write, error/log text, dependency, Dockerfile or CI change. Only notify rolls out; report content, endpoints and ledger format are unchanged."
+        }
+      ]
+    }
+  ]
+}

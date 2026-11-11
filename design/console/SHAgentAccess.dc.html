@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent access · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHStatusPage.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>Status page</a>
+<a class="la-side__link" href="SHNotifications.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Notifications</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System<span class="cnt" style="color: var(--accent-text);">update</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a>
+<a class="la-side__link" href="SHAgentAccess.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path></svg>Agent access</a>
+<a class="la-side__link" href="SHAiAssist.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6M10 22h4"></path></svg>AI assistance</a>
+<a class="la-side__link" href="SHSecurity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Account security</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Instance</a></li><li aria-hidden="true">/</li><li aria-current="page">Agent access</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Agent access</h1>
+<p class="page-sub" title="Let your AI agent read monitoring data and draft changes through MCP. Optional and off by default. Runs inside this console server, not in pulse-api; the admin token stays on the server.">Let your AI agent read monitoring data and draft changes through MCP. Optional and off by default. Runs inside this console server, not in pulse-api; the admin token stays on the server.</p>
+</div>
+<span class="la-status la-status--dense {{stateTone}}"><span class="la-status__mark"></span><span class="la-status__label">{{stateLabel}}</span></span>
+</div>
+
+<div class="g-side">
+<div class="stack-24" style="min-width: 0;">
+
+<section class="la-panel" aria-labelledby="mcp-h">
+<div class="la-panel__head"><h2 class="eb" id="mcp-h">MCP server</h2><span class="lbl">Remote MCP over HTTP · OAuth</span></div>
+<div class="la-panel__body stack" style="gap: 16px;">
+<label class="la-check" style="padding: 0;"><input type="checkbox" role="switch" checked="{{on}}" onChange="{{toggleMcp}}"><span class="la-check__text"><b>Allow MCP access</b><span>Off by default. Opt-in per instance; owners and admins can turn it on. Turning it off disconnects every agent at once.</span></span></label>
+<sc-if value="{{on}}" hint-placeholder-val="{{true}}">
+<div class="la-field"><span class="la-field__label" id="ep-l">MCP endpoint</span>
+<div class="secret" aria-labelledby="ep-l"><code>https://pulse.quillbird.example/mcp</code><button type="button" class="la-btn la-btn--secondary la-btn--sm" onClick="{{copy}}">{{copyLabel}}</button></div>
+<p class="la-field__help">Add this address as a remote MCP server in your agent. It is not a secret; access needs an OAuth sign-in.</p>
+</div>
+<div class="stack-8">
+<h3 class="h4">How an agent connects</h3>
+<ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--lead); font-size: var(--fs-small);">
+<li>The agent opens a pulse sign-in page in your browser (OAuth, as the MCP spec describes).</li>
+<li>You sign in as yourself and pick the scopes the agent may use.</li>
+<li>The agent gets its own scoped token. It never sees your password, the instance admin token or any check secret.</li>
+</ol>
+</div>
+<div class="g2" style="gap: 16px;">
+<div class="la-field"><label class="la-field__label" for="rl">Rate limit per agent</label><span class="la-input-wrap"><input class="la-input mono" id="rl" value="60"><span class="la-input-wrap__suffix">calls / min</span></span></div>
+<div class="la-field"><label class="la-field__label" for="tl">Agent tokens expire after</label><span class="la-select"><select id="tl"><option>7 days</option><option selected="">30 days</option><option>90 days</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span></div>
+</div>
+</sc-if>
+</div>
+<div class="la-panel__foot"><span class="lbl">Agents act with the rights of the person who connected them, never more. A Viewer’s agent can only read.</span></div>
+</section>
+
+<sc-if value="{{off}}" hint-placeholder-val="{{false}}">
+<div class="la-callout cs-empty"><div class="la-callout__body"><p class="la-callout__title">Agent access is off</p><p class="la-callout__text">No agent can connect and the endpoint answers 404. Monitoring, alerts and the status page work as before.</p></div></div>
+</sc-if>
+
+<sc-if value="{{on}}" hint-placeholder-val="{{true}}">
+<section class="la-panel" aria-labelledby="ag-h">
+<div class="la-panel__head"><h2 class="eb" id="ag-h">Connected agents</h2><span class="lbl">3 agents · 3 people</span></div>
+<div class="tw">
+<table class="dt">
+<thead><tr><th scope="col">Agent</th><th scope="col">Connected by</th><th scope="col">Scopes</th><th scope="col">Last call</th><th scope="col" class="num">Calls 24 h</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="tt"><b>Claude Desktop</b><span class="sub">MCP client · since 2026-10-21</span></td><td>Mara Lindqvist</td><td><span class="row" style="gap: 4px;"><span class="la-badge">read</span><span class="la-badge">incidents</span></span></td><td class="m">14:32</td><td class="num">41</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Disconnect</button></td></tr>
+<tr><td class="tt"><b>Claude Code</b><span class="sub">MCP client · since 2026-10-28</span></td><td>Jonas Feld</td><td><span class="row" style="gap: 4px;"><span class="la-badge">read</span><span class="la-badge">checks</span></span></td><td class="m">14:18</td><td class="num">17</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Disconnect</button></td></tr>
+<tr><td class="tt"><b>Cursor</b><span class="sub">MCP client · since 2026-10-30</span></td><td>Noah Brandt</td><td><span class="la-badge">read</span></td><td class="m">09:05</td><td class="num">6</td><td style="text-align: right;"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);">Disconnect</button></td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Scopes work like <a href="SHTokens.dc.html">API keys and tokens</a>: read (status, checks, incidents, latency, SLOs) · checks (draft checks) · incidents (draft incident updates).</span></div>
+</section>
+
+<section class="la-panel" aria-labelledby="dr-h">
+<div class="la-panel__head"><h2 class="eb" id="dr-h">Drafts waiting for a person</h2><span class="la-badge la-badge--info">2 to review</span></div>
+<ul role="list" style="margin: 0; padding: 0; list-style: none;">
+<li class="spread" style="padding: 14px 20px; border-bottom: 1px solid var(--rule);"><span class="stack-8" style="gap: 2px; min-width: 0;"><b style="font-weight: 500;">New check: GET https://api.quillbird.example/v1/invoices</b><span class="lbl">draft_check · from openapi.yaml · Claude Code for Jonas Feld · 14:18</span></span><span class="row"><a class="la-btn la-btn--secondary la-btn--sm" href="SHCheckEdit.dc.html">Review and create</a><button type="button" class="la-btn la-btn--ghost la-btn--sm">Discard</button></span></li>
+<li class="spread" style="padding: 14px 20px;"><span class="stack-8" style="gap: 2px; min-width: 0;"><b style="font-weight: 500;">Update for “Invoice export API is down”: Monitoring</b><span class="lbl">draft_incident_update · Claude Desktop for Mara Lindqvist · 14:31</span></span><span class="row"><a class="la-btn la-btn--secondary la-btn--sm" href="SHIncidentComposer.dc.html">Review and post</a><button type="button" class="la-btn la-btn--ghost la-btn--sm">Discard</button></span></li>
+</ul>
+<div class="la-panel__foot"><span class="lbl">Rule: agents never change anything directly. Every change is a draft until someone with the right role confirms it here.</span></div>
+</section>
+
+<section class="la-panel" aria-labelledby="au-h">
+<div class="la-panel__head"><h2 class="eb" id="au-h">Audit log of tool calls</h2><button type="button" class="la-btn la-btn--ghost la-btn--sm">Export as JSON lines</button></div>
+<div class="tw">
+<table class="dt">
+<thead><tr><th scope="col">Time</th><th scope="col">Agent · person</th><th scope="col">Tool</th><th scope="col">Arguments</th><th scope="col" class="num">Result</th></tr></thead>
+<tbody>
+<tr><td class="m">14:32:10</td><td>Claude Desktop<span class="sub">Mara Lindqvist</span></td><td class="m" style="color: var(--text);">get_status</td><td class="m">–</td><td class="num">ok · 38 ms</td></tr>
+<tr><td class="m">14:31:52</td><td>Claude Desktop<span class="sub">Mara Lindqvist</span></td><td class="m" style="color: var(--text);">draft_incident_update</td><td class="m">incident #142 · state monitoring</td><td class="num">draft</td></tr>
+<tr><td class="m">14:31:40</td><td>Claude Desktop<span class="sub">Mara Lindqvist</span></td><td class="m" style="color: var(--text);">list_incidents</td><td class="m">open: true</td><td class="num">ok · 22 ms</td></tr>
+<tr><td class="m">14:18:03</td><td>Claude Code<span class="sub">Jonas Feld</span></td><td class="m" style="color: var(--text);">draft_check</td><td class="m">from openapi.yaml · 1 operation</td><td class="num">draft</td></tr>
+<tr><td class="m">14:17:41</td><td>Claude Code<span class="sub">Jonas Feld</span></td><td class="m" style="color: var(--text);">get_latency</td><td class="m">check Invoice export API · 7 days</td><td class="num">ok · 61 ms</td></tr>
+<tr><td class="m">09:05:12</td><td>Cursor<span class="sub">Noah Brandt</span></td><td class="m" style="color: var(--text);">draft_check</td><td class="m">url https://docs.quillbird.example</td><td class="num err-t">denied · no checks scope</td></tr>
+<tr><td class="m">09:04:58</td><td>Cursor<span class="sub">Noah Brandt</span></td><td class="m" style="color: var(--text);">get_slos</td><td class="m">–</td><td class="num">ok · 19 ms</td></tr>
+</tbody>
+</table>
+</div>
+<div class="la-panel__foot"><span class="lbl">Every tool call is logged with agent, person, arguments and result. Kept 90 days.</span></div>
+</section>
+</sc-if>
+</div>
+
+<aside class="stack-24" style="min-width: 0;" aria-label="Rules and preview features">
+<section class="la-panel cs-panel-s" aria-labelledby="ru-h" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+<h2 class="eb" id="ru-h">What agents can and cannot do</h2>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: var(--fs-small); color: var(--lead);">
+<li><b style="color: var(--text); font-weight: 500;">Read first.</b> Status, checks, incidents, latency and SLOs.</li>
+<li><b style="color: var(--text); font-weight: 500;">Drafts need confirmation.</b> Draft checks (for example from an OpenAPI file), incident text and routing suggestions wait for a person.</li>
+<li><b style="color: var(--text); font-weight: 500;">No secrets.</b> Header values, tokens and webhook URLs are never returned.</li>
+<li><b style="color: var(--text); font-weight: 500;">Untrusted text.</b> Error messages and response bodies come from the monitored services and can contain instructions aimed at the agent. That is why changes stay drafts.</li>
+</ul>
+</section>
+
+<section class="la-panel" aria-labelledby="wm-h">
+<div class="la-panel__head"><h2 class="eb" id="wm-h">WebMCP</h2><span class="la-badge la-badge--info">Preview</span></div>
+<div class="la-panel__body stack" style="gap: 12px;">
+<label class="la-check" style="padding: 0;"><input type="checkbox" role="switch" checked="{{webmcp}}" onChange="{{toggleWeb}}"><span class="la-check__text"><b>WebMCP (experimental, Chrome only)</b><span>This console tab offers the same tools to a browser agent, in your signed-in session and with your rights. No OAuth needed.</span></span></label>
+<div class="la-callout la-callout--info"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">Experimental browser API</p><p class="la-callout__text">Works only while a console tab is open, only for browser agents, and today only in Chrome behind a flag. The API can still change. Same rules: read first, changes as drafts.</p></div></div>
+</div>
+</section>
+</aside>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"mcp":{"editor":"enum","options":["on","off"],"default":"on"},"$preview":{"width":1440,"height":2020}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, mcp: null, webmcp: false, copied: false }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const on = (this.state.mcp ?? this.props.mcp ?? 'on') === 'on';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      on, off: !on,
+      stateTone: on ? 'la-status--up' : 'la-status--unknown',
+      stateLabel: on ? 'MCP on · 3 agents' : 'MCP off',
+      toggleMcp: () => this.setState({ mcp: on ? 'off' : 'on' }),
+      webmcp: this.state.webmcp,
+      toggleWeb: () => this.setState({ webmcp: !this.state.webmcp }),
+      copy: () => this.setState({ copied: true }),
+      copyLabel: this.state.copied ? 'Copied' : 'Copy'
+    };
+  }
+}
+</script>
+</body>
+</html>

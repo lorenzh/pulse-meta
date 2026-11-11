@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maintenance · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="SHOverview.dc.html" aria-label="Quillbird monitoring home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">self-hosted</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="SHOverview.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="SHChecks.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">38</span></a>
+<a class="la-side__link" href="SHIncidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">4 open</span></a>
+<a class="la-side__link" href="SHMaintenance.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>Maintenance</a>
+<p class="la-side__group">Instance</p>
+<a class="la-side__link" href="SHProbes.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>Probe locations<span class="la-side__count">3</span></a>
+<a class="la-side__link" href="SHTokens.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>Tokens</a>
+<a class="la-side__link" href="SHTeam.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="SHActivity.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>Activity</a>
+<a class="la-side__link" href="SHSystem.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"></rect><rect width="20" height="8" x="2" y="14" rx="2"></rect><path d="M6 6h.01M6 18h.01"></path></svg>System</a>
+<a class="la-side__link" href="SHSettings.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>Settings</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><div class="la-trigger cs-ws" style="cursor: default;"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird monitoring</b><span>v1.5.0 · pulse.quillbird.example</span></span></div><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="SHOverview.dc.html">Quillbird monitoring</a></li><li aria-hidden="true">/</li><li aria-current="page">Maintenance</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+<a class="la-iconbtn la-iconbtn--sm" href="SHSecurity.dc.html" aria-label="Account security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg></a><a class="la-iconbtn la-iconbtn--sm" href="SHSignIn.dc.html" aria-label="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5M21 12H9"></path></svg></a><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div>
+<h1 class="page-title">Maintenance</h1>
+<p class="page-sub" title="Windows from checks.json are read-only here and win over the console. Windows planned in the console can be deleted. Times show in your browser time zone, Europe/Berlin (UTC+1), and in UTC.">Windows from checks.json are read-only here and win over the console. Windows planned in the console can be deleted. Times show in your browser time zone, <span class="mono">Europe/Berlin (UTC+1)</span>, and in UTC.</p>
+</div>
+<div class="row"><a class="la-btn la-btn--primary" href="#plan">Plan maintenance</a></div>
+</div>
+
+<sc-if value="{{confirm}}" hint-placeholder-val="{{false}}">
+<form class="la-panel" onSubmit="{{noop}}" aria-labelledby="dc-h" style="border-color: var(--error);">
+<div class="la-panel__head"><h2 class="eb" id="dc-h">Delete this maintenance window?</h2></div>
+<div class="la-panel__body stack-8">
+<p style="margin: 0;">The window <span class="mono">mw-0012</span> from <span class="mono">2026-11-02 23:00</span> to <span class="mono">2026-11-03 00:00</span> Europe/Berlin (<span class="mono">22:00–23:00 UTC</span>) for 10 checks is removed. Its note leaves the status page. Checks alert as usual in that time.</p>
+<p class="lbl" style="margin: 0;">A plain confirmation page: it works without JavaScript.</p>
+</div>
+<div class="la-panel__foot" style="justify-content: flex-end;"><button type="button" class="la-btn la-btn--ghost" onClick="{{closeConfirm}}">Cancel</button><button type="submit" class="la-btn la-btn--primary" style="background: var(--error); border-color: var(--error); color: var(--bg);">Delete window</button></div>
+</form>
+</sc-if>
+
+<div class="g-side" style="grid-template-columns: minmax(0, 1fr) 420px;">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="now-h">
+<div class="la-panel__head"><h2 class="eb" id="now-h">Now · 1</h2></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Window</th><th scope="col">Checks</th><th scope="col">Public note</th><th scope="col">Source</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="m" style="white-space: nowrap;">Oct 30, 15:00–16:00<span class="sub">14:00–15:00 UTC</span></td><td>SMTP relay</td><td>We are upgrading the email relay. Emails may arrive a few minutes late.</td><td><span class="la-badge">checks.json</span><span class="sub">read-only</span></td><td class="lbl">ends in 28 min</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="pl-h">
+<div class="la-panel__head"><h2 class="eb" id="pl-h">Planned · 2</h2></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Window</th><th scope="col">Checks</th><th scope="col">Public note</th><th scope="col">Source</th><th scope="col"><span class="la-sr">Actions</span></th></tr></thead>
+<tbody>
+<tr><td class="m" style="white-space: nowrap;">Nov 2, 23:00–00:00<span class="sub">22:00–23:00 UTC</span></td><td>10 checks<span class="sub">API · Dashboard</span></td><td>Database upgrade. The dashboard and the API may be unavailable for up to 10 minutes.</td><td><span class="la-badge la-badge--info">console</span><span class="sub">Jonas Feld</span></td><td class="act"><button type="button" class="la-btn la-btn--ghost la-btn--sm" style="color: var(--error);" onClick="{{openConfirm}}">Delete<span class="la-sr"> window of Nov 2, 23:00</span></button></td></tr>
+<tr><td class="m" style="white-space: nowrap;">Nov 7, 07:00–07:30<span class="sub">06:00–06:30 UTC</span></td><td>Docs site</td><td>We are moving the documentation to a new host.</td><td><span class="la-badge">checks.json</span><span class="sub">read-only</span></td><td class="lbl">edit in checks.json</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="pa-h">
+<div class="la-panel__head"><h2 class="eb" id="pa-h">Past · last 30 days</h2></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Window</th><th scope="col">Checks</th><th scope="col">Public note</th><th scope="col">Source</th></tr></thead>
+<tbody>
+<tr><td class="m" style="white-space: nowrap;">Oct 24, 22:00–23:30<span class="sub">20:00–21:30 UTC</span></td><td>4 checks<span class="sub">Payments</span></td><td>Payment provider maintenance. Card payments may fail for a few minutes.</td><td><span class="la-badge la-badge--info">console</span><span class="sub">Priya Raman</span></td></tr>
+<tr><td class="m" style="white-space: nowrap;">Oct 11, 06:00–06:20<span class="sub">04:00–04:20 UTC</span></td><td>Website<span class="sub">Website</span></td><td>Website server restart after a security update.</td><td><span class="la-badge">checks.json</span><span class="sub">read-only</span></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+
+<section class="la-panel" id="plan" aria-labelledby="pm-h" style="align-self: start;">
+<div class="la-panel__head"><h2 class="eb" id="pm-h">Plan maintenance</h2></div>
+<form class="la-panel__body stack" onSubmit="{{noop}}" style="gap: 18px;">
+<div class="la-field">
+<span class="la-field__label" id="pick-l">Checks</span>
+<div class="la-seg cs-seg-full" role="group" aria-labelledby="pick-l">
+<button type="button" class="la-seg__item" aria-pressed="{{pDirect}}" onClick="{{pickDirect}}">Pick checks</button>
+<button type="button" class="la-seg__item" aria-pressed="{{pComp}}" onClick="{{pickComp}}">By component</button>
+</div>
+<p class="la-field__help">1 to 50 checks per window.</p>
+</div>
+<sc-if value="{{byComp}}" hint-placeholder-val="{{false}}">
+<div class="la-field"><label class="la-field__label" for="pm-c">Component</label><span class="la-select"><select id="pm-c"><option>Website</option><option>Dashboard</option><option selected="">API</option><option>Payments</option><option>Email delivery</option><option>Background jobs</option><option>Docs</option></select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span><p class="la-field__help">Adds the 7 checks of API: Invoice export API, API health, Invoices list API, Customers API, api certificate, API CNAME, API gateway port.</p></div>
+</sc-if>
+<sc-if value="{{direct}}" hint-placeholder-val="{{true}}">
+<fieldset style="border: 0; margin: 0; padding: 0;">
+<legend class="la-sr">Checks in this window</legend>
+<label class="search" style="margin: 0 0 6px; max-width: none;"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Filter checks</span><input type="search" placeholder="Filter 34 checks"></label>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox" checked=""><span class="la-check__text"><b>Invoice export API</b><span>API</span></span></label>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox" checked=""><span class="la-check__text"><b>API health</b><span>API</span></span></label>
+<label class="la-check" style="border-bottom: 1px solid var(--rule);"><input type="checkbox"><span class="la-check__text"><b>Dashboard login</b><span>Dashboard</span></span></label>
+<label class="la-check"><input type="checkbox"><span class="la-check__text"><b>Checkout page</b><span>Payments</span></span></label>
+</fieldset>
+</sc-if>
+<div class="la-field"><label class="la-field__label" for="pm-s">Start</label><input class="la-input mono" id="pm-s" type="datetime-local" value="2026-11-09T22:00" aria-describedby="pm-s-d"><p class="la-field__help mono" id="pm-s-d">Europe/Berlin · 2026-11-09 21:00 UTC</p></div>
+<div class="la-field"><label class="la-field__label" for="pm-e">End</label><input class="la-input mono" id="pm-e" type="datetime-local" value="2026-11-09T23:00" aria-describedby="pm-e-d"><p class="la-field__help mono" id="pm-e-d">Europe/Berlin · 2026-11-09 22:00 UTC · 1 h</p></div>
+<div class="la-field"><label class="la-field__label" for="pm-n">Public note</label><textarea class="la-input la-textarea" id="pm-n" rows="3" style="padding: 10px 14px; min-height: 88px;" aria-describedby="pm-n-d" value="{{note}}" onChange="{{setNote}}" maxlength="500"></textarea><p class="la-field__help" id="pm-n-d">Shown on the status page during the window. 1 to 500 characters · <span class="mono">{{noteLen}} / 500</span></p></div>
+<button type="submit" class="la-btn la-btn--primary">Plan maintenance</button>
+<p class="lbl" style="margin: 0;">Members and above can plan maintenance. Every change is logged in <a href="SHActivity.dc.html">Activity</a>.</p>
+</form>
+</section>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird monitoring · v1.5.0 · pulse.quillbird.example</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, byComp: false, confirm: false, note: 'We are upgrading the probe hosts. Results may show gaps for a few minutes.' }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const byComp = this.state.byComp;
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      byComp, direct: !byComp,
+      pDirect: byComp ? 'false' : 'true',
+      pComp: byComp ? 'true' : 'false',
+      pickDirect: () => this.setState({ byComp: false }),
+      pickComp: () => this.setState({ byComp: true }),
+      confirm: this.state.confirm,
+      openConfirm: () => this.setState({ confirm: true }),
+      closeConfirm: () => this.setState({ confirm: false }),
+      note: this.state.note,
+      noteLen: String(this.state.note.length),
+      setNote: (e) => this.setState({ note: e.target.value }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Password reset on a phone · Quillbird monitoring</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span></span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}" style="margin-left: auto;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 16px;">
+<sc-if value="{{isValid}}" hint-placeholder-val="{{true}}">
+<div class="stack-8"><h1 class="mb-title">Set a new password</h1><p class="lbl" style="margin: 0;">priya@quillbird.example · Quillbird monitoring</p></div>
+<div class="la-callout la-callout--warning"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><div class="la-callout__body"><p class="la-callout__title">This ends all your sessions</p><p class="la-callout__text">Every device signed in as you is signed out. Your two-factor stays as it is.</p></div></div>
+<div class="la-field"><label class="la-field__label" for="rm-p">New password</label><input class="la-input" id="rm-p" type="password" value="saffron-ledger-204" autocomplete="new-password" aria-describedby="rm-p-d"><p class="la-field__help" id="rm-p-d">At least 12 characters.</p></div>
+<div class="la-field"><label class="la-field__label" for="rm-p2">Repeat new password</label><input class="la-input" id="rm-p2" type="password" value="saffron-ledger-204" autocomplete="new-password"></div>
+<p class="lbl" style="margin: 0;">Link created by Jonas Feld. It works once and is valid until <span class="mono">2026-11-03 14:30</span>.</p>
+</sc-if>
+<sc-if value="{{isExpired}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">This link no longer works</h1><p class="lbl" style="margin: 0;">Quillbird monitoring</p></div>
+<div class="la-callout la-callout--error" role="alert"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg><div class="la-callout__body"><p class="la-callout__title">Reset link expired or already used</p><p class="la-callout__text">A reset link works once and is valid for 24 hours. Your password has not changed.</p></div></div>
+<p class="lead" style="margin: 0; font-size: var(--fs-small);">Ask an admin of this instance for a new reset link.</p>
+</sc-if>
+</form>
+<div style="padding: 12px 16px 16px; border-top: 1px solid var(--rule);">
+<sc-if value="{{isValid}}" hint-placeholder-val="{{true}}"><a class="la-btn la-btn--primary" href="SHSignInMobile.dc.html" style="width: 100%;">Set password and sign in</a></sc-if>
+<sc-if value="{{isExpired}}" hint-placeholder-val="{{false}}"><a class="la-btn la-btn--secondary" href="SHSignInMobile.dc.html" style="width: 100%;">Back to sign in</a></sc-if>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"state":{"editor":"enum","options":["valid","expired"],"default":"valid"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const st = this.props.state ?? 'valid';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      isValid: st === 'valid', isExpired: st === 'expired',
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>First-run setup on a phone · pulse Console self-hosted</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact" style="min-height: 0;">
+<div class="mb">
+<header class="mb-top">
+<span class="brand" style="padding: 0;"><img src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="28" height="28"><span class="wm">pulse</span><span class="wm-cur" aria-hidden="true"></span></span>
+<span class="lbl" style="margin-left: auto;">{{stepLabel}}</span>
+<button type="button" class="la-iconbtn" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button>
+</header>
+<form class="mb-body" onSubmit="{{noop}}" style="gap: 16px;">
+
+<sc-if value="{{s0}}" hint-placeholder-val="{{true}}">
+<div class="stack-8"><h1 class="mb-title">Create the owner account</h1><p class="lead" style="margin: 0; font-size: var(--fs-small);">First run of this instance. Everyone else joins by invite link.</p></div>
+<div class="la-field"><label class="la-field__label" for="sm-code">Setup code from the container log</label><input class="la-input mono" id="sm-code" value="KX7-41Q-M2P"></div>
+<div class="la-field"><label class="la-field__label" for="sm-i">Instance name</label><input class="la-input" id="sm-i" value="Quillbird monitoring"></div>
+<div class="la-field"><label class="la-field__label" for="sm-n">Your name</label><input class="la-input" id="sm-n" value="Mara Lindqvist" autocomplete="name"></div>
+<div class="la-field"><label class="la-field__label" for="sm-e">Email</label><input class="la-input" id="sm-e" type="email" value="mara@quillbird.example" autocomplete="email"></div>
+<div class="la-field"><label class="la-field__label" for="sm-p">Password</label><input class="la-input" id="sm-p" type="password" value="correct-horse-battery" autocomplete="new-password" aria-describedby="sm-p-d"><p class="la-field__help" id="sm-p-d">At least 12 characters. Next you set up an authenticator app.</p></div>
+</sc-if>
+
+<sc-if value="{{s1}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">Secure the owner account</h1><p class="lead" style="margin: 0; font-size: var(--fs-small);">Required. The owner must use an authenticator app. This step cannot be skipped.</p></div>
+<p class="lbl" style="margin: 0;">On this phone, add the key to your authenticator app by hand or paste the link into it.</p>
+<div class="la-field"><span class="la-field__label" id="sm-k">Setup key</span><div class="secret" aria-labelledby="sm-k"><code>EXAM PLEE XAMP LEEX AMPL E234</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><span class="la-field__label" id="sm-u">otpauth link</span><div class="secret" aria-labelledby="sm-u"><code style="font-size: 12px;">otpauth://totp/Quillbird%20monitoring:mara%40quillbird.example?secret=EXAMPLEEXAMPLEEXAMPLE234&amp;issuer=Quillbird%20monitoring</code><button type="button" class="la-btn la-btn--ghost la-btn--sm">Copy</button></div></div>
+<div class="la-field"><label class="la-field__label" for="sm-c">6-digit code</label><input class="la-input mono" id="sm-c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" value="482 913" style="font-size: 20px; letter-spacing: 0.2em;"></div>
+</sc-if>
+
+<sc-if value="{{s2}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">Save your recovery codes</h1><p class="lead" style="margin: 0; font-size: var(--fs-small);">Shown once. Each code works once.</p></div>
+<ul role="list" class="mono" style="margin: 0; padding: 14px; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; background: var(--field); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 14px;">
+<sc-for list="{{codes}}" as="c" hint-placeholder-count="10"><li>{{c}}</li></sc-for>
+</ul>
+<button type="button" class="la-btn la-btn--secondary la-btn--sm" style="align-self: flex-start;">Copy codes</button>
+<label class="la-check"><input type="checkbox" checked="{{saved}}" onChange="{{toggleSaved}}"><span class="la-check__text"><b>I saved these codes</b><span>pulse keeps only a hash and cannot show them again.</span></span></label>
+</sc-if>
+
+<sc-if value="{{s3}}" hint-placeholder-val="{{false}}">
+<div class="stack-8"><h1 class="mb-title">Check the pulse-api connection</h1><p class="lead" style="margin: 0; font-size: var(--fs-small);">Read only. The console token comes from a file on the server; you do not paste it.</p></div>
+<div class="la-callout la-callout--success" role="status"><svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><div class="la-callout__body"><p class="la-callout__title">Connected</p><p class="la-callout__text">pulse-api accepted the console token.</p></div></div>
+<dl class="dl" style="grid-template-columns: 110px minmax(0, 1fr); font-size: 13px;">
+<dt>api URL</dt><dd class="mono">http://pulse-api:8080</dd>
+<dt>Token file</dt><dd class="mono">PULSE_CONSOLE_ADMIN_TOKEN_FILE</dd>
+<dt>Wire version</dt><dd><span class="mono">1</span> <span class="ok-t">· compatible</span></dd>
+<dt>Scopes</dt><dd class="mono">read, checks, incidents, admin</dd>
+<dt>Checks</dt><dd class="mono">34</dd>
+</dl>
+<button type="button" class="la-btn la-btn--secondary la-btn--sm" style="align-self: flex-start;">Test again</button>
+<p class="lbl" style="margin: 0;">Step 4: pulse-api knows 3 probe locations. You can add more later under Probe locations.</p>
+</sc-if>
+
+</form>
+<div style="padding: 12px 16px 16px; border-top: 1px solid var(--rule);">
+<sc-if value="{{s3}}" hint-placeholder-val="{{false}}"><a class="la-btn la-btn--primary" href="SHOverviewMobile.dc.html" style="width: 100%;">Finish setup</a></sc-if>
+<sc-if value="{{nextOpen}}" hint-placeholder-val="{{true}}"><button type="button" class="la-btn la-btn--primary" onClick="{{next}}" style="width: 100%;">{{nextLabel}}</button></sc-if>
+<sc-if value="{{nextBlocked}}" hint-placeholder-val="{{false}}"><button type="button" class="la-btn la-btn--primary" disabled="" style="width: 100%;">{{nextLabel}}</button></sc-if>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"step":{"editor":"enum","options":["owner","secure","codes","api"],"default":"owner"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null, step: null, saved: false }; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    const steps = ['owner', 'secure', 'codes', 'api'];
+    const shown = [1, 2, 2, 3];
+    const i = Math.max(0, steps.indexOf(this.state.step ?? this.props.step ?? 'owner'));
+    const blocked = i === 2 && !this.state.saved;
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      s0: i === 0, s1: i === 1, s2: i === 2, s3: i === 3,
+      stepLabel: 'Step ' + shown[i] + ' of 4',
+      nextLabel: ['Create owner account', 'Confirm code', 'Continue', 'Finish setup'][i],
+      nextOpen: !blocked && i !== 3, nextBlocked: blocked,
+      codes: ['EXMP-LE00-01', 'EXMP-LE00-06', 'EXMP-LE00-05', 'EXMP-LE00-10', 'EXMP-LE00-02', 'EXMP-LE00-07', 'EXMP-LE00-09', 'EXMP-LE00-04', 'EXMP-LE00-08', 'EXMP-LE00-03'],
+      saved: this.state.saved,
+      toggleSaved: () => this.setState({ saved: !this.state.saved }),
+      next: () => this.setState({ step: steps[Math.min(3, i + 1)] }),
+      noop: (e) => e.preventDefault()
+    };
+  }
+}
+</script>
+</body>
+</html>

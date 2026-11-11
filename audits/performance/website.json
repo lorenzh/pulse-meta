@@ -1,0 +1,970 @@
+{
+  "issue": 951,
+  "kind": "performance",
+  "scope": "website",
+  "date": "2026-11-10",
+  "commits": {
+    "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8",
+    "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "meta": "6a09e6e9a0e5724b232a34312075b67068007dcc"
+  },
+  "bench": {
+    "run": 42794619243,
+    "url": "https://github.com/lorenzh/pulse-api/actions/runs/42794619243",
+    "event": "schedule",
+    "createdAt": "2026-11-10T09:54:29Z",
+    "apiHead": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "conclusion": "failure",
+    "website": "The artifact bench-out (table.md, table.json, samples.json) has no website table and no website sample (grep -c website: 0, 0, 0). pulse-api bench/budgets.json has no website entry. The run's failures belong to api, probe, status and notify. No A/B with bench/run.ts was run."
+  },
+  "checklist": [
+    {
+      "item": "Queries. EXPLAIN QUERY PLAN for every query on the request path and at startup. Flag every full table scan (SCAN) and every temporary B-tree (USE TEMP B-TREE) over results.",
+      "status": "not applicable",
+      "evidence": "The website is a static site with no database and no request path of its own. grep -rn \"sqlite\\|SELECT \\|bun:sqlite\\|createServer\\|Bun.serve\\|listen(\" src scripts --include=*.ts --include=*.tsx | grep -v test finds only src/build/static-server.ts:2,48,61, the local file server of the checks."
+    },
+    {
+      "item": "Startup. A CPU profile of the startup (bun --cpu-prof), with the top functions by self time.",
+      "status": "checked",
+      "evidence": "The only process start is the build. bun cpu.ts: bun run build 1,054 ms CPU median of 5; bun scripts/build.ts 1,002 ms median of 10 (interleaved), 855 ms with NODE_ENV=production (byte-identical dist, diff -r exit 0). bun --cpu-prof --cpu-prof-interval=100 scripts/build.ts, 5 runs, exit 0: 3,779.1 ms sampled; top self time: marked setext-heading regex 713.2 ms (18.9 %), anonymous 180.5 ms (4.8 %), DateTimeFormat 102.0 ms (2.7 %), marked inline-text regex 100.7 ms (2.7 %), marked #e 88.9 ms (2.4 %), ReactElement react-jsx-runtime.development.js 80.8 ms (2.1 %). By file: native 49.1 %, marked.esm.js 17.3 %, react-dom-server-legacy.browser.development.js 14.3 %, react-jsx-runtime.development.js 3.5 %, esbuild main.js 2.0 %. Findings 2 and 4."
+    },
+    {
+      "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
+      "status": "checked",
+      "evidence": "No website bench exists and the pulse-api bench has no website metric. timeout 600 bun growth.ts <copy> 1 10 (exit 0, median of 5): docs Markdown 415 KiB -> 4,149 KiB; one marked.lexer per file 47.1 -> 439.1 ms (9.3x); one renderMarkdown per file 97.0 -> 928.6 ms (9.6x); buildDocPages 196.2 -> 1,857.3 ms (9.5x); renderSite 79.5 -> 185.5 ms (2.3x); HTML written 929 -> 5,688 KiB; largest page gzip 15,066 -> 116,483 B; pages over the 60,000 B HTML budget 0 -> 4. All original measured increases are below the 10x input increase; two sizes do not establish asymptotic complexity. The original buildDocPages measurements are about 2x one identity-link render, a reference cost rather than an output-equivalent optimized build (finding 4). The docs sidebar holds all 39 links on each docs page (2,903 B raw; all nav blocks 852 B gzip of 6,228 B). The canvas network is capped at 14 + 40 nodes (src/lib/network.ts:96-97)."
+    },
+    {
+      "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
+      "status": "checked",
+      "evidence": "N = 5 minutes. Load: Home open and visible in headless Chrome 156 at 1280x800 with animations on (network canvas about 30 fps, live preview 1 Hz). timeout 600 bun memrun.ts <copy> / 5 30 no-preference, exit 0, 11 samples. Renderer PSS 159.3 -> 148.6 MiB (-6.7 %), all Chrome PSS 415.0 -> 401.5 MiB, JS heap 1.07 -> 1.44 MiB (0.98-1.64 sawtooth), DOM nodes 908 and listeners 12 constant: PSS ended below its start, which does not exclude slower leaks. CPU 10.0 % of one core over 300 s (renderer 5.1 %, GPU 4.9 %); 0.3 % with reduced motion and 0.3 % on /docs/api/rest-api/ (60 s each); 10.1 % (Home) and 11.0 % (Hosted) when scrolled to the end (60 s each). Finding 1. Audit-review fills the RSS requirement: timeout 480 bun memory.ts <copy>, exit 0, Home visible at 1280x800 with animations, N=5 min, 11 samples. Sum of all Chrome RSS 1,115.3 -> 1,117.9 MiB (+0.23%); summed renderer RSS 516.8 -> 519.8 MiB. CPU 10.44% of one core versus 0.22% for the 60 s reduced-motion baseline. Full samples and method are in review.memory; summed RSS double-counts shared pages."
+    },
+    {
+      "item": "Tests. CPU time per test file; name the slowest files.",
+      "status": "checked",
+      "evidence": "Original audit suite CPU median 609 ms of 5; audit-review: bun run test twice, CPU 665.699 and 669.854 ms, exit 0, each 195 pass / 0 fail across 30 files. One serial bun test ./<file> per file is recorded with CPU, exit code and test count in review.testFiles and the Markdown table. Slowest: src/site.test.ts 327.206 ms, src/build/hover-scan.test.ts 271.216 ms, src/content/home.test.ts 250.243 ms, src/content/hosted.test.ts 232.838 ms. All tests pass; nine isolated files exit 1 due to the unchanged coverage gate. The review corrects the original test counts for Home (11), Hosted (9), and hover-scan (7). No website test CPU budget exists. Suite run 1 leaves 4 .build directories / 340 KiB; run 2 leaves 8 / 676 KiB (finding 5)."
+    },
+    {
+      "item": "pulse-website only. JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages (performance score, LCP, TBT, CLS).",
+      "status": "checked",
+      "evidence": "bun run check:budget, exit 0, budget ok: Home HTML 7,277 / CSS 6,334 / JS 12,647 B gzip; Hosted 4,379 / 6,334 / 12,736 B; worst page HTML 15,108 B (docs/contract), CSS 6,334 B, JS 12,736 B against 60,000 / 20,000 / 30,000 B; JetBrains Mono 2 of 2 font files. Lighthouse 13.6.0, performance only, 3 runs each, exit 0, medians: Home mobile (plain server) score 99, LCP 2,256 ms, TBT 0 ms, CLS 0; Home mobile (gzip) 100, LCP 1,809 ms, TBT 0, CLS 0; Home desktop 100, LCP 528 ms, TBT 0, CLS 0.053; Hosted mobile (plain) 100, LCP 1,387 ms, TBT 0, CLS 0.033; Hosted mobile (gzip) 100, LCP 755 ms, TBT 0, CLS 0.033; Hosted desktop 100, LCP 245 ms, TBT 0, CLS 0.014. Fonts blocked: Home LCP 1,209 ms, CLS 0 everywhere (finding 3). No Lighthouse budget exists in the website."
+    }
+  ],
+  "findings": [
+    {
+      "id": "performance-website-2026-11-10-1",
+      "repos": [
+        "website"
+      ],
+      "location": "src/islands/network-canvas.ts:85-108",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The network canvas animation costs about 10 % of a CPU core for as long as Home or Hosted is visible, wherever the reader has scrolled to",
+      "command": "timeout 600 bun memrun.ts <copy> / 5 30 no-preference (headless Chrome 156, 1280x800; PSS and CPU of every Chrome process from /proc, CDP Performance.getMetrics); 60 s repeats: SCROLL=1 on / and /hosted/, motion reduce on /, and /docs/api/rest-api/",
+      "exitCode": 0,
+      "excerpt": "CPU over 300 s: renderer 5.1 %, gpu 4.9 %, all chrome 10.0 % of one core; page task time 3.1 %\nscrolled to y=5778 (Home): all chrome 10.1 %; scrolled to y=3546 (Hosted): all chrome 11.0 %\nHome, reduce: all chrome 0.3 %; /docs/api/rest-api/: all chrome 0.3 %",
+      "value": 10,
+      "unit": "% of one CPU core (all Chrome processes), Home open and visible",
+      "repetitions": "1 run of 300 s with 11 samples; 60 s repeats on Home and Hosted scrolled to the end (10.1 %, 11.0 %)",
+      "baseline": "0.3 % with reduced motion on the same page (60 s), 0.3 % on a docs page without the canvas (60 s)",
+      "budget": "none: the website has no runtime CPU budget, and pulse-api bench/budgets.json has no website entry",
+      "detail": "The canvas is position: fixed with inset: 0 (src/styles/components.css:397-404), so the IntersectionObserver (src/islands/network-canvas.ts:146-149) never reports it off screen. The loop runs at about 30 fps until the tab is hidden, and each frame redraws the whole static network (drawNetwork() at :106) before the pulses. The GPU share depends on the machine: headless Chrome renders with a software GPU here.",
+      "fixDirection": "Draw the static network once (a second canvas or a cached bitmap) and redraw only the pulses per frame; or stop the loop once the hero is out of view, or after some time.",
+      "commits": {
+        "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+      }
+    },
+    {
+      "id": "performance-website-2026-11-10-2",
+      "repos": [
+        "website"
+      ],
+      "location": "src/build/load-site.ts:17-25",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The build renders every page with the development builds of React; production React gives byte-identical output for 15 % less CPU",
+      "command": "bun cpu.ts <copy> 2 <label> -- bun scripts/build.ts, alternated 5 times with -- env NODE_ENV=production bun scripts/build.ts (10 runs per side); diff -r dist-dev dist-prod; bun --cpu-prof --cpu-prof-interval=100 scripts/build.ts (5 runs) summed with prof.ts",
+      "exitCode": 0,
+      "excerpt": "default: 971, 1004, 1031, 1037, 1042, 978, 1050, 1000, 994, 953 ms\nNODE_ENV=production: 807, 817, 845, 856, 857, 828, 859, 867, 894, 854 ms\ndiff_exit=0\nprofile by file: react-dom-server-legacy.browser.development.js 14.3 %, react-jsx-runtime.development.js 3.5 % (validateProperties$2, validateProperty, warnUnknownProperties)",
+      "value": 1002,
+      "unit": "ms CPU per build (bun scripts/build.ts, warm docs cache)",
+      "repetitions": "10 runs per side, interleaved",
+      "baseline": "855 ms with NODE_ENV=production (median of 10): -147 ms, -14.7 %, identical dist/",
+      "budget": "none: the website has no build CPU budget, and pulse-api bench/budgets.json has no website entry",
+      "detail": "load-site.ts compiles src/site.tsx with packages: \"external\" and no NODE_ENV, so react-dom/server and react/jsx-runtime resolve to their development builds. The islands already get define process.env.NODE_ENV = \"production\" (src/build/assets.ts:76).",
+      "fixDirection": "Set NODE_ENV=production for the server render of the build (in scripts/build.ts, or a build-only define in load-site.ts), so the tests can keep React's development checks.",
+      "commits": {
+        "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+      }
+    },
+    {
+      "id": "performance-website-2026-11-10-3",
+      "repos": [
+        "website"
+      ],
+      "location": "src/styles/fonts.css:23-32",
+      "severity": "P3",
+      "candidate": true,
+      "title": "Home's simulated mobile LCP is about 0.6 s lower with fonts blocked; font-related layout shifts remain below 0.1",
+      "command": "lighthouse <origin>/ and <origin>/hosted/ --only-categories=performance --output=json --chrome-flags=\"--headless=new --no-sandbox\" (Lighthouse 13.6.0, Chrome 156), mobile behind gzip, 3 runs with fonts and 3 with --blocked-url-patterns='*.woff2'; also --preset=desktop and the repository's plain static server, 3 runs each",
+      "exitCode": 0,
+      "excerpt": "Home mobile LCP 1809, 1808, 1811 ms (fonts) vs 1235, 1205, 1209 ms (fonts blocked)\nLCP element: p.t-lead (fonts) vs h1.t-display (fonts blocked)\nHosted mobile CLS 0.033, 0.033, 0.033 (fonts) vs 0, 0, 0 (fonts blocked); Home desktop CLS 0.053, 0.053, 0.000\nlayout-shifts: span.t-accent (Hosted), div.hero-side (Home desktop), cause \"Web font loaded\"\nobserved: fonts end 76-78 ms, FCP 81-83 ms, LCP 123-133 ms",
+      "value": 1809,
+      "unit": "ms LCP, Home, Lighthouse mobile (simulated), gzip server; CLS 0.033 (Hosted mobile) and 0.053 (Home desktop)",
+      "repetitions": "3 runs per page and setting",
+      "baseline": "the same pages with the fonts blocked: Home LCP 1,209 ms, CLS 0 on both pages; on the uncompressed repository server Home LCP is 2,256 ms",
+      "budget": "none in budget.json; Core Web Vitals 'good' limits LCP 2.5 s and CLS 0.1, which all medians pass",
+      "detail": "The fallbacks are local(\"Arial\") and local(\"Courier New\") with size-adjust: 100% only, no ascent, descent or line-gap override; no font is preloaded (grep -rn preload src finds nothing). The runner has no Arial or Courier New (fc-list | grep -i -E \"arial|courier\" is empty), so the shift size depends on the reader's system fonts. Blocking fonts changes both transfer bytes and text geometry, including the LCP element. This comparison does not isolate font-display swap or establish the savings from metric-matched fallbacks; these are synthetic lab results.",
+      "fixDirection": "Give the fallback faces metric overrides (ascent-override, descent-override, line-gap-override and a measured size-adjust) for the fonts they replace, and consider preloading the Space Grotesk file used by the hero text.",
+      "commits": {
+        "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+      }
+    },
+    {
+      "id": "performance-website-2026-11-10-4",
+      "repos": [
+        "website"
+      ],
+      "location": "src/docs/page.ts:38",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The build runs four lexer passes per docs source, including a full render used only to collect heading ids",
+      "command": "timeout 600 bun growth.ts <copy> 1 10 (pinned docs from the build cache, joined 10x for the larger set; median of 5 after one warm-up); build profile as in checklist item 2",
+      "exitCode": 0,
+      "excerpt": "scale 1x: 39 sources, 415 KiB Markdown\n  marked.lexer once per source      47.1 ms\n  renderMarkdown once per source    97.0 ms\n  buildDocPages (as the build)      196.2 ms\nscale 10x: 39 sources, 4149 KiB Markdown\n  marked.lexer once per source      439.1 ms\n  renderMarkdown once per source    928.6 ms\n  buildDocPages (as the build)      1857.3 ms\nprofile: marked setext-heading regex 713.2 ms of 3779.1 ms (18.9 %), the top function by self time",
+      "value": 196.2,
+      "unit": "ms per build for buildDocPages at 1x (1,857.3 ms at 10x)",
+      "repetitions": "5 timed runs per size after 1 warm-up",
+      "baseline": "one renderMarkdown per file: 97.0 ms at 1x, 928.6 ms at 10x; one lexer pass: 47.1 ms and 439.1 ms",
+      "budget": "none: the website has no build CPU budget",
+      "detail": "src/docs/page.ts:38 runs a full renderMarkdown per file only to collect heading ids; :47 renders again; src/docs/markdown.ts:141-142 runs marked.parse(source) and then marked.lexer(source) again for the first paragraph. These measurements and the source show duplicate work, but do not prove a fixed 2x overhead or the savings of an optimized build. One render with identity links is a reference cost, not an output-equivalent optimized build.",
+      "fixDirection": "Consider reusing tokens for the heading ids, HTML and first paragraph while preserving cross-document anchor validation.",
+      "commits": {
+        "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+      }
+    },
+    {
+      "id": "performance-website-2026-11-10-5",
+      "repos": [
+        "website"
+      ],
+      "location": "src/build/load-site.ts:13-15",
+      "severity": "P3",
+      "candidate": false,
+      "title": "Each bun run test leaves 4 compiled site copies (84 KiB each) in .build/ that no test removes, so the directory grows with every run",
+      "command": "rm -rf .build; for i in 1 2 3; do bun run test; ls .build | wc -l; du -sk .build; done",
+      "exitCode": 0,
+      "excerpt": "exit=0 after run 1: 4 dirs, 340 KiB\nexit=0 after run 2: 8 dirs, 676 KiB\nexit=0 after run 3: 12 dirs, 1012 KiB",
+      "value": 336,
+      "unit": "KiB of .build/ per bun run test (4 directories)",
+      "repetitions": "3 runs",
+      "baseline": "0 after bun run build, which clears .build/ (scripts/build.ts:47)",
+      "budget": "none",
+      "detail": "loadSite() makes mkdtemp(.build/site-) and never removes it; four test files call it (src/site.test.ts:47, src/content/home.test.ts:8, src/content/hosted.test.ts:7, src/build/hover-scan.test.ts:48). Developer disk only; it does not affect the site.",
+      "commits": {
+        "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+      }
+    }
+  ],
+  "notes": [
+    "Fonts are 78.7 % of Home's transfer behind gzip (106,166 of 134,945 B). The italic JetBrains Mono (43,134 B) serves only the .t-accent words of the hero headings (src/styles/tokens.css:256-262). budget.json limits font files per family, not font bytes.",
+    "The repository's static server (src/build/static-server.ts) sends no compression and no cache headers. It serves only the checks, but Lighthouse with it overstates the transfer: Home 195,937 B plain against 134,945 B with gzip, mobile LCP 2,256 against 1,809 ms. No host is chosen yet (site.config.ts).",
+    "The docs sidebar repeats all 39 links on every docs page (2,903 B raw; all nav blocks 852 B gzip of a 6,228 B gzip page). This grows linearly with the page count and is far from the HTML budget.",
+    "formatUpdated (src/docs/page.ts:77-80) builds a new Intl.DateTimeFormat per docs page: 102.0 ms self time over 5 profiled builds, about 20 ms per build.",
+    "Run alone, nine test files exit 1 with all tests passing, because the 80 % coverage gate of bunfig.toml applies to each single-file run (src/site.test.ts: 2 pass, 0 fail, 76.86 % lines, exit 1; exit 0 with a copy of bunfig.toml without coverageThreshold); this changes the exit code of the one-file command in the AGENTS.md table.",
+    "The pulse-api nightly bench does not measure the website. Build, test or Lighthouse budgets for the website would have to be added to pulse-api bench/budgets.json or the website's budget.json; that is a decision for the owner.",
+    "Measurement limits: resourceUsage() may miss the CPU of the esbuild service process, which is not a waited child. Headless Chrome renders with a software GPU, so the GPU share in finding 1 depends on the machine."
+  ],
+  "review": {
+    "date": "2026-11-10",
+    "startedAt": "2026-11-10T15:29:34Z",
+    "commitsVerified": {
+      "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8",
+      "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+      "metaHead": "24b9e5999a368d55d809157e85cfcb5896950e5c",
+      "metaBase": "6a09e6e9a0e5724b232a34312075b67068007dcc"
+    },
+    "validation": "Both files exist; JSON parses; findings, IDs, severities, candidates and all six checklist statuses agree. All required performance fields are present. Four issue candidates. No P1 or P2 findings. The meta audit base is the parent of the report commit.",
+    "bench": "Re-read latest completed scheduled bench run 42794619243 and downloaded bench-out; website is absent from table.md, table.json and samples.json. The read-only API budget has no website entry.",
+    "testFiles": [
+      {
+        "file": "src/site.test.ts",
+        "command": "bun test ./src/site.test.ts",
+        "exitCode": 1,
+        "value": 327.206,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 2,
+        "failures": 0
+      },
+      {
+        "file": "src/build/hover-scan.test.ts",
+        "command": "bun test ./src/build/hover-scan.test.ts",
+        "exitCode": 0,
+        "value": 271.216,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 7,
+        "failures": 0
+      },
+      {
+        "file": "src/content/home.test.ts",
+        "command": "bun test ./src/content/home.test.ts",
+        "exitCode": 0,
+        "value": 250.243,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 11,
+        "failures": 0
+      },
+      {
+        "file": "src/content/hosted.test.ts",
+        "command": "bun test ./src/content/hosted.test.ts",
+        "exitCode": 0,
+        "value": 232.838,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 9,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/page.test.ts",
+        "command": "bun test ./src/docs/page.test.ts",
+        "exitCode": 1,
+        "value": 92.306,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 15,
+        "failures": 0
+      },
+      {
+        "file": "src/build/static-server.test.ts",
+        "command": "bun test ./src/build/static-server.test.ts",
+        "exitCode": 0,
+        "value": 80.797,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 3,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/markdown.test.ts",
+        "command": "bun test ./src/docs/markdown.test.ts",
+        "exitCode": 1,
+        "value": 65.408,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 12,
+        "failures": 0
+      },
+      {
+        "file": "src/build/csp.test.ts",
+        "command": "bun test ./src/build/csp.test.ts",
+        "exitCode": 1,
+        "value": 53.011,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 13,
+        "failures": 0
+      },
+      {
+        "file": "src/build/links-check.test.ts",
+        "command": "bun test ./src/build/links-check.test.ts",
+        "exitCode": 0,
+        "value": 48.674,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 10,
+        "failures": 0
+      },
+      {
+        "file": "src/build/html-refs.test.ts",
+        "command": "bun test ./src/build/html-refs.test.ts",
+        "exitCode": 0,
+        "value": 45.412,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 7,
+        "failures": 0
+      },
+      {
+        "file": "src/lib/network.test.ts",
+        "command": "bun test ./src/lib/network.test.ts",
+        "exitCode": 0,
+        "value": 42.377,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 10,
+        "failures": 0
+      },
+      {
+        "file": "src/build/url-safety.test.ts",
+        "command": "bun test ./src/build/url-safety.test.ts",
+        "exitCode": 1,
+        "value": 41.087,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 8,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/fetch.test.ts",
+        "command": "bun test ./src/docs/fetch.test.ts",
+        "exitCode": 0,
+        "value": 38.861,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 8,
+        "failures": 0
+      },
+      {
+        "file": "src/build/budget.test.ts",
+        "command": "bun test ./src/build/budget.test.ts",
+        "exitCode": 1,
+        "value": 37.708,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 6,
+        "failures": 0
+      },
+      {
+        "file": "src/build/theme-script.test.ts",
+        "command": "bun test ./src/build/theme-script.test.ts",
+        "exitCode": 0,
+        "value": 36.242,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 4,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/links.test.ts",
+        "command": "bun test ./src/docs/links.test.ts",
+        "exitCode": 1,
+        "value": 34.845,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 7,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/nav.test.ts",
+        "command": "bun test ./src/docs/nav.test.ts",
+        "exitCode": 1,
+        "value": 34.037,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 5,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/highlight.test.ts",
+        "command": "bun test ./src/docs/highlight.test.ts",
+        "exitCode": 0,
+        "value": 33.812,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 5,
+        "failures": 0
+      },
+      {
+        "file": "src/build/tokens-css.test.ts",
+        "command": "bun test ./src/build/tokens-css.test.ts",
+        "exitCode": 0,
+        "value": 33.628,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 4,
+        "failures": 0
+      },
+      {
+        "file": "src/build/contrast.test.ts",
+        "command": "bun test ./src/build/contrast.test.ts",
+        "exitCode": 0,
+        "value": 33.427,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 3,
+        "failures": 0
+      },
+      {
+        "file": "src/build/sitemap.test.ts",
+        "command": "bun test ./src/build/sitemap.test.ts",
+        "exitCode": 1,
+        "value": 32.472,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 2,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/config.test.ts",
+        "command": "bun test ./src/docs/config.test.ts",
+        "exitCode": 0,
+        "value": 32.453,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 4,
+        "failures": 0
+      },
+      {
+        "file": "src/content/facts.test.ts",
+        "command": "bun test ./src/content/facts.test.ts",
+        "exitCode": 0,
+        "value": 32.17,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 10,
+        "failures": 0
+      },
+      {
+        "file": "src/lib/commands.test.ts",
+        "command": "bun test ./src/lib/commands.test.ts",
+        "exitCode": 0,
+        "value": 31.886,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 11,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/bump.test.ts",
+        "command": "bun test ./src/docs/bump.test.ts",
+        "exitCode": 0,
+        "value": 31.622,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 7,
+        "failures": 0
+      },
+      {
+        "file": "src/build/meta.test.ts",
+        "command": "bun test ./src/build/meta.test.ts",
+        "exitCode": 0,
+        "value": 31.143,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 4,
+        "failures": 0
+      },
+      {
+        "file": "src/docs/slug.test.ts",
+        "command": "bun test ./src/docs/slug.test.ts",
+        "exitCode": 0,
+        "value": 29.664,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 2,
+        "failures": 0
+      },
+      {
+        "file": "src/lib/preview-clock.test.ts",
+        "command": "bun test ./src/lib/preview-clock.test.ts",
+        "exitCode": 0,
+        "value": 29.448,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 1,
+        "failures": 0
+      },
+      {
+        "file": "src/lib/throttle.test.ts",
+        "command": "bun test ./src/lib/throttle.test.ts",
+        "exitCode": 0,
+        "value": 29.295,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 2,
+        "failures": 0
+      },
+      {
+        "file": "src/islands/theme.test.ts",
+        "command": "bun test ./src/islands/theme.test.ts",
+        "exitCode": 0,
+        "value": 27.93,
+        "unit": "ms CPU (child user + system)",
+        "repetitions": 1,
+        "passes": 3,
+        "failures": 0
+      }
+    ],
+    "testSuites": [
+      {
+        "command": "bun run test",
+        "exitCode": 0,
+        "value": 665.699,
+        "unit": "ms CPU",
+        "buildDirectories": 4,
+        "diskKiB": 340,
+        "passes": 195,
+        "failures": 0
+      },
+      {
+        "command": "bun run test",
+        "exitCode": 0,
+        "value": 669.854,
+        "unit": "ms CPU",
+        "buildDirectories": 8,
+        "diskKiB": 676,
+        "passes": 195,
+        "failures": 0
+      }
+    ],
+    "buildComparison": {
+      "command": "timeout 180 bun review.ts <copy> cpu; diff -r dist-dev dist-prod",
+      "exitCode": 0,
+      "repetitions": 2,
+      "defaultCpuMs": [
+        1075.055,
+        1083.612
+      ],
+      "productionCpuMs": [
+        885.541,
+        915.473
+      ],
+      "byteIdentical": true
+    },
+    "growth": {
+      "command": "timeout 180 bun review.ts <copy> growth",
+      "exitCode": 0,
+      "repetitions": "2 timed runs per case and size after one warm-up",
+      "unit": "ms elapsed",
+      "method": "Read pinned Markdown from the build cache; join each source 10 times with blank-line separators. Identity links are used for the single render reference.",
+      "measurements": [
+        {
+          "scale": 1,
+          "name": "lexer",
+          "sources": 39,
+          "bytes": 424816,
+          "timesMs": [
+            58.516470999999996,
+            40.47709499999999
+          ]
+        },
+        {
+          "scale": 1,
+          "name": "renderMarkdown",
+          "sources": 39,
+          "bytes": 424816,
+          "timesMs": [
+            109.49947399999996,
+            125.84348499999999
+          ]
+        },
+        {
+          "scale": 1,
+          "name": "buildDocPages",
+          "sources": 39,
+          "bytes": 424816,
+          "timesMs": [
+            228.25935399999992,
+            219.48183899999992
+          ]
+        },
+        {
+          "scale": 10,
+          "name": "lexer",
+          "sources": 39,
+          "bytes": 4248862,
+          "timesMs": [
+            446.26395999999977,
+            409.7491679999998
+          ]
+        },
+        {
+          "scale": 10,
+          "name": "renderMarkdown",
+          "sources": 39,
+          "bytes": 4248862,
+          "timesMs": [
+            1040.8001380000005,
+            1367.2759299999998
+          ]
+        },
+        {
+          "scale": 10,
+          "name": "buildDocPages",
+          "sources": 39,
+          "bytes": 4248862,
+          "timesMs": [
+            1584.8008709999995,
+            1604.342111
+          ]
+        }
+      ]
+    },
+    "removedFindings": [],
+    "regradedFindings": [],
+    "memory": {
+      "command": "timeout 480 bun memory.ts <copy>",
+      "exitCode": 0,
+      "repetitions": 1,
+      "load": "Home visible at 1280x800 in Google Chrome 156 headless, no-preference motion, 300 s (N=5 min); one fresh context with reduce for a 60 s baseline. Only 127.0.0.1 requests were allowed.",
+      "method": "CDP SystemInfo.getProcessInfo process IDs and CPU counters; Rss and Pss from /proc/<pid>/smaps_rollup every 30 s; page CDP Performance.getMetrics. Renderer values sum all CDP-reported renderer processes, including spare renderers; all-process RSS double-counts shared pages.",
+      "samples": [
+        {
+          "motion": "no-preference",
+          "seconds": 0.028997453999999836,
+          "allRssMiB": 1115.3046875,
+          "rendererRssMiB": 516.79296875,
+          "allPssMiB": 407.0703125,
+          "rendererPssMiB": 176.9755859375,
+          "cpuSeconds": 1.2300000000000002,
+          "rendererCpuSeconds": 0.5800000000000001,
+          "gpuCpuSeconds": 0.08,
+          "heapMiB": 1.4933815002441406,
+          "nodes": 934,
+          "listeners": 12,
+          "taskSeconds": 0.001357
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 30.068061623000002,
+          "allRssMiB": 1106.94921875,
+          "rendererRssMiB": 510.55078125,
+          "allPssMiB": 395.4267578125,
+          "rendererPssMiB": 167.158203125,
+          "cpuSeconds": 4.53,
+          "rendererCpuSeconds": 2.31,
+          "gpuCpuSeconds": 1.57,
+          "heapMiB": 1.0166511535644531,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 1.050573
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 60.097450428,
+          "allRssMiB": 1106.0234375,
+          "rendererRssMiB": 509.52734375,
+          "allPssMiB": 391.9052734375,
+          "rendererPssMiB": 164.7900390625,
+          "cpuSeconds": 7.640000000000001,
+          "rendererCpuSeconds": 3.91,
+          "gpuCpuSeconds": 3.06,
+          "heapMiB": 1.8114700317382812,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 2.040296
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 90.126995174,
+          "allRssMiB": 1111.0390625,
+          "rendererRssMiB": 514.80078125,
+          "allPssMiB": 395.7861328125,
+          "rendererPssMiB": 169.2919921875,
+          "cpuSeconds": 10.66,
+          "rendererCpuSeconds": 5.449999999999999,
+          "gpuCpuSeconds": 4.52,
+          "heapMiB": 1.6785545349121094,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 3.002719
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 120.1565972,
+          "allRssMiB": 1111.7421875,
+          "rendererRssMiB": 515.015625,
+          "allPssMiB": 395.9990234375,
+          "rendererPssMiB": 169.4423828125,
+          "cpuSeconds": 13.77,
+          "rendererCpuSeconds": 7.029999999999999,
+          "gpuCpuSeconds": 6.04,
+          "heapMiB": 1.1374778747558594,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 3.997777
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 150.18587785800003,
+          "allRssMiB": 1112.87890625,
+          "rendererRssMiB": 516.34765625,
+          "allPssMiB": 397.1357421875,
+          "rendererPssMiB": 170.7744140625,
+          "cpuSeconds": 16.930000000000003,
+          "rendererCpuSeconds": 8.65,
+          "gpuCpuSeconds": 7.58,
+          "heapMiB": 1.36376953125,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 5.006733
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 180.216755948,
+          "allRssMiB": 1114.79296875,
+          "rendererRssMiB": 517.79296875,
+          "allPssMiB": 398.9443359375,
+          "rendererPssMiB": 172.1376953125,
+          "cpuSeconds": 20.07,
+          "rendererCpuSeconds": 10.25,
+          "gpuCpuSeconds": 9.11,
+          "heapMiB": 1.6050949096679688,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 6.012114
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 210.245939117,
+          "allRssMiB": 1116.05078125,
+          "rendererRssMiB": 519.1953125,
+          "allPssMiB": 400.2021484375,
+          "rendererPssMiB": 173.5400390625,
+          "cpuSeconds": 23.099999999999998,
+          "rendererCpuSeconds": 11.79,
+          "gpuCpuSeconds": 10.59,
+          "heapMiB": 1.051849365234375,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 6.989401
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 240.275590177,
+          "allRssMiB": 1117.046875,
+          "rendererRssMiB": 519.19140625,
+          "allPssMiB": 400.55859375,
+          "rendererPssMiB": 173.4833984375,
+          "cpuSeconds": 26.25,
+          "rendererCpuSeconds": 13.4,
+          "gpuCpuSeconds": 12.12,
+          "heapMiB": 1.0528602600097656,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 7.995977
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 270.304679467,
+          "allRssMiB": 1117.23046875,
+          "rendererRssMiB": 519.5078125,
+          "allPssMiB": 400.7421875,
+          "rendererPssMiB": 173.7998046875,
+          "cpuSeconds": 29.41,
+          "rendererCpuSeconds": 15.02,
+          "gpuCpuSeconds": 13.66,
+          "heapMiB": 1.3060417175292969,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 9.009985
+        },
+        {
+          "motion": "no-preference",
+          "seconds": 300.33327833100003,
+          "allRssMiB": 1117.91796875,
+          "rendererRssMiB": 519.79296875,
+          "allPssMiB": 401.1171875,
+          "rendererPssMiB": 174.0537109375,
+          "cpuSeconds": 32.580000000000005,
+          "rendererCpuSeconds": 16.62,
+          "gpuCpuSeconds": 15.21,
+          "heapMiB": 1.5294609069824219,
+          "nodes": 908,
+          "listeners": 12,
+          "taskSeconds": 10.015421
+        },
+        {
+          "motion": "reduce",
+          "seconds": 0.028776351000007708,
+          "allRssMiB": 1145.61328125,
+          "rendererRssMiB": 527.00390625,
+          "allPssMiB": 420.5400390625,
+          "rendererPssMiB": 182.59375,
+          "cpuSeconds": 16.86,
+          "rendererCpuSeconds": 0.56,
+          "gpuCpuSeconds": 15.26,
+          "heapMiB": 0.8829612731933594,
+          "nodes": 908,
+          "listeners": 11,
+          "taskSeconds": 0.000828
+        },
+        {
+          "motion": "reduce",
+          "seconds": 30.067135890000035,
+          "allRssMiB": 1117.66015625,
+          "rendererRssMiB": 511.16796875,
+          "allPssMiB": 398.2841796875,
+          "rendererPssMiB": 167.9482421875,
+          "cpuSeconds": 16.95,
+          "rendererCpuSeconds": 0.62,
+          "gpuCpuSeconds": 15.27,
+          "heapMiB": 0.9735488891601562,
+          "nodes": 908,
+          "listeners": 11,
+          "taskSeconds": 0.010907
+        },
+        {
+          "motion": "reduce",
+          "seconds": 60.097795158000025,
+          "allRssMiB": 1115.44140625,
+          "rendererRssMiB": 508.859375,
+          "allPssMiB": 395.6318359375,
+          "rendererPssMiB": 165.2236328125,
+          "cpuSeconds": 16.990000000000002,
+          "rendererCpuSeconds": 0.66,
+          "gpuCpuSeconds": 15.27,
+          "heapMiB": 0.9735488891601562,
+          "nodes": 908,
+          "listeners": 11,
+          "taskSeconds": 0.011485
+        }
+      ],
+      "animatedCpuPercent": 10.439411622254054,
+      "reducedCpuPercent": 0.21641771845431454,
+      "limitation": "Total Chrome RSS rose 0.23% over this five-minute window; this cannot rule out slow leaks or distinguish allocator retention from a leak."
+    },
+    "profile": {
+      "command": "bun --cpu-prof --cpu-prof-interval=100 --cpu-prof-dir=<tmp>/profiles --cpu-prof-name=review.cpuprofile scripts/build.ts",
+      "exitCode": 0,
+      "repetitions": 1,
+      "method": "Self time sums timeDeltas for samples at each node, aggregated by call frame.",
+      "samples": 2914,
+      "sampledMs": 790.138,
+      "top": [
+        {
+          "function": "marked setext-heading regex",
+          "url": "",
+          "line": 0,
+          "selfMs": 142.129
+        },
+        {
+          "function": "anonymous",
+          "url": "",
+          "line": 0,
+          "selfMs": 71.89900000000002
+        },
+        {
+          "function": "DateTimeFormat",
+          "url": "",
+          "line": 0,
+          "selfMs": 24.072
+        },
+        {
+          "function": "Error",
+          "url": "",
+          "line": 0,
+          "selfMs": 23.029000000000003
+        },
+        {
+          "function": "#e",
+          "url": "<copy>/node_modules/marked/lib/marked.esm.js",
+          "line": 62,
+          "selfMs": 22.653999999999996
+        },
+        {
+          "function": "marked inline-text regex",
+          "url": "",
+          "line": 0,
+          "selfMs": 18.857
+        },
+        {
+          "function": "",
+          "url": "<copy>/node_modules/react-dom/cjs/react-dom-server-legacy.browser.development.js",
+          "line": 37,
+          "selfMs": 15.056
+        },
+        {
+          "function": "read",
+          "url": "<copy>/node_modules/esbuild/lib/main.js",
+          "line": 173,
+          "selfMs": 14.411
+        },
+        {
+          "function": "pushStartInstance",
+          "url": "<copy>/node_modules/react-dom/cjs/react-dom-server-legacy.browser.development.js",
+          "line": 1622,
+          "selfMs": 13.979000000000003
+        },
+        {
+          "function": "list",
+          "url": "<copy>/node_modules/marked/lib/marked.esm.js",
+          "line": 37,
+          "selfMs": 13.453
+        }
+      ]
+    },
+    "lighthouse": {
+      "command": "timeout 420 bun lighthouse.ts <copy>",
+      "exitCode": 0,
+      "method": "Lighthouse 13.6.0 CLI, --only-categories=performance --output=json --chrome-flags='--headless=new --no-sandbox --disable-dev-shm-usage'; Home twice per side with and without --blocked-url-patterns='*.woff2', Hosted once with fonts; localhost gzip server.",
+      "runs": [
+        {
+          "page": "/",
+          "blockFonts": false,
+          "round": 1,
+          "exitCode": 0,
+          "score": 100,
+          "lcpMs": 1807.9902,
+          "tbtMs": 0,
+          "cls": 0
+        },
+        {
+          "page": "/",
+          "blockFonts": true,
+          "round": 1,
+          "exitCode": 0,
+          "score": 100,
+          "lcpMs": 1213.1024,
+          "tbtMs": 0,
+          "cls": 0
+        },
+        {
+          "page": "/",
+          "blockFonts": false,
+          "round": 2,
+          "exitCode": 0,
+          "score": 100,
+          "lcpMs": 1809.5337,
+          "tbtMs": 0,
+          "cls": 0
+        },
+        {
+          "page": "/",
+          "blockFonts": true,
+          "round": 2,
+          "exitCode": 0,
+          "score": 100,
+          "lcpMs": 1210.2716,
+          "tbtMs": 0,
+          "cls": 0
+        },
+        {
+          "page": "/hosted/",
+          "blockFonts": false,
+          "round": 1,
+          "exitCode": 0,
+          "score": 100,
+          "lcpMs": 752.4773,
+          "tbtMs": 0,
+          "cls": 0.03264461844806687
+        }
+      ],
+      "lcpElement": "p.t-lead with fonts; h1.t-display with fonts blocked, from lcp-breakdown-insight. Hosted layout-shifts attributes CLS to web fonts.",
+      "limitation": "Blocking fonts changes both transfer bytes and text geometry, including the LCP element. This comparison does not isolate font-display swap or establish the savings from metric-matched fallbacks; these are synthetic lab results."
+    },
+    "budget": {
+      "command": "bun run build && bun run check:budget",
+      "exitCode": 0,
+      "excerpt": "worst page: html 15108 B, css 6334 B, js 12736 B gzip; budget: html 60000 B, css 20000 B, js 30000 B gzip; budget ok"
+    },
+    "narrowedClaims": [
+      {
+        "id": "performance-website-2026-11-10-3",
+        "reason": "Blocking fonts changes both transfer bytes and text geometry, including the LCP element. This comparison does not isolate font-display swap or establish the savings from metric-matched fallbacks; these are synthetic lab results."
+      },
+      {
+        "id": "performance-website-2026-11-10-4",
+        "reason": "Source confirms four lexer passes, but an identity-link single render is not an output-equivalent optimization. Review ratios vary, so remove claims of an invariant 2x overhead and guaranteed savings."
+      }
+    ],
+    "limitations": [
+      "Only one five-minute browser load and one 60-second reduced-motion baseline were measured in review; no inference about slow leaks.",
+      "Headless Chrome CPU uses software rendering and is runner-specific; build resourceUsage may omit esbuild service CPU.",
+      "Original desktop Lighthouse results were not rerun; review checked mobile Home and Hosted. Font blocking changes content geometry and transfer cost.",
+      "No website nightly bench metric or CPU/Lighthouse budget exists. No issues were opened and no product code was changed."
+    ]
+  }
+}

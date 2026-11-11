@@ -1,6 +1,7 @@
 // node --test report/: the pure part of data.mjs on a small hand-made API answer.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { runMarkerLine, markerLine } from '@paragondata/factory-app';
 import { build, fingerprint } from './data.mjs';
 
 const BOT = 'pulse-factory[bot]';
@@ -131,4 +132,34 @@ test('deltas come from the previous report; the fingerprint ignores period, wind
   assert.equal(first.summary[0].d_runs, null);
   const s = { ...first.summary[0], period: 'x', win_runs: 99, d_runs: 7 };
   assert.equal(fingerprint(s), first.meta.fingerprint);
+});
+
+// The same run as Factory 0.10 writes it with --run-url: a v4 line from the installed CLI's serializer.
+const toV4 = (c) => {
+  const m = /<!-- factory-record v3 (\{.*\}) -->/.exec(c.body);
+  const { claim: k, done: d } = JSON.parse(m[1]);
+  const line = runMarkerLine(
+    { kind: 'claim', run: k.run, generation: 1, base: 0, depth: 0, workflow: k.workflow, state: k.state, admission: 'label',
+      harness: k.harness, model: k.model, runUrl: `https://github.com/lorenzh/pulse-meta/actions/runs/${k.run.split('-')[0]}` },
+    { kind: 'done', run: k.run, generation: 1, depth: 0, workflow: k.workflow, states: d.states, statuses: [], complete: false,
+      next: d.states.length > 0, reason: d.reason, usage: d.usage });
+  assert.match(line, /^<!-- factory-record v4 /);
+  return { ...c, body: c.body.replace(m[0], line) };
+};
+
+test('v4 run records count like v3 ones; a v4 failure comment is no run', () => {
+  const v3 = build(raw(), { bot: BOT, now: NOW });
+  const r = raw();
+  // Mixed: every other bot record (and the stranger's forgery) as v4, the rest stays v3.
+  r.comments = r.comments.map((c, i) => c.body.includes('factory-record') && i % 2 === 1 ? toV4(c) : c);
+  assert.ok(r.comments.some((c) => c.body.includes('factory-record v3')) && r.comments.some((c) => c.body.includes('factory-record v4')));
+  r.comments.push({ user: { login: BOT }, issue_url: 'https://api.github.com/repos/lorenzh/pulse-meta/issues/11', created_at: '2026-11-29T10:00:00Z',
+    body: `Factory run 102-1 failed with HARNESS_TIMEOUT.\n${markerLine({ kind: 'failure', run: '102-1', generation: 1, code: 'HARNESS_TIMEOUT' })}` });
+  const mixed = build(r, { bot: BOT, now: NOW });
+  assert.deepEqual(mixed.summary, v3.summary);
+  assert.equal(mixed.summary[0].runs, 5);
+  assert.equal(mixed.summary[0].usd, 8);
+  const all = raw();
+  all.comments = all.comments.map((c) => c.body.includes('factory-record') ? toV4(c) : c);
+  assert.deepEqual(build(all, { bot: BOT, now: NOW }).summary, v3.summary);
 });

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoice export API · Checks · pulse Console</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/losoft-app/tokens.css">
+<link rel="stylesheet" href="ds/losoft-app/components/bundle.css">
+<link rel="stylesheet" href="console.css">
+<script src="ds/losoft-app/components/bundle.js"></script>
+<script src="shell.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent-text)}a:hover{color:var(--text)}
+</style>
+</helmet>
+<div class="pc" data-theme="{{theme}}" data-density="compact">
+<div class="la-shell la-shell--contained">
+<aside class="la-shell__side" aria-label="Console"><button type="button" class="la-iconbtn la-iconbtn--sm la-shell__drawer-close" aria-label="Close navigation" hidden><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button><div class="la-side"><a class="la-side__brand" href="Main.dc.html" aria-label="pulse console home"><img class="la-side__mark" src="/_blob/fbf04a1dad658b8e52c66476899e4bf8" alt="" width="22" height="22"><span class="la-side__name">pulse</span><span class="la-side__cursor" aria-hidden="true"></span><span class="la-side__sub">console</span></a><nav class="la-side__nav" aria-label="Main"><a class="la-side__link" href="Main.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>Overview</a>
+<a class="la-side__link" href="Checks.dc.html" aria-current="page"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>Checks<span class="la-side__count">34</span></a>
+<a class="la-side__link" href="Incidents.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>Incidents<span class="la-side__count la-side__count--error">1 open</span></a>
+<a class="la-side__link" href="StatusPage.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>Status page</a>
+<a class="la-side__link" href="Notifications.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Notifications</a>
+<p class="la-side__group">Organisation</p>
+<a class="la-side__link" href="Team.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Team</a>
+<a class="la-side__link" href="ApiKeys.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>API keys</a>
+<a class="la-side__link" href="AgentAccess.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2M20 14h2M15 13v2M9 13v2"></path></svg>Agent access</a>
+<a class="la-side__link" href="AiAssist.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6M10 22h4"></path></svg>AI assistance</a>
+<a class="la-side__link" href="Billing.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"></rect><path d="M2 10h20"></path></svg>Billing</a>
+<a class="la-side__link" href="Security.dc.html"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>Account security</a></nav></div></aside>
+
+<div class="la-shell__scrim"></div><div class="la-shell__main">
+<header class="la-shell__top"><button type="button" class="la-iconbtn la-shell__menu" aria-label="Open navigation" aria-expanded="false" hidden><svg class="la-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"></path><path d="M4 6h16"></path><path d="M4 18h16"></path></svg></button><button type="button" class="la-trigger cs-ws" aria-haspopup="menu" aria-expanded="false"><span class="la-avatar la-avatar--sq" aria-hidden="true">QB</span><span class="la-ws"><b>Quillbird</b><span>Team plan · eu</span></span><svg class="la-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg><span class="la-sr">Switch organisation</span></button><nav class="la-crumbs cs-crumbs" aria-label="Breadcrumb"><ol ><li><a href="Main.dc.html">Quillbird</a></li><li aria-hidden="true">/</li><li><a href="Checks.dc.html">Checks</a></li><li aria-hidden="true">/</li><li aria-current="page">Invoice export API</li></ol></nav><label class="search"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><span class="la-sr">Search checks, incidents and settings</span><input type="search" placeholder="Search checks, incidents, settings"><kbd class="la-kbd">⌘K</kbd></label><a class="pill-st" href="StatusPage.dc.html"><span class="la-status la-status--down"><span class="la-status__mark"></span></span>status.quillbird.example</a><span class="cs-tools"><button type="button" class="la-iconbtn la-iconbtn--sm" onClick="{{toggleTheme}}" aria-label="{{themeLabel}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg></button><span class="cs-account" title="Mara Lindqvist · Owner"><span class="cs-who"><b>Mara Lindqvist</b><span>Owner</span></span><span class="la-avatar cs-user" role="img" aria-label="Mara Lindqvist, Owner">ML</span></span></span></header>
+
+<div class="la-shell__banner"></div><div class="la-shell__body"><main class="la-shell__content cs-content">
+<div class="page-head">
+<div class="stack-8">
+<div class="row"><span class="la-badge">http</span><span class="la-badge la-badge--info">API</span><span class="lbl" title="chk_7Hq2Lx · created 2026-03-11">chk_7Hq2Lx · created 2026-03-11</span></div>
+<h1 class="page-title">Invoice export API</h1>
+<div class="row-12"><span class="la-status la-status--down"><span class="la-status__mark"></span><span class="la-status__label" style="font-weight: 600;">Down since 14:02 UTC · 30 min</span></span><span class="lbl" title="POST https://api.quillbird.example/v1/exports">POST https://api.quillbird.example/v1/exports</span></div>
+</div>
+<div class="row">
+<button type="button" class="la-btn la-btn--secondary">Run now</button>
+<button type="button" class="la-btn la-btn--secondary">Pause</button>
+<a class="la-btn la-btn--primary" href="CheckEdit.dc.html">Edit check</a>
+<button type="button" class="la-iconbtn icon-btn--outline" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for Invoice export API"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</div>
+
+<div class="la-tabs" role="tablist" aria-label="Check views">
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="true" tabindex="0">Overview</button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Results <span class="la-tabs__count">· 2,880 today</span></button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Incidents <span class="la-tabs__count">· 2</span></button>
+<button type="button" class="la-tabs__tab" role="tab" aria-selected="false" tabindex="-1">Settings</button>
+</div>
+
+<div class="la-callout la-callout--error" role="status">
+<svg class="la-callout__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+<div class="la-callout__body"><p class="la-callout__title">Down: 2 of 4 locations fail, quorum is 2</p><p class="la-callout__text">Frankfurt and Amsterdam time out after <span class="mono">10 s</span>; Helsinki and Virginia answer in over <span class="mono">2 s</span>. Incident <span class="mono">#142</span> opened automatically at <span class="mono">14:02:31</span>.</p></div>
+<a class="la-btn la-btn--secondary la-btn--sm" href="IncidentDetail.dc.html" style="display: inline-flex; align-items: center; text-decoration: none; color: var(--text); padding: 0 16px;">Open incident #142</a>
+</div>
+
+<div class="g-side">
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="loc-h">
+<div class="la-panel__head"><h2 class="eb" id="loc-h">Uptime by location</h2><span class="lbl">quorum 2 of 4</span></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Location</th><th scope="col">Now</th><th scope="col">Last 30 days</th><th scope="col" class="num">24 h</th><th scope="col" class="num">30 d</th><th scope="col" class="num">p50</th><th scope="col" class="num">p95</th></tr></thead>
+<tbody>
+<sc-for list="{{locs}}" as="l" hint-placeholder-count="4">
+<tr>
+<td class="tt"><b>{{l.name}}</b><span class="sub">{{l.code}}</span></td>
+<td style="white-space: nowrap;"><span class="la-status la-status--dense {{l.tone}}"><span class="la-status__mark"></span><span class="la-status__label">{{l.now}}</span></span></td>
+<td style="min-width: 200px;"><div class="ub ub-sm" aria-label="{{l.barLabel}}" role="img"><sc-for list="{{l.days}}" as="d" hint-placeholder-count="30"><span class="{{d}}"></span></sc-for></div></td>
+<td class="num">{{l.d1}}</td><td class="num">{{l.d30}}</td><td class="num">{{l.p50}}</td><td class="num">{{l.p95}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="lat-h">
+<div class="la-panel__head"><h2 class="eb" id="lat-h">Response time · all locations</h2>
+<div class="la-seg" role="group" aria-label="Time range"><button type="button" class="la-seg__item" aria-pressed="true">24 h</button><button type="button" class="la-seg__item" aria-pressed="false">7 d</button><button type="button" class="la-seg__item" aria-pressed="false">30 d</button></div>
+</div>
+<div class="la-panel__body stack" style="gap: 12px;">
+<x-import component-from-global-scope="LosoftApp.LineChart" subtitle="now p50 182 ms · p95 448 ms · timeouts drawn at 3 s" unit="ms" x="{{chart.x}}" series="{{chart.series}}" threshold="{{chart.threshold}}" bands="{{chart.bands}}" height="{{chart.height}}"></x-import>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="res-h">
+<div class="la-panel__head"><h2 class="eb" id="res-h">Recent results</h2><a class="cs-pha" href="#results">All results</a></div>
+<div class="tw">
+<table class="dt dt-plain">
+<thead><tr><th scope="col">Time</th><th scope="col">Location</th><th scope="col">Result</th><th scope="col" class="num">Status</th><th scope="col" class="num">Time</th><th scope="col">Detail</th></tr></thead>
+<tbody>
+<tr><td class="m">14:32:01</td><td>Frankfurt</td><td><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Fail</span></span></td><td class="num">—</td><td class="num">10,000 ms</td><td class="m">timeout after 10 s</td></tr>
+<tr><td class="m">14:32:01</td><td>Amsterdam</td><td><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Fail</span></span></td><td class="num">—</td><td class="num">10,000 ms</td><td class="m">timeout after 10 s</td></tr>
+<tr><td class="m">14:32:01</td><td>Helsinki</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Pass</span></span></td><td class="num">202</td><td class="num">2,412 ms</td><td class="m">$.status == "queued"</td></tr>
+<tr><td class="m">14:32:02</td><td>Virginia</td><td><span class="la-status la-status--up la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Pass</span></span></td><td class="num">202</td><td class="num">2,108 ms</td><td class="m">$.status == "queued"</td></tr>
+<tr><td class="m">14:31:31</td><td>Frankfurt</td><td><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Fail</span></span></td><td class="num">—</td><td class="num">10,000 ms</td><td class="m">timeout after 10 s</td></tr>
+<tr><td class="m">14:31:31</td><td>Amsterdam</td><td><span class="la-status la-status--down la-status--dense"><span class="la-status__mark"></span><span class="la-status__label">Fail</span></span></td><td class="num">503</td><td class="num">8,730 ms</td><td class="m">expected 202, got 503</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+
+<div class="stack-24" style="min-width: 0;">
+<section class="la-panel" aria-labelledby="slo-h">
+<div class="la-panel__head"><h2 class="eb" id="slo-h">SLO · API availability</h2><a class="cs-pha" href="#slo">Edit</a></div>
+<div class="la-panel__body stack">
+<div class="spread" style="align-items: baseline;"><span class="kpi-v">99.92<small>%</small></span><span class="lbl">target 99.9% · 30 d rolling</span></div>
+<div class="stack-8">
+<div class="spread"><span class="eb">Error budget left</span><span class="mono" style="font-size: 13px; font-weight: 600;">20%</span></div>
+<span class="meter" role="meter" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget left, API availability"><span class="meter__fill" style="width: 20%;"></span></span>
+</div>
+<dl class="dl" style="grid-template-columns: 120px minmax(0, 1fr);">
+<dt>Budget</dt><dd class="mono" style="font-size: 13px;">43m 12s / 30 d</dd>
+<dt>Used</dt><dd class="mono" style="font-size: 13px;">34m 40s · 30m now, 4m 40s on 2026-10-12</dd>
+<dt>Left</dt><dd class="mono" style="font-size: 13px;">8m 32s</dd>
+<dt>Burn rate</dt><dd><span class="mono warn-t" style="font-size: 13px; font-weight: 600;">500× over 1 h</span><span class="lbl" style="display: block;">empty in about 9 min at this rate</span></dd>
+</dl>
+<p class="lbl" style="margin: 0;">Counts minutes when the API component is down by quorum. Maintenance windows do not count.</p>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="cfg-h">
+<div class="la-panel__head"><h2 class="eb" id="cfg-h">Configuration</h2><a class="cs-pha" href="CheckEdit.dc.html">Edit</a></div>
+<div class="la-panel__body">
+<dl class="dl" style="grid-template-columns: 120px minmax(0, 1fr);">
+<dt>Request</dt><dd class="mono" style="font-size: 13px;">POST /v1/exports</dd>
+<dt>Expect</dt><dd class="mono" style="font-size: 13px;">202 · JSON $.status == "queued"</dd>
+<dt>Headers</dt><dd><span class="mono" style="font-size: 13px;">Content-Type: application/json</span><span class="row" style="margin-top: 4px;"><span class="mono" style="font-size: 13px;">Authorization:</span><span class="la-badge">secret · set 2026-09-03</span></span></dd>
+<dt>Every</dt><dd class="mono" style="font-size: 13px;">30 s · timeout 10 s</dd>
+<dt>Locations</dt><dd class="mono" style="font-size: 13px;">fra ams hel iad · quorum 2</dd>
+<dt>Component</dt><dd>API</dd>
+<dt>Alerts to</dt><dd class="mono" style="font-size: 13px;">#ops-alerts · on-call email · incident-bridge</dd>
+<dt>Maintenance</dt><dd class="lbl">none planned</dd>
+</dl>
+</div>
+</section>
+
+<section class="la-panel" aria-labelledby="ci-h">
+<div class="la-panel__head"><h2 class="eb" id="ci-h">Incidents</h2><a class="cs-pha" href="Incidents.dc.html">All</a></div>
+<ul role="list" style="margin: 0; padding: 0;">
+<li style="padding: 12px 20px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px;"><span class="spread"><a href="IncidentDetail.dc.html" style="font-weight: 600; color: var(--text); text-decoration: none;">#142 · Invoice export API is down</a><span class="la-badge la-badge--error">open</span></span><span class="lbl">2026-10-30 14:02 · 30 min so far · major</span></li>
+<li style="padding: 12px 20px; display: flex; flex-direction: column; gap: 4px;"><span class="spread"><a href="#inc-128" style="font-weight: 600; color: var(--text); text-decoration: none;">#128 · Export queue stalled</a><span class="la-badge">resolved</span></span><span class="lbl">2026-10-12 09:41 · 4m 40s · minor</span></li>
+</ul>
+</section>
+</div>
+</div>
+</main></div><div class="la-shell__status"><div class="la-statusbar" role="status"><span>Quillbird · Team plan · eu</span><span class="la-statusbar__end"><span>Search <kbd class="la-kbd">⌘K</kbd></span></span></div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1440,"height":1960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { theme: null }; }
+  series(base, amp, seed) {
+    const pts = [];
+    for (let i = 0; i < 96; i++) {
+      let v = base + amp * (0.5 + 0.5 * Math.sin(i * 0.37 + seed)) + amp * 0.6 * Math.abs(Math.sin(i * 1.73 + seed * 2));
+      if (i >= 30 && i <= 36) v += amp * 0.8;
+      if (i === 94) v = base * 6;
+      if (i === 95) v = 3000;
+      const x = 48 + i * (700 / 95);
+      const y = 200 - Math.min(v, 3000) / 3000 * 180;
+      pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+    }
+    return pts.join(' ');
+  }
+  days(bad, warn) { const o = []; for (let i = 0; i < 30; i++) o.push(bad.indexOf(i) >= 0 ? 'e' : (warn.indexOf(i) >= 0 ? 'w' : '')); return o; }
+  renderVals() {
+    const theme = this.state.theme ?? this.props.theme ?? 'light';
+    const isDark = theme === 'dark';
+    return {
+      theme,
+      themeLabel: isDark ? 'Switch to light theme' : 'Switch to dark theme',
+      toggleTheme: () => this.setState({ theme: isDark ? 'light' : 'dark' }),
+      chart: (() => {
+      const N = 96, STEP = 900000, END = Date.UTC(2026, 9, 30, 14, 30);
+      const x = []; for (let i = 0; i < N; i++) x.push(END - (N - 1 - i) * STEP);
+      const vals = (base, amp, seed) => x.map((t, i) => { let v = base + amp * (0.5 + 0.5 * Math.sin(i * 0.37 + seed)) + amp * 0.6 * Math.abs(Math.sin(i * 1.73 + seed * 2)); if (i >= 30 && i <= 36) v += amp * 0.8; if (i === 94) v = base * 6; if (i === 95) v = 3000; return Math.round(Math.min(v, 3000)); });
+      return { x, height: 236, series: [{ id: 'p95', name: 'p95', values: vals(360, 110, 2) }, { id: 'p50', name: 'p50', values: vals(150, 40, 1) }], threshold: { value: 2000, label: 'alert above 2,000 ms' }, bands: [{ from: x[94], to: x[95], label: 'down 14:02' }] };
+    })(),
+      p50: this.series(150, 40, 1),
+      p95: this.series(360, 110, 2),
+      locs: [
+        { name: 'Frankfurt', code: 'fra · hosted', now: 'Fail · timeout', tone: 'la-status--down', days: this.days([29], [12]), barLabel: 'Frankfurt: down today, partial on 2026-10-12', d1: '97.92%', d30: '99.90%', p50: '171 ms', p95: '402 ms' },
+        { name: 'Amsterdam', code: 'ams · hosted', now: 'Fail · timeout', tone: 'la-status--down', days: this.days([29], [12]), barLabel: 'Amsterdam: down today, partial on 2026-10-12', d1: '97.92%', d30: '99.91%', p50: '176 ms', p95: '418 ms' },
+        { name: 'Helsinki', code: 'hel · hosted', now: 'Pass · 2.4 s', tone: 'la-status--up', days: this.days([], [12, 29]), barLabel: 'Helsinki: partial today and on 2026-10-12', d1: '100.00%', d30: '99.99%', p50: '188 ms', p95: '455 ms' },
+        { name: 'Virginia', code: 'iad · hosted', now: 'Pass · 2.1 s', tone: 'la-status--up', days: this.days([], [29]), barLabel: 'Virginia: partial today', d1: '100.00%', d30: '99.99%', p50: '264 ms', p95: '590 ms' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

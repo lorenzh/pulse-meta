@@ -14,7 +14,7 @@ import { pathToFileURL } from 'node:url';
 
 export const OWNER = 'lorenzh';
 const META = 'pulse-meta';
-export const TARGETS = ['contract', 'probe', 'api', 'status', 'notify', 'config', 'kit', 'website', 'console', 'deploy'];
+export const TARGETS = ['contract', 'probe', 'api', 'status', 'notify', 'config', 'kit', 'website', 'console', 'deploy', 'agent'];
 export const WINDOW_DAYS = 30;
 // Issues of the report workflow carry this label; their runs, Actions runs and the issues
 // themselves stay out of every number, so a report does not change the next one's data.
@@ -102,7 +102,7 @@ export function build(raw, { bot, now, previous = null, sourceRun = null, archiv
   const splitComments = raw.comments.filter((c) => splitAuthors.has(c.user?.login));
 
   // One factory run record per finished state, written by the Factory bot at the end of its comment.
-  const recordRe = /<!-- factory-record v3 (\{.*\}) -->/s;
+  const recordRe = /<!-- factory-record v[34] (\{.*\}) -->/s; // v4 since 0.10 (run link); old issues keep v3
   const allRuns = [];
   for (const c of botComments) {
     const m = recordRe.exec(c.body ?? '');
