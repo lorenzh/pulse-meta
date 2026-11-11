@@ -1,0 +1,7 @@
+# Changes to these paths need review by Lorenz (code owner).
+# The last matching line wins.
+/.github/CODEOWNERS @lorenzh
+/.github/workflows/ @lorenzh
+/.factory/ @lorenzh
+# Factory working files need no code-owner review.
+/.factory/work/
