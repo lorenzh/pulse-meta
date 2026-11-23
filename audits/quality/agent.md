@@ -23,7 +23,7 @@
 
 - Method: `rsync` of the pulse-agent clone into `mktemp -d`. In that copy the audit ran `git fetch --unshallow`, the four script names of the checklist through `npm run` and `bun run` (Bun 1.4.0), and `cargo` 1.100.0 (already on the runner), each under `timeout 600`. Everything else used `grep`, `git` and `gh` reads. No package or tool was installed, no service was started, and nothing was contacted except GitHub. The copy was removed at the end.
 - Surface: none. `main` has no source file, no build manifest (`package.json`, `Cargo.toml`), no `tsconfig.json`, no test, no `docs/` and no `.github/`. pulse-meta records this state: `README.md:23` and `docs/architecture.md:13` call the agent "planned" with "no code yet", and `docs/releasing.md:17` says "No CI." The agent is specified in the open feature lorenzh/pulse-meta#836 ("Host resource checks with a push agent"; no Factory label, so no spec yet), and #839 builds on it.
-- Result: 2 findings, both `P3`, 0 `P1`, 0 `P2`. 1 issue candidate. No item is blocked. Six code items are `not applicable` because there is no code. Consistency and docs against code are `checked`.
+- Result: 2 findings, both `P3` notes, 0 `P1`, 0 `P2`. No issue candidates. No item is blocked. Six code items are `not applicable` because there is no code. Consistency and docs against code are `checked`.
 
 Commands that apply to every item (run in the copy):
 
@@ -64,7 +64,7 @@ pulse-agent has no `package.json` and no `lint` or `typecheck` script, so biome,
 
 ### 2. Complexity: `not applicable`
 
-There are no functions. The shared budget of pulse-config is `"sonarjs/cognitive-complexity": ["error", 15]` (`eslint.config.js:16`, config `88996cb`), and it covers TypeScript only. pulse-config has no Rust configuration: `grep -rnwiE "rust|cargo|clippy|rustfmt" .repos/config --exclude-dir=.git` finds nothing (exit 1). So a future Rust crate has no shared complexity budget to measure against (note N3).
+There are no functions. The shared budget of pulse-config is `"sonarjs/cognitive-complexity": ["error", 15]` (`eslint.config.js:16`, config `88996cb`), and it covers TypeScript and JavaScript (`eslint.config.js:11`). pulse-config has no Rust configuration: `grep -rnwiE "rust|cargo|clippy|rustfmt" .repos/config --exclude-dir=.git` finds nothing (exit 1). So a future Rust crate has no shared complexity budget to measure against (note N3).
 
 ### 3. Duplicated logic: `not applicable`
 
@@ -122,7 +122,7 @@ The repository has no `docs/`. `README.md` has two lines. `AGENTS.md` describes 
 | Id | Severity | Candidate | Location | Title |
 | --- | --- | --- | --- | --- |
 | quality-agent-2026-11-23-1 | P3 | no | `README.md:2` | README says the agent pushes host values for host checks; there is no code and no `host` check type |
-| quality-agent-2026-11-23-2 | P3 | yes | `AGENTS.md:1` (no `CLAUDE.md` imports it) | pulse-agent is the only target without a `CLAUDE.md` that imports `AGENTS.md`; spec #927 assumed one exists |
+| quality-agent-2026-11-23-2 | P3 | no | `AGENTS.md:1` (no `CLAUDE.md` imports it) | pulse-agent is the only target without a `CLAUDE.md` that imports `AGENTS.md` |
 
 ### quality-agent-2026-11-23-1 (P3, note): README describes an agent that does not exist
 
@@ -154,24 +154,34 @@ $ grep -rlniE 'hostSample|host ?sample|"host"' api/src --include=*.ts --exclude=
 - Why it matters: a reader of the repository is told about behavior that does not exist. The description is written three times, and the copies already differ. pulse-meta `README.md:23` and `docs/architecture.md:13` say "planned" and "no code yet", but the agent's own README does not.
 - Not a candidate: the claim becomes true when #836 lands, and #836 already sets up the repository ("Set it up as a Rust crate with its own `AGENTS.md`…"). Until then the fix is the word "planned" and a link to #836, which can be added when #836 is specced.
 
-### quality-agent-2026-11-23-2 (P3, issue candidate): no `CLAUDE.md` imports `AGENTS.md` in pulse-agent
+### quality-agent-2026-11-23-2 (P3, note): no `CLAUDE.md` imports `AGENTS.md` in pulse-agent
 
 - Location: repository root of pulse-agent (agent `8e48f5c`). `AGENTS.md:1` exists, but no `CLAUDE.md` imports it.
 - Evidence: the table in item 7 (exit 0). Every other target has a `CLAUDE.md` whose last line is `@AGENTS.md`. api, for example, says: "Claude Code instructions for this repository. Everything harness-neutral lives in `AGENTS.md`, imported below." pulse-agent has no `CLAUDE.md` in any commit (`git log --all --name-only --format= | sort -u` lists `AGENTS.md`, `LICENSE`, `README.md`).
-- How it came about: spec #927 created this `AGENTS.md` (`.factory/work/927/plan.md:15-16`: "`agent` has no `AGENTS.md` on `main` yet … Its task creates a minimal one"). The same spec assumed that every target already imports it and forbade the change: `plan.md:26` says "No change to `CLAUDE.md` (each one imports `AGENTS.md`)", and `plan.md:173` rejects a diff that "also touches `CLAUDE.md`".
-- Why it matters: Factory builds run the `implement` state on the `implementer` model (`.factory/config.yaml:285`), which uses the Claude harness (`.factory/config.yaml:180-181`). In every other target, Claude Code gets `AGENTS.md` through the `@AGENTS.md` import of `CLAUDE.md`. In pulse-agent, a build gets the repository rules only if it follows the general preamble line "Read and follow the repository instructions before you edit files." (`.factory/prompts/preamble.md:14`). #836, the first build in this repository, asks for "its own `AGENTS.md`" but does not mention `CLAUDE.md`. A planner that reads #927 is likely to make the same assumption.
-- Fix direction: add the standard three-line `CLAUDE.md` (`@AGENTS.md`) to pulse-agent, as a small change of its own or as part of the agent section of #836.
+- Context: spec #927 created this `AGENTS.md` (`.factory/work/927/plan.md:15-16`). Although its general non-goal at `plan.md:26` says "No change to `CLAUDE.md` (each one imports `AGENTS.md`)", its agent section explicitly acknowledges the missing file: `plan.md:503-504` says "Do not add commands, toolchain versions, Rust tooling, a `CLAUDE.md` or code: the repository has none yet, and inventing them is out of scope." The omission therefore followed an explicit scope decision.
+- Impact limit: Factory builds use the Claude harness (`.factory/config.yaml:180-181,285`), but the common preamble already instructs them to "Read and follow the repository instructions before you edit files." (`.factory/prompts/preamble.md:14`). The comparison proves a missing import, not a build that ignored `AGENTS.md` or broke documented behavior. No such failure was reproduced.
+- Not a candidate: this is a consistency note. The owner can consider the standard `CLAUDE.md` import when #836 sets up the crate, but the available evidence does not establish an operational defect.
 
 ## Issue candidates
 
-1. quality-agent-2026-11-23-2 (P3): pulse-agent is the only target without a `CLAUDE.md` that imports `AGENTS.md`. The Claude-harness builds of #836 would start without the import that every other target has.
+None. Both P3 observations are notes; no operational failure was demonstrated.
 
 ## Notes
 
 - N1 (consistency): `AGENTS.md` names no check command and no done gate. Spec #927 says "each task runs the gate its `AGENTS.md` already names" (`plan.md:29-30`), and for pulse-agent there is none. #836 asks for rustfmt, clippy with warnings as errors, and tests in CI. The `## Commands` section with those commands belongs in the same change.
 - N2 (consistency): no CI workflow, no `docs/development.md`. This is consistent with pulse-meta `docs/releasing.md:17,71`. api, probe, notify, status and console have `docs/development.md`; contract, kit, config, deploy and website do not.
-- N3 (meta, audit template): the quality checklist (`.github/audits/quality.md`) asks for the `package.json` scripts, biome, SonarJS, `tsc` and "the shared configuration of pulse-config". All of these are TypeScript-only. pulse-config has no Rust configuration (`grep -rnwiE "rust|cargo|clippy|rustfmt"`, exit 1). Once #836 lands, a quality audit of pulse-agent cannot use these items and has no shared cognitive-complexity budget. Rust equivalents would be `cargo fmt --check`, `cargo clippy` with warnings as errors, and `cargo test` with coverage, plus a complexity budget decision. Neither pulse-config nor the template has these yet.
+- N3 (meta, audit template): the quality checklist (`.github/audits/quality.md`) names `package.json` scripts, biome, SonarJS, `tsc` and "the shared configuration of pulse-config". These configurations target JavaScript and TypeScript rather than Rust. pulse-config has no Rust configuration (`grep -rnwiE "rust|cargo|clippy|rustfmt"`, exit 1). Once #836 lands, the general checklist still applies, but its named commands need Rust equivalents such as `cargo fmt --check`, `cargo clippy` with warnings as errors, and `cargo test`. Coverage reporting and a complexity budget need separate decisions; `cargo test` alone does not report coverage. Neither pulse-config nor the template has these yet.
 - N4 (meta, rotation): `.github/audits/open-issue.sh:43` (security, daily rotation over 11 targets) and `:54` (quality, weekly rotation over 11 targets) include `agent`. The performance rotation (`:47`) leaves it out. pulse-agent `main` has not changed since 2026-11-09 (`git log -1 --format=%ad`: `2026-11-09 01:53:25 +0100`). The security audit #952 (2026-11-10), the open security audit #981 (2026-11-21) and this audit all examine the same commit `8e48f5c`, which has no code. Leaving `agent` out of the security and quality rotations until #836 lands, as the performance rotation already does, would save those runs.
 - N5 (docs duplication): the one-line agent description exists in pulse-agent `README.md:2`, pulse-meta `README.md:23` and pulse-meta `docs/architecture.md:13`. The two pulse-meta copies say "planned" and "no code yet"; the pulse-agent copy does not (finding 1).
 - N6 (not agent-specific): the copyright holder in `LICENSE:3` is "lorenzh" in agent, console, deploy, kit and website, and "Lorenz Hilpert" in api, config, contract, notify, probe and status (`sed -n 3p */LICENSE`). Both forms are used, so agent does not deviate from a single convention. Style only.
 - N7 (next audit): what to check once #836 lands. Every checklist item then applies to the crate. Look for `unwrap`, `expect` and panics in the `/proc` and `statfs` parsers (#836 keeps them as small pure functions, `AGENTS.md:9`). Check that a failed send is logged and the loop goes on (#836), that rate computation from counters has tests for counter wrap and reset, that the sample shape is tested against the JSON Schema of pulse-contract (#836 requires this in CI), and that no logic duplicates a pulse-api threshold evaluation.
+
+## Audit review (2026-11-23)
+
+- Started at 18:18:35 UTC. All eleven target clone HEADs match the examined commits. The meta checkout is `374798332ab314e64168633ae673ba5329f5d39a`, which adds the original audit report after baseline `65b03892e525f495b338965dee780f35a440e0f7`. `git diff 65b03892e525f495b338965dee780f35a440e0f7 HEAD -- .factory/config.yaml .factory/prompts/preamble.md .factory/work/927/plan.md README.md docs .github/audits` exits 0 with no output; the cited meta evidence is unchanged.
+- Structure: `jq . audits/quality/agent.json` exits 0. Both report files have the same two P3 ids, no candidates, required finding fields and eight checklist statuses: six `not applicable`, two `checked`. There are no P1/P2 findings to reproduce, missing checks or audit gates.
+- In an `rsync -a` copy under `mktemp -d`, checked out at agent `8e48f5c`, `npm run lint`, `npm run typecheck`, `npm run test` and `npm run check` each exit 254 with `ENOENT` for `package.json`. The corresponding four `bun run` commands each exit 1 (missing script; `test` additionally invokes `/usr/bin/test`). `cargo clippy` and `cargo test` each exit 101 because `Cargo.toml` is absent; `cargo fmt --check` exits 1 for the same reason. These confirm the absence of runnable checks rather than code failures.
+- Finding 1 reproduced: both `git -C .repos/agent ls-files` filters from its command exit 1 with no output; `grep -nE 'type: oneOf\(\["' .repos/contract/src/schema.ts` exits 0 with the same six types and lines 273, 326, 424, 438, 456 and 480; the host-sample grep of `.repos/api/src` exits 1 with no output. `README.md:2` contains the quoted claim.
+- Finding 2's comparison loop exits 0: agent has no `CLAUDE.md`, all ten other targets have one `@AGENTS.md` import. Changed its candidate flag to false and narrowed its rationale to a consistency note: `git show 65b03892e525f495b338965dee780f35a440e0f7:.factory/work/927/plan.md | nl -ba | sed -n '503,504p'` exits 0 and explicitly forbids adding that file. The common preamble also requires reading repository instructions. The evidence does not show rules being missed. No finding was removed or assigned a different severity. Corrected the shared complexity scope to TypeScript and JavaScript and clarified note N3.
+
+Limitations: no runtime behavior, coverage or complexity can be measured before source and manifests exist. The original audit's standalone `tsc` usage output and historical/GitHub rotation notes were not independently rerun; they do not affect the retained observations or checklist applicability. No packages were installed, services started, issues opened or read-only clones changed. The temporary copy was removed.
