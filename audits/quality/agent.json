@@ -1,0 +1,109 @@
+{
+  "issue": 982,
+  "kind": "quality",
+  "scope": "agent",
+  "date": "2026-11-23",
+  "commits": {
+    "agent": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b",
+    "meta": "65b03892e525f495b338965dee780f35a440e0f7",
+    "config": "88996cb46fe723c4f7f395477e049029cd847c81",
+    "contract": "baf6aece0df479986511df8a7c9ef3e7e39ddc49",
+    "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "probe": "92f55df473d2032f8d7cc0ab8e393d84d108d9ba",
+    "notify": "6f4efe1fc776f43e1ead8e0f24b688cc4aa56faa",
+    "status": "f220fbc27a2d733e583aba63e5949062f29d9861",
+    "console": "b6c737d49ba7e3fe734c332304cb908d7f820804",
+    "kit": "ece6a8990350deed4e6b780adbdc4ee75b09a07b",
+    "deploy": "d47d8b90146601f97dad7de3dcf625a14e4bf018",
+    "website": "a3077ad6b5ae9c680c8032501c0320b7765da6e8"
+  },
+  "checklist": [
+    {
+      "item": "Lint and typecheck. Every finding of the repository's own lint (biome, SonarJS) and typecheck (tsc) scripts on main.",
+      "status": "not applicable",
+      "evidence": "No package.json, no lint or typecheck script, no tsconfig.json and no source file. In an rsync copy: `timeout 600 npm run lint` and `npm run typecheck` exit 254 (ENOENT package.json); `bun run lint` and `bun run typecheck` exit 1 (Script not found); `bunx --no-install tsc --noEmit` (TypeScript 7.0.2 from the runner, no project) prints its usage, exit 1. The planned Rust tools have no manifest either: `cargo clippy` exit 101 and `cargo fmt --check` exit 1 (could not find Cargo.toml). `git ls-files | grep -E '\\.(rs|ts|js|mjs|toml|json|ya?ml|sh)$'`: no output, exit 1."
+    },
+    {
+      "item": "Complexity. The functions with the highest cognitive complexity, with their value against the budget of the shared configuration.",
+      "status": "not applicable",
+      "evidence": "No functions. The shared budget is sonarjs/cognitive-complexity 15 (pulse-config eslint.config.js:16, config 88996cb) and covers TypeScript only. pulse-config has no Rust configuration: `grep -rnwiE \"rust|cargo|clippy|rustfmt\" .repos/config --exclude-dir=.git` finds nothing, exit 1 (note N3)."
+    },
+    {
+      "item": "Duplicated logic. Logic that two or more files of this repository, or this repository and another pulse repository, implement separately.",
+      "status": "not applicable",
+      "evidence": "The repository has no logic: `git ls-files | grep -vxE 'AGENTS.md|LICENSE|README.md'` gives no output, exit 1. Only the one-line agent description is duplicated (agent README.md:2, meta README.md:23, meta docs/architecture.md:13), and the copies differ (finding 1, note N5)."
+    },
+    {
+      "item": "Dead code. Exports that nothing imports and files that nothing reaches, found with grep and tsc.",
+      "status": "not applicable",
+      "evidence": "There are no exports, modules or source files (`git ls-files` lists AGENTS.md, LICENSE, README.md only). tsc has no project to check (no tsconfig.json; `bunx --no-install tsc --noEmit` prints its usage, exit 1)."
+    },
+    {
+      "item": "Test quality. Coverage from the repository's own test script where it reports it; risky branches without a test; tests that assert nothing or only mirror the implementation.",
+      "status": "not applicable",
+      "evidence": "No test script and no tests: `bun run test` exit 1 ('a package.json script \"test\" was not found'), `npm run test` exit 254, `cargo test` exit 101 (no Cargo.toml). No coverage is reported. There is no code, so there is no branch."
+    },
+    {
+      "item": "Error handling. Swallowed errors (empty or log-only catch, ignored promise rejections) and error shapes that differ for the same kind of failure.",
+      "status": "not applicable",
+      "evidence": "No code, so no catch, promise, Result, unwrap or error type. #836 requires that a failed send is logged and retried on the next interval; the next audit after #836 lands should check this (note N7)."
+    },
+    {
+      "item": "Consistency. Deviations from the repository's AGENTS.md and from the other services: naming, module layout, configuration handling.",
+      "status": "checked",
+      "evidence": "Compared with the ten other targets: `grep -c '^@AGENTS.md$' <repo>/CLAUDE.md` gives 1 for api, config, console, contract, deploy, kit, notify, probe, status, website, and 'no file' for agent (finding 2). `grep -n \"^## Commands\" */AGENTS.md`: 10 hits, none in agent (AGENTS.md has 9 lines and one section, the others 73-141 lines; note N1). No .github/ and no docs/development.md, consistent with meta docs/releasing.md:17,71 (note N2). AGENTS.md:9 (pure parsing, I/O at the edge) matches api/AGENTS.md:52, deploy/AGENTS.md:34 and code-conventions rule 3. No code or configuration to compare for naming and configuration handling."
+    },
+    {
+      "item": "Docs against code. Claims in the README and docs/ of this repository that the code does not match, each with the claim and the contradicting code.",
+      "status": "checked",
+      "evidence": "No docs/ directory. README.md:2 claims a Rust agent that pushes CPU, memory, swap, disk and network values to pulse-api for host checks. There is no source file (`git ls-files | grep -vxE 'AGENTS.md|LICENSE|README.md'` exit 1), pulse-contract has the check types http, tls, tcp, dns, domain, heartbeat only (src/schema.ts:273-480, src/validate.ts:138), and pulse-api has no host sample route (`grep -rlniE 'hostSample|host ?sample|\"host\"' src --include=*.ts --exclude='*.test.ts'` exit 1). Finding 1. AGENTS.md:5,9 also refer to a crate that does not exist yet (part of finding 1). LICENSE is MIT, as #836 requires."
+    }
+  ],
+  "findings": [
+    {
+      "id": "quality-agent-2026-11-23-1",
+      "category": "docs",
+      "repos": ["agent", "contract", "api"],
+      "location": "README.md:2",
+      "severity": "P3",
+      "candidate": false,
+      "title": "README says the agent pushes CPU, memory, swap, disk and network values to pulse-api for host checks; the repository has no code and no host check type exists",
+      "command": "git -C agent ls-files | grep -vxE 'AGENTS.md|LICENSE|README.md'; git -C agent ls-files | grep -E '\\.(rs|ts|js|mjs|toml|json|ya?ml|sh)$'; grep -nE 'type: oneOf\\(\\[\"' contract/src/schema.ts; grep -rlniE 'hostSample|host ?sample|\"host\"' api/src --include=*.ts --exclude='*.test.ts'",
+      "exitCode": 1,
+      "excerpt": "agent ls-files filters: (no output) exit 1, exit 1\ncontract/src/schema.ts (exit 0):\n273:      type: oneOf([\"http\"]).optional(),\n326:    type: oneOf([\"tls\"]),\n424:    type: oneOf([\"tcp\"]),\n438:    type: oneOf([\"dns\"]),\n456:      type: oneOf([\"domain\"]),\n480:    type: oneOf([\"heartbeat\"]),\napi/src grep: (no output) exit 1\nClaim, README.md:2: \"pulse: Linux host agent in Rust that pushes CPU, memory, swap, disk and network values to pulse-api for host checks.\"\nmeta README.md:23 and docs/architecture.md:13 say \"planned\" and \"no code yet\"; the agent README does not.",
+      "note": "Not a candidate: the claim becomes true when #836 lands. Until then the fix is the word 'planned' and a link to #836, best added when #836 is specced.",
+      "commits": {
+        "agent": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b",
+        "contract": "baf6aece0df479986511df8a7c9ef3e7e39ddc49",
+        "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+        "meta": "65b03892e525f495b338965dee780f35a440e0f7"
+      }
+    },
+    {
+      "id": "quality-agent-2026-11-23-2",
+      "category": "consistency",
+      "repos": ["agent", "meta"],
+      "location": "AGENTS.md:1",
+      "severity": "P3",
+      "candidate": true,
+      "title": "pulse-agent is the only target without a CLAUDE.md that imports AGENTS.md; spec #927 assumed one exists and forbade adding it",
+      "command": "for r in agent api config console contract deploy kit notify probe status website; do printf \"%-9s CLAUDE.md:%s\\n\" $r \"$(grep -c '^@AGENTS.md$' $r/CLAUDE.md 2>/dev/null || echo 'no file')\"; done",
+      "exitCode": 0,
+      "excerpt": "agent     CLAUDE.md:no file\napi       CLAUDE.md:1\nconfig    CLAUDE.md:1\nconsole   CLAUDE.md:1\ncontract  CLAUDE.md:1\ndeploy    CLAUDE.md:1\nkit       CLAUDE.md:1\nnotify    CLAUDE.md:1\nprobe     CLAUDE.md:1\nstatus    CLAUDE.md:1\nwebsite   CLAUDE.md:1\nmeta .factory/work/927/plan.md:26: \"No change to `CLAUDE.md` (each one imports `AGENTS.md`)\"\nmeta .factory/config.yaml:180-181 implementer -> harness: claude; :285 implement -> model: implementer\nmeta .factory/prompts/preamble.md:14: \"Read and follow the repository instructions before you edit files.\"",
+      "fixDirection": "Add the standard CLAUDE.md with '@AGENTS.md' to pulse-agent, as its own small change or in the agent section of #836.",
+      "commits": {
+        "agent": "8e48f5cb2aea56cdcd8792673222a5110dc0ee1b",
+        "meta": "65b03892e525f495b338965dee780f35a440e0f7"
+      }
+    }
+  ],
+  "notes": [
+    "N1 (consistency): AGENTS.md names no check command or done gate; spec #927 plan.md:29-30 relies on the gate each AGENTS.md names. #836 asks for rustfmt, clippy with warnings as errors, and tests in CI; a ## Commands section with them belongs in that change.",
+    "N2 (consistency): no CI workflow and no docs/development.md, consistent with meta docs/releasing.md:17,71. api, probe, notify, status and console have docs/development.md; contract, kit, config, deploy and website do not.",
+    "N3 (meta, audit template): .github/audits/quality.md asks for package.json scripts, biome, SonarJS, tsc and the shared configuration of pulse-config, all TypeScript-only; pulse-config has no Rust configuration (grep exit 1). Once #836 lands, the template needs Rust equivalents (cargo fmt --check, cargo clippy with warnings as errors, cargo test with coverage) and a complexity budget decision.",
+    "N4 (meta, rotation): .github/audits/open-issue.sh:43 (security) and :54 (quality) include agent, the performance rotation (:47) does not. agent main has not changed since 2026-11-09; security audits #952 and #981 and this audit all examine 8e48f5c, which has no code. Leaving agent out of these rotations until #836 lands would save the runs.",
+    "N5 (docs duplication): the agent description is in agent README.md:2, meta README.md:23 and meta docs/architecture.md:13; only the two meta copies say 'planned' and 'no code yet' (finding 1).",
+    "N6 (not agent-specific, style): LICENSE:3 copyright holder is 'lorenzh' in agent, console, deploy, kit, website and 'Lorenz Hilpert' in api, config, contract, notify, probe, status; agent does not deviate from a single convention.",
+    "N7 (next audit): once #836 lands, check unwrap, expect and panics in the /proc and statfs parsers, that a failed send is logged and the loop continues, tests for counter wrap and reset in rate computation, the CI check of the sample against the pulse-contract JSON Schema, and no duplicate of the pulse-api threshold evaluation."
+  ]
+}
