@@ -1,23 +1,23 @@
-# Performance audit: pulse-api (2026-10-31)
+# Performance audit: pulse-api (2026-11-24)
 
 ## Scope
 
-- Issue: lorenzh/pulse-meta#503, periodic performance audit of `main` of pulse-api.
-- Earlier runs: one Factory alert comment says that an earlier `run-state` job failed. That run left no report, so this report is new.
+- Audit date: 2026-11-24 (UTC). Issue: lorenzh/pulse-meta#984, periodic performance audit of `main` of pulse-api.
+- Earlier runs of this issue: none. The issue comments hold only the Factory claim of this run. This report replaces the audit of 2026-10-31 (#503). Its findings were measured again on the commit below, not copied; see Notes for their status.
 - Examined commits:
 
 | Repository | Commit | What was read |
 | --- | --- | --- |
-| pulse-api | `11f555598831ef61f13de40bef5f2da620230c97` | `main`. Built, run, benched, profiled and tested in a temporary copy. |
-| pulse-api (bench side A) | `8ea397ce160c7fcb8e9ba39ebfc1bd5f1d6b451d` | `bench/baseline.json` api SHA, used as side A of the local A/B |
-| pulse-status | `3f80bda9d7ed17127a43bcf51b71cd1e05add9b0` | `src/poller.ts`: the routes and poll interval it reads from the API |
-| pulse-notify | `584eabd05abcadc8f5a1035307e2c09a7a84c933` | `src/config.ts`: poll interval |
-| pulse-meta | `395368d67da4bf969c3160c60c1345b26f1e9b8c` | this repository |
+| pulse-api | `8959e0469a7b7a16e2329e968a7c42e176d287c6` | `main`. Installed (`bun install --frozen-lockfile`), run, profiled and tested in a temporary copy. |
+| pulse-kit (dependency of pulse-api) | `c6d2cba7d90c981b884dcac2a9288dd9eccad8b5` | the version pinned in pulse-api's `package.json`, as installed under `node_modules`: `dist/index.js`, `dist/format-duration.js` |
+| pulse-status | `f220fbc27a2d733e583aba63e5949062f29d9861` | `src/poller.ts`, `src/settings.ts`: which API routes the status page polls, and how often |
+| pulse-console | `b6c737d49ba7e3fe734c332304cb908d7f820804` | `src/check-read.ts`: the console reads `GET /checks/:id/location-uptime` |
+| pulse-meta | `65b03892e525f495b338965dee780f35a440e0f7` | this repository |
 
-- Nightly bench that was read: run [41067380495](https://github.com/lorenzh/pulse-api/actions/runs/41067380495). It is the newest completed `bench.yml` run on `main` (`workflow_dispatch`, 2026-10-30T13:56Z, head `c282ae36190a9d22bc4a0f91e396cfc3a0da26d2`, conclusion `failure` because status and contract failed the budgets of that time). Artifact `bench-out`, api table, side B: `startup_cpu_ms` 240 ms, `load_cpu_s` 21.61 s, `idle_rss_mib` 67.17 MiB, `peak_rss_mib` 87.73 MiB, `test_cpu_s` 2.20 s, `p95_get_checks_ms` 301 ms, `p95_post_results_ms` 239 ms. It has no latency-route rows. Every api row was `ok`.
-- Why the audit measured again: that run is 41 commits behind `main` (`git log c282ae3..11f5555 | wc -l` = 41). Since then the F8 latency history (#56) and the startup CPU fix (#62) were merged, the budgets were recalibrated (`7fc49c6`), and `test_cpu_s` was raised (`66a4430`). `gh run list --workflow bench.yml --event schedule` returned `[]`, so no nightly run exists for the current `main`. The audit ran one A/B, see item 3.
-- Machine: GitHub-hosted runner with 4 vCPU and 16 GB RAM, Docker 28.0.4, Compose v2.38.2, Bun 1.4.0 (SQLite 3.53.2), sqlite3 CLI 3.45.1. All measurements ran in one temporary copy (`mktemp -d`) on 127.0.0.1. Numbers are comparable within this report only. The hosted nightly gives other absolute values (for example `load_cpu_s` 21.61 s there and 5.96 s here).
-- Results: 3 findings: 2 `P2` and 1 `P3`. 2 are issue candidates and 1 is a note. The review raised finding 3 from `P3` to `P2`: cold reads exceeded the status proxy's 4000 ms timeout (see the finding). No item is blocked. The review removed a fourth finding, `performance-api-2026-10-31-1` (`P2`, a disk flush per ingest), because it did not reproduce (see Review). The ids of the other findings are unchanged.
+- Nightly bench that was read: run [45394568321](https://github.com/lorenzh/pulse-api/actions/runs/45394568321) of `bench.yml`. It is the newest completed run on `main`: `schedule`, created 2026-11-24T12:32:55Z. Conclusion `failure`, because of the `test_cpu_s` budgets of probe, status and notify (finding 3). Side A is api `v0.1.1` and side B is `main`. Both resolve to `8959e04`, the examined commit, with 5 rounds per side. Every api row is `ok` or `reported`. The api medians of side B are in item 3. The api rows of the 7 runs before it were also read; they are in item 3 and finding 5.
+- Why no A/B was run: the nightly run measured exactly the examined commit, with 5 rounds per side, and no api metric deviates from its budget or its baseline. Side A, the same commit, differs by at most 7 % on the gating rows. The exception is `cold_read_cpu_ms`: 40 against 30 ms, one 10 ms CPU tick. The local measurements below agree with it. The checklist items without a bench metric were measured locally, without Docker.
+- Machine of the local measurements: GitHub-hosted runner, 4 vCPU (Intel Xeon 6975P-C), 15.7 GB RAM, Bun 1.4.0, SQLite 3.53.2 (from `bun:sqlite`). All runs used one temporary copy (`mktemp -d`) and `127.0.0.1`. The numbers compare within this report, not with the hosted nightly: for example startup CPU is 110-120 ms here and 250 ms in the nightly's container.
+- Results: 5 findings: 1 `P2` and 4 `P3`. 4 are issue candidates (1-4) and 1 is a note (5). No item is blocked.
 
 ## Checklist
 
@@ -25,141 +25,136 @@
 
 Method:
 
-- A preload (`bun --preload capture.ts src/main.ts`, kept outside the repository) wrapped `Database.prototype.prepare/query/run/exec` of `bun:sqlite`. It recorded every SQL text that ran and its first `src/` call site.
-- The API ran on a copy of the 1x bench seed (20 checks, 864,000 results, the shape of `bench/seed.ts`). The config held the 20 bench checks, one heartbeat check, two components and one maintenance window.
-- A driver script sent one request to every route in `docs/rest-api.md`:
-  - `POST /results` with up and down results from two locations, which opened and resolved one incident;
-  - every public `GET`, including the variants of `/incidents` and `/manual-incidents` and `/checks/:id/results?before=`;
-  - `GET /probe/checks` and both heartbeat methods;
-  - `GET /admin/config`, `POST /admin/checks` and `DELETE /admin/checks` (a hot reload);
-  - every manual-incident write.
+- A preload, `capture.ts`, was kept outside the repository. It wrapped `prepare`, `query`, `run` and `exec` of `bun:sqlite`'s `Database.prototype` and recorded each SQL text with its first non-test `src/` call site.
+- `CAPTURE_OUT=... bun test --preload capture.ts` ran pulse-api's own test suite: exit code 0, `928 pass, 0 fail`, 100 files. Its route tests start the real server and drive it over HTTP (`docs/development.md`, Test). The capture also holds statements of the startup, both backfills, retention, the heartbeat evaluator, the backup and the migrations.
+- Coverage cross-check: `grep` found 131 call sites of `db.prepare/query/run/exec` in `src/*.ts` outside tests. The capture reached all 131, within 3 lines of the call. It recorded 206 (statement, call site) pairs.
+- `bun explain.ts capture.jsonl <1x seed> explain.json` then ran `EXPLAIN QUERY PLAN` for each of the 162 distinct DML statements, on the 1x bench seed made by `bun bench/seed.ts . <db>` (20 checks, 864,000 results, schema of this commit). Exit code 0, 0 errors. 72 statements have a `SCAN` or a `USE TEMP B-TREE`.
+- The app never runs `ANALYZE`, so the plans do not depend on the data.
 
-  Every answer was 2xx.
-- The capture covered startup, the retention run at start, the latency backfill and heartbeat ticks.
-- `bun explain.ts capture.json cap.db` then ran `EXPLAIN QUERY PLAN` on the same database for each of the 51 DML statements. Exit code 0.
+Result: every read of `results` on the request path is a `SEARCH` on `results_by_check` or `results_by_sample`. The retention delete is a `SEARCH r USING INDEX results_by_time` with an `EXISTS` on `results_by_sample`. The flagged statements, grouped by where they run:
 
-Result: no statement scans `results`. Every read of `results` is a `SEARCH` on `results_by_check`, `results_by_sample` or `results_by_time`. The retention `DELETE` is a `SEARCH` by `results_by_time` with an `EXISTS` on `results_by_sample`. These lines are flagged:
-
-| Statement (call site) | When | Plan | Rows it touches |
+| Statement (call site) | When it runs | Plan | Rows it touches |
 | --- | --- | --- | --- |
-| `SELECT latency_ms FROM results WHERE check_id = ? AND timestamp >= ? AND timestamp < ? AND status != 'down' ORDER BY latency_ms` (`dayLatencies`, `src/service.ts:521`) | `GET /latency` (once per HTTP check per uncached request), `GET /checks/:id/latency`, latency backfill | `SEARCH results USING INDEX results_by_check (check_id=? AND timestamp>? AND timestamp<?)`, `USE TEMP B-TREE FOR ORDER BY` | all of today's results of the check, sorted again on each request |
-| `SELECT CAST(timestamp / 86400000 AS INTEGER) AS day, SUM(status != 'down') AS good, COUNT(*) AS total FROM results WHERE check_id = ? AND timestamp >= ? AND timestamp <= ? GROUP BY day` (`dailyUptime`, `src/service.ts:515`) | `GET /uptime`, `GET /checks` (the `slo` of every check with a target), `GET /components`, `GET /components/uptime` | `SEARCH results USING INDEX results_by_check (...)`, `USE TEMP B-TREE FOR GROUP BY` | today's results, because closed days are tallied once in memory. On the first read after a start, the whole 30- or 90-day window. |
-| `SELECT * FROM incidents [WHERE ...] ORDER BY (resolved_at IS NOT NULL), opened_at DESC, id DESC [LIMIT ?]` (`listIncidents`, `src/service.ts:1099`), 5 variants | `GET /incidents` (every `status`, `since` and `limit` variant), `GET /components` (open incidents) | `SCAN incidents`, `USE TEMP B-TREE FOR ORDER BY` | the whole `incidents` table. Automatic incidents are never deleted (`docs/concepts.md`, Retention). |
-| `SELECT * FROM manual_incidents WHERE resolved_at IS NULL ORDER BY created_at DESC, id DESC` and the resolved variant (`src/manual-incidents.ts:103-108`) | `GET /manual-incidents`, `GET /components` | `SCAN manual_incidents`, `USE TEMP B-TREE FOR ORDER BY` | all manual incidents. Resolved ones are deleted after the retention window. |
-| newest result per location (`NEWEST_PER_LOCATION_SQL`, `src/service.ts:119`) | startup, once | `SCAN locs`, `USE TEMP B-TREE FOR GROUP BY`. Every access to `results` is a `SEARCH ... results_by_sample`. | one row per (check, location) pair, not per result |
-| locations of a check (`locationsOf`, `src/service.ts:498`) | `GET /checks` | `SCAN locs` (the recursive CTE). `results` is read by `SEARCH ... results_by_sample`. | one row per location |
-| `SELECT ... FROM checks WHERE active = 1 [AND type = ...] ORDER BY rowid`, `UPDATE checks SET active = 0`, `clearOptions`, `resetInactiveState` (`src/service.ts:461-474, 719, 787, 795, 972, 992, 1005`) | `GET /checks`, `/uptime`, `/latency`, `/components`, `/metrics`, `/probe/checks`, heartbeat tick, startup and every config load | `SCAN checks` | one row per check ever configured (21 here) |
-| `SELECT i.check_id AS id FROM incidents i JOIN checks c ON c.id = i.check_id WHERE i.resolved_at IS NULL AND c.active = 0` (`openInactive`, `src/service.ts:477`) | startup and every config load | `SCAN i` | the whole `incidents` table |
-| `DELETE FROM latency_daily WHERE day < ?`, `DELETE FROM latency_daily WHERE check_id NOT IN (SELECT id FROM checks)`, `DELETE FROM manual_incidents WHERE resolved_at IS NOT NULL AND resolved_at < ?` | retention at start and then hourly | `SCAN latency_daily`, `SCAN manual_incidents` | at most checks x 90 rollup rows |
-| `SELECT 1 FROM sqlite_master LIMIT 1` (`src/db.ts:113`) | startup | `SCAN sqlite_master` | stops at the first row |
-
-Item 3 measures the two temporary B-trees over `results` and the scan of `incidents`. They are findings 2, 3 and 4.
+| `SELECT * FROM incidents [WHERE resolved_at IS [NOT] NULL \| (opened_at >= ? OR resolved_at >= ? OR resolved_at IS NULL)] ORDER BY (resolved_at IS NOT NULL), opened_at DESC, id DESC [LIMIT ?]` (`listIncidents`, `src/service.ts:1458`), 7 variants | `GET /incidents` (every variant). The status page sends `?status=open` and `?status=resolved` on every poll. `GET /components` reads the open ones. | `SCAN incidents`, `USE TEMP B-TREE FOR ORDER BY` | the whole `incidents` table. Automatic incidents are never deleted. **Finding 4.** |
+| `SELECT location, SUM(status != 'down'), COUNT(*) FROM results WHERE check_id = ? AND timestamp >= ? AND timestamp <= ? GROUP BY location` (`locationTally`, `src/service.ts:638`) | `GET /checks/:id/location-uptime`: today on every uncached request (`src/service.ts:1044`), and a closed day whose location rows are incomplete | `SEARCH results USING INDEX results_by_check (...)`, `USE TEMP B-TREE FOR GROUP BY` | all of today's results of the check. **Finding 1.** |
+| `SELECT CAST(timestamp / 86400000 AS INTEGER) AS day, SUM(...), COUNT(*) ... GROUP BY day` (`dailyUptime`, `src/service.ts:604`) | the read path for closed days that have no `uptime_daily` row (`loadClosedDays`, `src/service.ts:909`): after each UTC midnight, and on the first start without stored tallies. Also the hourly uptime backfill, with yields. | `SEARCH results USING INDEX results_by_check (...)`, `USE TEMP B-TREE FOR GROUP BY` | every result of the missing days. **Finding 2.** |
+| `SELECT latency_ms FROM results WHERE check_id = ? AND timestamp >= ? AND timestamp < ? AND status != 'down' ORDER BY latency_ms` (`dayLatencies`, `src/service.ts:647`) | `fillRollups` for closed days without a `latency_daily` row (`src/service.ts:1131`): after each UTC midnight. `todayRollup`: once per check per process and day. The hourly latency backfill. | `SEARCH results USING INDEX results_by_check (...)`, `USE TEMP B-TREE FOR ORDER BY` | all results of the day, sorted. **Finding 2.** |
+| `SELECT ... FROM audit_log [WHERE target_id = ? \| actor_token_id = ? \| action = ? \| target_kind = ? \| at >= ?] ORDER BY id DESC LIMIT ?` (`src/audit-log.ts:125`) | `GET /admin/audit` and `/admin/audit/export` with a filter (admin only) | `SCAN audit_log` (walks rowid order until `LIMIT` matches). The variant with `at >= ? AND at < ?` uses `SEARCH audit_log_by_at` plus `USE TEMP B-TREE FOR ORDER BY`. | up to the whole `audit_log`: "Entries are never deleted" (`docs/rest-api.md:603`). Not measured; see Notes. |
+| `manual_incidents` reads and the retention delete (`src/manual-incidents.ts:189-223`) | `GET /manual-incidents`, `GET /components`, admin routes, retention | `SCAN manual_incidents`, `USE TEMP B-TREE FOR ORDER BY` | bounded: resolved ones are deleted after the retention window, and drafts are capped at 100 |
+| `resend_commands` / `resend_requests` (`src/runtime-store.ts:204, 239, 251, 272, 278, 300, 301`) | resend routes and notify's claim | `SCAN`, `USE TEMP B-TREE FOR ORDER BY` | bounded: 1,000 commands and 10,000 request ids (`docs/rest-api.md:593`) |
+| `SELECT ... FROM checks WHERE active = 1 [AND type = ...] ORDER BY rowid` (`src/service.ts:848, 1068, 1081, 1289, 1309, 1322`) and the token, check-definition, maintenance-definition, notify-channel and settings reads (`src/token-store.ts:164, 170, 304, 347`, `src/token-import.ts:43, 50`, `src/check-store.ts:144`, `src/maintenance-store.ts:85, 92`, `src/runtime-store.ts:73, 86, 117`, `src/audit-log.ts:197`) | per uncached read, `/probe/checks`, heartbeat tick, token auth reload, admin routes | `SCAN <table>`, some with `USE TEMP B-TREE FOR ORDER BY` | one row per configured check, token, definition or channel |
+| newest result per location (`NEWEST_PER_LOCATION_SQL`, `src/service.ts:681`) and `locationsOf` (`src/service.ts:583`) | startup once, and `GET /checks` | `SCAN locs` (the recursive CTE), `USE TEMP B-TREE FOR GROUP BY`. Every access to `results` is a `SEARCH ... results_by_sample`. | one row per (check, location) |
+| `clearOptions`, `deactivateAll`, `resetInactiveState`, `resolveInactiveIncidents`, `openInactive` (`src/service.ts:545-561`) | startup and every config load | `SCAN checks`. `openInactive`: `SCAN i` (incidents). | `checks`; `openInactive` reads all of `incidents` once per load |
+| retention of the rollup tables (`src/service.ts:620, 621, 643, 644, 659, 660`) | retention at start and then hourly | `SCAN uptime_daily`, `SCAN uptime_location_daily`, `SCAN latency_daily` | at most checks x 90 rows (x locations) |
+| `SELECT 1 FROM sqlite_master LIMIT 1` (`src/db.ts:124`); `countDuplicates` (`src/db.ts:108`) and migration 2 (`DELETE ... NOT IN (SELECT MIN(id) ... GROUP BY ...)`) | startup; the last two only when a file below schema step 2 is upgraded | `SCAN sqlite_master`; `SCAN results [USING COVERING INDEX]` | `sqlite_master` stops at the first row. The migration scans run once per upgrade. |
+| `SELECT COUNT(*) FROM results` etc. (`countRows`, `src/backup.ts:165`) | the backup command (`bun run backup`), not the server | `SCAN results USING COVERING INDEX results_by_time` | all results, once per backup |
 
 ### 2. Startup: CPU profile (`bun --cpu-prof`) with the top functions by self time: `checked`
 
-- Bench (item 3), `startup_cpu_ms`: side B (`main`) 205 ms (rounds 210 and 200), side A (baseline `8ea397c`) 540 ms (540 and 540). Budget 325 ms (gating): `ok`. The startup fix of #62 removed 62 %. Nightly reference (`c282ae3`, before F8): 240 ms.
-- Bench `startup_wall_ms` (reported only): B 1434 ms, A 1749 ms, budget 618 ms. Without Docker, after a `sync`, the API answered `/readyz` 84 to 153 ms after the spawn in 6 runs. Most of the bench wall time is therefore container start on this runner. Notes only.
-- Local CPU time at the first `200` of `/readyz` (utime + stime from `/proc/<pid>/stat`, 10 ms resolution), without the profiler: 1x seed 120, 110 and 100 ms. With 100,000 incidents: 110, 100 and 100 ms.
-- Profile: `bun --cpu-prof --cpu-prof-interval=100 src/main.ts` on a copy of the seed, with `SIGTERM` right after the first `200` of `/readyz`. 3 runs per data size, exit code 0. CPU at ready under the profiler: 1x 150, 140 and 140 ms; 10x 140, 130 and 140 ms. The startup CPU does not grow with the data. Self time summed over the 3 runs of 1x (392.7 ms sampled, 1073 samples; `bun prof.ts s1-r{1,2,3}.cpuprofile`):
+- Nightly 45394568321, `startup_cpu_ms`: B 250 ms (rounds 240-250), A 250 ms. Budget 325 ms (gating): `ok`. `startup_wall_ms` B 426 ms against a reported budget of 618 ms.
+- Local CPU at the first `200` of `/readyz`, from utime + stime in `/proc/<pid>/stat` (10 ms resolution), without the profiler: `bun ready-cpu.ts <api> <dir> <1x seed> 10`, 4 rounds of 10 starts, exit code 0. 1x: round medians 120, 110, 110 and 110 ms (values 110-130 ms), wall medians 88-90 ms. 10x (`bench/cold-read.ts`, 8,640,000 rows): 120 ms in all 3 starts. **The startup CPU does not grow with the data.**
+- Profile: `bun prof.ts <api> <dir> <seed> <label> 3`. It runs `bun --cpu-prof --cpu-prof-interval=100 --cpu-prof-dir=<dir> src/main.ts` and sends `SIGTERM` at the first `200` of `/readyz`. 3 runs per data size, exit code 0 each. CPU at ready under the profiler: 1x 150, 140 and 150 ms; 10x 140, 140 and 150 ms. Self time over the 3 runs of 1x (1,091 samples, 332.8 ms sampled):
 
 | Self time | Share | Function |
 | --- | --- | --- |
-| 40.4 ms | 10.3 % | `node:fs` module (load) |
-| 37.9 ms | 9.6 % | native `run` of `bun:sqlite` (`db.run`: `BEGIN IMMEDIATE`, the schema script, `COMMIT`, `PRAGMA`s in `openDb`/`migrate`) |
-| 22.3 ms | 5.7 % | `_onceWrap` `node:events` |
-| 18.9 ms | 4.8 % | `setName` `node:fs` |
-| 16.8 ms | 4.3 % | `startLatencyRollup` `src/latency-rollup.ts:60` |
-| 14.6 ms | 3.7 % | `isServerConfig` `bun:main` |
-| 10.0 ms | 2.6 % | native code under `node:_http_client` |
-| 8.8 ms | 2.2 % | native code under `node:http` |
-| 6.2 ms | 1.6 % | native code under `zod/v4/core/schemas.js:1199` |
-| 5.5 ms | 1.4 % | `init` `zod/v4/core/core.js:50` |
-| 5.4 ms | 1.4 % | `DurationFormat` under `pulse-kit/dist/format-duration.js:2` |
+| 67.7 ms | 20.3 % | native code with no JS caller (module loading, runtime) |
+| 47.6 ms | 14.3 % | `DurationFormat` (native), under `findFormatter` `@lorenzh/pulse-kit/dist/format-duration.js:2` |
+| 23.7 ms | 7.1 % | module body of `@lorenzh/pulse-kit/dist/address-guard.js` |
+| 10.3 ms | 3.1 % | `Socket` `node:net` |
+| 10.1 ms | 3.0 % | zod-generated code under `zod/v4/core/schemas.js:1199` (schema compile) |
+| 7.8 ms | 2.4 % | `runChecks` `zod/v4/core/schemas.js:34` |
+| 7.7 ms | 2.3 % | `push` (native) under `src/config.ts:356` |
+| 5.3 ms | 1.6 % | `init` `zod/v4/core/core.js:50` |
+| 3.5 ms | 1.0 % | `toISOString` under `timeOf` `pulse-kit/dist/logger.js:69` |
+| 3.2 ms | 1.0 % | `pulse-kit/dist/run-service.js:36` |
+| 2.3 ms | 0.7 % | `prepare` (native) under `createService` `src/service.ts:405` |
 
-  At 10x the top entry is the same native `bun:sqlite` `run` (46.6 ms, 11.9 %). Module loading follows. No SQL query of the request path appears in the startup profile.
-- No finding. The cold first reads after startup are finding 3.
+  At 10x (1,105 samples, 329.1 ms): `DurationFormat` 70.1 ms (21.3 %), native root 67.5 ms (20.5 %), zod schema code 17.9 ms (5.4 %). No SQL statement and no `src/` function has more than 1 % self time.
+- Check of the two pulse-kit entries. pulse-api never calls `formatDuration` or the address guard. It imports the `@lorenzh/pulse-kit` barrel, which loads every module. Two local A/Bs on a second copy, 2 rounds x 10 starts per side, CPU at ready without the profiler:
+  - `formatDuration` built lazily (no `Intl.DurationFormat` at import): means 118 / 115 ms on `main` against 120 / 116 ms.
+  - `dist/index.js` cut to the modules pulse-api uses: 115 / 116 ms against 116 / 116 ms.
+
+  Neither changes the startup CPU. In a bare `bun` process the first `new Intl.DurationFormat("en", {style: "narrow"})` takes 1.0-1.3 ms (5 runs), so the profiler's weight on `DurationFormat` is a sampling artifact. No finding.
 
 ### 3. Costs that grow with data: the repository's bench, or a local A/B with a larger data set: `checked`
 
-**Bench A/B.** `timeout 30m bun bench/run.ts --a 8ea397ce160c7fcb8e9ba39ebfc1bd5f1d6b451d --b 11f555598831ef61f13de40bef5f2da620230c97 --rounds 2`, run in the copy: 2 rounds per side, A B A B. Exit code 1. The only failing row is outside this scope: `[bench] FAIL regression: status test_cpu_s`, 1.49 s to 1.87 s. Before that, a first attempt with `--a c282ae3` (the last benched `main`) stopped with exit code 2 (harness error) before any comparison, see Notes. The api table (medians of 2):
+**Nightly bench**, run 45394568321, api, B medians of 5 rounds (A is the same commit):
 
-| Metric | A `8ea397c` | B `11f5555` | B per round | Budget | Kind | Verdict |
-| --- | --- | --- | --- | --- | --- | --- |
-| `startup_cpu_ms` | 540 ms | 205 ms | 210, 200 | 325 ms | gating | ok |
-| `load_cpu_s` | 5.96 s | 5.96 s | 6.04, 5.88 | 28.1 s | gating | ok |
-| `idle_rss_mib` | 73.19 MiB | 75.38 MiB | 75.50, 75.25 | 88 MiB | gating | ok |
-| `peak_rss_mib` | 93.70 MiB | 99.90 MiB | 99.17, 100.62 | 115 MiB | gating | ok |
-| `test_cpu_s` | 2.38 s | 2.46 s | 2.45, 2.46 | 4.1 s | gating | ok |
-| `startup_wall_ms` | 1749 ms | 1434 ms | 1786, 1082 | 618 ms | reported | over budget (see item 2) |
-| `p95_get_checks_ms` | 140 ms | 161 ms | 84, 239 | 392 ms | reported | |
-| `p95_post_results_ms` | 133 ms | 160 ms | 78, 243 | 312 ms | reported | |
-| `p95_get_latency_ms` | 165 ms | 129 ms | 75, 183 | 53 ms | reported | over budget on A and B; cause not established, see Review |
-| `p95_get_check_latency_ms` | 163 ms | 127 ms | 70, 184 | 55 ms | reported | over budget on A and B; cause not established, see Review |
-| `rps` | 43.04 | 43.02 | | 40 | reported | |
-| `image_mb` | 95.21 MB | 95.25 MB | | 124 MB | reported | |
-
-**Local data growth.** A script started `bun src/main.ts` on a fresh copy of a seeded database (`sync` after the copy). It waited for the `latency rollup: backfill done` line. Then it timed each read route 30 times, each right after one `POST /results`, because an ingest clears the read cache, as it does under the bench load. 3 server runs per data set, exit code 0. Data sets:
-
-- 1x: the bench seed (20 checks, 30 days, 1 result per minute, 864,000 rows).
-- 10x: the same 20 checks and 30 days with 10 results per minute (8,640,000 rows, 1.6 GB).
-- End of day: 1x plus 8,640 results for each of 3 locations in today's elapsed UTC time. That is 25,920 results per check today, the number that 3 locations at a 10 s interval produce in a full UTC day. Two layouts were measured: contiguous per check (one `INSERT` per check and location), and interleaved across checks like live ingest (one cross-join `INSERT`, measured with `curl -w %{time_total}`).
-- 1x plus 100,000 resolved incidents.
-
-The measurements ran around 06:08 to 06:34 UTC, so the 1x and 10x seeds held about 370 and 3,700 results per check for today.
-
-| Cost (median of 3 runs) | 1x | 10x | end of day, contiguous | end of day, interleaved | 1x + 100k incidents |
+| Metric | B | A | Budget | Kind | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| CPU at first `/readyz` 200 | 100-120 ms | 130-140 ms (profiler; 1x under the profiler 140-150) | 100 ms | - | 100-110 ms |
-| latency backfill, 1780 rollup days: CPU | 760-800 ms | 3,540-3,640 ms | - | - | - |
-| latency backfill: wall (yields per day) | 4.3-11.0 s | 8.4-13.6 s | 4.7-8.4 s | 6.7-7.8 s | 7.2-10.2 s |
-| first `GET /checks` after start (30-day SLO, cold) | 206.7 ms | 2,354.4 ms | 455.2 ms | 608-612 ms | - |
-| first `GET /uptime` after start (rest of 90 days, cold) | 211.0 ms | 2,412.2 ms | 461.8 ms | 615-619 ms | - |
-| `GET /checks` after an ingest | 3.1 ms | 18.6 ms | 195.5 ms | 344.7 ms | 3.5 ms |
-| `GET /uptime` after an ingest | 2.6 ms | 17.9 ms | 193.9 ms | 341.4 ms | 2.9 ms |
-| `GET /latency` after an ingest | 3.8 ms | 26.2 ms | 266.3 ms | 424.0 ms | 4.2 ms |
-| `GET /checks/c0/latency` after an ingest | 0.4 ms | 1.4 ms | 13.2 ms | - | 0.4 ms |
-| `GET /components` | 2.5 ms | 17.8 ms | 194.1 ms | - | 6.5 ms |
-| `GET /components/uptime` | 2.4 ms | 17.7 ms | 194.0 ms | 341.0 ms | 2.8 ms |
-| `GET /incidents?status=open` | 0.2 ms | 0.2 ms | 0.2 ms | - | 3.7 ms |
-| `GET /incidents?status=resolved` | 0.2 ms | 0.2 ms | 0.2 ms | - | 8.2 ms |
-| `GET /checks/c0/results` | 0.3 ms | 0.3 ms | 0.3 ms | - | 0.4 ms |
-| RSS at ready / after the reads | 60 / 91-95 MiB | 60 / 90-91 MiB | 60-61 / 86-89 MiB | - | 63 / 88-92 MiB |
+| `startup_cpu_ms` | 250 ms | 250 ms | 325 ms | gating | ok |
+| `load_cpu_s` | 3.17 s | 3.41 s | 28.1 s | gating | ok |
+| `idle_rss_mib` | 80.29 MiB | 80.68 MiB | 88 MiB | gating | ok |
+| `peak_rss_mib` | 101.32 MiB | 100.68 MiB | 115 MiB | gating | ok |
+| `test_cpu_s` | 7.25 s | 7.52 s | 9.2 s | gating | ok |
+| `cold_read_cpu_ms` (10x seed) | 30 ms | 40 ms | 390 ms | gating | ok |
+| `eod_read_cpu_ms` (518,400 rows today) | 360 ms | 370 ms | 598 ms | gating | ok |
+| `p95_get_checks_ms` / `p95_post_results_ms` | 5.00 / 2.79 ms | 4.92 / 2.89 ms | 392 / 312 ms | reported | |
+| `p95_get_latency_ms` / `p95_get_check_latency_ms` | 5.90 / 5.35 ms | 6.04 / 5.07 ms | 53 / 55 ms | reported | |
+| `cold_get_checks_ms` / `cold_get_uptime_ms` / `cold_concurrent_ms` | 23 / 3 / 27 ms | 23 / 3 / 27 ms | 200 / 190 / 390 ms | reported | |
+| `eod_get_checks_ms` / `_uptime_` / `_latency_` / `_check_latency_` / `_components_` / `_components_uptime_ms` | 2 / 2 / 3 / 1 / 3 / 2 ms | 3 / 2 / 3 / 1 / 3 / 2 ms | 7 / 3 / 7 / 2 / 4 / 3 ms | reported | |
+| `rps` / `image_mb` / `startup_wall_ms` | 43.04 / 96.21 MB / 426 ms | 43.04 / 96.21 MB / 401 ms | 40 / 124 MB / 618 ms | reported | |
+
+The 7 earlier nightly runs on the same commit (2026-11-17 to 2026-11-23) give B values in the same range: `startup_cpu_ms` 240-260, `test_cpu_s` 7.15-8.02, `eod_read_cpu_ms` 360-380, `p95_get_latency_ms` 5.31-6.20. The exception is run 44283365279, where the whole runner was about 33 % slower (finding 5).
+
+**Local runs of the bench's own phases without Docker** (exit code 0 each):
+
+- `bun bench/eod-read.ts --api .`, 2 runs, 518,420 and 518,400 rows of today: p95 `/checks` 2 and 2 ms, `/uptime` 2 and 1, `/latency` 3 and 2, `/checks/c0/latency` 1 and 1, `/components` 2 and 3, `/components/uptime` 1 and 2 ms. `eod_read_cpu_ms` 340 and 300 ms. `VmRSS` 107.9 and 109.7 MiB.
+- `bun bench/cold-read.ts --api . --density 10 --today-rows 288000`, 1 run (8,640,000 rows, 288,000 of them today): `cold_get_checks_ms` 48, `cold_get_uptime_ms` 2, `cold_read_cpu_ms` 50, `cold_concurrent_ms` 50 ms. The bench does not gate its warm start: the first reads on the freshly seeded file, which has no stored day tallies, took `warm_get_checks_ms` 1852 and `warm_get_uptime_ms` 1828 ms (finding 2).
+
+**Local growth runs**, `bun grow.ts <api> <dir> <1x seed> <midnight|today|incidents> <runs>`, exit code 0 each. Each run starts `bun src/main.ts` on a fresh copy of the database (after a WAL checkpoint and a `sync`), with the bench fixtures `eodChecksFileJson()` and `tokensFileJson()`. Dense days are added interleaved across checks, as live ingest stores them. Per check, 3 locations `sim0..sim2` x 8,640 results are spread over the day. That is 25,920 results per check and day, the count of 3 locations at a 10 s interval, and 518,400 rows for 20 checks.
+
+| Cost | Small data | Large data | Growth |
+| --- | --- | --- | --- |
+| `GET /checks/c0/location-uptime` after an ingest (3 runs x 30) | 0.5 ms median (1,077 rows of today for `c0`) | 12.7 ms median in all 3 runs, p95 13.1-13.3 ms (26,997 rows of today) | linear in today's rows, on every uncached request. **Finding 1.** |
+| the same route's query alone (`locationTally` for `c0` today, 20 times, `bun loctally.ts`) | 0.17 ms | 12.34 ms | the whole difference of the route |
+| `/checks/c0/latency`, `/checks`, `/uptime`, `/latency` after an ingest (3 runs x 30) | 0.3-0.4 / 1.0-1.2 / 0.8-0.9 / 1.4 ms | 0.3 / 1.2 / 0.8-0.9 / 1.4 ms | none: today's tally and latencies are kept in memory |
+| first `GET /checks`, `GET /latency` after a start, yesterday's day rows stored (3 runs) | - | `/checks` 7.5-10.7 ms, `/latency` 11.6-14.7 ms, read CPU 40-60 ms | baseline for the next row |
+| the same, yesterday's rows in `uptime_daily`, `latency_daily` and `uptime_location_daily` removed, which is the state after a UTC midnight (3 runs) | - | `/checks` 246.8-249.7 ms, `/latency` 329.8-334.5 ms, `/checks/c0/location-uptime` 14.0-14.6 ms (1.5-1.6 stored), read CPU 630-640 ms | linear in yesterday's rows x checks. **Finding 2.** |
+| `GET /incidents?status=resolved` (default limit 1000; 30 requests per run) | 0.2 ms (no incidents, 3 runs) | 5.9 ms with 10,000 resolved incidents (2 runs); 53.2-53.4 ms with 100,000 (3 runs) | about 0.52 µs per stored incident, on every status-page poll. **Finding 4.** |
+| `GET /incidents`, `?status=open`, `GET /components` | 0.1 / 0.2 / 0.5 ms | 10k: 5.7 / 0.4 / 0.7 ms; 100k: 52.3-52.5 / 2.7-2.9 / 3.0 ms | linear in incidents |
+| CPU at ready | 110-120 ms (1x) | 120 ms (10x) | none |
+| RSS after the reads | 99.7-101.3 MiB (1x) | 112.8-114.4 MiB (518,400 rows today) | grows with today's rows: today's latencies are held in memory (`src/today.ts`) and cleared at the UTC day change |
 
 How the costs scale:
 
-- Every route that aggregates `results` (`/checks`, `/uptime`, `/latency`, `/components`, `/components/uptime`) grows linearly with the number of results of the current UTC day. Across the day, every 25,920 results per check add about 340 ms per request on the interleaved layout. The per-request cost is never cached under load, because each ingest clears the cache (`src/service.ts:422`, `880`). This is finding 2.
-- The first `GET /checks` and the first `GET /uptime` after a start grow with the whole 30- and 90-day history: about 0.27 µs per stored result. This is finding 3.
-- `GET /incidents` and `GET /components` grow with the number of automatic incidents ever opened. This is finding 4.
-- `/checks/:id/results`, `POST /results`, startup CPU and RSS do not grow with the data.
-- The latency backfill grows linearly (CPU about 4.6x for 10x the rows). It yields after every (check, day), so no request waits for more than one day of one check. No finding.
-- The ingest commit cost does not depend on the data size.
+- Since the audit of 2026-10-31, `GET /checks`, `/uptime`, `/latency`, `/checks/:id/latency`, `/components` and `/components/uptime` no longer grow with today's rows, and the cold reads after a restart no longer grow with the 30- and 90-day history. The bench gates both (`eod_*`, `cold_*`).
+- `GET /checks/:id/location-uptime` still re-reads today's results after every ingest (finding 1).
+- The first reads after each UTC midnight re-read all of yesterday's results for every check in one synchronous call. The first start on a file without stored day tallies re-reads the whole window (finding 2).
+- `GET /incidents` and `GET /components` grow with the number of automatic incidents ever opened (finding 4).
+- Startup CPU, `POST /results`, `/checks/:id/results` and the reads in the first bullet do not grow with the data.
 
 ### 4. Memory over time: RSS after N minutes of steady load, against the RSS at the start: `checked`
 
-- Command: `timeout 540 bun mem.ts <api copy> <1x seed dir> 5`, exit code 0. It starts `bun src/main.ts` on a copy of the 1x seed and waits 15 s, which is past the latency backfill. Then it runs the bench load rates of `bench/load.ts` open loop for N = 5 minutes: 30 `POST /results` (3 probe tokens, 20 checks), 10 `GET /checks`, 1 `GET /uptime`, 1 `GET /latency` and 1 `GET /checks/:id/latency` per second. 12,880 requests, 0 failed. `VmRSS` and `VmHWM` come from `/proc/<pid>/status` every 30 s.
-- RSS at the start: 65.4 MiB (59.4 MiB at ready). Under load: 79.4, 81.6, 81.9, 84.4, 89.7, 86.3, 84.2, 81.9, 88.0 and 88.6 MiB at +30 ... +300 s. 30 s after the load: 77.4 MiB. `VmHWM` 92.4 MiB. CPU 30.04 s in 300 s of load, which is 6.0 s per minute and matches the bench `load_cpu_s` of 5.96 s.
-- RSS rose by 14 to 24 MiB in the first minute and then moved within 79 to 90 MiB with no steady growth. It fell to 77.4 MiB once the load stopped.
-- Budgets: idle 65.4 MiB against `idle_rss_mib` 88 MiB; peak 92.4 MiB against `peak_rss_mib` 115 MiB. The bench gave 75.38 and 99.90 MiB. No finding for memory.
+- Command: `timeout 540 bun mem.ts <api> <dir> <1x seed> 5`, exit code 0.
+  - It starts `bun src/main.ts` on a copy of the 1x bench seed and waits for both backfill lines and 5 s more.
+  - Then it runs an open-loop load for N = 5 minutes. Per second: 30 `POST /results` (3 probe tokens, 20 checks), 10 `GET /checks`, 1 each of `GET /uptime`, `GET /latency` and `GET /checks/:id/latency` (the rates of `bench/load.ts`). Also 1 each of `GET /components`, `GET /components/uptime` and `GET /checks/:id/location-uptime`, the status page and console reads.
+  - 13,792 requests, 0 failed. `VmRSS` and `VmHWM` were read from `/proc/<pid>/status` every 30 s.
+- RSS at ready: 65.5 MiB. At the start of the load: 72.3 MiB.
+- Under load: 94.3, 92.4, 91.0, 93.9, 93.8, 90.1, 90.9, 93.5 and 91.2 MiB at +30 ... +270 s, and 91.7 MiB at the end. 30 s after the load: 86.5 MiB. `VmHWM` 101.9 MiB.
+- CPU 9.88 s in 5 min, 1.98 s per minute.
+- RSS rose by 22 MiB in the first 30 s. After that it moved between 90.1 and 94.3 MiB with no upward trend.
+- Budgets: start 72.3 MiB against `idle_rss_mib` 88 MiB; peak 101.9 MiB against `peak_rss_mib` 115 MiB. Nightly: 80.29 and 101.32 MiB. No finding.
 
 ### 5. Tests: CPU time per test file; the slowest files: `checked`
 
-- Whole suite: `/usr/bin/time -f '%U %S %e' bun test`, 3 runs, exit code 0 (`390 pass, 0 fail`, 54 files). CPU 2.50 s (2.08 + 0.42), 2.44 s and 2.53 s. Budget `test_cpu_s` 4.1 s: `ok`. Bench B 2.46 s.
-- Per file: `/usr/bin/time -f '%U %S %e' bun test ./<file>` for each of the 54 files, 3 runs. Exit code 0 for 7 files. The other 47 exit with code 1 only because of the 80 % coverage threshold of `bunfig.toml` on a one-file run; all of their tests pass. Medians of user + sys CPU:
+- Whole suite: `/usr/bin/time bun test`, 3 runs, exit code 0 (`928 pass, 0 fail`, 100 files). CPU (user + sys) 7.11 s, 7.00 s and 7.04 s. Wall 6.28-6.37 s. Budget `test_cpu_s` 9.2 s: `ok`. Nightly B 7.25 s.
+- Per file: `/usr/bin/time -f '%U %S %e' bun test <file>` for each of the 100 files, 3 passes. 14 files exit with code 0. The other 86 exit with code 1 only because of the 80 % line-coverage threshold of `bunfig.toml` on a one-file run: `./src/config-admin.test.ts` gives `62 pass, 0 fail` and `All files ... 61.78` % lines. No test failed in any run. Medians of user + sys:
 
-| File | CPU (median of 3) |
-| --- | --- |
-| `src/uptime.test.ts` | 0.57 s |
-| `src/main.test.ts` | 0.53 s |
-| `src/config-admin.test.ts` | 0.44 s |
-| `src/start.test.ts` | 0.34 s |
-| `src/server.manual-incidents.test.ts` | 0.24 s |
-| `src/slo.test.ts` | 0.20 s |
-| `src/latency.test.ts` | 0.18 s |
-| `src/server.test.ts` | 0.17 s |
-| `src/start.audit-log.test.ts` | 0.16 s |
-| `src/server.heartbeat.test.ts` | 0.14 s |
+| File | CPU (median of 3) | Runs |
+| --- | --- | --- |
+| `src/config-admin.test.ts` | 0.93 s | 0.93, 0.93, 0.93 |
+| `src/server.notify-channels.test.ts` | 0.83 s | 0.83, 0.83, 0.82 |
+| `src/server.maintenance-admin.test.ts` | 0.65 s | 0.65, 0.66, 0.64 |
+| `src/main.test.ts` | 0.62 s | 0.61, 0.62, 0.62 |
+| `src/server.resend.test.ts` | 0.61 s | 0.62, 0.61, 0.58 |
+| `src/uptime.test.ts` | 0.58 s | 0.58, 0.58, 0.57 |
+| `src/security-review.test.ts` | 0.49 s | 0.48, 0.50, 0.49 |
+| `src/server.status-settings.test.ts` | 0.48 s | 0.47, 0.48, 0.48 |
+| `src/server.manual-incidents.private.test.ts` | 0.44 s | 0.44, 0.44, 0.44 |
+| `src/start.test.ts` | 0.41 s | 0.41, 0.41, 0.42 |
 
-  The fastest files (`state`, `docs-claims`, `db`) take 0.01 to 0.02 s. The per-file sum is 6.54 s, against 2.5 s for the suite in one process, because every file run repeats Bun startup and module loading. No finding.
+  The fastest files (`effective-maintenance`, `token-scopes`, `compose-moved`) take 0.00-0.01 s. The per-file sum is 18.12 s, against 7.0 s for the suite in one process, because each file run repeats Bun startup, module loading and the coverage report. No finding.
 
 ### 6. pulse-website only: JS and CSS size against the budget; Lighthouse of Home and Hosted: `not applicable`
 
@@ -167,105 +162,126 @@ The scope of this audit is pulse-api. It serves JSON and has no JS or CSS bundle
 
 ## Issue candidates
 
-### performance-api-2026-10-31-2 (P2): uncached reads re-aggregate all of today's results; by the end of a UTC day each status-page read takes 0.34 to 0.42 s
+### performance-api-2026-11-24-1 (P2): `GET /checks/:id/location-uptime` re-reads all of today's results after every ingest, against the documented read cache
 
-- Location: `src/service.ts:838` (`latencyOf` sorts today's latencies again with `rollupOfDay(checkId, today)`), `src/service.ts:521` (`dayLatencies`, `USE TEMP B-TREE FOR ORDER BY`) and `src/service.ts:765` (`dailyUptime` for today, `USE TEMP B-TREE FOR GROUP BY`). The cache is cleared on every ingest (`src/service.ts:880`, documented in `docs/rest-api.md`, Read cache).
-- Command:
-  1. `bun bench/seed.ts . <dir>/pulse.db` and the bench fixtures for the checks and tokens files.
-  2. `sqlite3 <dir>/pulse.db < eod.sql`. The SQL adds 8,640 results for each of 3 locations (`sim0`..`sim2`) per check, spread over today's elapsed UTC time. That is 25,920 results per check today, which 3 locations at a 10 s interval produce in a full UTC day:
-
-     ```sql
-     INSERT INTO results (check_id, timestamp, status, status_code, latency_ms, location, attempts)
-     WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 8639),
-       d(sod, step) AS (SELECT (unixepoch() / 86400) * 86400000, ((unixepoch() % 86400) * 1000 - 60000) / 8640),
-       l(loc, o) AS (VALUES ('sim0', 0), ('sim1', 1), ('sim2', 2))
-     SELECT c.id, d.sod + l.o + n.i * d.step, 'up', 200, 5 + ((n.i * 7) % 300), l.loc, 1 FROM checks c, l, n, d;
-     ```
-
-  3. Start `PORT=3995 PULSE_DB=... PULSE_CHECKS_FILE=... PULSE_TOKENS_FILE=... bun src/main.ts` and wait for `backfill done`.
-  4. 30 times per route: one `curl -X POST /results`, then `curl -w '%{time_total}' GET <route>`.
-
-  3 server runs. Exit code 0.
+- Location: `src/service.ts:1044`. `locationUptimeOf` calls `locationTallies(id, today * DAY_MS, t)`, which runs `locationTally` (`src/service.ts:638`, `SEARCH results USING INDEX results_by_check`, `USE TEMP B-TREE FOR GROUP BY`) over the check's results of today.
+- Documented behavior: `docs/rest-api.md:244` names `GET /checks/:id/location-uptime` among the cached routes. It says: "Recomputing after an ingest does not re-read today's results: today's uptime and latency are kept in memory and updated with each stored result." Every ingest clears the cache, so with probes reporting, nearly every request recomputes. The console reads the route for its check view (pulse-console `src/check-read.ts:249-251`).
+- Command: `timeout 600 bun grow.ts <api copy> <dir> <1x seed> today 3`, exit code 0.
+  - It copies the 1x bench seed twice. One copy gets 3 locations x 8,640 results per check for today, spread from 00:00 UTC to now and interleaved across checks: 518,400 rows, 26,997 for `c0`.
+  - Then 3 server runs per copy. Each starts the API, waits for both backfill lines, sends one warm read and then 30 cycles of one `POST /results` (token `sim1`) and one timed `GET /checks/c0/location-uptime`.
+  - Check: `bun loctally.ts <db>` runs the route's query alone 20 times on each copy.
 - Excerpt:
 
 ```
-results today per check: 26313
-GET /checks after an ingest: n=30 median 344.2 ms p95 348.6 ms
-GET /uptime after an ingest: n=30 median 341.2 ms p95 344.8 ms
-GET /latency after an ingest: n=30 median 419.1 ms p95 426.6 ms
-GET /components/uptime after an ingest: n=30 median 341.0 ms p95 346.0 ms
-(1x seed, 391 results per check today: /checks 3.6 ms, /uptime 3.0 ms, /latency 4.7 ms, /components/uptime 2.9 ms)
+dense: added 518400 rows of today; c0 today rows 26997; 1x c0 today rows 1077
+1x run 1: /checks/c0/location-uptime median 0.5 p95 0.8 ms (cpu 50 ms/30 cycles); /checks/c0/latency median 0.3 p95 0.4 ms
+dense run 1: /checks/c0/location-uptime median 12.7 p95 13.1 ms (cpu 420 ms/30 cycles); /checks/c0/latency median 0.3 p95 0.4 ms
+dense run 2: /checks/c0/location-uptime median 12.7 p95 13.2 ms (cpu 420 ms/30 cycles)
+dense run 3: /checks/c0/location-uptime median 12.7 p95 13.3 ms (cpu 420 ms/30 cycles)
+today-1x.db: c0 rows today 1077, locationTally median 0.17 ms (n=20)
+today-dense.db: c0 rows today 26997, locationTally median 12.34 ms (n=20)
 ```
 
-- Value: median `GET /latency` 424.0 ms and median `GET /checks` 344.7 ms. Medians of the 3 runs: `/latency` 427.3, 419.1 and 424.0 ms; `/checks` 356.3, 344.2 and 344.7 ms. When each check's rows are stored contiguously, the values are 266.3 and 195.5 ms (item 3). The difference comes from the live, interleaved layout of the rows.
-- Repetitions: 3 server runs x 30 requests per route.
-- Baseline: the 1x bench seed (391 results per check today): 4.7 ms for `/latency` and 3.6 ms for `/checks`.
-- Budget: `p95_get_latency_ms` 53 ms (reported): one unloaded request takes 8 times the budget. `p95_get_checks_ms` 392 ms (reported): one unloaded request takes 88 % of the budget.
-- Why it matters: the cost rises linearly from 00:00 UTC to the end of the day. The status page polls `/checks`, `/components` and `/components/uptime` every 5 s by default (`pulse-status` `src/poller.ts:326-340`; `/uptime` and, when enabled, `/latency` are read at lines 229 and 250). With 6 ingests per second, every poll misses the cache, so the API's one thread is busy for about 1 s of every 5 s for one status page. Ingests and other reads wait meanwhile.
-- Review reproduction (`audit-review`, commit `11f5555`, another runner): the report's `eod.sql`, run unchanged on a copy of the 1x seed, gives 26,323 results for `c0` today. The rows are interleaved across checks (rowid order `c0/sim0 c1/sim0 c10/sim0 ...`). The checks file holds the bench fixtures plus two components of 10 checks each. Then `bun reads.ts <api copy> <db> <cfg> 3995 30`: start, wait for `backfill done`, then 30 times per route one `POST /results` and one timed `GET`. 3 server runs, exit code 0 each. Medians of the 3 runs: `/checks` 417.1, 417.4 and 418.5 ms; `/uptime` 418.7, 415.2 and 416.8 ms; `/latency` 528.8, 529.1 and 522.5 ms; `/components` 417.9, 418.3 and 418.9 ms; `/components/uptime` 417.2, 419.9 and 418.1 ms. On the 1x seed (613 results per check today), 2 runs: `/checks` 4.0 and 4.1 ms, `/latency` 5.4 and 5.5 ms, `/components/uptime` 3.4 and 3.5 ms. The deviation reproduces. It is about 20 % above the audit's values on this runner (the whole test suite also took 3.45 s of CPU here, against 2.5 s). At this density, one unloaded `GET /checks` (417 ms) is also over the `p95_get_checks_ms` budget of 392 ms.
-- Fix direction: keep running per-day aggregates instead of reading them again, for example a running good/total count for today, as the closed days already have, and today's latency percentiles from a bounded or incremental structure. Alternatively, let an ingest invalidate only what it changes. A bench seed with today's density, in `bench/seed.ts`, would make the cost visible.
+- Value: 12.7 ms median per request (p95 13.1-13.3 ms), and 420 ms of API CPU per 30 cycles against 50 ms.
+- Repetitions: 3 server runs x 30 requests per data set. The query alone ran 20 times per data set.
+- Baseline: 0.5 ms with 1,077 rows of today for the check (1x seed at 18:00 UTC). On the same dense data, `GET /checks/c0/latency`, which keeps today in memory, stays at 0.3 ms.
+- Budget: none for this route. The end-of-day phase of the bench does not request it (`bench/eod.ts` `EOD_ROUTES`). The nearest per-check end-of-day budget is `eod_get_check_latency_ms` 2 ms (reported).
+- Severity: `P2` because the documented property does not hold at the bench's own density (20 checks, 3 locations, 10 s). The cost grows linearly through the UTC day. The absolute cost per request is small: 12.7 ms for one check.
+- Fix direction: keep today's per-location good/total counts in the in-memory today state and update them on ingest, as `todayTally` does for the whole check. Add the route to the end-of-day bench phase. Or narrow the sentence in `docs/rest-api.md:244`.
 
-### performance-api-2026-10-31-3 (P2): the first `GET /checks` and the first `GET /uptime` after a start read the whole 30- and 90-day window in one synchronous call
+### performance-api-2026-11-24-2 (P3): the first reads after each UTC midnight re-read all of yesterday's results in one synchronous request
 
-- Location: `src/service.ts:757` (`uptimeOf`: after a start, `closedTallies` is empty, so `firstRead` is the first day of the window and one `dailyUptime` query aggregates all of it).
-- Command: the growth script of item 3: a fresh copy of the seeded database, start, wait for the backfill, then the first request to each route. 3 runs per data set, exit code 0. Also the `curl` reproduction of finding 2: `cold GET /checks`.
-- Excerpt: `1x: /checks max 206.2, 209.9, 206.7 ms; /uptime max 210.9, 211.0, 214.6 ms` and `10x: /checks max 2356.0, 2352.2, 2354.4 ms; /uptime max 2414.6, 2408.4, 2412.2 ms` (the maximum of each run is its first, cold request; the later requests take 18.6 and 17.9 ms). The `curl` reproduction gave `cold GET /checks 200 0.208754 s` (1x) and `cold GET /checks 200 0.608469 s` (1x plus a full day at 3 locations).
-- Value: 2,354.4 ms for the first `GET /checks` at 10x, then 2,412.2 ms for the first `GET /uptime`.
-- Repetitions: 3 runs per data set.
-- Baseline: 206.7 ms and 211.0 ms at 1x.
-- Budget: `p95_get_checks_ms` 392 ms (reported). This is one request per start, so the bench p95 does not show it.
-- Why it matters: the call runs on the API's only thread. After every restart, all requests wait behind it, including the probes' `POST /results`: about 4.8 s at 10x the bench data. The bench seed covers 30 days, so a 90-day history at the default retention gives longer stalls.
-- Fix direction: build the closed-day tallies in batches with yields after the start, as the latency backfill does, or store them per day like `latency_daily`.
-- Review spot check (`bun reads.ts`, as for finding 2, exit code 0): the first `GET /checks` and the first `GET /uptime` took 277.4/271.2 ms and 284.7/275.8 ms at 1x (2 runs). At the end-of-day density they took 754.9/746.3, 759.7/753.5 and 755.1/773.0 ms (3 runs). At 10x (8,640,000 rows: the 1x seed plus 9 more results per minute, added with `sqlite3`) they took 3,373.1 and 3,447.4 ms, after which `GET /checks` took 29.9 ms (1 run). The growth holds.
-- Review re-measurement (cold reads against the status proxy timeout, commit `11f5555`): the bench seed plus one day of 20 checks × 3 locations × 10 s samples. After a start, one cold `GET /checks` and one cold `GET /uptime` ran concurrently through `curl`; then the same requests ran cached. Command: `timeout 90 bun tmp/cold-timeout.ts`, exit code 1, 2 repetitions. Excerpt: `run 1: /uptime curl exit 28, 4002 ms, 0 bytes received`, `run 2: /uptime curl exit 28, 4003 ms, 0 bytes received`, `AssertionError: cold public reads exceed the status proxy default 4000 ms timeout`. Cached, the same requests took 5 to 21 ms. pulse-status (`3f80bda`) gives up on pulse-api after 4000 ms by default: `src/server.ts:71` (`DEFAULT_UPSTREAM_TIMEOUT_MS = 4000`), `src/settings.ts:71` (`PULSE_STATUS_UPSTREAM_TIMEOUT_MS` fallback 4000), `docs/configuration.md:17` and `docs/operation.md:138` (the proxy then answers `502` `API unreachable`). So after a restart at the bench's own density, the status page's first poll fails with a `502`. Absolute timings depend on the host. The severity rises to `P2`.
+- Location:
+  - At the day change, `startDay` (`src/service.ts:501-505`) drops yesterday's in-memory tally and latencies (`dropOlderDays`) without storing them.
+  - The next read finds no `uptime_daily` row for yesterday. `uptimeOf` -> `loadClosedDays` (`src/service.ts:952`, `909`) then runs `dailyUptime` (`src/service.ts:604`, `USE TEMP B-TREE FOR GROUP BY`) over the whole day for every check.
+  - `latencyOf` -> `fillRollups` (`src/service.ts:1141`, `1131`) runs `dayLatencies` (`src/service.ts:647`, `USE TEMP B-TREE FOR ORDER BY`) for every HTTP check.
+  - The hourly backfills (`src/uptime-rollup.ts`, `src/latency-rollup.ts`) fill the same days with a yield after each (check, day). They run every 3,600,000 ms from the process start, so a status page that polls every 5 s almost always reaches the read path first.
+- Command: `timeout 600 bun grow.ts <api copy> <dir> <1x seed> midnight 3`, exit code 0.
+  - It copies the 1x bench seed and adds, for yesterday, 3 locations x 8,640 results per check, interleaved (518,400 rows; `c0` then has 27,360 rows yesterday).
+  - It starts the API, waits for both backfill lines and stops it, so every closed day is stored.
+  - It makes two copies. `stored` keeps all day rows. In `missing`, the rows of yesterday are deleted from `uptime_daily` (20), `latency_daily` (20) and `uptime_location_daily` (80): this is the state of a running process right after 00:00 UTC.
+  - 3 runs per copy: start, and at the first `200` of `/readyz` one timed request each to `/checks`, `/uptime`, `/latency`, `/components/uptime` and `/checks/c0/location-uptime`. The API CPU before and after them comes from `/proc`.
+  - The `stored` copy pays the same restart costs, so the difference is the fill of yesterday.
+- Excerpt:
+
+```
+stored run 1: ready 88 ms; /checks 10.7 ms, /uptime 2.0 ms, /latency 11.6 ms, /components/uptime 0.6 ms, /checks/c0/location-uptime 1.5 ms; read cpu 50 ms
+stored run 3: ready 95 ms; /checks 7.5 ms, /uptime 2.2 ms, /latency 13.7 ms, /components/uptime 0.9 ms, /checks/c0/location-uptime 1.6 ms; read cpu 40 ms
+missing run 1: ready 95 ms; /checks 247.7 ms, /uptime 2.6 ms, /latency 332.9 ms, /components/uptime 1.0 ms, /checks/c0/location-uptime 14.6 ms; read cpu 630 ms
+missing run 2: ready 95 ms; /checks 246.8 ms, /uptime 2.7 ms, /latency 334.5 ms, /components/uptime 1.2 ms, /checks/c0/location-uptime 14.4 ms; read cpu 640 ms
+missing run 3: ready 88 ms; /checks 249.7 ms, /uptime 2.8 ms, /latency 329.8 ms, /components/uptime 1.0 ms, /checks/c0/location-uptime 14.0 ms; read cpu 630 ms
+```
+
+- Value: 332.9 ms (median of 3 runs) for the first `GET /latency` and 247.7 ms for the first `GET /checks`. API CPU 630-640 ms for the five first reads, against 40-60 ms.
+- Repetitions: 3 runs per copy.
+- Baseline: the `stored` copy: 7.5-10.7 ms for `/checks` and 11.6-14.7 ms for `/latency`.
+- Budget: `p95_get_latency_ms` 53 ms and `p95_get_checks_ms` 392 ms (both reported). This is one request per route and day, so no p95 of the bench shows it. The end-of-day phase starts after the backfills and never crosses midnight (`bench/eod.ts`).
+- The same path on a start without stored day tallies, for example the first start after an upgrade to a release with `uptime_daily`: the warm start of `bench/cold-read.ts --density 10 --today-rows 288000` (1 run, exit code 0) gave `warm_get_checks_ms` 1852 and `warm_get_uptime_ms` 1828. The first `GET /uptime` (90-day window) re-reads from its oldest missing day, so it reads the 30 days that the `GET /checks` before it had just stored once more.
+- Why it matters: the API has one thread. At 00:00 UTC, the first status poll (`/checks`, `/components`, `/components/uptime` and more, sent together, pulse-status `src/poller.ts:374-389`; every 5 s by default, `src/settings.ts:193`) and the first latency read stall ingests and other reads for about 0.6 s of CPU at the bench's density. The cost scales with checks x results per day.
+- Severity: `P3`. It happens once a day and stays far under the status proxy's 4,000 ms timeout at this density. No documented limit is broken.
+- Fix direction: at the day change, store yesterday's in-memory tally and latency figures as its `uptime_daily` and `latency_daily` rows. Or let the read path take only stored days and leave the missing ones to the yielding backfill, started at the day change. Add a midnight case to the bench.
+
+### performance-api-2026-11-24-3 (P3): the nightly bench has failed on every scheduled run since 2026-11-04, so an api regression would not change its result
+
+- Location: `bench/budgets.json:143` (probe `test_cpu_s` 2.3 s), `bench/budgets.json:180` (status `test_cpu_s` 3.4 s) and `bench/budgets.json:217` (notify `test_cpu_s` 3.4 s). The nightly workflow is `.github/workflows/bench.yml` of pulse-api.
+- Command: `gh run list --repo lorenzh/pulse-api --workflow bench.yml --branch main --limit 40 --json databaseId,headSha,event,conclusion,createdAt`, exit code 0. Then `gh run download <id> --name bench-out` for the 8 newest runs and a read of `table.json` and `samples.json` (`shas.a`, `shas.b`).
+- Excerpt:
+
+```
+2026-11-24T12:32:55Z schedule failure 8959e04 45394568321
+... (every schedule run from 2026-11-04 to 2026-11-24: failure; 21 runs)
+2026-11-03T09:36:18Z schedule success c9e23af 41612366764
+45394568321 A=B for api/probe/status/notify: True {'probe': (2.63, 2.57, 2.3, 'FAIL budget'), 'status': (4.24, 4.15, 3.4, 'FAIL budget'), 'notify': (5.51, 5.36, 3.4, 'FAIL budget')}
+44067927242 A=B for api/probe/status/notify: True {'probe': (2.53, 2.54, 2.3, 'FAIL budget'), 'status': (4.01, 4.02, 3.4, 'FAIL budget'), 'notify': (5.18, 5.18, 3.4, 'FAIL budget')}
+```
+
+  (tuple: A median, B median, budget, verdict)
+- Value: in run 45394568321, notify `test_cpu_s` 5.36 s, status 4.15 s and probe 2.57 s (B medians).
+- Repetitions: 5 rounds per side in each of 8 runs (2026-11-17 to 2026-11-24). All 8 fail the same three rows.
+- Baseline: side A of the same runs, the same commits (`92f55df`, `f220fbc`, `6f4efe1`): 5.51, 4.24 and 2.63 s.
+- Budget: 3.4, 3.4 and 2.3 s. B is 58 %, 22 % and 12 % over them.
+- Why it matters: side A and side B run identical code, so these rows report stale budgets, not regressions. The workflow concludes `failure` every night anyway. A new api `FAIL budget` or `FAIL regression` row does not change the conclusion or the notification. A breach is only seen when someone reads the table. `bench/README.md` says "Re-set the budgets from the first nightly runs".
+- Severity: `P3`. It costs no user anything, but it disables the nightly signal that the budgets exist for.
+- Fix direction: re-set the three `test_cpu_s` budgets from the nightly A medians, with the documented method (A median plus headroom, or the spread rule of the "Temporary test floors" section). Or report per service, so one service's stale budget does not hide another service's breach.
+
+### performance-api-2026-11-24-4 (P3): `GET /incidents` scans and sorts the whole `incidents` table, and the status page requests it on every poll
+
+- Location: `src/service.ts:1447-1460` (`listIncidents`: `SCAN incidents`, `USE TEMP B-TREE FOR ORDER BY` in all 7 variants). The only index is `incidents_check_id` (`src/db.ts:56`). Automatic incidents are never deleted (`docs/concepts.md:83-89` lists what retention deletes). pulse-status sends `GET /incidents?status=open` and `GET /incidents?status=resolved`, with no `since`, on every poll (`src/poller.ts:375, 381`, `getResolved` at `300-304`; every 5,000 ms by default, `src/settings.ts:193`). From the resolved list it keeps only the incidents of its resolved window.
+- Command: `timeout 600 bun grow.ts <api copy> <dir> <1x seed> incidents 3` and `INCIDENTS=10000 ... incidents 2`, exit code 0. The copy of the 1x seed gets 10,000 or 100,000 resolved incidents (one per second, starting 20 days ago). After the backfills, 30 timed requests per route.
+- Excerpt:
+
+```
+1x run 1: /incidents?status=resolved median 0.2 p95 0.4 ms; /incidents?status=open median 0.2 p95 0.7 ms; /incidents median 0.1 p95 0.4 ms; /components median 0.5 p95 1.7 ms
+1x+10k run 1: /incidents?status=resolved median 5.9 p95 6.7 ms; /incidents?status=open median 0.4 p95 0.8 ms; /incidents median 5.7 p95 6.1 ms; /components median 0.7 p95 2.1 ms
+1x+100k run 1: /incidents?status=resolved median 53.2 p95 54.0 ms; /incidents?status=open median 2.9 p95 3.2 ms; /incidents median 52.3 p95 53.3 ms; /components median 3.0 p95 4.2 ms
+1x+100k run 3: /incidents?status=resolved median 53.2 p95 54.2 ms; /incidents?status=open median 2.7 p95 3.1 ms; /incidents median 52.5 p95 53.1 ms; /components median 3.0 p95 3.5 ms
+```
+
+- Value: 53.2 ms median for `GET /incidents?status=resolved` with 100,000 incidents (medians of the 3 runs: 53.2, 53.4 and 53.2 ms). 5.9 ms with 10,000.
+- Repetitions: 3 runs (100k) and 2 runs (10k), 30 requests per route each.
+- Baseline: 0.2 ms with no incidents.
+- Budget: none for this route.
+- Why it matters: the cost grows by about 0.52 µs per incident ever opened, with no upper bound, and is paid on every status poll, every 5 s per status instance. The route is not in the read cache.
+- Severity: `P3`. It needs a long-lived installation with many incidents, for example a check that flaps for months. The audit of 2026-10-31 noted the same plan (`performance-api-2026-10-31-4`); this run measured it again.
+- Fix direction: a partial index on open incidents and an index on `(resolved_at)` or `(opened_at)` that matches the `ORDER BY`. Let the status page send `since`, or add a retention for old resolved automatic incidents.
 
 ## Notes
 
-- **performance-api-2026-10-31-4 (P3, note): `GET /incidents` and `GET /components` scan and sort the whole `incidents` table.**
-  - Location: `src/service.ts:1099`. The only index is `incidents_check_id` (`src/db.ts:56`), and automatic incidents are never deleted.
-  - Measurement: growth script, 1x plus 100,000 resolved incidents, 3 runs.
-  - Results: `/incidents?status=resolved` went from 0.2 to 8.2 ms (medians 8.1, 8.2, 8.2), `/incidents?status=open` from 0.2 to 3.7 ms, and `/components` from 2.5 to 6.5 ms. Startup CPU did not change (100-110 ms).
-  - Assessment: realistic incident counts are far lower, so this is a corner case. A partial index on open incidents and an index on `opened_at` would remove the scan.
-  - Review spot check: `EXPLAIN QUERY PLAN` of the `status=open` and `status=resolved` variants gives `SCAN incidents` and `USE TEMP B-TREE FOR ORDER BY`, as reported. The 1x seed got 100,000 resolved incidents (`sqlite3 ... INSERT INTO incidents ... WITH RECURSIVE`, one per second over 28 hours, 20 days ago). With them, `GET /incidents?status=resolved` (default limit 1000) took a median of 80.5 ms (p95 82.5 ms, n = 30, 1 run). The same query directly in `bun:sqlite` took 78.8 to 81.6 ms (5 runs). `GET /components` took 8.4 ms, against 3.5 ms without the incidents. The growth holds. The review's value is 10 times the audit's 8.2 ms; the incident rows the two used differ. It stays `P3`: it needs 100,000 incidents.
-- **Bench harness, side A older than `8ea397c`.** `timeout 30m bun bench/run.ts --a c282ae36190a9d22bc4a0f91e396cfc3a0da26d2 --b 11f5555... --rounds 2` ended with exit code 2 and `bench: api was not ready within 120 s`. The failure log shows `pulse-api: /config/checks.json: unknown key "availabilityTarget" in checks[0]`. `bench/fixtures.ts:12` writes `availabilityTarget` for every check, and an API before F8 rejects that key. `OPTIONAL_ROUTES` handles only the routes. The default side A (`bench/baseline.json`, `8ea397c`) is not affected. The audit counted this attempt as harness setup, not as a comparison, and then ran the A/B with A = `8ea397c`.
-- **No nightly bench of the current `main`.** `bench.yml` exists since 2026-10-30T13:55Z (`gh api .../workflows/bench.yml`: `state: active`). `gh run list --workflow bench.yml --event schedule` returned no run. The only completed run on `main` is the manual run 41067380495. A budget breach on `main` therefore stays unseen until someone starts a run by hand.
-- **Outside the scope (pulse-status).** The A/B reported `status test_cpu_s` 1.49 s (A) against 1.87 s (B), `FAIL regression`, under the status budget of 2.40 s. It is a status repository change and was not examined further.
-- `startup_wall_ms` (1434 ms on B) is over its reported budget of 618 ms in the local Docker run. Without Docker the API was ready 84 to 153 ms after the spawn. This is container start on this runner, not API work. Not a finding.
-- `GET /checks` (`computeChecks`), `/uptime`, `/latency`, `/metrics` and `/probe/checks` call `db.prepare(...)` on every uncached request instead of reusing a prepared statement (`src/service.ts:719, 787, 795, 972, 992, 1005`). The cost was not measured on its own and is small next to finding 2.
-- The latency backfill after a start (1,780 rollup days for 20 checks) took 4.3 to 11.0 s wall and about 0.78 s CPU at 1x, and 8.4 to 13.6 s wall and about 3.6 s CPU at 10x. Each (check, day) is its own batch with a yield after it.
-- Method caveats:
-  - Local numbers come from one runner and do not compare with the hosted nightly.
-  - The 10x startup CPU of the growth script (170 ms) was inflated by the writeback of the freshly copied 1.6 GB file. Only the profiler runs, which ran after a `sync`, are used for 10x startup.
-  - The capture for item 1 ran during the first bench attempt, which failed before its first measurement. Nothing CPU-heavy ran during the A/B that this report uses.
-- Cleanup: every API instance was stopped with `SIGTERM` (log line `stopped`). The bench removed its Compose stacks. The 8 `pulse-bench-*` images, the temporary copy, the seeds, the downloaded artifacts and `/dev/shm/audit503` were deleted at the end of the run.
-
-## Review
-
-`audit-review` re-ran the findings in a copy of pulse-api at `11f555598831ef61f13de40bef5f2da620230c97`, the `HEAD` of the clone. The runner had 4 vCPU and 16 GB, Bun 1.4.0 and SQLite 3.53.2. The root file system (ext4) is mounted with `nobarrier,data=writeback`. The scripts and data were kept under `mktemp -d` and deleted at the end. The review did not run the Docker bench A/B: a run takes longer than one foreground command may, and this state starts no background tasks. Its own measurements below replace it.
-
-### Removed: performance-api-2026-10-31-1 (was `P2`, a synchronous disk flush per ingest)
-
-The finding said that each `POST /results` commit, with the rollback journal and the default `synchronous` (FULL), blocks the event loop on a disk flush. It said this lifts the p95 of every route to about 180-250 ms at the bench rates, against 1.9-15.3 ms on tmpfs. That did not reproduce.
-
-- The defaults hold: `bun:sqlite` on the seeded file gives `PRAGMA synchronous` = 2 and `journal_mode` = `delete`, and `src/` sets neither.
-- Command: `timeout 200 bun load.ts <api copy> <db> <seed dir> <port> 60`. It starts `bun src/main.ts` on a copy of the 1x bench seed (`bun bench/seed.ts`, 864,000 rows) and waits for `backfill done`. Then it runs the `bench/load.ts` rates open loop for 60 s: 30 `POST /results` from 3 probe tokens, 10 `GET /checks`, 1 `GET /uptime`, 1 `GET /latency` and 1 `GET /checks/c0/latency` per second. Exit code 0 in every run, 0 failed requests.
-
-```
-disk, run 1:  POST /results p50 2.0 ms p95 2.9 ms | GET /checks p95 9.0 ms | GET /uptime p95 13.6 ms | GET /latency p95 23.2 ms | GET /checks/c0/latency p95 23.9 ms | cpu 7.50 s
-disk, run 2:  POST /results p50 2.1 ms p95 3.2 ms | GET /checks p95 9.9 ms | GET /uptime p95 12.7 ms | GET /latency p95 19.5 ms | GET /checks/c0/latency p95 20.0 ms | cpu 7.57 s
-tmpfs:        POST /results p50 1.0 ms p95 1.2 ms | GET /checks p95 7.8 ms | GET /uptime p95 11.9 ms | GET /latency p95 19.2 ms | GET /checks/c0/latency p95 19.8 ms | cpu 7.27 s
-disk while a 6 GB file was written back in parallel (dd, no sync):
-              POST /results p50 1.8 ms p95 4.9 ms | GET /checks p95 10.7 ms | GET /uptime p95 277.0 ms | GET /latency p95 284.9 ms | GET /checks/c0/latency p95 285.6 ms
-```
-
-- `strace -f -c -e trace=fsync,fdatasync,unlink,unlinkat` on the API during 20 s of the same load: 9,520 `fsync` and 2,380 `unlink` calls. That is 4 `fsync` per commit and the deletion of the journal. The `fsync` calls took 27 µs on average, 0.26 s in total. (strace slows the API down, so the latencies of that run are not used.)
-- Result: the flush per ingest exists. On this disk it adds about 1 ms to the `POST /results` median, and nothing measurable to the reads: disk and tmpfs p95 are within 0.3 ms for `GET /latency` (19.5 against 19.2 ms). Every route stays far within its budget. The audit's 180-250 ms did not reproduce on an idle disk. Even with heavy writeback in parallel, only a few stalls appeared: `POST /results` p95 stayed at 4.9 ms. The cost depends on the `fsync` latency of the disk. This review cannot show it as a finding on a disk with a slow flush.
-- The bench A/B values `p95_get_latency_ms` 129 ms and `p95_get_check_latency_ms` 127 ms stay in item 3 as the audit measured them. They are over their reported budgets on both A and B. Their cause in the Docker bench stack is not established: the same rates without Docker gave 19-24 ms here.
-
-### Reproduced and spot-checked
-
-- performance-api-2026-10-31-2 (`P2`): reproduced. The values are in the finding: `GET /checks` 417 ms and `GET /latency` 529 ms after an ingest at the end-of-day density, against 4.0 and 5.4 ms at 1x. The severity stays. The case is the bench's own load: 3 locations, a 10 s interval (as `checks.example.json` uses) and 20 checks. Every status-page poll pays it after any ingest. At the end of the day, one unloaded `GET /checks` is over `p95_get_checks_ms`, and `GET /latency` is 10 times `p95_get_latency_ms`.
-- performance-api-2026-10-31-3 (`P2`, raised from `P3`): the spot check and the re-measurement are in the finding. 1x 0.28 s, 10x 3.4 s for the first `GET /checks`. With one day of bench-density data, concurrent cold `GET /checks` and `GET /uptime` exceeded the status proxy's default 4000 ms timeout in both repetitions (4002 and 4003 ms, 0 bytes), so the first status-page poll after a restart fails.
-- performance-api-2026-10-31-4 (`P3`): the spot check is in the note. The plan holds; the review measured a larger cost (80.5 ms) than the audit did (8.2 ms).
-- Item 1: `EXPLAIN QUERY PLAN` of `dayLatencies`, `dailyUptime` and both `listIncidents` variants gives the plans of the table.
-- Item 5: `/usr/bin/time bun test`, exit code 0: 390 pass, CPU 2.90 + 0.55 s (budget 4.1 s). `src/uptime.test.ts` 0.79 s, `src/main.test.ts` 0.75 s and `src/state.test.ts` 0.02 s, the same order as in the table.
+- **performance-api-2026-11-24-5 (P3, note): on a slow hosted runner, the api's gating budgets `startup_cpu_ms` and `test_cpu_s` fail with no code change.**
+  - Run 44283365279 (2026-11-18, `schedule`) compared `8959e04` with itself. Command: `gh run download 44283365279 --repo lorenzh/pulse-api --name bench-out`, then a read of `table.json` and `samples.json`; exit code 0.
+  - `startup_cpu_ms`: A rounds 320, 330, 320, 320, 330 ms; B rounds 330, 320, 330, 330, 330 ms; B median 330 ms against the budget of 325 ms: `FAIL budget`.
+  - `test_cpu_s`: A 9.53-9.66 s and B 9.46-9.62 s; B median 9.49 s against 9.2 s: `FAIL budget`.
+  - The 7 other runs of the same commit gave 240-260 ms and 7.15-8.02 s. kit `test_cpu_s` also failed in that run, so the whole runner was slower.
+  - In 1 of 8 nightly runs, the gating budgets did not hold the hosted runner's spread for identical code. Value 330 ms, 5 rounds, baseline A 320 ms, budget 325 ms.
+  - A rule that compares B with A of the same run would not have failed. Finding 3 hides it today.
+- **Status of the findings of 2026-10-31**, measured again on `8959e04`:
+  - `performance-api-2026-10-31-2` (end-of-day reads): fixed. Today's tally and latencies are kept in memory (`src/today.ts`). The nightly gives `eod_get_*` 1-3 ms, and locally `bench/eod-read.ts` gives 1-3 ms. The exception is `/checks/:id/location-uptime`, which is finding 1.
+  - `performance-api-2026-10-31-3` (cold reads after a start): fixed for restarts. The nightly gives `cold_get_checks_ms` 23 ms, and locally the 10x seed gives 48 ms. The first start without stored tallies still reads the whole window, see finding 2.
+  - `performance-api-2026-10-31-4` (incidents scan): unchanged, now finding 4.
+- `audit_log` reads with a filter (`src/audit-log.ts:125`) scan the table, which is never pruned. The route is admin-only and paged. It was not measured; a note, not a finding.
+- `computeChecks` (`src/service.ts:848`), `activeCheckIds` (`1068`), `httpCheckIds` (`1081`), `listCheckStates` (`1289`), `listProbeChecks` (`1309`) and `listHeartbeats` (`1322`) still call `db.prepare(...)` on each call instead of reusing a prepared statement. Not measured on its own. `GET /checks` after an ingest takes 1.0-1.2 ms in total.
+- RSS grows with today's rows: 99.7-101.3 MiB after the reads at 1x, and 112.8-114.4 MiB with 518,400 rows of today (`grow.ts today`). `bench/eod-read.ts` gave `VmRSS` 107.9 and 109.7 MiB. Today's latencies are held as `Float64Array`s that double their capacity (`src/today.ts`) and are dropped at the UTC day change. `peak_rss_mib` (115 MiB) is measured in the 1x load phase, so it does not cover the end of the day. No budget is broken, so this is a note.
+- The test suite grew from 390 tests in 54 files (2.46 s CPU, bench of 2026-10-31) to 928 tests in 100 files (7.0 s). That is 6.3 and 7.6 ms of CPU per test, so the growth follows the number of tests. The budget was raised to 9.2 s.
+- The nightly is scheduled for 02:17 UTC (`bench/README.md`), but the 8 runs read were created between 08:49 and 12:32 UTC. The cold-read phase therefore measures a mid-day tally of today (`bench/README.md`: `cold_read_cpu_ms` grows with the UTC hour). The local run with 288,000 rows of today, the late-day size, gave 50 ms against the budget of 390 ms.
+- Method caveats: the local numbers come from one runner without Docker and do not compare with the hosted nightly. `grow.ts` inserts the dense days interleaved across checks, as live ingest does. `bench/cold.ts` `addTodayRows` inserts them per check.
+- Cleanup: every API instance was stopped with `SIGTERM` (exit code 0). No Docker container or image was created. The copies, seeds, profiles, downloaded artifacts and scripts under `/tmp` were deleted at the end of the run.

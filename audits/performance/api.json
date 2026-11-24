@@ -1,298 +1,176 @@
 {
-  "issue": 503,
+  "issue": 984,
   "kind": "performance",
   "scope": "api",
+  "date": "2026-11-24",
   "commits": {
-    "api": "11f555598831ef61f13de40bef5f2da620230c97",
-    "status": "3f80bda9d7ed17127a43bcf51b71cd1e05add9b0",
-    "notify": "584eabd05abcadc8f5a1035307e2c09a7a84c933",
-    "meta": "395368d67da4bf969c3160c60c1345b26f1e9b8c"
+    "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "kit": "c6d2cba7d90c981b884dcac2a9288dd9eccad8b5",
+    "status": "f220fbc27a2d733e583aba63e5949062f29d9861",
+    "console": "b6c737d49ba7e3fe734c332304cb908d7f820804",
+    "meta": "65b03892e525f495b338965dee780f35a440e0f7"
   },
   "bench": {
     "nightlyRead": {
-      "run": 41067380495,
-      "url": "https://github.com/lorenzh/pulse-api/actions/runs/41067380495",
-      "event": "workflow_dispatch",
-      "createdAt": "2026-10-30T13:56:01Z",
-      "head": "c282ae36190a9d22bc4a0f91e396cfc3a0da26d2",
-      "conclusion": "failure (status and contract budgets of that time; every api row ok)",
-      "behindMain": 41
-    },
-    "localAB": {
-      "command": "timeout 30m bun bench/run.ts --a 8ea397ce160c7fcb8e9ba39ebfc1bd5f1d6b451d --b 11f555598831ef61f13de40bef5f2da620230c97 --rounds 2",
-      "exitCode": 1,
-      "exitReason": "FAIL regression: status test_cpu_s (outside the scope); every api row ok",
+      "run": 45394568321,
+      "url": "https://github.com/lorenzh/pulse-api/actions/runs/45394568321",
+      "event": "schedule",
+      "createdAt": "2026-11-24T12:32:55Z",
+      "conclusion": "failure (probe, status and notify test_cpu_s budgets; every api row ok or reported)",
+      "shaA": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+      "shaB": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+      "roundsPerSide": 5,
       "api": {
-        "startup_cpu_ms": {
-          "a": 540,
-          "b": 205,
-          "bRounds": [
-            210,
-            200
-          ],
-          "budget": 325,
-          "gating": true
-        },
-        "load_cpu_s": {
-          "a": 5.96,
-          "b": 5.96,
-          "bRounds": [
-            6.04,
-            5.88
-          ],
-          "budget": 28.1,
-          "gating": true
-        },
-        "idle_rss_mib": {
-          "a": 73.19,
-          "b": 75.38,
-          "bRounds": [
-            75.5,
-            75.25
-          ],
-          "budget": 88,
-          "gating": true
-        },
-        "peak_rss_mib": {
-          "a": 93.7,
-          "b": 99.9,
-          "bRounds": [
-            99.17,
-            100.62
-          ],
-          "budget": 115,
-          "gating": true
-        },
-        "test_cpu_s": {
-          "a": 2.38,
-          "b": 2.46,
-          "bRounds": [
-            2.45,
-            2.46
-          ],
-          "budget": 4.1,
-          "gating": true
-        },
-        "startup_wall_ms": {
-          "a": 1749,
-          "b": 1434,
-          "bRounds": [
-            1785.9,
-            1082.0
-          ],
-          "budget": 618,
-          "gating": false
-        },
-        "p95_get_checks_ms": {
-          "a": 140,
-          "b": 161,
-          "bRounds": [
-            83.96,
-            238.63
-          ],
-          "budget": 392,
-          "gating": false
-        },
-        "p95_post_results_ms": {
-          "a": 133,
-          "b": 160,
-          "bRounds": [
-            78.38,
-            242.52
-          ],
-          "budget": 312,
-          "gating": false
-        },
-        "p95_get_latency_ms": {
-          "a": 165,
-          "b": 129,
-          "bRounds": [
-            74.58,
-            183.27
-          ],
-          "budget": 53,
-          "gating": false
-        },
-        "p95_get_check_latency_ms": {
-          "a": 163,
-          "b": 127,
-          "bRounds": [
-            69.51,
-            183.72
-          ],
-          "budget": 55,
-          "gating": false
-        },
-        "rps": {
-          "a": 43.04,
-          "b": 43.02,
-          "budget": 40,
-          "gating": false
-        },
-        "image_mb": {
-          "a": 95.21,
-          "b": 95.25,
-          "budget": 124,
-          "gating": false
-        }
-      }
-    }
+        "startup_cpu_ms": { "a": 250, "b": 250, "budget": 325, "gating": true, "verdict": "ok" },
+        "load_cpu_s": { "a": 3.41, "b": 3.17, "budget": 28.1, "gating": true, "verdict": "ok" },
+        "idle_rss_mib": { "a": 80.68, "b": 80.29, "budget": 88, "gating": true, "verdict": "ok" },
+        "peak_rss_mib": { "a": 100.68, "b": 101.32, "budget": 115, "gating": true, "verdict": "ok" },
+        "test_cpu_s": { "a": 7.52, "b": 7.25, "budget": 9.2, "gating": true, "verdict": "ok" },
+        "cold_read_cpu_ms": { "a": 40, "b": 30, "budget": 390, "gating": true, "verdict": "ok" },
+        "eod_read_cpu_ms": { "a": 370, "b": 360, "budget": 598, "gating": true, "verdict": "ok" },
+        "startup_wall_ms": { "a": 401, "b": 426, "budget": 618, "gating": false },
+        "p95_get_checks_ms": { "a": 4.92, "b": 5.0, "budget": 392, "gating": false },
+        "p95_post_results_ms": { "a": 2.89, "b": 2.79, "budget": 312, "gating": false },
+        "p95_get_latency_ms": { "a": 6.04, "b": 5.9, "budget": 53, "gating": false },
+        "p95_get_check_latency_ms": { "a": 5.07, "b": 5.35, "budget": 55, "gating": false },
+        "rps": { "a": 43.04, "b": 43.04, "budget": 40, "gating": false },
+        "image_mb": { "a": 96.21, "b": 96.21, "budget": 124, "gating": false },
+        "cold_get_checks_ms": { "a": 23, "b": 23, "budget": 200, "gating": false },
+        "cold_get_uptime_ms": { "a": 3, "b": 3, "budget": 190, "gating": false },
+        "cold_concurrent_ms": { "a": 27, "b": 27, "budget": 390, "gating": false },
+        "eod_get_checks_ms": { "a": 3, "b": 2, "budget": 7, "gating": false },
+        "eod_get_uptime_ms": { "a": 2, "b": 2, "budget": 3, "gating": false },
+        "eod_get_latency_ms": { "a": 3, "b": 3, "budget": 7, "gating": false },
+        "eod_get_check_latency_ms": { "a": 1, "b": 1, "budget": 2, "gating": false },
+        "eod_get_components_ms": { "a": 3, "b": 3, "budget": 4, "gating": false },
+        "eod_get_components_uptime_ms": { "a": 2, "b": 2, "budget": 3, "gating": false }
+      },
+      "earlierRunsRead": [45159517328, 45009394082, 44891625129, 44716002240, 44505356268, 44283365279, 44067927242]
+    },
+    "localAB": "not run: the nightly measured the examined commit with 5 rounds per side and no api metric deviates from its budget or baseline",
+    "machine": "GitHub-hosted runner, 4 vCPU Intel Xeon 6975P-C, 15.7 GB RAM, Bun 1.4.0, SQLite 3.53.2, no Docker for the local runs"
   },
   "checklist": [
     {
-      "item": "Queries. EXPLAIN QUERY PLAN for every query on the request path and at startup. Flag every full table scan (SCAN) and every temporary B-tree (USE TEMP B-TREE) over results.",
+      "item": "Queries: EXPLAIN QUERY PLAN for every query on the request path and at startup; flag every SCAN and every USE TEMP B-TREE over results",
       "status": "checked",
-      "evidence": "A bun:sqlite preload recorded every SQL text that ran while the API (1x bench seed, 20 bench checks, a heartbeat check, 2 components, 1 maintenance window) started, ran retention, the latency backfill and heartbeat ticks, and answered one request to every documented route: POST /results with an incident opened and resolved, every public GET and variant, /probe/checks, heartbeat, admin config writes with a hot reload, and every manual-incident write; all 2xx. EXPLAIN QUERY PLAN of all 51 DML statements on the same database (SQLite 3.53.2), exit 0. No SCAN of results; every results read is a SEARCH on results_by_check, results_by_sample or results_by_time. Temporary B-trees over results: dayLatencies ORDER BY latency_ms (src/service.ts:521; GET /latency, GET /checks/:id/latency, backfill) and dailyUptime GROUP BY day (src/service.ts:515; GET /uptime, /checks, /components, /components/uptime). SCAN incidents + USE TEMP B-TREE FOR ORDER BY in all 5 listIncidents variants (src/service.ts:1099; GET /incidents, GET /components) and SCAN i in openInactive (startup and config loads). SCAN manual_incidents + TEMP B-TREE (src/manual-incidents.ts:103-108). SCAN checks in 8 statements (bounded by the configured checks). SCAN latency_daily and manual_incidents in retention deletes. SCAN locs + TEMP B-TREE FOR GROUP BY over (check, location) pairs in NEWEST_PER_LOCATION_SQL at startup. SCAN sqlite_master LIMIT 1 in migrate. Measured in item 3: findings 2, 3 and 4."
+      "evidence": "A bun:sqlite preload (prepare/query/run/exec) recorded every SQL text and call site while `bun test --preload capture.ts` ran the suite (exit 0, 928 pass, 100 files). The capture reached all 131 db.prepare/query/run/exec call sites of src/*.ts outside tests. `bun explain.ts capture.jsonl <1x seed> explain.json` (exit 0) ran EXPLAIN QUERY PLAN on the 162 distinct DML statements; 72 have SCAN or USE TEMP B-TREE. Every request-path read of results is a SEARCH on results_by_check or results_by_sample. Temporary B-trees over results: locationTally (src/service.ts:638, GROUP BY location, today on every uncached GET /checks/:id/location-uptime: finding 1), dailyUptime (src/service.ts:604, GROUP BY day) and dayLatencies (src/service.ts:647, ORDER BY latency_ms) for closed days without a stored row, after each UTC midnight (finding 2). Full scans on the request path: incidents in all 7 listIncidents variants (src/service.ts:1458, plus TEMP B-TREE, finding 4) and audit_log for filtered GET /admin/audit (src/audit-log.ts:125, note). The other scans touch small or bounded tables (checks, tokens, definitions, manual_incidents, resend_commands capped at 1000), run at startup or on config load (NEWEST_PER_LOCATION_SQL src/service.ts:681, openInactive src/service.ts:561), in hourly retention of the rollup tables, only in a migration (src/db.ts:108, 138) or in the backup command (src/backup.ts:165)."
     },
     {
-      "item": "Startup. A CPU profile of the startup (bun --cpu-prof), with the top functions by self time.",
+      "item": "Startup: a CPU profile of the startup (bun --cpu-prof), with the top functions by self time",
       "status": "checked",
-      "evidence": "Bench A/B startup_cpu_ms: B (main) 205 ms (210, 200), A (baseline 8ea397c) 540 ms; budget 325 ms, ok; nightly c282ae3 240 ms. Local CPU at the first 200 of /readyz without the profiler: 120, 110 and 100 ms (1x). bun --cpu-prof --cpu-prof-interval=100 src/main.ts, SIGTERM at the first 200 of /readyz, 3 runs per data size, exit 0: CPU at ready 150/140/140 ms (1x) and 140/130/140 ms (10x), so startup does not grow with the data. Top self time over the 3 runs at 1x (392.7 ms sampled): node:fs module 40.4 ms (10.3 %), native bun:sqlite run (openDb/migrate BEGIN IMMEDIATE, schema, COMMIT, PRAGMAs) 37.9 ms (9.6 %), _onceWrap node:events 22.3 ms (5.7 %), setName node:fs 18.9 ms (4.8 %), startLatencyRollup src/latency-rollup.ts:60 16.8 ms (4.3 %), isServerConfig bun:main 14.6 ms (3.7 %), native code under node:_http_client 10.0 ms and under node:http 8.8 ms, zod schema construction 6.2 + 5.5 ms, DurationFormat 5.4 ms. 10x: bun:sqlite run 46.6 ms (11.9 %) on top, then module loading. Bench startup_wall_ms 1434 ms is over its reported budget of 618 ms; without Docker the API is ready 85-153 ms after the spawn (note). No finding."
+      "evidence": "Nightly startup_cpu_ms B 250 ms (A 250), budget 325: ok. Local CPU at the first /readyz 200 without a profiler: 1x round medians 110-120 ms (4 rounds x 10 starts), 10x 120 ms (3 starts): it does not grow with the data. `bun prof.ts` (bun --cpu-prof --cpu-prof-interval=100, SIGTERM at ready, 3 runs per size, exit 0): CPU at ready 140-150 ms at 1x and 10x. Top self time at 1x over 3 runs (332.8 ms sampled): native root 67.7 ms (20.3 %), DurationFormat under pulse-kit format-duration.js:2 47.6 ms (14.3 %), pulse-kit address-guard.js module 23.7 ms (7.1 %), node:net Socket 10.3 ms, zod schema code 10.1 ms, zod runChecks 7.8 ms, push under src/config.ts:356 7.7 ms. No SQL and no src/ function over 1 %. Two A/Bs with 10 starts x 2 rounds per side (a lazy DurationFormat: means 118/115 against 120/116 ms; the kit barrel cut to the used modules: 115/116 against 116/116 ms) show no difference, so the DurationFormat weight is a profiler artifact. No finding."
     },
     {
-      "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
+      "item": "Costs that grow with data: the repository's bench, or a local A/B with a larger data set; how each measured cost changes with the data size",
       "status": "checked",
-      "evidence": "Bench A/B (A 8ea397c, B main, 2 rounds): every api gating metric ok; p95_get_latency_ms 129 ms and p95_get_check_latency_ms 127 ms are over the reported budgets 53 and 55 ms on A and B; their cause is not established (the review measured 19-24 ms at the same rates without Docker; see review.removedFindings). Local growth script: fresh copy of the seeded database per run, start, wait for the backfill, then 30 x (POST /results; timed GET route) per route; 3 runs per data set; exit 0. Medians at 1x / 10x (8.64 M rows) / end-of-day density contiguous / end-of-day interleaved (25,920 results per check today, as 3 locations at 10 s give in a full day): GET /checks 3.1 / 18.6 / 195.5 / 344.7 ms; GET /uptime 2.6 / 17.9 / 193.9 / 341.4 ms; GET /latency 3.8 / 26.2 / 266.3 / 424.0 ms; GET /components/uptime 2.4 / 17.7 / 194.0 / 341.0 ms; GET /checks/c0/latency 0.4 / 1.4 / 13.2 ms; GET /components 2.5 / 17.8 / 194.1 ms; GET /checks/c0/results 0.3 / 0.3 / 0.3 ms. First (cold) GET /checks after start 206.7 / 2,354.4 / 455.2 / 608-612 ms; first GET /uptime 211.0 / 2,412.2 / 461.8 / 615-619 ms. Latency backfill (1780 days) CPU about 0.78 s at 1x and 3.6 s at 10x, with a yield per (check, day). Startup CPU and RSS do not grow (RSS at ready 60 MiB at 1x and 10x). 1x + 100,000 incidents: /incidents?status=resolved 0.2 to 8.2 ms, ?status=open 0.2 to 3.7 ms, /components 2.5 to 6.5 ms. Read routes grow linearly with today's results (finding 2), first reads with the 30/90-day history (finding 3), incident reads with all incidents (finding 4)."
+      "evidence": "Nightly 45394568321: every api row within budget, including cold_* on the 10x seed and eod_* with 518,400 rows of today. Local, without Docker: `bun bench/eod-read.ts --api .` (2 runs, exit 0) p95 1-3 ms per route, eod_read_cpu_ms 340 and 300. `bun bench/cold-read.ts --api . --density 10 --today-rows 288000` (1 run, exit 0) cold_get_checks_ms 48, cold_read_cpu_ms 50, but the ungated warm start on a file without stored day tallies took 1852 and 1828 ms. `bun grow.ts` (exit 0): GET /checks/c0/location-uptime after an ingest 0.5 -> 12.7 ms for 1,077 -> 26,997 rows of today (finding 1). The first reads with yesterday's day rows missing (state after UTC midnight): /checks 7.5-10.7 -> 246.8-249.7 ms and /latency 11.6-14.7 -> 329.8-334.5 ms, read CPU 40-60 -> 630-640 ms (finding 2). GET /incidents?status=resolved 0.2 -> 5.9 -> 53.2 ms for 0 -> 10k -> 100k incidents (finding 4). No growth for /checks, /uptime, /latency, /checks/:id/latency, /components, /components/uptime after an ingest, startup CPU, or POST /results."
     },
     {
-      "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
+      "item": "Memory over time: RSS after N minutes of steady load, against the RSS at the start",
       "status": "checked",
-      "evidence": "timeout 540 bun mem.ts <api copy> <1x seed> 5, exit 0. N = 5 minutes of the bench/load.ts rates, open loop: 30 POST /results (3 probe tokens, 20 checks), 10 GET /checks, 1 GET /uptime, 1 GET /latency, 1 GET /checks/:id/latency per second; 12,880 requests, 0 failed. VmRSS at the start (idle, after the backfill) 65.4 MiB; every 30 s under load 79.4, 81.6, 81.9, 84.4, 89.7, 86.3, 84.2, 81.9, 88.0, 88.6 MiB; 30 s after the load 77.4 MiB; VmHWM 92.4 MiB. No steady growth after the first minute. CPU 30.04 s in 300 s (6.0 s per minute, as the bench load_cpu_s 5.96 s). Budgets idle_rss_mib 88 and peak_rss_mib 115 MiB: within; bench B 75.38 and 99.90 MiB. No finding."
+      "evidence": "`timeout 540 bun mem.ts <api> <dir> <1x seed> 5`, exit 0. N = 5 min open loop per second: 30 POST /results, 10 GET /checks, 1 each of /uptime, /latency, /checks/:id/latency, /components, /components/uptime, /checks/:id/location-uptime. 13,792 requests, 0 failed. RSS at the start 72.3 MiB (65.5 at ready); under load 90.1-94.3 MiB with no upward trend, 91.7 MiB at the end, 86.5 MiB 30 s after. VmHWM 101.9 MiB. CPU 1.98 s per minute. Budgets idle_rss_mib 88 and peak_rss_mib 115: ok. No finding."
     },
     {
-      "item": "Tests. CPU time per test file; name the slowest files.",
+      "item": "Tests: CPU time per test file; name the slowest files",
       "status": "checked",
-      "evidence": "/usr/bin/time bun test, 3 runs, exit 0, 390 pass, 0 fail, 54 files: CPU 2.50, 2.44, 2.53 s; budget test_cpu_s 4.1 s, ok (bench B 2.46 s). Per file, /usr/bin/time bun test ./<file>, 3 runs (exit 0 for 7 files; 1 for 47 only from the 80 % coverage threshold on a one-file run). Slowest medians: src/uptime.test.ts 0.57 s, src/main.test.ts 0.53 s, src/config-admin.test.ts 0.44 s, src/start.test.ts 0.34 s, src/server.manual-incidents.test.ts 0.24 s, src/slo.test.ts 0.20 s, src/latency.test.ts 0.18 s. Fastest 0.01-0.02 s. Sum per file 6.54 s against 2.5 s in one process (repeated Bun startup). No finding."
+      "evidence": "`/usr/bin/time bun test` x3, exit 0, 928 pass: CPU 7.11, 7.00, 7.04 s against test_cpu_s 9.2 s (nightly B 7.25 s). Per file (`bun test <file>`, 3 passes, 100 files): 86 exit 1 only from the 80 % coverage threshold on a one-file run, 0 failing tests. Slowest medians: src/config-admin.test.ts 0.93 s, src/server.notify-channels.test.ts 0.83 s, src/server.maintenance-admin.test.ts 0.65 s, src/main.test.ts 0.62 s, src/server.resend.test.ts 0.61 s, src/uptime.test.ts 0.58 s. Per-file sum 18.12 s. No finding."
     },
     {
-      "item": "pulse-website only. JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages (performance score, LCP, TBT, CLS).",
+      "item": "pulse-website only: JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages",
       "status": "not applicable",
-      "evidence": "The scope is pulse-api, which serves JSON and has no JS or CSS bundle and no web pages."
+      "evidence": "The scope is pulse-api, a JSON API with no JS or CSS bundle and no web pages."
     }
   ],
   "findings": [
     {
-      "id": "performance-api-2026-10-31-2",
-      "repos": [
-        "api"
-      ],
-      "location": "src/service.ts:838",
+      "id": "performance-api-2026-11-24-1",
+      "repos": ["api"],
+      "location": "src/service.ts:1044",
       "severity": "P2",
       "candidate": true,
-      "title": "Uncached reads re-aggregate all of today's results after every ingest; by the end of a UTC day at 3 locations x 10 s, GET /checks, /uptime and /components/uptime take about 0.34 s and GET /latency about 0.42 s",
-      "command": "bun bench/seed.ts . <dir>/pulse.db; checks and tokens files from bench/fixtures.ts; sqlite3 <dir>/pulse.db < eod.sql (adds 8,640 results for each of 3 locations per check in today's elapsed UTC time: 25,920 per check, as 3 locations at a 10 s interval give in a full day; SQL in the report); PORT=3995 PULSE_DB=... PULSE_CHECKS_FILE=... PULSE_TOKENS_FILE=... bun src/main.ts; after 'backfill done', 30 x (curl -X POST /results; curl -w '%{time_total}' GET <route>) per route; 3 server runs",
+      "title": "GET /checks/:id/location-uptime re-reads all of today's results after every ingest, against the documented read cache (docs/rest-api.md:244)",
+      "command": "timeout 600 bun grow.ts <api copy> <dir> <1x seed> today 3: a copy of the 1x bench seed plus 3 locations x 8,640 results per check today (interleaved, 518,400 rows); start the API with the bench fixtures, wait for both backfills, then 30 x (POST /results as sim1, timed GET /checks/c0/location-uptime), 3 server runs per data set; plus bun loctally.ts <db> (the route's locationTally query alone, 20 times)",
       "exitCode": 0,
-      "excerpt": "results today per check: 26313\nGET /checks after an ingest: n=30 median 344.2 ms p95 348.6 ms\nGET /uptime after an ingest: n=30 median 341.2 ms p95 344.8 ms\nGET /latency after an ingest: n=30 median 419.1 ms p95 426.6 ms\nGET /components/uptime after an ingest: n=30 median 341.0 ms p95 346.0 ms\n(1x seed: /checks 3.6 ms, /uptime 3.0 ms, /latency 4.7 ms, /components/uptime 2.9 ms)",
-      "value": 424.0,
-      "unit": "ms (median GET /latency after an ingest; GET /checks 344.7 ms)",
-      "repetitions": "3 server runs x 30 requests per route (GET /latency medians 427.3, 419.1, 424.0 ms; GET /checks 356.3, 344.2, 344.7 ms)",
-      "baseline": "1x bench seed (391 results per check today): GET /latency 4.7 ms, GET /checks 3.6 ms; with contiguous rows at the same density 266.3 and 195.5 ms",
-      "budget": "p95_get_latency_ms 53 ms (reported): one unloaded request takes 8 times the budget; p95_get_checks_ms 392 ms (reported): one unloaded request takes 88 % of it",
-      "fixDirection": "Keep running per-day aggregates (today's good/total count and latency percentiles from an incremental or bounded structure) instead of reading all of today's results again, or invalidate only what an ingest changes; add today's density to the bench seed",
-      "commits": {
-        "api": "11f555598831ef61f13de40bef5f2da620230c97"
-      },
-      "review": {
-        "result": "reproduced",
-        "commit": "11f555598831ef61f13de40bef5f2da620230c97",
-        "command": "bun bench/seed.ts . <dir>/pulse.db; sqlite3 <dir>/pulse.db < eod.sql (the SQL of the report, unchanged; 26,323 results for c0 today, rows interleaved across checks); bench fixture checks plus two components of 10 checks; timeout 280 bun reads.ts <api copy> <db> <cfg> 3995 30 (start, wait for 'backfill done', then 30 x (POST /results; timed GET) per route); 3 server runs; 1x seed as baseline, 2 runs",
-        "exitCode": 0,
-        "excerpt": "end of day, medians of runs 1/2/3: GET /checks 417.1/417.4/418.5 ms; /uptime 418.7/415.2/416.8 ms; /latency 528.8/529.1/522.5 ms; /components 417.9/418.3/418.9 ms; /components/uptime 417.2/419.9/418.1 ms\n1x (613 results per check today), runs 1/2: /checks 4.0/4.1 ms; /latency 5.4/5.5 ms; /components/uptime 3.4/3.5 ms",
-        "value": 529.1,
-        "unit": "ms (median GET /latency after an ingest; GET /checks 417.4 ms)",
-        "note": "About 20 % above the audit's values on this runner (whole test suite 3.45 s CPU here, against 2.5 s). One unloaded GET /checks at this density is over p95_get_checks_ms (392 ms). Severity P2 kept: the case is the bench's own load (3 locations, 10 s interval, 20 checks)."
-      }
+      "excerpt": "dense: added 518400 rows of today; c0 today rows 26997; 1x c0 today rows 1077\n1x run 1: /checks/c0/location-uptime median 0.5 p95 0.8 ms (cpu 50 ms/30 cycles); /checks/c0/latency median 0.3 p95 0.4 ms\ndense run 1: /checks/c0/location-uptime median 12.7 p95 13.1 ms (cpu 420 ms/30 cycles); /checks/c0/latency median 0.3 p95 0.4 ms\ndense run 2: /checks/c0/location-uptime median 12.7 p95 13.2 ms (cpu 420 ms/30 cycles)\ndense run 3: /checks/c0/location-uptime median 12.7 p95 13.3 ms (cpu 420 ms/30 cycles)\ntoday-1x.db: c0 rows today 1077, locationTally median 0.17 ms (n=20)\ntoday-dense.db: c0 rows today 26997, locationTally median 12.34 ms (n=20)",
+      "value": 12.7,
+      "unit": "ms (median per request after an ingest, 26,997 rows of today for the check)",
+      "repetitions": "3 server runs x 30 requests per data set; the query alone 20 times per data set",
+      "baseline": "0.5 ms with 1,077 rows of today (1x seed); GET /checks/c0/latency on the dense data 0.3 ms",
+      "budget": "none for this route (the eod bench phase does not request it); nearest: eod_get_check_latency_ms 2 ms (reported)",
+      "fixDirection": "Keep today's per-location good/total counts in the in-memory today state and update them on ingest, as todayTally does per check; add the route to the end-of-day bench phase; or narrow the sentence in docs/rest-api.md:244.",
+      "commits": { "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6", "console": "b6c737d49ba7e3fe734c332304cb908d7f820804" }
     },
     {
-      "id": "performance-api-2026-10-31-3",
-      "repos": [
-        "api"
-      ],
-      "location": "src/service.ts:757",
-      "severity": "P2",
+      "id": "performance-api-2026-11-24-2",
+      "repos": ["api"],
+      "location": "src/service.ts:909",
+      "severity": "P3",
       "candidate": true,
-      "title": "The first GET /checks and the first GET /uptime after a start aggregate the whole 30- and 90-day window in one synchronous call (2.4 s each at 10x the bench seed)",
-      "command": "Growth script: fresh copy of the seeded database (1x bench seed, or 10x: 10 results per minute per check, 8.64 M rows), sync, bun src/main.ts, wait for 'backfill done', then time the first request to each route (fetch) and 29 more, each after one POST /results; 3 runs per data set",
+      "title": "The first reads after each UTC midnight re-read all of yesterday's results for every check in one synchronous request",
+      "command": "timeout 600 bun grow.ts <api copy> <dir> <1x seed> midnight 3: the 1x bench seed plus 3 locations x 8,640 results per check yesterday (interleaved); start, wait for both backfills, stop; copy 'stored' keeps all day rows, copy 'missing' has yesterday's rows deleted from uptime_daily, latency_daily and uptime_location_daily (the state after 00:00 UTC); 3 runs per copy: at the first /readyz 200, one timed request each to /checks, /uptime, /latency, /components/uptime, /checks/c0/location-uptime, API CPU from /proc around them",
       "exitCode": 0,
-      "excerpt": "1x:  /checks max 206.2, 209.9, 206.7 ms; /uptime max 210.9, 211.0, 214.6 ms\n10x: /checks max 2356.0, 2352.2, 2354.4 ms; /uptime max 2414.6, 2408.4, 2412.2 ms (later requests: median 18.6 and 17.9 ms)\ncurl: cold GET /checks 200 0.208754 s (1x), 0.608469 s (1x plus a full day at 3 locations)",
-      "value": 2354.4,
-      "unit": "ms (first GET /checks after a start, 10x; the first GET /uptime adds 2412.2 ms)",
-      "repetitions": "3 runs per data set",
-      "baseline": "1x bench seed: 206.7 ms (first GET /checks) and 211.0 ms (first GET /uptime)",
-      "budget": "p95_get_checks_ms 392 ms (reported); a once-per-start request does not reach the bench p95",
-      "fixDirection": "Build the closed-day tallies after the start in yielding batches, as the latency backfill does, or store them per day like latency_daily",
-      "commits": {
-        "api": "11f555598831ef61f13de40bef5f2da620230c97"
-      },
-      "review": {
-        "result": "spot-checked, holds; severity raised from P3 to P2",
-        "command": "timeout 300 bun reads.ts <api copy> <db> <cfg> <port> <n> on the 1x seed, the end-of-day database of finding 2, and a 10x database (1x seed plus 9 more results per minute via sqlite3 INSERT ... SELECT, 8,640,000 rows)",
-        "exitCode": 0,
-        "excerpt": "cold GET /checks / GET /uptime: 1x 277.4/271.2 and 284.7/275.8 ms; end of day 754.9/746.3, 759.7/753.5, 755.1/773.0 ms; 10x 3373.1/3447.4 ms (then GET /checks 29.9 ms)",
-        "remeasurement": {
-          "commit": "11f555598831ef61f13de40bef5f2da620230c97",
-          "command": "timeout 90 bun tmp/cold-timeout.ts (bench seed plus one day of 20 checks x 3 locations x 10 s samples; after a start, concurrent cold GET /checks and GET /uptime via curl, then the same requests cached; 2 repetitions)",
-          "exitCode": 1,
-          "excerpt": "run 1: /uptime curl exit 28, 4002 ms, 0 bytes received\nrun 2: /uptime curl exit 28, 4003 ms, 0 bytes received\nAssertionError: cold public reads exceed the status proxy default 4000 ms timeout\n2 !== 0\ncached: 5-21 ms",
-          "statusTimeout": "pulse-status 3f80bda9d7ed17127a43bcf51b71cd1e05add9b0: src/server.ts:71 DEFAULT_UPSTREAM_TIMEOUT_MS = 4000; src/settings.ts:71 PULSE_STATUS_UPSTREAM_TIMEOUT_MS fallback 4000; docs/configuration.md:17; docs/operation.md:138 (then 502 API unreachable)"
-        },
-        "note": "Severity raised from P3 to P2: at the bench's own density, cold reads after a restart exceed the status proxy's default 4000 ms upstream timeout in both repetitions, so the first status-page poll fails with 502. Absolute timings depend on the host."
-      }
+      "excerpt": "stored run 1: ready 88 ms; /checks 10.7 ms, /uptime 2.0 ms, /latency 11.6 ms, /components/uptime 0.6 ms, /checks/c0/location-uptime 1.5 ms; read cpu 50 ms\nstored run 3: ready 95 ms; /checks 7.5 ms, /uptime 2.2 ms, /latency 13.7 ms, /components/uptime 0.9 ms, /checks/c0/location-uptime 1.6 ms; read cpu 40 ms\nmissing run 1: ready 95 ms; /checks 247.7 ms, /uptime 2.6 ms, /latency 332.9 ms, /components/uptime 1.0 ms, /checks/c0/location-uptime 14.6 ms; read cpu 630 ms\nmissing run 2: ready 95 ms; /checks 246.8 ms, /uptime 2.7 ms, /latency 334.5 ms, /components/uptime 1.2 ms, /checks/c0/location-uptime 14.4 ms; read cpu 640 ms\nmissing run 3: ready 88 ms; /checks 249.7 ms, /uptime 2.8 ms, /latency 329.8 ms, /components/uptime 1.0 ms, /checks/c0/location-uptime 14.0 ms; read cpu 630 ms\n(bench/cold-read.ts --density 10 --today-rows 288000, warm start without stored day tallies: warm_get_checks_ms 1852, warm_get_uptime_ms 1828)",
+      "value": 332.9,
+      "unit": "ms (first GET /latency after the day change; first GET /checks 247.7 ms; API CPU of the first reads 630-640 ms)",
+      "repetitions": "3 runs per copy",
+      "baseline": "copy with yesterday stored: /checks 7.5-10.7 ms, /latency 11.6-14.7 ms, read CPU 40-60 ms",
+      "budget": "p95_get_latency_ms 53 ms and p95_get_checks_ms 392 ms (reported); one request per route and day, so no bench p95 shows it",
+      "fixDirection": "At the day change, store yesterday's in-memory tally and latency figures as its uptime_daily and latency_daily rows (startDay, src/service.ts:501), or let the read path use only stored days and leave the missing ones to the yielding backfill started at the day change; add a midnight case to the bench.",
+      "commits": { "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6", "status": "f220fbc27a2d733e583aba63e5949062f29d9861" }
     },
     {
-      "id": "performance-api-2026-10-31-4",
-      "repos": [
-        "api"
-      ],
-      "location": "src/service.ts:1099",
+      "id": "performance-api-2026-11-24-3",
+      "repos": ["api"],
+      "location": "bench/budgets.json:180",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The nightly bench has failed on every scheduled run since 2026-11-04 on stale probe/status/notify test_cpu_s budgets (A = B), so an api regression would not change its result",
+      "command": "gh run list --repo lorenzh/pulse-api --workflow bench.yml --branch main --limit 40 --json databaseId,headSha,event,conclusion,createdAt; gh run download <id> --repo lorenzh/pulse-api --name bench-out for the 8 newest runs; read table.json and samples.json (shas.a, shas.b)",
+      "exitCode": 0,
+      "excerpt": "2026-11-24T12:32:55Z schedule failure 8959e04 45394568321\n... (every schedule run from 2026-11-04 to 2026-11-24: failure; 21 runs)\n2026-11-03T09:36:18Z schedule success c9e23af 41612366764\n45394568321 A=B for api/probe/status/notify: True {'probe': (2.63, 2.57, 2.3, 'FAIL budget'), 'status': (4.24, 4.15, 3.4, 'FAIL budget'), 'notify': (5.51, 5.36, 3.4, 'FAIL budget')}\n44067927242 A=B for api/probe/status/notify: True {'probe': (2.53, 2.54, 2.3, 'FAIL budget'), 'status': (4.01, 4.02, 3.4, 'FAIL budget'), 'notify': (5.18, 5.18, 3.4, 'FAIL budget')}",
+      "value": 5.36,
+      "unit": "s (notify test_cpu_s, B median of run 45394568321; status 4.15 s, probe 2.57 s)",
+      "repetitions": "5 rounds per side in each of 8 runs (2026-11-17 to 2026-11-24); all 8 fail the same three rows",
+      "baseline": "side A of the same runs, the same commits: notify 5.51 s, status 4.24 s, probe 2.63 s",
+      "budget": "test_cpu_s notify 3.4 s (bench/budgets.json:217), status 3.4 s (:180), probe 2.3 s (:143)",
+      "fixDirection": "Re-set the three test_cpu_s budgets from the nightly A medians with the documented method, or report the verdict per service so that one service's stale budget does not hide another service's breach.",
+      "commits": { "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6" }
+    },
+    {
+      "id": "performance-api-2026-11-24-4",
+      "repos": ["api", "status"],
+      "location": "src/service.ts:1458",
+      "severity": "P3",
+      "candidate": true,
+      "title": "GET /incidents scans and sorts the whole incidents table, and the status page requests it on every poll",
+      "command": "timeout 600 bun grow.ts <api copy> <dir> <1x seed> incidents 3 and INCIDENTS=10000 ... incidents 2: a copy of the 1x seed plus 10,000 or 100,000 resolved incidents (one per second from 20 days ago); after the backfills, 30 timed requests per route",
+      "exitCode": 0,
+      "excerpt": "1x run 1: /incidents?status=resolved median 0.2 p95 0.4 ms; /incidents?status=open median 0.2 p95 0.7 ms; /incidents median 0.1 p95 0.4 ms; /components median 0.5 p95 1.7 ms\n1x+10k run 1: /incidents?status=resolved median 5.9 p95 6.7 ms; /incidents?status=open median 0.4 p95 0.8 ms; /incidents median 5.7 p95 6.1 ms; /components median 0.7 p95 2.1 ms\n1x+100k run 1: /incidents?status=resolved median 53.2 p95 54.0 ms; /incidents?status=open median 2.9 p95 3.2 ms; /incidents median 52.3 p95 53.3 ms; /components median 3.0 p95 4.2 ms\n1x+100k run 3: /incidents?status=resolved median 53.2 p95 54.2 ms; /incidents?status=open median 2.7 p95 3.1 ms; /incidents median 52.5 p95 53.1 ms; /components median 3.0 p95 3.5 ms",
+      "value": 53.2,
+      "unit": "ms (median GET /incidents?status=resolved with 100,000 incidents; 5.9 ms with 10,000)",
+      "repetitions": "3 runs (100k) and 2 runs (10k), 30 requests per route each",
+      "baseline": "0.2 ms with no incidents",
+      "budget": "none for this route",
+      "fixDirection": "A partial index on open incidents and an index that matches the ORDER BY on resolved or opened time; let the status page send since, or add a retention for old resolved automatic incidents.",
+      "commits": { "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6", "status": "f220fbc27a2d733e583aba63e5949062f29d9861" }
+    },
+    {
+      "id": "performance-api-2026-11-24-5",
+      "repos": ["api"],
+      "location": "bench/budgets.json:3",
       "severity": "P3",
       "candidate": false,
-      "title": "GET /incidents and GET /components scan and sort the whole incidents table, which is never pruned",
-      "command": "EXPLAIN QUERY PLAN of the 5 listIncidents variants; growth script on the 1x seed plus 100,000 resolved incidents (sqlite3 INSERT ... WITH RECURSIVE), 30 requests per route after one POST /results each, 3 runs",
+      "title": "On a slow hosted runner the api gating budgets startup_cpu_ms and test_cpu_s fail with no code change (A = B)",
+      "command": "gh run download 44283365279 --repo lorenzh/pulse-api --name bench-out; read table.json and samples.json",
       "exitCode": 0,
-      "excerpt": "SCAN incidents\nUSE TEMP B-TREE FOR ORDER BY\n/incidents?status=resolved median 8.1, 8.2, 8.2 ms (1 incident: 0.2 ms)\n/incidents?status=open 3.7, 3.8, 3.7 ms (0.2 ms)\n/components 6.5, 6.5, 6.4 ms (2.5 ms)",
-      "value": 8.2,
-      "unit": "ms (median GET /incidents?status=resolved with 100,000 incidents)",
-      "repetitions": "3 runs x 30 requests",
-      "baseline": "0.2 ms with 1 incident (1x seed)",
-      "budget": "none in bench/budgets.json",
-      "fixDirection": "A partial index on open incidents and an index on opened_at for the ordered reads",
-      "commits": {
-        "api": "11f555598831ef61f13de40bef5f2da620230c97"
-      },
-      "review": {
-        "result": "spot-checked, holds (larger cost than reported)",
-        "command": "sqlite3 <db> 'INSERT INTO incidents ... WITH RECURSIVE' (100,000 resolved incidents on the 1x seed); EXPLAIN QUERY PLAN of the status=open and status=resolved variants; timeout 200 bun reads.ts <api copy> <db> <cfg> 3997 30; the listIncidents SQL with LIMIT 1000 directly in bun:sqlite, 5 runs",
-        "exitCode": 0,
-        "excerpt": "SCAN incidents\nUSE TEMP B-TREE FOR ORDER BY\nGET /incidents?status=resolved median 80.5 ms p95 82.5 ms (n=30); bun:sqlite query 78.8-81.6 ms; GET /components 8.4 ms (3.5 ms without the incidents)",
-        "note": "The review's value is 10 times the audit's 8.2 ms; the incident rows the two used differ. Stays P3: it needs 100,000 incidents."
-      }
+      "excerpt": "startup_cpu_ms A 320 B 330 FAIL budget {'budget': 325, 'unit': 'ms', 'gating': True}\ntest_cpu_s A 9.629264 B 9.493794 FAIL budget {'budget': 9.2, 'unit': 's', 'gating': True, 'floor': 1.6}\na startup [320, 330, 320, 320, 330] test [9.66, 9.58, 9.63, 9.65, 9.53]\nb startup [330, 320, 330, 330, 330] test [9.46, 9.62, 9.49, 9.52, 9.49]\n8959e0469a7b7a16e2329e968a7c42e176d287c6 8959e0469a7b7a16e2329e968a7c42e176d287c6",
+      "value": 330,
+      "unit": "ms (startup_cpu_ms B median; test_cpu_s B median 9.49 s)",
+      "repetitions": "5 rounds per side; 1 of 8 nightly runs of the same commit",
+      "baseline": "A of the same run 320 ms and 9.63 s; the 7 other runs 240-260 ms and 7.15-8.02 s",
+      "budget": "startup_cpu_ms 325 ms, test_cpu_s 9.2 s (gating)",
+      "commits": { "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6" }
     }
-  ],
-  "review": {
-    "state": "audit-review",
-    "commit": "11f555598831ef61f13de40bef5f2da620230c97",
-    "machine": "4 vCPU, 16 GB, Bun 1.4.0, SQLite 3.53.2; root ext4 mounted nobarrier,data=writeback",
-    "benchAB": "not run: a run takes longer than one foreground command may, and this state starts no background tasks; own measurements in a copy of pulse-api instead",
-    "removedFindings": [
-      {
-        "id": "performance-api-2026-10-31-1",
-        "severity": "P2",
-        "title": "Each ingest commits with a synchronous disk flush on the event loop; every route's p95 is about 180-250 ms at the bench rates",
-        "reason": "Not reproduced. At the bench rates the database on disk and on tmpfs give almost the same latencies, and every route stays far within its budget. The flush per ingest exists (4 fsync and 1 journal unlink per commit), but costs about 1 ms per POST on this disk.",
-        "command": "timeout 200 bun load.ts <api copy> <db> <seed dir> <port> 60 (bun src/main.ts on a copy of the 1x bench seed; after 'backfill done', 60 s open loop at the bench/load.ts rates: 30 POST /results, 10 GET /checks, 1 GET /uptime, 1 GET /latency, 1 GET /checks/c0/latency per second); disk twice, tmpfs (/dev/shm) once, disk with a parallel 6 GB dd once; plus a 20 s run under strace -f -c -e trace=fsync,fdatasync,unlink,unlinkat",
-        "exitCode": 0,
-        "excerpt": "PRAGMA synchronous 2, journal_mode delete\ndisk 1: POST /results p50 2.0 p95 2.9 ms | GET /checks p95 9.0 | GET /latency p95 23.2 | GET /checks/c0/latency p95 23.9 ms\ndisk 2: POST /results p50 2.1 p95 3.2 ms | GET /checks p95 9.9 | GET /latency p95 19.5 | GET /checks/c0/latency p95 20.0 ms\ntmpfs:  POST /results p50 1.0 p95 1.2 ms | GET /checks p95 7.8 | GET /latency p95 19.2 | GET /checks/c0/latency p95 19.8 ms\ndisk + parallel 6 GB writeback: POST /results p95 4.9 ms | GET /checks p95 10.7 | GET /latency p95 284.9 ms\nstrace: 9520 fsync (27 us each, 0.26 s total), 2380 unlink",
-        "note": "The cost depends on the fsync latency of the disk; this review cannot show it as a finding on a disk with a slow flush. The bench A/B p95_get_latency_ms 129 ms and p95_get_check_latency_ms 127 ms (over budget on A and B) stay in bench.localAB; their cause in the Docker bench stack is not established."
-      }
-    ],
-    "reproduced": [
-      "performance-api-2026-10-31-2"
-    ],
-    "spotChecked": [
-      "performance-api-2026-10-31-3",
-      "performance-api-2026-10-31-4"
-    ],
-    "otherChecks": "EXPLAIN QUERY PLAN of dayLatencies, dailyUptime and two listIncidents variants matches item 1; /usr/bin/time bun test exit 0, 390 pass, CPU 2.90 + 0.55 s (budget 4.1 s); src/uptime.test.ts 0.79 s, src/main.test.ts 0.75 s, src/state.test.ts 0.02 s"
-  }
+  ]
 }
