@@ -1,0 +1,167 @@
+{
+  "issue": 986,
+  "kind": "performance",
+  "scope": "status",
+  "date": "2026-11-27",
+  "commits": {
+    "status": "f220fbc27a2d733e583aba63e5949062f29d9861",
+    "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+    "contract": "96f33aaa85188c0794dedca89035f9c5500f85ee",
+    "meta": "65b03892e525f495b338965dee780f35a440e0f7"
+  },
+  "bench": {
+    "run": 45986105595,
+    "url": "https://github.com/lorenzh/pulse-api/actions/runs/45986105595",
+    "created": "2026-11-27T10:55:05Z",
+    "conclusion": "failure",
+    "statusA": "v0.1.1 = f220fbc27a2d733e583aba63e5949062f29d9861",
+    "statusB": "main = f220fbc27a2d733e583aba63e5949062f29d9861",
+    "status": {
+      "startup_cpu_ms": { "a": 240, "b": 260, "budget": 377, "gating": true, "verdict": "ok" },
+      "load_cpu_s": { "a": 0.08, "b": 0.07, "budget": 0.5, "gating": true, "verdict": "ok" },
+      "idle_rss_mib": { "a": 67.57, "b": 67.65, "budget": 82, "gating": true, "verdict": "ok" },
+      "peak_rss_mib": { "a": 69.98, "b": 70.11, "budget": 85, "gating": true, "verdict": "ok" },
+      "test_cpu_s": { "a": 4.44, "b": 4.04, "budget": 3.4, "gating": true, "verdict": "FAIL budget" },
+      "startup_wall_ms": { "a": 793, "b": 794, "budget": 965, "gating": false, "verdict": "reported" },
+      "image_mb": { "a": 96.26, "b": 96.26, "budget": 124, "gating": false, "verdict": "reported" }
+    },
+    "abRerun": "not run: sides A and B of the nightly both examine status f220fbc, the audited commit; the deviation (test_cpu_s) was measured locally instead"
+  },
+  "checklist": [
+    {
+      "item": "Queries. EXPLAIN QUERY PLAN for every query on the request path and at startup. Flag every full table scan (SCAN) and every temporary B-tree (USE TEMP B-TREE) over results.",
+      "status": "not applicable",
+      "evidence": "pulse-status has no database: grep -rn \"sqlite\\|bun:sqlite\\|Database\" src/*.ts | grep -v test (exit 0) finds only the function name readDatabase (src/settings-poll.ts:107), an HTTP read. The api-side plans of the reads status makes are in audits/performance/api.md. Checked instead: 100 concurrent GET / plus 90 /api requests caused one upstream read per path (fake api counts {\"/checks\":2,...all others 1}), so the documented single flight per cache period holds."
+    },
+    {
+      "item": "Startup. A CPU profile of the startup (bun --cpu-prof), with the top functions by self time.",
+      "status": "checked",
+      "evidence": "Bench startup_cpu_ms B 260 ms (230-270), budget 377 ms: ok. Local CPU at first /readyz 200: 100-110 ms at 20, 200 and 1000 checks (3 runs each), no growth with data. timeout 300 bun grow.ts <copy> <api> prof-20 3 0 false 18421 <dir> (bun --cpu-prof --cpu-prof-interval=100 src/main.ts, exit 0), 3 runs at 20 and 1000 checks. Top self time at 20 checks (936 samples, 278.5 ms): anonymous native 29.5 %, _onceWrap node:events 7.1 %, node:util 6.7 %, DateTimeFormat (src/ssr.ts:19-40) 4.8 %, zod init 1.8 %. By file: runtime 36.5 %, zod 18.8 %, src/main.ts 8.2 %, pulse-kit 6.4 %, pulse-contract 5.4 %, src/ssr.ts 4.8 %. No finding."
+    },
+    {
+      "item": "Costs that grow with data. The repository's bench, or a local A/B with a larger data set (for example 10x the bench seed). Report how each measured cost changes with the data size.",
+      "status": "checked",
+      "evidence": "Repository bench bench/proxy-cache.ts and bench/conditional.ts at 100 checks and a copy at 1000 checks (3 runs each, exit 0): cached /api/uptime 205-220 -> 1063-1185 ms per 300 requests; /api/checks 304 68-82 -> 72-87 ms; /badge/check-0.svg 304 515-521 -> 3858-4916 ms. Local A/B with a fake api at 20 (bench seed), 200 (10x) and 1000 checks (bun grow.ts, 3 runs default layout, 2 runs checks shown, exit 0): page 53,281 / 480,016 / 1,526,457 B (shown 267,012 / 2,616,442 / 8,879,289 B); rebuild median CPU 25 / 90 / 130 ms (shown 30 / 155 / 365 ms); warm p95 0.52-0.57 / 0.82-0.98 / 1.95-2.30 ms; 10-visitor CPU per 60 s 0.71-0.75 / 2.20-2.39 / 2.86-3.09 s; VmHWM 87.8-88.5 / 140.7-143.6 / 175.0-180.8 MiB; 120 of 610 requests 502 at 1000 checks. Conditional badge/feed server CPU per 304 (bun badge.ts, 3 runs): check badge 0.53-0.60 / 3.53-3.57 / 13.20-17.13 ms; feed 0.60-0.63 / 4.47-4.60 / 24.17-24.83 ms; /api/checks 0.07-0.13 ms flat. Findings 2, 4 and 5."
+    },
+    {
+      "item": "Memory over time. RSS after N minutes of steady load, against the RSS at the start. Name N and the load.",
+      "status": "checked",
+      "evidence": "timeout 420 bun mem.ts (3 processes at once, exit 0). N = 5 minutes. Load: 10 visitors, each GET / once per minute and the 10 /api paths every 5 s (6,050 requests, 0 failed), default settings and layout; plus an idle process without requests. 20 checks idle: RSS 65.2 -> 63.0 MiB, VmHWM 64.9 MiB, 0.058 s CPU per minute. 20 checks load: RSS 64.9 at start, 84.6 at 30 s, 79.5-84.6 until 300 s (83.4), VmHWM 95.5 MiB, 0.55 s CPU per minute. 200 checks load: RSS 65.4 at start, 104.8-116.9 MiB from 30 to 270 s, 143.8 MiB at 300 s, VmHWM 155.0 MiB, 1.95 s CPU per minute. No leak shown. Finding 3."
+    },
+    {
+      "item": "Tests. CPU time per test file; name the slowest files.",
+      "status": "checked",
+      "evidence": "Bench test_cpu_s B 4.04 s (3.97, 4.09, 4.48, 4.04, 3.98), budget 3.4 s: FAIL budget. /usr/bin/time timeout 600 bun test, 3 runs, exit 0, 663 pass, 44 files: 4.13, 4.05, 4.06 s CPU. Without coverage 4.31, 4.18, 4.17 s. Without src/main.startup.test.ts 3.07, 2.99, 2.94 s. Per file (3 runs each; 31 files exit 1 only through the 80 % coverage gate of a one-file run, 0 fail, all exit 0 with coverage off): src/main.startup.test.ts 1.08 s, src/server.privacy.test.ts 0.98 s, src/server.hidden-checks.test.ts 0.55 s, src/server.syndication.test.ts 0.41 s, src/subscribe-routes.test.ts 0.41 s, src/server.cache.test.ts 0.37 s, src/server.test.ts 0.35 s. Finding 1."
+    },
+    {
+      "item": "pulse-website only. JS and CSS size against the budget, and a Lighthouse run of the Home and Hosted pages (performance score, LCP, TBT, CLS).",
+      "status": "not applicable",
+      "evidence": "This audit covers pulse-status; the Home and Hosted pages and the JS and CSS budget belong to pulse-website."
+    }
+  ],
+  "findings": [
+    {
+      "id": "performance-status-2026-11-27-1",
+      "repos": ["status", "api"],
+      "location": "src/main.startup.test.ts:18",
+      "severity": "P2",
+      "candidate": true,
+      "title": "Status test_cpu_s fails its gating 3.4 s budget in every nightly on unchanged code (B 4.04 s); src/main.startup.test.ts alone costs 1.08 s of CPU, the suite without it 2.94-3.07 s",
+      "command": "gh run download 45986105595 --repo lorenzh/pulse-api --name bench-out (and runs 45806020830, 45394568321, 45159517328, 44716002240, 44283365279, 43843140354); in the status copy: /usr/bin/time -f 'user=%U sys=%S wall=%e exit=%x' timeout 600 bun test (3 runs), the same with the 43 other files, and /usr/bin/time timeout 120 bun test ./src/main.startup.test.ts (3 runs)",
+      "exitCode": 0,
+      "excerpt": "| `test_cpu_s` | 4.44 s | 4.04 s | -9.1% | 3.40 s | gating | FAIL budget |\nshas.a.status = shas.b.status = f220fbc27a2d733e583aba63e5949062f29d9861\nolder nightlies, status B: 4.53, 4.15, 4.09, 4.12, 5.39, 5.49 s, all FAIL budget\nRan 663 tests across 44 files. run1 user=3.45 sys=0.68 wall=3.34 exit=0\nwithout-startup: Ran 654 tests across 43 files. run1 user=2.53 sys=0.54 wall=2.73 exit=0\n1.08 0.65 src/main.startup.test.ts exits=[0, 0, 0] cpu=[1.07, 1.08, 1.1]",
+      "value": 4.04,
+      "unit": "s CPU of bun run test (bench B median; local median 4.06 s)",
+      "repetitions": "5 bench rounds (3.97, 4.09, 4.48, 4.04, 3.98 s) plus 3 local runs (4.13, 4.05, 4.06 s); 7 nightly artifacts from 2026-11-16 to 2026-11-27, all FAIL budget",
+      "baseline": "suite without src/main.startup.test.ts: 3.07, 2.99, 2.94 s; bench A of the same commit 4.44 s; budget was set from v0.1.0 A 2.611 s (pulse-api bench/README.md:171)",
+      "budget": "test_cpu_s 3.4 s (gating, no floor)",
+      "fixDirection": "Owner decision: make the startup exit tests cheaper (fewer child processes, for example the exit paths of src/main.ts in one child), which brings the suite below budget, or re-set the status budget from the current suite by the rule of pulse-api bench/README.md (A median plus 30 %).",
+      "commits": {
+        "status": "f220fbc27a2d733e583aba63e5949062f29d9861",
+        "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6"
+      }
+    },
+    {
+      "id": "performance-status-2026-11-27-2",
+      "repos": ["status"],
+      "location": "src/syndication.ts:306-326",
+      "severity": "P3",
+      "candidate": true,
+      "title": "/feed.atom and the badges rebuild their answer on every request, also for a 304; at 1000 checks a check badge revalidation costs 16 ms and a feed revalidation 24 ms of server CPU, against 0.1 ms for a stored /api answer",
+      "command": "timeout 400 bash -c \"for i in 1 2 3; do ... bun badge.ts <status copy> <fake api> <label> true 18441 300 /badge/check-1.svg /api/checks /feed.atom; bun badge.ts ... false 18442 300 /badge/component/comp-1.svg /api/components; done\"; bun bench/conditional.ts and a copy with CHECKS = 1000 (3 runs each)",
+      "exitCode": 0,
+      "excerpt": "('shown-20', '/badge/check-1.svg')   cpu per request 0.57, 0.53, 0.60 ms, 300 of 300 were 304\n('shown-200', '/badge/check-1.svg')  3.57, 3.53, 3.53 ms\n('shown-1000', '/badge/check-1.svg') 16.23, 13.2, 17.13 ms\n('shown-1000', '/feed.atom')         24.83, 24.17, 24.23 ms\n('shown-1000', '/api/checks')        0.1, 0.13, 0.07 ms\nconditional run1 /badge/check-0.svg {\"requests\":300,\"cpuMs\":517,\"share304\":100} (100 checks)\nconditional-10x run1 /badge/check-0.svg {\"requests\":300,\"cpuMs\":4916,\"share304\":100} (1000 checks)",
+      "value": 16.23,
+      "unit": "ms server CPU per conditional /badge/check-1.svg request at 1000 checks (median; /feed.atom 24.23 ms)",
+      "repetitions": "3 runs of 300 requests per path and size",
+      "baseline": "stored /api/checks 304: 0.07-0.13 ms at every size; check badge 0.57 ms at 20 checks and 3.53 ms at 200 checks",
+      "budget": "no per-request budget; reference load_cpu_s 0.5 s per 60 s is used up by about 31 badge revalidations per minute at 1000 checks (about 140 at 200 checks)",
+      "fixDirection": "Keep the finished feed and badge answers with their tag, dropped with the raw reads like the /api answers, or keep the parsed lists per cached answer so a request does not parse the full bodies again.",
+      "commits": {
+        "status": "f220fbc27a2d733e583aba63e5949062f29d9861"
+      }
+    },
+    {
+      "id": "performance-status-2026-11-27-3",
+      "repos": ["api", "status"],
+      "location": "pulse-api bench/stack.ts:167",
+      "severity": "P3",
+      "candidate": true,
+      "title": "The nightly bench sends status no page or proxy traffic, so its gating load_cpu_s and peak_rss_mib measure an idle poller; with 10 visitors on the bench's 20 checks, CPU is 0.55 s per minute and VmHWM 95.5 MiB, above the 0.5 s and 85 MiB budgets",
+      "command": "grep -n \"readyz\\|apiBase\\|baseUrl\\|http://127\" bench/run.ts bench/side-round.ts bench/stack.ts bench/load.ts (pulse-api); timeout 420 bun mem.ts <copy> <api 20 checks> mem-20-load 5 18431 10 against mem-20-idle ... 0; bun grow.ts <copy> http://127.0.0.1:18320 def-20 3 30 false 18401",
+      "exitCode": 0,
+      "excerpt": "bench/stack.ts:167:    const response = await fetch(`http://127.0.0.1:${port}/readyz`, {\nmem-20-idle  cpu 0->300 290 ms  (0.058 s per min), hwm 64.9 MiB\nmem-20-load  cpu 0->300 2730 ms (0.546 s per min), hwm [64.9, 86.1, 87.2, 87.2, 89.4, 89.4, 95.5, ...]\ndef-20 run1 \"load_s\":34.5,\"load_requests\":610,\"load_errors\":0,\"load_cpu_ms\":430,\"hwm_mib\":87.9\ndef-20 run2 \"load_cpu_ms\":410,\"hwm_mib\":87.8  run3 \"load_cpu_ms\":420,\"hwm_mib\":88.5",
+      "value": 0.55,
+      "unit": "s CPU per 60 s over 5 minutes of load (VmHWM 95.5 MiB); 0.71-0.75 s per 60 s and VmHWM 87.8-88.5 MiB in 34.5 s windows",
+      "repetitions": "one 5-minute run plus 3 runs of 34.5 s",
+      "baseline": "same server and data without page traffic: 0.058 s per minute, VmHWM 64.9 MiB; bench B load_cpu_s 0.07 s, peak_rss_mib 70.11 MiB",
+      "budget": "load_cpu_s 0.5 s and peak_rss_mib 85 MiB (gating); local reference measurements, not a nightly failure",
+      "fixDirection": "Let the bench send status a fixed page and proxy load in the measured window (a few simulated visitors with the browser poller's paths) and set the status load_cpu_s and peak_rss_mib budgets again from that run.",
+      "commits": {
+        "api": "8959e0469a7b7a16e2329e968a7c42e176d287c6",
+        "status": "f220fbc27a2d733e583aba63e5949062f29d9861"
+      }
+    },
+    {
+      "id": "performance-status-2026-11-27-4",
+      "repos": ["status", "contract"],
+      "location": "src/server.ts:419-423",
+      "severity": "P3",
+      "candidate": true,
+      "title": "At about 1000 HTTP checks the 90-day /latency answer passes the 5 MiB body cap; /api/latency and /api/components/latency answer 502 and the latency charts disappear without a message",
+      "command": "bun grow.ts <copy> http://127.0.0.1:18322 def-1000 3 30 false 18403 and ... shown-1000 2 30 true 18413; curl -s -w ' -> %{http_code}' http://127.0.0.1:18405/api/latency (server on the 1000-check fake api)",
+      "exitCode": 0,
+      "excerpt": "{\"port\":18322,\"checks\":1000,\"bytes\":{...\"/uptime\":4553891,\"/latency\":5252891}}\n{\"error\":\"invalid API response\"} -> 502   (/api/latency)\n{\"error\":\"invalid API response\"} -> 502   (/api/components/latency)\ndef-1000 run1..3: \"load_requests\":610,\"load_errors\":120\nshown-1000 run1..2: \"load_requests\":610,\"load_errors\":60",
+      "value": 5252891,
+      "unit": "bytes of /latency at 1000 checks x 90 days (cap 5,242,880 bytes, reached at about 998 checks; /uptime reaches it at about 1,150 checks)",
+      "repetitions": "3 runs (default layout) and 2 runs (checks shown); every load request to the affected paths failed",
+      "baseline": "200 checks: /latency 1,050,491 bytes, 0 failed requests",
+      "budget": "none for this size; the 5 MiB cap and its 502 are documented (README.md:73), the number of checks at which it applies is not",
+      "fixDirection": "Document the limit in checks, or let the proxy read the two history endpoints with a larger cap, or ask for a smaller answer (fewer days, only the shown checks).",
+      "commits": {
+        "status": "f220fbc27a2d733e583aba63e5949062f29d9861",
+        "contract": "96f33aaa85188c0794dedca89035f9c5500f85ee"
+      }
+    },
+    {
+      "id": "performance-status-2026-11-27-5",
+      "repos": ["status"],
+      "location": "src/server.ts:897-939",
+      "severity": "P3",
+      "candidate": false,
+      "title": "The page, its rebuild every cache period and the peak memory grow linearly with checks and components: 2.6 MB HTML, 155 ms CPU per rebuild and 177-178 MiB VmHWM at 200 checks shown",
+      "command": "timeout 590 bash -c \"bun grow.ts <copy> <api> def-<n> 3 30 false <port>; ...\" and the same with true, 2 runs; gzip -6 -c <page> | wc -c",
+      "exitCode": 0,
+      "excerpt": "def-20   page_bytes 53281   rebuild_cpu median 25 ms  hwm 87.9, 87.8, 88.5\ndef-200  page_bytes 480016  rebuild_cpu median 90 ms  hwm 140.7, 140.8, 143.6\ndef-1000 page_bytes 1526457 rebuild_cpu median 130 ms hwm 178.7, 175.0, 180.8\nshown-200  page_bytes 2616442 rebuild_cpu median 155 ms hwm 177.2, 178.1\nshown-1000 page_bytes 8879289 rebuild_cpu median 365 ms hwm 326.1, 326.6\n18450 raw=2616442 gzip6=42551 details=240 tr=21840",
+      "value": 2616442,
+      "unit": "bytes of GET / at 200 checks shown (rebuild 155 ms CPU median, VmHWM 177.2-178.1 MiB)",
+      "repetitions": "3 runs (default layout) and 2 runs (checks shown) per size; 18 and 12 rebuild samples",
+      "baseline": "documented page sizes at 50 checks and 20 components: 243,043 B default and 730,602 B shown (docs/operation.md:202, test guard 1,000,000 B); bench B peak_rss_mib 70.11 MiB",
+      "budget": "peak_rss_mib 85 MiB (reference); no page-size budget above 50 checks",
+      "fixDirection": "Not a candidate: the 90-row Daily values table per entry is part of the documented keyboard and screen reader design, and compression is left to a proxy (docs/operation.md:156-157). If large pages matter, render the tables lazily or keep fewer rows in the server-rendered view.",
+      "commits": {
+        "status": "f220fbc27a2d733e583aba63e5949062f29d9861"
+      }
+    }
+  ]
+}
